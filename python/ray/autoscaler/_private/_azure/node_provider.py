@@ -107,7 +107,11 @@ class AzureNodeProvider(NodeProvider):
             k: v for k, v in self.terminating_nodes.items() if not v.done()
         }
 
-        return {k: v for k, v in self.cached_nodes.items() if match_tags(v["tags"])}
+        return {
+            k: v
+            for k, v in self.cached_nodes.items()
+            if v["tags"] is not None and match_tags(v["tags"])
+        }
 
     def _extract_metadata(self, vm):
         # get tags

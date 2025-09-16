@@ -1,0 +1,18 @@
+# This file is used to exclude files from Anyscale Workspaces snapshots.
+# Use this to prevent large or unnecessary files from being included in your snapshots,
+# which helps reduce snapshot size and creation time. See documentation for more details:
+# https://docs.anyscale.com/platform/workspaces/workspaces-files/#excluding-files-with-anyscaleignore
+#
+# Syntax examples:
+# *.txt                  # Ignore files with a .txt extension at the same level as `.anyscaleignore`.
+# **/*.txt               # Ignore files with a .txt extension in ANY directory.
+# folder/                # Ignore all files under "folder/". The slash at the end is optional.
+# folder/*.txt           # Ignore files with a .txt extension under "folder/".
+# path/to/filename.py    # Ignore a specific file by providing its relative path.
+# file_[1,2].txt         # Ignore file_1.txt and file_2.txt.
+
+# Exclude Python virtual environments (.venv/) from snapshots. Virtual environments contain
+# all installed Python dependencies, which can be multiple gigabytes in size. These directories
+# are typically recreatable from requirements files and don't need to be included in snapshots.
+# The ** pattern ensures all .venv directories are excluded regardless of location in your project.
+**/.venv/

@@ -1,0 +1,29 @@
+2/12/25, 9:48 AM Jobs | Anyscale Docs
+Jobs
+Run discrete workloads in production such as batch inference, bulk embeddings generation, or
+model fine-tuning.
+Anyscale Jobs allow you to submit applications developed on workspaces to a standalone Ray
+cluster for execution. Built for production and designed to fit into your CI/CD pipeline, jobs ensure
+scalable and reliable performance.
+How does it work? #
+When you’re ready to promote an app to production, submit a job
+from the workspace using
+anyscale job submit . Anyscale Jobs have the following features:
+Scalability: Rapid scaling to thousands of cloud instances, adjusting computing resources to
+match application demand.
+Fault tolerance: Retries for failures and automatic rescheduling to an alternative cluster for
+unexpected failures like running out of memory.
+Monitoring and observability: Persistent dashboards that allow you to observe tasks in real
+time and email alerts upon successf
+ul job completion.
+Get started
+1. Sign in or sign up for an account.
+2. Select the Intro to Jobs example.
+3. Select Launch.
+This example runs in a Workspace. See Workspaces for background information.
+4. Follow the notebook or view it in the docs.
+5. Terminate the Workspace when you're done.
+Ask AI
+https://docs.anyscale.com/platform/jobs/ 1/2
+2/12/25, 9:48 AM Jobs | Anyscale Docs
+https://docs.anyscale.com/platform/jobs/ 2/2

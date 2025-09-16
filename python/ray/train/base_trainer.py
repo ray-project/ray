@@ -13,8 +13,8 @@ import pyarrow.fs
 
 import ray
 import ray.cloudpickle as pickle
+from ray._common.usage import usage_lib
 from ray._private.dict import deep_update
-from ray._private.usage import usage_lib
 from ray.air._internal import usage as air_usage
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
@@ -28,8 +28,8 @@ from ray.train._internal.storage import (
     get_fs_and_path,
 )
 from ray.train.constants import (
-    _v2_migration_warnings_enabled,
     V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
 )
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.utils import _log_deprecation_warning
@@ -551,14 +551,14 @@ class BaseTrainer(abc.ABC):
             return
 
         from ray.train.v2._internal.migration_utils import (
+            CALLBACKS_DEPRECATION_MESSAGE,
             FAIL_FAST_DEPRECATION_MESSAGE,
+            LOG_TO_FILE_DEPRECATION_MESSAGE,
+            PROGRESS_REPORTER_DEPRECATION_MESSAGE,
+            STOP_DEPRECATION_MESSAGE,
+            SYNC_CONFIG_DEPRECATION_MESSAGE,
             TRAINER_RESOURCES_DEPRECATION_MESSAGE,
             VERBOSE_DEPRECATION_MESSAGE,
-            LOG_TO_FILE_DEPRECATION_MESSAGE,
-            STOP_DEPRECATION_MESSAGE,
-            CALLBACKS_DEPRECATION_MESSAGE,
-            PROGRESS_REPORTER_DEPRECATION_MESSAGE,
-            SYNC_CONFIG_DEPRECATION_MESSAGE,
         )
 
         # ScalingConfig deprecations

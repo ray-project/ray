@@ -247,16 +247,12 @@ for env in benchmark_envs.keys():
     )
 
 
-def _make_env_to_module_connector(env):
-    return FrameStackingEnvToModule(
-        num_frames=4,
-    )
+def _make_env_to_module_connector(env, spaces, device):
+    return FrameStackingEnvToModule(num_frames=4)
 
 
 def _make_learner_connector(input_observation_space, input_action_space):
-    return FrameStackingLearner(
-        num_frames=4,
-    )
+    return FrameStackingLearner(num_frames=4)
 
 
 # Define a `tune.Stopper` that stops the training if the benchmark is reached

@@ -25,6 +25,7 @@ class TestEnvironment(dict):
 
 
 _test_env = None
+_bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
 def get_test_environment():
@@ -36,29 +37,9 @@ def get_test_environment():
     return _test_env
 
 
-def set_test_env_var(key: str, value: str):
-    test_env = get_test_environment()
-    test_env[key] = value
-
-
 def get_test_env_var(key: str, default: Optional[str] = None):
     test_env = get_test_environment()
     return test_env.get(key, default)
-
-
-def get_wheels_sanity_check(commit: Optional[str] = None):
-    if not commit:
-        cmd = (
-            "python -c 'import ray; print("
-            '"No commit sanity check available, but this is the '
-            "Ray wheel commit:\", ray.__commit__)'"
-        )
-    else:
-        cmd = (
-            f"python -c 'import ray; "
-            f'assert ray.__commit__ == "{commit}", ray.__commit__\''
-        )
-    return cmd
 
 
 def load_and_render_yaml_template(
@@ -92,28 +73,36 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def get_cluster_env_path(
-    test: "Test", test_definition_root: Optional[str] = None
+def get_working_dir(
+    test: "Test",
+    test_definition_root: Optional[str] = None,
+    bazel_workspace_dir: Optional[str] = None,
 ) -> str:
+    if not bazel_workspace_dir:
+        bazel_workspace_dir = _bazel_workspace_dir
+    if bazel_workspace_dir and test_definition_root:
+        raise ReleaseTestConfigError(
+            "test_definition_root should not be specified when running with Bazel."
+        )
     working_dir = test.get("working_dir", "")
-    cluster_env_file = test["cluster"]["cluster_env"]
-    return (
-        os.path.join(test_definition_root, working_dir, cluster_env_file)
-        if test_definition_root
-        else bazel_runfile("release", working_dir, cluster_env_file)
-    )
+    if test_definition_root:
+        return os.path.join(test_definition_root, working_dir)
+    if working_dir.startswith("//"):
+        working_dir = working_dir.lstrip("//")
+    else:
+        working_dir = os.path.join("release", working_dir)
+    if bazel_workspace_dir:
+        return os.path.join(bazel_workspace_dir, working_dir)
+    else:
+        return bazel_runfile(working_dir)
 
 
 def load_test_cluster_compute(
     test: "Test", test_definition_root: Optional[str] = None
 ) -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
-    working_dir = test.get("working_dir", "")
-    f = (
-        os.path.join(test_definition_root, working_dir, cluster_compute_file)
-        if test_definition_root
-        else bazel_runfile("release", working_dir, cluster_compute_file)
-    )
+    working_dir = get_working_dir(test, test_definition_root)
+    f = os.path.join(working_dir, cluster_compute_file)
     env = populate_cluster_compute_variables(test)
     return load_and_render_yaml_template(f, env=env)
 

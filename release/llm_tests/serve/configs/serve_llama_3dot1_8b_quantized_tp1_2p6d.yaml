@@ -1,0 +1,29 @@
+applications:
+  - args:
+      prefill_config:
+        model_loading_config:
+          model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+        accelerator_type: A10G
+        engine_kwargs:
+          max_model_len: 8192
+          tensor_parallel_size: 1
+          enforce_eager: true
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 2
+            max_replicas: 2
+      decode_config:
+        model_loading_config:
+          model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+        accelerator_type: A10G
+        engine_kwargs:
+          max_model_len: 8192
+          tensor_parallel_size: 1
+          enforce_eager: true
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 6
+            max_replicas: 6
+    import_path: ray.serve.llm:build_pd_openai_app
+    name: llm-endpoint
+    route_prefix: /

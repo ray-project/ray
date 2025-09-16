@@ -1,26 +1,26 @@
 import abc
 import os
+import re
 import subprocess
 import sys
+from typing import List, Optional, Tuple
 
-from typing import List, Tuple, Optional
-
-
-_CUDA_COPYRIGHT = """
-==========
+# Regex pattern to match CUDA copyright header with any version
+_CUDA_COPYRIGHT_PATTERN = r"""==========
 == CUDA ==
 ==========
 
-CUDA Version 12.1.1
+CUDA Version \d+\.\d+(?:\.\d+)?
 
-Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+Container image Copyright \(c\) 2016-2023, NVIDIA CORPORATION & AFFILIATES\. All rights reserved\.
 
-This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+This container image and its contents are governed by the NVIDIA Deep Learning Container License\.
 By pulling and using the container, you accept the terms and conditions of this license:
-https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+https://developer\.nvidia\.com/ngc/nvidia-deep-learning-container-license
 
-A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
-"""  # noqa: E501
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience\.
+"""
+
 _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
@@ -64,11 +64,9 @@ class Container(abc.ABC):
         Run a script in container and returns output
         """
         # CUDA image comes with a license header that we need to remove
-        return (
-            subprocess.check_output(self.get_run_command(script))
-            .decode("utf-8")
-            .replace(_CUDA_COPYRIGHT, "")
-        )
+        output = subprocess.check_output(self.get_run_command(script)).decode("utf-8")
+        # Use regex to remove CUDA copyright header with any version
+        return re.sub(_CUDA_COPYRIGHT_PATTERN, "", output, flags=re.MULTILINE)
 
     def run_script(self, script: List[str]) -> None:
         """

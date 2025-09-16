@@ -1,7 +1,7 @@
 import logging
 import threading
-from typing import Union
 import time
+from typing import Union
 
 INTERNAL_TIMESTAMP_LOG_KEY = "_ray_timestamp_ns"
 

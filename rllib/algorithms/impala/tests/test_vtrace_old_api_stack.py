@@ -53,7 +53,7 @@ def _ground_truth_vtrace_calculation(
     and bootstrap_values before calling _ground_truth_vtrace_calculation.
 
     Args:
-        discounts: Array of shape [T*B] of discounts. T is the lenght of the trajectory
+        discounts: Array of shape [T*B] of discounts. T is the length of the trajectory
             or sequence and B is the batch size.
             NOTE: The discount will be equal to gamma, the discount factor when the
             timestep that the discount is being applied to is not a terminal timestep.

@@ -176,3 +176,4 @@ results = [r.result() for r in responses]
 
 - Increase `max_batch_size` if you have sufficient memory and want higher throughput - this may increase latency
 - Increase `batch_wait_timeout_s` if throughput is more important than latency
+- Increase `max_concurrent_batches` if you have an asynchronous function that you want to process multiple batches with concurrently

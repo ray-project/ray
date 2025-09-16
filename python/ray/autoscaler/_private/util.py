@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,8 +13,8 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
     PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN,
@@ -192,6 +193,12 @@ def validate_config(config: Dict[str, Any]) -> None:
                 "The specified global `max_workers` is smaller than the "
                 "sum of `min_workers` of all the available node types."
             )
+
+    if sys.platform == "win32" and config.get("file_mounts_sync_continuously", False):
+        raise ValueError(
+            "`file_mounts_sync_continuously` is not supported on Windows. "
+            "Please set this to False when running on Windows."
+        )
 
 
 def check_legacy_fields(config: Dict[str, Any]) -> None:
@@ -701,10 +708,9 @@ def format_resource_demand_summary(
         # the demand report.
         if (
             using_placement_group
-            and ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
-            in pg_filtered_bundle.keys()
+            and PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in pg_filtered_bundle.keys()
         ):
-            del pg_filtered_bundle[ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME]
+            del pg_filtered_bundle[PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME]
 
         # No need to report empty request to demand (e.g.,
         # placement group ready task).
@@ -724,6 +730,36 @@ def format_resource_demand_summary(
     return demand_lines
 
 
+def get_constraint_report(request_demand: List[DictCount]):
+    """Returns a formatted string describing the resource constraints from request_resources().
+
+    Args:
+        request_demand: List of tuples containing resource bundle dictionaries and counts
+            from request_resources() calls.
+
+    Returns:
+        String containing the formatted constraints report, either listing each constraint
+        and count or indicating no constraints exist.
+
+    Example:
+        >>> request_demand = [
+        ...     ({"CPU": 4}, 2),
+        ...     ({"GPU": 1}, 1)
+        ... ]
+        >>> get_constraint_report(request_demand)
+        " {'CPU': 4}: 2 from request_resources()\\n {'GPU': 1}: 1 from request_resources()"
+    """
+    constraint_lines = []
+    for bundle, count in request_demand:
+        line = f" {bundle}: {count} from request_resources()"
+        constraint_lines.append(line)
+    if len(constraint_lines) > 0:
+        constraints_report = "\n".join(constraint_lines)
+    else:
+        constraints_report = " (none)"
+    return constraints_report
+
+
 def get_demand_report(lm_summary: LoadMetricsSummary):
     demand_lines = []
     if lm_summary.resource_demand:
@@ -732,9 +768,6 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
         pg, count = entry
         pg_str = format_pg(pg)
         line = f" {pg_str}: {count}+ pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count}+ from request_resources()"
         demand_lines.append(line)
     if len(demand_lines) > 0:
         demand_report = "\n".join(demand_lines)
@@ -893,6 +926,7 @@ def format_info_string(
         failure_report += " (no failures)"
 
     usage_report = get_usage_report(lm_summary, verbose)
+    constraints_report = get_constraint_report(lm_summary.request_demand)
     demand_report = get_demand_report(lm_summary)
     formatted_output = f"""{header}
 Node status
@@ -912,9 +946,11 @@ Pending:
 
 Resources
 {separator}
-{"Total " if verbose else ""}Usage:
+Total Usage:
 {usage_report}
-{"Total " if verbose else ""}Demands:
+From request_resources:
+{constraints_report}
+Pending Demands:
 {demand_report}"""
 
     if verbose:
@@ -961,3 +997,47 @@ def format_no_node_type_string(node_type: dict):
         output_lines.append(output_line)
 
     return "\n  ".join(output_lines)
+
+
+def generate_rsa_key_pair():
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(
+        backend=default_backend(), public_exponent=65537, key_size=2048
+    )
+
+    public_key = (
+        key.public_key()
+        .public_bytes(
+            serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH
+        )
+        .decode("utf-8")
+    )
+
+    pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+    return public_key, pem
+
+
+def generate_ssh_key_paths(key_name):
+    public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
+    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+    return public_key_path, private_key_path
+
+
+def generate_ssh_key_name(provider, i, region, identifier, ssh_user):
+    RAY_PREFIX = "ray-autoscaler"
+    if i is not None:
+        return "{}_{}_{}_{}_{}_{}".format(
+            RAY_PREFIX, provider, region, identifier, ssh_user, i
+        )
+    else:
+        return "{}_{}_{}_{}_{}".format(
+            RAY_PREFIX, provider, region, identifier, ssh_user
+        )

@@ -127,7 +127,7 @@ like :meth:`~ray.data.Dataset.write_parquet`, :meth:`~ray.data.Dataset.write_csv
 .. testcode::
     :hide:
 
-    # The number of blocks can be non-determinstic. Repartition the dataset beforehand
+    # The number of blocks can be non-deterministic. Repartition the dataset beforehand
     # so that the number of written files is consistent.
     transformed_ds = transformed_ds.repartition(2)
 

@@ -30,7 +30,7 @@ extern int fdatasync(int fildes);
 namespace ray {
 
 #if defined(__APPLE__) || defined(__linux__)
-Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len) {
+Status CompleteWrite(int fd, const char *data, size_t len) {
   const ssize_t ret = write(fd, data, len);
   if (ret == -1) {
     return Status::IOError("") << "Fails to write to file because " << strerror(errno);
@@ -41,7 +41,7 @@ Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len) {
   }
   return Status::OK();
 }
-Status Flush(MEMFD_TYPE_NON_UNIQUE fd) {
+Status Flush(int fd) {
 #if HAVE_FULLFSYNC
   // On macOS and iOS, fsync() doesn't guarantee durability past power
   // failures. fcntl(F_FULLFSYNC) is required for that purpose. Some
@@ -64,7 +64,7 @@ Status Flush(MEMFD_TYPE_NON_UNIQUE fd) {
   }
   return Status::OK();
 }
-Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
+Status Close(int fd) {
   const int ret = close(fd);
   if (ret != 0) {
     return Status::IOError("") << "Fails to flush file because " << strerror(errno);
@@ -72,28 +72,31 @@ Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
   return Status::OK();
 }
 #elif defined(_WIN32)
-Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len) {
-  DWORD bytes_written;
-  BOOL success = WriteFile(fd, data, (DWORD)len, &bytes_written, NULL);
-  if (!success) {
-    return Status::IOError("") << "Fails to write to file";
+Status CompleteWrite(int fd, const char *data, size_t len) {
+  const int ret = _write(fd, data, len);
+  if (ret == -1) {
+    return Status::IOError("") << "Fails to write to file because " << strerror(errno);
   }
-  if ((DWORD)len != bytes_written) {
+  if (ret != static_cast<int>(len)) {
     return Status::IOError("") << "Fails to write all requested bytes, requests to write "
-                               << len << " bytes, but actually write " << bytes_written
-                               << " bytes";
+                               << len << " bytes, but actually write " << ret << " bytes";
   }
   return Status::OK();
 }
-Status Flush(MEMFD_TYPE_NON_UNIQUE fd) {
-  if (!FlushFileBuffers(fd)) {
+Status Flush(int fd) {
+  HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+  if (handle == INVALID_HANDLE_VALUE) {
+    return Status::IOError("") << "Fails to get file handle for flushing";
+  }
+  if (!FlushFileBuffers(handle)) {
     return Status::IOError("") << "Fails to flush file";
   }
   return Status::OK();
 }
-Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
-  if (!CloseHandle(fd)) {
-    return Status::IOError("") << "Fails to close file handle";
+Status Close(int fd) {
+  const int ret = _close(fd);
+  if (ret != 0) {
+    return Status::IOError("") << "Fails to flush file because " << strerror(errno);
   }
   return Status::OK();
 }

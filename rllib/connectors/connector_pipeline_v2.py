@@ -140,7 +140,7 @@ class ConnectorPipelineV2(ConnectorV2):
                     f"`data` returned by ConnectorV2 {connector} must be a dict! "
                     f"You returned {batch}. Check your (custom) connectors' "
                     f"`__call__()` method's return value and make sure you return "
-                    f"the `data` arg passed in (either altered or unchanged)."
+                    f"the `batch` arg passed in (either altered or unchanged)."
                 )
 
         if metrics:

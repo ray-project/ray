@@ -171,7 +171,7 @@ def predict(framework: str, result: ray.train.Result, data_path: str):
     ds = ds.drop_columns(["labels"])
 
     concurrency = int(ray.cluster_resources()["CPU"] // 2)
-    result = ds.map_batches(
+    ds.map_batches(
         predictor_cls,
         # Improve prediction throughput with larger batch size than default 4096
         batch_size=8192,
@@ -183,10 +183,7 @@ def predict(framework: str, result: ray.train.Result, data_path: str):
             "result": result,
         },
         batch_format="pandas",
-    )
-
-    for _ in result.iter_batches():
-        pass
+    ).write_parquet("/mnt/cluster_storage/predictions")
 
 
 def main(args):

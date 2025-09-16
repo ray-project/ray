@@ -506,6 +506,7 @@ class Framework(ExampleEnum):
 
 class RelatedTechnology(ExampleEnum):
     ML_APPLICATIONS = "ML Applications"
+    LLM_APPLICATIONS = "LLM Applications"
     INTEGRATIONS = "Integrations"
     AI_ACCELERATORS = "AI Accelerators"
 

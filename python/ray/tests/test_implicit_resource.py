@@ -1,6 +1,6 @@
-import os
 import sys
 import time
+
 import pytest
 
 import ray
@@ -75,9 +75,4 @@ def test_implicit_resource_autoscaling(autoscaler_v2, shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

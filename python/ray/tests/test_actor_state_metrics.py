@@ -1,19 +1,20 @@
 import asyncio
-from collections import defaultdict
-import pytest
+import sys
 import time
+from collections import defaultdict
 from typing import Dict
 
-import ray
-from ray._private.utils import hex_to_binary
+import pytest
 
-from ray.util.state import list_actors
+import ray
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import hex_to_binary
 from ray._private.test_utils import (
     raw_metrics,
-    wait_for_condition,
     run_string_as_driver,
 )
 from ray._private.worker import RayContext
+from ray.util.state import list_actors
 
 _SYSTEM_CONFIG = {
     "metrics_report_interval_ms": 200,
@@ -317,10 +318,4 @@ def test_get_all_actors_info(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

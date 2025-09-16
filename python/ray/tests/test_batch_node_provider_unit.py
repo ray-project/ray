@@ -1,35 +1,34 @@
 """Unit test for BatchingNodeProvider.
 Validates BatchingNodeProvider's book-keeping logic.
 """
-from copy import copy
-from uuid import uuid4
-import os
 import random
 import sys
-from typing import Any, Dict
 from collections import defaultdict
+from copy import copy
+from typing import Any, Dict
+from uuid import uuid4
 
 import pytest
 
+from ray.autoscaler._private.constants import (
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
+from ray.autoscaler._private.util import NodeID, NodeType
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
     NodeData,
     ScaleRequest,
 )
-from ray.autoscaler._private.util import NodeID, NodeType
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
     STATUS_UP_TO_DATE,
-    TAG_RAY_USER_NODE_TYPE,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
     TAG_RAY_REPLICA_INDEX,
-    NODE_KIND_HEAD,
-    NODE_KIND_WORKER,
-)
-from ray.autoscaler._private.constants import (
-    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
-    DISABLE_NODE_UPDATERS_KEY,
-    FOREGROUND_NODE_LAUNCH_KEY,
+    TAG_RAY_USER_NODE_TYPE,
 )
 
 
@@ -481,7 +480,4 @@ def test_terminate_node_in_multihost_replica():
 
 if __name__ == "__main__":
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

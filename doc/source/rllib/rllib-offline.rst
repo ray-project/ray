@@ -22,7 +22,7 @@ format. You should use the episode format when
 #. You need experiences grouped by their trajectory and ordered in time (for example, to train stateful modules).
 #. You want to use recorded experiences exclusively within RLlib (for example for offline RL or behavior cloning).
 
-Contrary, you should prefer the table (columns) format, if
+On the contrary, you should prefer the table (columns) format, if
 
 #. You need to read the data easily with other data tools or ML libraries.
 
@@ -30,8 +30,8 @@ Contrary, you should prefer the table (columns) format, if
     :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is usable outside of an RLlib context. To enable faster
     access through external data tools (for example, for data transformations), it's recommended to use the table record format.
 
-Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and
-write methods supported by Ray Data (for example :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with
+Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore supports all of its read and
+write methods (for example :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with
 :py:class:`~ray.data.read_parquet` and :py:class:`~ray.data.Dataset.write_parquet` being the default read and write methods. A core design principle
 of the API is to apply as many data transformations as possible on-the-fly prior to engaging the learner, allowing the latter to focus exclusively on model updates.
 
@@ -1869,7 +1869,7 @@ You can configure experience input for an agent using the following options:
         # that exactly `train_batch_size_per_learner` experiences are sampled
         # per batch. The default is RLlib's `EpisodeReplayBuffer`.
         prelearner_buffer_class: Optional[Type],
-        # Optional keyword arguments for intializing the
+        # Optional keyword arguments for initializing the
         # `EpisodeReplayBuffer`. In most cases this is simply the `capacity`
         # for the default buffer used (`EpisodeReplayBuffer`), but it may
         # differ if the `prelearner_buffer_class` uses a custom buffer.

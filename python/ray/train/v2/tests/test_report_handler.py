@@ -1,6 +1,7 @@
 import random
 import unittest.mock
 from unittest.mock import MagicMock
+
 import pytest
 
 from ray.air.config import CheckpointConfig
@@ -21,7 +22,7 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
-from ray.train.v2.tests.test_controller import DummyWorkerGroup
+from ray.train.v2.tests.util import DummyObjectRefWrapper, DummyWorkerGroup
 
 
 def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none):
@@ -67,7 +68,7 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
 
     worker_group_context = WorkerGroupContext(
         run_attempt_id="test_run_attempt_id",
-        train_fn=lambda: None,
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
         num_workers=10,
         resources_per_worker={"CPU": 1},
     )

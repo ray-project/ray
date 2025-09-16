@@ -1,6 +1,8 @@
-import pytest
+import sys
 import time
+
 import numpy as np
+import pytest
 
 import ray
 
@@ -102,11 +104,4 @@ def test_cache(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

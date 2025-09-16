@@ -10,17 +10,17 @@ from uuid import uuid4
 import pytest
 
 import ray
-from ray._private.gcs_utils import GcsAioClient
+from ray._common.network_utils import build_address
+from ray._common.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
+)
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     KV_HEAD_NODE_ID_KEY,
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
-)
-from ray._private.test_utils import (
-    SignalActor,
-    async_wait_for_condition,
-    wait_for_condition,
 )
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
@@ -38,9 +38,10 @@ from ray.dashboard.modules.job.tests.conftest import (
     create_job_manager,
     create_ray_cluster,
 )
-from ray.job_submission import JobStatus
+from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
+from ray.util.state import list_tasks
 
 import psutil
 
@@ -56,13 +57,13 @@ async def test_get_scheduling_strategy(
     call_ray_start, monkeypatch, resources_specified, tmp_path  # noqa: F811
 ):
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
-    job_manager = JobManager(gcs_aio_client, tmp_path)
+    job_manager = JobManager(gcs_client, tmp_path)
 
     # If no head node id is found, we should use "DEFAULT".
-    await gcs_aio_client.internal_kv_del(
+    await gcs_client.async_internal_kv_del(
         KV_HEAD_NODE_ID_KEY,
         del_by_prefix=False,
         namespace=KV_NAMESPACE_JOB,
@@ -71,7 +72,7 @@ async def test_get_scheduling_strategy(
     assert strategy == "DEFAULT"
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
-    await gcs_aio_client.internal_kv_put(
+    await gcs_client.async_internal_kv_put(
         KV_HEAD_NODE_ID_KEY,
         "123456".encode(),
         True,
@@ -100,9 +101,9 @@ async def test_get_scheduling_strategy(
 async def test_submit_no_ray_address(call_ray_start, tmp_path):  # noqa: F811
     """Test that a job script with an unspecified Ray address works."""
 
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
-    job_manager = JobManager(gcs_aio_client, tmp_path)
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
 
     init_ray_no_address_script = """
 import ray
@@ -135,9 +136,9 @@ assert ray.cluster_resources().get('TestResourceKey') == 123
 )
 async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     """Test that JobInfo is correctly populated in the GCS get_all_job_info API."""
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
-    job_manager = JobManager(gcs_aio_client, tmp_path)
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
 
     # Submit a job.
     submission_id = await job_manager.submit_job(
@@ -150,7 +151,7 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     )
 
     found = False
-    for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
+    for job_table_entry in (await gcs_client.async_get_all_job_info()).values():
         if job_table_entry.config.metadata.get(JOB_ID_METADATA_KEY) == submission_id:
             found = True
             # Check that the job info is populated correctly.
@@ -182,8 +183,8 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
 async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: F811
     """Test the is_running_tasks bit in the GCS get_all_job_info API."""
 
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
     @ray.remote
     def sleep_forever():
@@ -195,7 +196,7 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
     async def check_is_running_tasks(job_id, expected_is_running_tasks):
         """Return True if the driver indicated by job_id is currently running tasks."""
         found = False
-        for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
+        for job_table_entry in (await gcs_client.async_get_all_job_info()).values():
             if job_table_entry.job_id.hex() == job_id:
                 found = True
                 return job_table_entry.is_running_tasks == expected_is_running_tasks
@@ -261,9 +262,9 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
 )
 async def test_job_supervisor_log_json(call_ray_start, tmp_path):  # noqa: F811
     """Test JobSupervisor logs are structured JSON logs"""
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
-    job_manager = JobManager(gcs_aio_client, tmp_path)
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="job_1"
     )
@@ -292,9 +293,9 @@ async def test_job_supervisor_logs_saved(
     call_ray_start, tmp_path, capsys  # noqa: F811
 ):
     """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
-    job_manager = JobManager(gcs_aio_client, tmp_path)
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="job_1"
     )
@@ -328,9 +329,9 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     call_ray_start, tmp_path  # noqa: F811
 ):
     """Test runtime env setup messages are logged to jobs driver log"""
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
-    job_manager = JobManager(gcs_aio_client, tmp_path)
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
 
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="test_runtime_env_setup_logs"
@@ -350,14 +351,46 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         assert start_message in logs
 
 
-@pytest.fixture(scope="module")
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "cmd": "ray start --head",
+            "env": {
+                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=2:50:50,CoreWorkerService.grpc_client.PushTask=3:50:50"
+            },
+        },
+    ],
+    indirect=True,
+)
+async def test_job_manager_network_fault_tolerance(
+    call_ray_start, tmp_path  # noqa: F811
+):
+    """Test that the job manager is tolerant to transient network failures
+    when making RPCs to GCS and supervisor actor."""
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    job_id = await job_manager.submit_job(
+        entrypoint="echo hello 1",
+    )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+
+@pytest.fixture
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have
     # lingering RAY_ADDRESS="http://127.0.0.1:8265" from previous local job
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield create_ray_cluster()
+    with create_ray_cluster() as cluster:
+        yield cluster
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
@@ -365,7 +398,10 @@ def shared_ray_instance():
 
 @pytest.fixture
 def job_manager(shared_ray_instance, tmp_path):
-    yield create_job_manager(shared_ray_instance, tmp_path)
+    job_manager = create_job_manager(shared_ray_instance, tmp_path)
+    job_manager.JOB_MONITOR_LOOP_PERIOD_S = 0.01
+
+    yield job_manager
 
 
 async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
@@ -400,7 +436,14 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
 
 
 async def check_job_succeeded(job_manager, job_id):
-    data = await job_manager.get_job_info(job_id)
+    return await _check_job_succeeded(
+        get_job_info=job_manager.get_job_info, job_id=job_id
+    )
+
+
+async def _check_job_succeeded(*, get_job_info, job_id: str):
+    data = await get_job_info(job_id)
+
     status = data.status
     if status == JobStatus.FAILED:
         raise RuntimeError(f"Job failed! {data.message}")
@@ -412,9 +455,20 @@ async def check_job_succeeded(job_manager, job_id):
     return status == JobStatus.SUCCEEDED
 
 
-async def check_job_failed(job_manager, job_id):
-    status = await job_manager.get_job_status(job_id)
+async def check_job_failed(job_manager, job_id, expected_error_type=None):
+    return await _check_job_failed(
+        get_job_info=job_manager.get_job_info,
+        job_id=job_id,
+        expected_error_type=expected_error_type,
+    )
+
+
+async def _check_job_failed(*, get_job_info, job_id: str, expected_error_type=None):
+    data = await get_job_info(job_id)
+    status = data.status
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
+    if expected_error_type:
+        assert data.error_type == expected_error_type
     return status == JobStatus.FAILED
 
 
@@ -707,7 +761,7 @@ class TestRuntimeEnv:
 
         data = await job_manager.get_job_info(job_id)
         assert data.status == JobStatus.FAILED
-        assert "path_not_exist is not a valid URI" in data.message
+        assert "path_not_exist is not a valid path" in data.message
         assert data.driver_exit_code is None
 
     async def test_failed_runtime_env_setup(self, job_manager):
@@ -720,7 +774,10 @@ class TestRuntimeEnv:
         )
 
         await async_wait_for_condition(
-            check_job_failed, job_manager=job_manager, job_id=job_id
+            check_job_failed,
+            job_manager=job_manager,
+            job_id=job_id,
+            expected_error_type=JobErrorType.RUNTIME_ENV_SETUP_FAILURE,
         )
 
         data = await job_manager.get_job_info(job_id)
@@ -880,7 +937,10 @@ class TestAsyncAPI:
             actor = job_manager._get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
             await async_wait_for_condition(
-                check_job_failed, job_manager=job_manager, job_id=job_id
+                check_job_failed,
+                job_manager=job_manager,
+                job_id=job_id,
+                expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_DIED,
             )
             data = await job_manager.get_job_info(job_id)
             assert data.driver_exit_code is None
@@ -934,10 +994,18 @@ class TestAsyncAPI:
             actor = job_manager._get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
             await async_wait_for_condition(
-                check_job_failed, job_manager=job_manager, job_id=job_id
+                check_job_failed,
+                job_manager=job_manager,
+                job_id=job_id,
+                expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_DIED,
             )
             data = await job_manager.get_job_info(job_id)
+
             assert data.driver_exit_code is None
+            assert data.message.startswith(
+                "Job supervisor actor died: The actor died unexpectedly before "
+                "finishing this task"
+            )
 
     async def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
@@ -1040,7 +1108,10 @@ class TestTailLogs:
                 print(lines, end="")
 
             await async_wait_for_condition(
-                check_job_failed, job_manager=job_manager, job_id=job_id
+                check_job_failed,
+                job_manager=job_manager,
+                job_id=job_id,
+                expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
             )
             # check if the driver is killed
             data = await job_manager.get_job_info(job_id)
@@ -1188,7 +1259,7 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
     port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
-    monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
+    monkeypatch.setenv("RAY_ADDRESS", f"http://{build_address(ip, port)}")
     print_ray_address_cmd = (
         'python -c"' "import os;" "import ray;" "ray.init();" "print('SUCCESS!');" '"'
     )
@@ -1255,7 +1326,10 @@ async def test_failed_job_logs_max_char(job_manager):
     )
 
     await async_wait_for_condition(
-        check_job_failed, job_manager=job_manager, job_id=job_id
+        check_job_failed,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
     )
 
     # Verify the status message length
@@ -1310,6 +1384,44 @@ async def test_monitor_job_pending(job_manager):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=1"],
+    indirect=True,
+)
+async def test_job_timeout_lack_of_entrypoint_resources(
+    call_ray_start, tmp_path, monkeypatch  # noqa: F811
+):
+    """Test the timeout when there are not enough resources to schedule the supervisor actor)"""
+
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    # Submit a job with unsatisfied resource.
+    job_id = await job_manager.submit_job(
+        entrypoint="echo 'hello world'",
+        entrypoint_num_cpus=2,
+    )
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition(
+        check_job_failed,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
+    )
+
+    # Check that the job timed out.
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+
+@pytest.mark.asyncio
 async def test_job_pending_timeout(job_manager, monkeypatch):
     """Test the timeout for pending jobs."""
 
@@ -1330,7 +1442,10 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
 
     # Wait for the job to timeout.
     await async_wait_for_condition(
-        check_job_failed, job_manager=job_manager, job_id=job_id
+        check_job_failed,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
     )
 
     # Check that the job timed out.
@@ -1355,7 +1470,10 @@ sys.exit({EXIT_CODE})
     job_id = await job_manager.submit_job(entrypoint=exit_code_cmd)
     # Wait for the job to timeout.
     await async_wait_for_condition(
-        check_job_failed, job_manager=job_manager, job_id=job_id
+        check_job_failed,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
     )
 
     # Check that the job failed
@@ -1388,8 +1506,25 @@ async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_pat
         for _ in range(100):
             data = await job_manager.get_job_info(job_id)
             assert data.status == JobStatus.FAILED
-            assert "path_not_exist is not a valid URI" in data.message
+            assert "path_not_exist is not a valid path" in data.message
             assert data.driver_exit_code is None
+
+
+@pytest.mark.asyncio
+async def test_no_task_events_exported(shared_ray_instance, tmp_path):
+    """Verify that no task events are exported by the JobSupervisor."""
+    job_manager = create_job_manager(shared_ray_instance, tmp_path)
+    job_id = await job_manager.submit_job(entrypoint="echo hello")
+
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+    assert "hello" in job_manager.get_job_logs(job_id)
+
+    # Assert no task events for the JobSupervisor are exported.
+    for t in list_tasks():
+        assert "JobSupervisor" not in t.name
 
 
 if __name__ == "__main__":

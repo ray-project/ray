@@ -1,12 +1,12 @@
-import os
 import sys
-import pytest
-import ray
-
+from dataclasses import dataclass
 from typing import List
+
+import pytest
+
+import ray
 from ray.runtime_env import RuntimeEnv
 from ray.runtime_env.types.pip import Pip
-from dataclasses import dataclass
 
 
 @dataclass
@@ -64,7 +64,4 @@ def test_pip(start_cluster):
 
 if __name__ == "__main__":
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

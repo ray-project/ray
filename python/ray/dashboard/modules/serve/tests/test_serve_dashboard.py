@@ -8,7 +8,7 @@ from typing import Dict
 import pytest
 import requests
 
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -24,7 +24,6 @@ from ray.util.state import list_actors
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
 
-SERVE_AGENT_URL = "http://localhost:52365/api/serve/applications/"
 SERVE_HEAD_URL = "http://localhost:8265/api/serve/applications/"
 
 
@@ -37,8 +36,7 @@ def deploy_config_multi_app(config: Dict, url: str):
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_put_get_multi_app(ray_start_stop, url):
+def test_put_get_multi_app(ray_start_stop):
     pizza_import_path = (
         "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
     )
@@ -94,7 +92,7 @@ def test_put_get_multi_app(ray_start_stop, url):
 
         # APPLY CONFIG 1
         print("Sending PUT request for config1.")
-        deploy_config_multi_app(config1, url)
+        deploy_config_multi_app(config1, SERVE_HEAD_URL)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "5 pizzas please!",
@@ -114,7 +112,7 @@ def test_put_get_multi_app(ray_start_stop, url):
 
         # APPLY CONFIG 2: App #1 Adder should add 2 to input.
         print("Sending PUT request for config2.")
-        deploy_config_multi_app(config2, url)
+        deploy_config_multi_app(config2, SERVE_HEAD_URL)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "4 pizzas please!",
@@ -124,7 +122,7 @@ def test_put_get_multi_app(ray_start_stop, url):
 
         # APPLY CONFIG 3: App #1 should be overwritten to world:DagNode
         print("Sending PUT request for config3.")
-        deploy_config_multi_app(config3, url)
+        deploy_config_multi_app(config3, SERVE_HEAD_URL)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1").text
             == "wonderful world",
@@ -136,25 +134,17 @@ def test_put_get_multi_app(ray_start_stop, url):
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize(
-    "put_url",
-    [
-        SERVE_AGENT_URL,
-        SERVE_HEAD_URL,
-    ],
-)
-def test_put_bad_schema(ray_start_stop, put_url: str):
+def test_put_bad_schema(ray_start_stop):
     config = {"not_a_real_field": "value"}
 
-    put_response = requests.put(put_url, json=config, timeout=5)
+    put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
     assert put_response.status_code == 400
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_put_duplicate_apps(ray_start_stop, url):
+def test_put_duplicate_apps(ray_start_stop):
     """If a config with duplicate app names is deployed, the PUT request should fail.
     The response should clearly indicate a validation error.
     """
@@ -173,15 +163,14 @@ def test_put_duplicate_apps(ray_start_stop, url):
             },
         ],
     }
-    put_response = requests.put(url, json=config, timeout=5)
+    put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
     assert put_response.status_code == 400 and "ValidationError" in put_response.text
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_put_duplicate_routes(ray_start_stop, url):
+def test_put_duplicate_routes(ray_start_stop):
     """If a config with duplicate routes is deployed, the PUT request should fail.
     The response should clearly indicate a validation error.
     """
@@ -200,15 +189,14 @@ def test_put_duplicate_routes(ray_start_stop, url):
             },
         ],
     }
-    put_response = requests.put(url, json=config, timeout=5)
+    put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
     assert put_response.status_code == 400 and "ValidationError" in put_response.text
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_delete_multi_app(ray_start_stop, url):
+def test_delete_multi_app(ray_start_stop):
     py_module = (
         "https://github.com/ray-project/test_module/archive/"
         "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
@@ -248,7 +236,7 @@ def test_delete_multi_app(ray_start_stop, url):
         print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
         print("Sending PUT request for config.")
-        deploy_config_multi_app(config, url)
+        deploy_config_multi_app(config, SERVE_HEAD_URL)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 1]).text
             == "2",
@@ -267,7 +255,7 @@ def test_delete_multi_app(ray_start_stop, url):
         print("Deployments are live and reachable over HTTP.\n")
 
         print("Sending DELETE request for config.")
-        delete_response = requests.delete(url, timeout=15)
+        delete_response = requests.delete(SERVE_HEAD_URL, timeout=15)
         assert delete_response.status_code == 200
         print("DELETE request sent successfully.")
 
@@ -295,11 +283,10 @@ def test_delete_multi_app(ray_start_stop, url):
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_get_serve_instance_details_not_started(ray_start_stop, url):
+def test_get_serve_instance_details_not_started(ray_start_stop):
     """Test REST API when Serve hasn't started yet."""
     # Parse the response to ensure it's formatted correctly.
-    serve_details = ServeInstanceDetails(**requests.get(url).json())
+    serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
     assert serve_details.target_groups == []
 
 
@@ -320,8 +307,7 @@ def test_get_serve_instance_details_not_started(ray_start_stop, url):
         },
     ],
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
+def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     grpc_port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -377,10 +363,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
         },
     }
 
-    deploy_config_multi_app(config, url)
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     def applications_running():
-        response = requests.get(url, timeout=15)
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
@@ -392,7 +378,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
 
-    serve_details = ServeInstanceDetails(**requests.get(url).json())
+    serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
     # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.proxy_location == "HeadOnly"
     assert serve_details.http_options.host == "127.0.0.1"
@@ -483,16 +469,17 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     for target in target_groups[0].targets:
         assert target.ip in proxy_ips
         assert target.port == 9001
+        assert target.instance_id == ""
     for target in target_groups[1].targets:
         assert target.ip in proxy_ips
         assert target.port == 8005
+        assert target.instance_id == ""
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
+def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
     """
     Most behavior is checked by test_get_serve_instance_details.
     This test mostly checks for the different behavior of
@@ -513,7 +500,7 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
     assert deploy.returncode == 0
 
     def applications_running():
-        response = requests.get(url, timeout=15)
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
@@ -540,7 +527,7 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
         },
     }
 
-    serve_details = ServeInstanceDetails(**requests.get(url).json())
+    serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
 
     app_details = serve_details.applications
     # CHECK: application details
@@ -583,6 +570,172 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
                 assert os.path.exists(file_path)
 
     print("Finished checking application details.")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
+    """
+    Test the api_type query parameter for filtering applications by API type.
+    Tests both declarative and imperative applications.
+    """
+    # First, deploy declarative applications
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    declarative_config = {
+        "applications": [
+            {
+                "name": "declarative_app1",
+                "route_prefix": "/declarative1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "declarative_app2",
+                "route_prefix": "/declarative2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+
+    deploy_config_multi_app(declarative_config, SERVE_HEAD_URL)
+
+    # Wait for declarative apps to be running
+    def declarative_apps_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return len(serve_details.applications) == 2 and all(
+            app.status == ApplicationStatus.RUNNING
+            for app in serve_details.applications.values()
+        )
+
+    wait_for_condition(declarative_apps_running, timeout=15)
+    print("Declarative applications are running.")
+
+    # Deploy imperative applications using subprocess
+    deploy = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent / "deploy_imperative_serve_apps.py"),
+        ],
+        capture_output=True,
+        universal_newlines=True,
+    )
+    assert deploy.returncode == 0
+
+    # Wait for imperative apps to be running
+    def all_apps_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return len(
+            serve_details.applications
+        ) == 4 and all(  # 2 declarative + 2 imperative
+            app.status == ApplicationStatus.RUNNING
+            for app in serve_details.applications.values()
+        )
+
+    wait_for_condition(all_apps_running, timeout=15)
+    print("All applications (declarative + imperative) are running.")
+
+    # Test 1: No api_type parameter - should return all applications
+    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 4
+    app_names = set(serve_details.applications.keys())
+    assert app_names == {"declarative_app1", "declarative_app2", "app1", "app2"}
+
+    # Test 2: Filter by declarative applications
+    response = requests.get(SERVE_HEAD_URL + "?api_type=declarative", timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 2
+    app_names = set(serve_details.applications.keys())
+    assert app_names == {"declarative_app1", "declarative_app2"}
+    for app in serve_details.applications.values():
+        assert app.source == "declarative"
+
+    # Test 3: Filter by imperative applications
+    response = requests.get(SERVE_HEAD_URL + "?api_type=imperative", timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 2
+    app_names = set(serve_details.applications.keys())
+    assert app_names == {"app1", "app2"}
+    for app in serve_details.applications.values():
+        assert app.source == "imperative"
+
+    # Test 4: Filter by unknown - should return 400 error (unknown is not a valid user input)
+    response = requests.get(SERVE_HEAD_URL + "?api_type=unknown", timeout=15)
+    assert response.status_code == 400
+    assert "Invalid 'api_type' value" in response.text
+    assert "Must be one of: imperative, declarative" in response.text
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_invalid_api_type(ray_start_stop):
+    """
+    Test that invalid api_type values return appropriate error responses.
+    """
+    # Test with invalid api_type value
+    response = requests.get(SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15)
+    assert response.status_code == 400
+    assert "Invalid 'api_type' value" in response.text
+    assert "Must be one of: imperative, declarative" in response.text
+
+    # Test with another invalid value
+    response = requests.get(SERVE_HEAD_URL + "?api_type=python", timeout=15)
+    assert response.status_code == 400
+    assert "Invalid 'api_type' value" in response.text
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
+    """
+    Test that api_type parameter is case insensitive.
+    """
+    # Deploy a declarative application
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    config = {
+        "applications": [
+            {
+                "name": "test_app",
+                "route_prefix": "/test",
+                "import_path": world_import_path,
+            }
+        ],
+    }
+
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+
+    def app_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            len(serve_details.applications) == 1
+            and serve_details.applications["test_app"].status
+            == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(app_running, timeout=15)
+
+    # Test case insensitive filtering
+    test_cases = ["DECLARATIVE", "Declarative", "declarative", "DeClArAtIvE"]
+
+    for api_type_value in test_cases:
+        response = requests.get(
+            f"{SERVE_HEAD_URL}?api_type={api_type_value}", timeout=15
+        )
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        assert len(serve_details.applications) == 1
+        assert "test_app" in serve_details.applications
 
 
 if __name__ == "__main__":

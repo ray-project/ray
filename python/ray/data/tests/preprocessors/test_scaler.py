@@ -1,6 +1,6 @@
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 
 import ray
 from ray.data.preprocessor import PreprocessorNotFittedException

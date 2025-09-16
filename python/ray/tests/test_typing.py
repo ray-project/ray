@@ -6,7 +6,6 @@ import tempfile
 import mypy.api as mypy_api
 import pytest
 
-
 # Paths are relative to the directory where Bazel is run in the CI
 TYPING_GOOD_PATH = "python/ray/tests/typing_files/check_typing_good.py"
 TYPING_BAD_PATH = "python/ray/tests/typing_files/check_typing_bad.py"
@@ -42,7 +41,4 @@ if __name__ == "__main__":
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

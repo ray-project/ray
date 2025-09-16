@@ -80,14 +80,14 @@ class ImageDatasource(FileBasedDatasource):
         except UnidentifiedImageError as e:
             raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
 
-        if self.size is not None:
+        if self.size is not None and image.size != tuple(reversed(self.size)):
             height, width = self.size
             image = image.resize((width, height), resample=Image.BILINEAR)
-        if self.mode is not None:
+        if self.mode is not None and image.mode != self.mode:
             image = image.convert(self.mode)
 
         builder = DelegatingBlockBuilder()
-        array = np.array(image)
+        array = np.asarray(image)
         item = {"image": array}
         builder.add(item)
         block = builder.build()
@@ -162,13 +162,12 @@ class ImageFileMetadataProvider(DefaultFileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
     ) -> BlockMetadata:
         metadata = super()._get_block_metadata(
-            paths, schema, rows_per_file=rows_per_file, file_sizes=file_sizes
+            paths, rows_per_file=rows_per_file, file_sizes=file_sizes
         )
         if metadata.size_bytes is not None:
             metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)

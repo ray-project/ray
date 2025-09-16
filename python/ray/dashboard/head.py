@@ -1,29 +1,32 @@
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
 import os
-import psutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Optional, Set, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
+from ray._common.network_utils import build_address
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
-from ray._private.ray_constants import env_integer
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.async_utils import enable_monitor_loop_lag
+from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
-from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.consts import (
+    AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
+    DASHBOARD_METRIC_PORT,
+)
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
-from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.utils import (
     DashboardHeadModule,
     DashboardHeadModuleConfig,
     async_loop_forever,
 )
+
+import psutil
 
 try:
     import prometheus_client
@@ -163,7 +166,7 @@ class DashboardHead:
         try:
             # If gcs is permanently dead, gcs client will exit the process
             # (see gcs_rpc_client.h)
-            await self.gcs_aio_client.check_alive(node_ips=[], timeout=None)
+            await self.gcs_client.async_check_alive(node_ids=[], timeout=None)
         except Exception:
             logger.warning("Failed to check gcs aliveness, will retry", exc_info=True)
 
@@ -254,11 +257,11 @@ class DashboardHead:
             logger.info("Subprocess modules not loaded in minimal mode.")
             return []
 
+        from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
         from ray.dashboard.subprocesses.module import (
             SubprocessModule,
             SubprocessModuleConfig,
         )
-        from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 
         handles = []
         subprocess_cls_list = dashboard_utils.get_all_modules(SubprocessModule)
@@ -293,14 +296,14 @@ class DashboardHead:
         logger.info(f"Loaded {len(handles)} subprocess modules: {handles}.")
         return handles
 
-    async def _setup_metrics(self, gcs_aio_client):
+    async def _setup_metrics(self, gcs_client):
         metrics = DashboardPrometheusMetrics()
 
         # Setup prometheus metrics export server
         assert internal_kv._internal_kv_initialized()
-        assert gcs_aio_client is not None
-        address = f"{self.ip}:{DASHBOARD_METRIC_PORT}"
-        await gcs_aio_client.internal_kv_put(
+        assert gcs_client is not None
+        address = build_address(self.ip, DASHBOARD_METRIC_PORT)
+        await gcs_client.async_internal_kv_put(
             "DashboardMetricsAddress".encode(), address.encode(), True, namespace=None
         )
         if prometheus_client:
@@ -389,9 +392,6 @@ class DashboardHead:
 
         # Dashboard will handle connection failure automatically
         self.gcs_client = GcsClient(address=gcs_address, cluster_id=self.cluster_id_hex)
-        self.gcs_aio_client = GcsAioClient(
-            address=gcs_address, cluster_id=self.cluster_id_hex
-        )
         internal_kv._initialize_internal_kv(self.gcs_client)
 
         dashboard_head_modules, subprocess_module_handles = self._load_modules(
@@ -405,7 +405,7 @@ class DashboardHead:
             handle.wait_for_module_ready()
 
         if not self.minimal:
-            self.metrics = await self._setup_metrics(self.gcs_aio_client)
+            self.metrics = await self._setup_metrics(self.gcs_client)
             self._event_loop_lag_s_max: Optional[float] = None
 
             def on_new_lag(lag_s):
@@ -437,7 +437,9 @@ class DashboardHead:
                 dashboard_head_modules, subprocess_module_handles
             )
             http_host, http_port = self.http_server.get_address()
-            logger.info(f"http server initialized at {http_host}:{http_port}")
+            logger.info(
+                f"http server initialized at {build_address(http_host, http_port)}"
+            )
         else:
             logger.info("http server disabled.")
 
@@ -456,7 +458,7 @@ class DashboardHead:
         # server address to Ray via stdin / stdout or a pipe.
         self.gcs_client.internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS.encode(),
-            f"{dashboard_http_host}:{http_port}".encode(),
+            build_address(dashboard_http_host, http_port).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )

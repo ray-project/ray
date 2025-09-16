@@ -331,21 +331,6 @@ class TestActorManager(unittest.TestCase):
 
         manager.clear()
 
-    def test_len_of_func_not_match_len_of_actors(self):
-        """Test healthy only mode works when a list of funcs are provided."""
-        actors = [Actor.remote(i) for i in range(4)]
-        manager = FaultTolerantActorManager(actors=actors)
-
-        def f(id, _):
-            return id
-
-        func = [functools.partial(f, i) for i in range(3)]
-
-        with self.assertRaisesRegexp(AssertionError, "same number of callables") as _:
-            manager.foreach_actor_async(func, healthy_only=True)
-
-        manager.clear()
-
     def test_probe_unhealthy_actors(self):
         """Test probe brings back unhealthy actors."""
         actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]

@@ -59,7 +59,7 @@ from ray.rllib.utils.metrics import (
     TD_ERROR_KEY,
     TIMERS,
 )
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
@@ -659,9 +659,7 @@ class DQN(Algorithm):
                     _return_metrics=True,
                 )
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.merge_and_log_n_dicts(
-                env_runner_results, key=ENV_RUNNER_RESULTS
-            )
+            self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
             # Add the sampled experiences to the replay buffer.
             with self.metrics.log_time((TIMERS, REPLAY_BUFFER_ADD_DATA_TIMER)):
@@ -707,7 +705,7 @@ class DQN(Algorithm):
 
                     # Get the replay buffer metrics.
                     replay_buffer_results = self.local_replay_buffer.get_metrics()
-                    self.metrics.merge_and_log_n_dicts(
+                    self.metrics.aggregate(
                         [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
                     )
 
@@ -746,9 +744,7 @@ class DQN(Algorithm):
                         module_id: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
                         for module_id, s in td_errors.items()
                     }
-                    self.metrics.merge_and_log_n_dicts(
-                        learner_results, key=LEARNER_RESULTS
-                    )
+                    self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):

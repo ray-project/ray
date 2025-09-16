@@ -94,6 +94,7 @@ const TaskTable = ({
     { label: "Type" },
     { label: "Placement group ID" },
     { label: "Required resources" },
+    { label: "Label selector" },
   ];
 
   return (
@@ -229,6 +230,7 @@ const TaskTable = ({
                 start_time_ms,
                 end_time_ms,
                 worker_id,
+                label_selector,
               } = task;
               return (
                 <TableRow key={task_id}>
@@ -307,6 +309,16 @@ const TaskTable = ({
                       <CodeDialogButton
                         title="Required resources"
                         code={JSON.stringify(required_resources, undefined, 2)}
+                      />
+                    ) : (
+                      "{}"
+                    )}
+                  </TableCell>
+                  <TableCell align="center">
+                    {Object.entries(label_selector || {}).length > 0 ? (
+                      <CodeDialogButton
+                        title="Label selector"
+                        code={JSON.stringify(label_selector, undefined, 2)}
                       />
                     ) : (
                       "{}"

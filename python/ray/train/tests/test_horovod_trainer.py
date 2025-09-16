@@ -9,8 +9,8 @@ from torchvision.transforms import transforms
 
 import ray
 from ray.train import ScalingConfig
-from ray.train.examples.horovod.horovod_pytorch_example import Net
 from ray.train.examples.horovod.horovod_pytorch_example import (
+    Net,
     train_func as hvd_train_func,
 )
 from ray.train.horovod import HorovodTrainer

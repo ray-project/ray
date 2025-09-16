@@ -15,7 +15,11 @@
 #include "ray/common/task/task_spec.h"
 
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -23,42 +27,6 @@
 #include "ray/util/logging.h"
 
 namespace ray {
-
-absl::Mutex TaskSpecification::mutex_;
-absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
-    TaskSpecification::sched_cls_to_id_;
-absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
-    TaskSpecification::sched_id_to_cls_;
-int TaskSpecification::next_sched_id_;
-
-SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
-    SchedulingClass id) {
-  absl::MutexLock lock(&mutex_);
-  auto it = sched_id_to_cls_.find(id);
-  RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
-  return it->second;
-}
-
-SchedulingClass TaskSpecification::GetSchedulingClass(
-    const SchedulingClassDescriptor &sched_cls) {
-  SchedulingClass sched_cls_id;
-  absl::MutexLock lock(&mutex_);
-  auto it = sched_cls_to_id_.find(sched_cls);
-  if (it == sched_cls_to_id_.end()) {
-    sched_cls_id = ++next_sched_id_;
-    // TODO(ekl) we might want to try cleaning up task types in these cases
-    if (sched_cls_id > 100) {
-      RAY_LOG_EVERY_MS(WARNING, 1000)
-          << "More than " << sched_cls_id
-          << " types of tasks seen, this may reduce performance.";
-    }
-    sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
-  } else {
-    sched_cls_id = it->second;
-  }
-  return sched_cls_id;
-}
 
 const BundleID TaskSpecification::PlacementGroupBundleId() const {
   if (message_->scheduling_strategy().scheduling_strategy_case() ==
@@ -95,7 +63,8 @@ void TaskSpecification::ComputeResources() {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
+    required_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_resources));
   }
 
   auto &required_placement_resources = message_->required_placement_resources().empty()
@@ -105,9 +74,13 @@ void TaskSpecification::ComputeResources() {
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(
-        new ResourceSet(MapFromProtobuf(required_placement_resources)));
+    required_placement_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_placement_resources));
   }
+
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
@@ -121,10 +94,14 @@ void TaskSpecification::ComputeResources() {
             : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
-    auto sched_cls_desc = SchedulingClassDescriptor(
-        resource_set, function_descriptor, depth, GetSchedulingStrategy());
+    auto label_selector = GetLabelSelector();
+    auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                    label_selector,
+                                                    function_descriptor,
+                                                    depth,
+                                                    GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
-    sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
+    sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
@@ -138,17 +115,23 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
+std::string TaskSpecification::TaskIdBinary() const {
+  if (message_->task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->task_id();
+}
+
+TaskAttempt TaskSpecification::GetTaskAttempt() const {
+  return std::make_pair(TaskId(), AttemptNumber());
+}
+
 const std::string TaskSpecification::GetSerializedActorHandle() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().serialized_actor_handle();
 }
 
-JobID TaskSpecification::JobId() const {
-  if (message_->job_id().empty() /* e.g., empty proto default */) {
-    return JobID::Nil();
-  }
-  return JobID::FromBinary(message_->job_id());
-}
+JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
 
 const rpc::JobConfig &TaskSpecification::JobConfig() const {
   return message_->job_config();
@@ -159,6 +142,13 @@ TaskID TaskSpecification::ParentTaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->parent_task_id());
+}
+
+std::string TaskSpecification::ParentTaskIdBinary() const {
+  if (message_->parent_task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->parent_task_id();
 }
 
 ActorID TaskSpecification::RootDetachedActorId() const {
@@ -268,16 +258,37 @@ void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).has_object_ref();
+  // If `has_object_ref()` is true and `is_inlined()` is true, it means that the argument
+  // is an ObjectRef, but the object doesn't get pushed to the object store. Hence, it is
+  // inlined in the task spec.
+  return message_->args(arg_index).has_object_ref() &&
+         !message_->args(arg_index).is_inlined();
 }
 
-ObjectID TaskSpecification::ArgId(size_t arg_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+ObjectID TaskSpecification::ArgObjectId(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  }
+  return ObjectID::Nil();
+}
+
+std::string TaskSpecification::ArgObjectIdBinary(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return message_->args(arg_index).object_ref().object_id();
+  }
+  return ObjectID::Nil().Binary();
 }
 
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
+}
+
+rpc::TensorTransport TaskSpecification::ArgTensorTransport(size_t arg_index) const {
+  if (message_->args(arg_index).has_tensor_transport()) {
+    return message_->args(arg_index).tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
@@ -306,6 +317,10 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+const LabelSelector &TaskSpecification::GetLabelSelector() const {
+  return *label_selector_;
+}
+
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
   return message_->scheduling_strategy();
 }
@@ -330,7 +345,7 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
-      dependencies.push_back(ArgId(i));
+      dependencies.push_back(ArgObjectId(i));
     }
   }
   return dependencies;
@@ -415,6 +430,10 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+absl::flat_hash_map<std::string, std::string> TaskSpecification::GetLabels() const {
+  return MapFromProtobuf(message_->labels());
+}
+
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }
@@ -431,6 +450,14 @@ WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
+std::string TaskSpecification::CallerWorkerIdBinary() const {
+  return message_->caller_address().worker_id();
+}
+
+NodeID TaskSpecification::CallerNodeId() const {
+  return NodeID::FromBinary(message_->caller_address().node_id());
+}
+
 // === Below are getter methods specific to actor tasks.
 
 ActorID TaskSpecification::ActorId() const {
@@ -438,9 +465,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::ActorCounter() const {
+uint64_t TaskSpecification::SequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().actor_counter();
+  return message_->actor_task_spec().sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -459,9 +486,16 @@ const std::string &TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
-bool TaskSpecification::ExecuteOutOfOrder() const {
+const rpc::TensorTransport TaskSpecification::TensorTransport() const {
+  if (IsActorTask()) {
+    return message_->tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
+}
+
+bool TaskSpecification::AllowOutOfOrderExecution() const {
   return IsActorCreationTask() &&
-         message_->actor_creation_task_spec().execute_out_of_order();
+         message_->actor_creation_task_spec().allow_out_of_order_execution();
 }
 
 bool TaskSpecification::IsAsyncioActor() const {
@@ -508,7 +542,7 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
+           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
@@ -596,16 +630,6 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
-  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    // It's useful to have the same predetermined value for both unspecified and empty
-    // runtime envs.
-    return 0;
-  }
-  size_t hash = std::hash<std::string>()(serialized_runtime_env);
-  return static_cast<int>(hash);
-}
-
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());
   std::vector<ConcurrencyGroup> concurrency_groups;
@@ -622,10 +646,10 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
           curr_group_message.function_descriptors(j)));
     }
 
-    concurrency_groups.push_back(
-        {std::string{curr_group_message.name()},
-         static_cast<uint32_t>(curr_group_message.max_concurrency()),
-         function_descriptors});
+    concurrency_groups.emplace_back(
+        std::string{curr_group_message.name()},
+        static_cast<uint32_t>(curr_group_message.max_concurrency()),
+        function_descriptors);
   }
 
   return concurrency_groups;

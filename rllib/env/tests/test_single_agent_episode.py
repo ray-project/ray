@@ -669,7 +669,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertEqual(type(episode_2._action_space), type(episode._action_space))
         check(episode_2._start_time, episode._start_time)
         check(episode_2._last_step_time, episode._last_step_time)
-        check(episode_2._temporary_timestep_data, episode._temporary_timestep_data)
+        check(episode_2.custom_data, episode.custom_data)
         self.assertDictEqual(episode_2.extra_model_outputs, episode.extra_model_outputs)
 
     def _create_episode(self, num_data, t_started=None, len_lookback_buffer=0):

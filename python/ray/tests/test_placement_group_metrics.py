@@ -1,11 +1,13 @@
+import sys
 from collections import defaultdict
-import pytest
 from typing import Dict
 
+import pytest
+
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     raw_metrics,
-    wait_for_condition,
 )
 from ray._private.worker import RayContext
 from ray.util.placement_group import remove_placement_group
@@ -61,10 +63,4 @@ def test_basic_states(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

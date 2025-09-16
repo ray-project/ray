@@ -1,0 +1,75 @@
+name: Mark and Close Stale Pull Requests
+
+on:
+  schedule:
+    # Runs twice a day at 15 minutes past midnight and noon UTC
+    - cron: '15 */12 * * *'
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # Required to add labels, comment, close PRs.
+
+    steps:
+      - name: Mark and Close Stale Pull Requests
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # --- Ignore Issues ---
+          # Set to -1 so we never mark issues as stale or closed.
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+
+          # --- Pull Request Specific Settings ---
+          # Number of days of inactivity before a Pull Request becomes stale (currently 2 weeks)
+          days-before-pr-stale: 14
+
+          # Number of days of inactivity after being marked stale before a Pull Request is closed (2 more weeks)
+          days-before-pr-close: 14
+
+          # Label to use when marking a PR as stale
+          stale-pr-label: 'stale'
+
+          # Comment to post when marking a PR as stale
+          stale-pr-message: |
+            This pull request has been automatically marked as stale because it has not had
+            any activity for 14 days. It will be closed in another 14 days if no further activity occurs.
+            Thank you for your contributions.
+
+            You can always ask for help on our [discussion forum](https://discuss.ray.io/) or [Ray's public slack channel](https://github.com/ray-project/ray#getting-involved).
+
+            If you'd like to keep this open, just leave any comment, and the stale label will be removed.
+
+          # Comment to post when closing a stale PR
+          close-pr-message: |
+            This pull request has been automatically closed because there has been no more activity in the 14 days
+            since being marked stale.
+
+            Please feel free to reopen or open a new pull request if you'd still like this to be addressed.
+
+            Again, you can always ask for help on our [discussion forum](https://discuss.ray.io) or [Ray's public slack channel](https://github.com/ray-project/ray#getting-involved).
+
+            Thanks again for your contribution!
+
+          # Pull Requests with these labels will never be considered stale
+          exempt-pr-labels: >
+            weekly-release-blocker,
+            release-blocker,
+            unstale
+
+          # Set to true to ignore PRs in a milestone (defaults to false)
+          exempt-all-pr-milestones: true
+
+          # --- Shared Settings & Other Options ---
+          # Limit the number of actions per run.
+          operations-per-run: 500
+
+          # Remove stale label from PRs on update (default is true)
+          remove-pr-stale-when-updated: true
+
+          # Add unstale label. Whenever a PR is marked as 'unstale' it will not be marked stale again.
+          labels-to-add-when-unstale: unstale
+
+          ascending: true

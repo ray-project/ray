@@ -43,7 +43,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -89,14 +89,13 @@ from ray.tune.registry import get_trainable_cls
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define env-to-module-connector pipeline for the new stack.
-    def _env_to_module_pipeline(env):
+    def _env_to_module_pipeline(env, spaces, device):
         return FlattenObservations(multi_agent=args.num_agents > 0)
 
     # Register our environment with tune.

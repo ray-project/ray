@@ -5,7 +5,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
-
 logger = logging.getLogger(__name__)
 
 

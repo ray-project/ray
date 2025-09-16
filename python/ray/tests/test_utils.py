@@ -4,16 +4,17 @@ Unit/Integration Testing for python/_private/utils.py
 
 This currently expects to work for minimal installs.
 """
+import logging
+import sys
+from unittest.mock import mock_open, patch
 
 import pytest
-import logging
+
 from ray._private.utils import (
+    get_current_node_cpu_model_name,
     parse_pg_formatted_resources_to_original,
     try_import_each_module,
-    get_current_node_cpu_model_name,
 )
-from unittest.mock import patch, mock_open
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +83,4 @@ def test_get_current_node_cpu_model_name():
 
 
 if __name__ == "__main__":
-    import os
-
-    # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -13,7 +13,8 @@ from unittest.mock import MagicMock
 import pytest  # noqa
 
 import ray
-from ray._private.test_utils import get_test_config_path, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import get_test_config_path
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
@@ -362,8 +363,13 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
 class KubeRayProviderIntegrationTest(unittest.TestCase):
     def setUp(self):
+        raycluster_cr = get_basic_ray_cr()
+        # Remove fake TPU and GPU worker groups from CR since podlist1 only
+        # contains small-group.
+        raycluster_cr["spec"]["workerGroupSpecs"][1]["replicas"] = 0
+        raycluster_cr["spec"]["workerGroupSpecs"][2]["replicas"] = 0
         self.mock_client = MockKubernetesHttpApiClient(
-            _get_test_yaml("podlist1.yaml"), get_basic_ray_cr()
+            _get_test_yaml("podlist1.yaml"), raycluster_cr
         )
         self.provider = KubeRayProvider(
             cluster_name="test",
@@ -606,6 +612,162 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                     "workersToDelete": [
                         pod_to_delete,
                     ]
+                },
+            },
+        ]
+
+    def test_scale_down_multiple_pods_of_node_type(self):
+        """
+        Test the case where multiple pods of the same node type are scaled
+        down on one autoscaler iteration. This test verifies that the provider
+        properly handles multiple pod deletions and counting workers_to_delete.
+        """
+        # Setup provider with multiple worker pods in podlist. We use podlist2
+        # here because podlist1 only contains one running worker.
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        raycluster_cr["spec"]["workerGroupSpecs"][1]["replicas"] = 0
+        raycluster_cr["spec"]["workerGroupSpecs"][2]["replicas"] = 0
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+        provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            k8s_api_client=mock_client,
+        )
+
+        # Identify all pods in the target group
+        small_group = "small-group"
+        pod_names = []
+        for pod in mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                pod_names.append(pod["metadata"]["name"])
+
+        # Terminate all pods in the group
+        provider._sync_with_api_server()
+        cur_instance_ids = set(provider.instances.keys())
+        pods_to_terminate = [name for name in pod_names if name in cur_instance_ids]
+
+        assert (
+            len(pods_to_terminate) > 1
+        ), "Expected multiple pods to terminate in the target group."
+
+        provider.terminate(ids=pods_to_terminate, request_id="term-2")
+
+        # Check the patches applied to the RayCluster resource
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": 0,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": pods_to_terminate,
+                },
+            },
+        ]
+
+    def test_worker_to_delete_info(self):
+        """
+        Validate _get_workers_delete_info correctly returns the worker groups with pending
+        deletes, worker groups with finished deletes, and the set of workers to delete.
+        """
+        # Create a RayCluster CR and set replicas to 0 to simulate the case where the autoscaler
+        # patches the RayCluster with `replicas: 0`, but alive Pods still exist in workersToDelete.
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 0
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+
+        # Add some workers to workersToDelete.
+        small_group = "small-group"
+        pod_names = []
+        for pod in mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                pod_names.append(pod["metadata"]["name"])
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
+            "workersToDelete": pod_names,
+        }
+
+        (
+            pending_deletes,
+            finished_deletes,
+            workers_to_delete,
+        ) = KubeRayProvider._get_workers_delete_info(raycluster_cr, set(pod_names))
+
+        # Validate _get_workers_delete_info populates sets as expected.
+        assert pending_deletes == {"small-group"}
+        assert finished_deletes == set()
+        assert workers_to_delete == {pod_names[0], pod_names[1]}
+
+    def test_scale_down_with_multi_host_group(self):
+        """
+        Test the case where a worker group has numOfHosts > 1.
+        This ensures that the KubeRay provider accounts for multi-host replicas
+        during scale down and properly updates the workersToDelete field.
+        """
+        # Setup mock RayCluster CR with numOfHosts: 2 and replicas: 1,
+        # resulting in 2 workers total.
+        raycluster_cr = get_basic_ray_cr()
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+        provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            k8s_api_client=mock_client,
+        )
+
+        # Identify all pods in the multi-host group
+        pod_names = []
+        for pod in mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == "tpu-group":
+                pod_names.append(pod["metadata"]["name"])
+
+        # Expect 2 pods since replicas=1 and numOfHosts=2
+        assert len(pod_names) == 2, "Expected 2 pods in the multi-host group."
+
+        # Sync provider state and mark all pods for deletion
+        provider._sync_with_api_server()
+        cur_instance_ids = set(provider.instances.keys())
+        pods_to_terminate = [name for name in pod_names if name in cur_instance_ids]
+
+        assert (
+            len(pods_to_terminate) == 2
+        ), "Expected all multi-host pods to be tracked by the provider."
+
+        # Terminate all pods in the group
+        provider.terminate(ids=pods_to_terminate, request_id="term-multi")
+
+        # Check that scale request successfully created
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/2/replicas",
+                "value": 0,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/2/scaleStrategy",
+                "value": {
+                    "workersToDelete": pods_to_terminate,
                 },
             },
         ]

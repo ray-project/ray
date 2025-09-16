@@ -2,7 +2,12 @@ from typing import List, Tuple
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
-from ray.data.block import Block, BlockMetadata, BlockPartition
+from ray.data.block import (
+    Block,
+    BlockMetadata,
+    BlockPartition,
+    _take_first_non_empty_schema,
+)
 from ray.types import ObjectRef
 
 
@@ -40,7 +45,8 @@ def _equalize(
 
     # phase 2: based on the num rows needed for each shaved split, split the leftovers
     # in the shape that exactly matches the rows needed.
-    leftover_bundle = RefBundle(leftovers, owns_blocks=owned_by_consumer)
+    schema = _take_first_non_empty_schema(bundle.schema for bundle in per_split_bundles)
+    leftover_bundle = RefBundle(leftovers, owns_blocks=owned_by_consumer, schema=schema)
     leftover_splits = _split_leftovers(leftover_bundle, per_split_needed_rows)
 
     # phase 3: merge the shaved_splits and leftoever splits and return.
@@ -54,7 +60,9 @@ def _equalize(
     # Compose the result back to RefBundle
     equalized_ref_bundles: List[RefBundle] = []
     for split in shaved_splits:
-        equalized_ref_bundles.append(RefBundle(split, owns_blocks=owned_by_consumer))
+        equalized_ref_bundles.append(
+            RefBundle(split, owns_blocks=owned_by_consumer, schema=schema)
+        )
     return equalized_ref_bundles
 
 

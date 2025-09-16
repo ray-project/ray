@@ -1,74 +1,24 @@
 import json
 import os
-import time
-import uuid
 
 import pytest
-import ray
 
+import ray
 from ray.train.v2._internal.state.schema import (
-    ActorStatus,
     RunAttemptStatus,
     RunStatus,
-    TrainResources,
-    TrainRun,
-    TrainRunAttempt,
-    TrainWorker,
 )
 from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
+from ray.train.v2.tests.util import (
+    create_mock_train_run,
+    create_mock_train_run_attempt,
+)
 
 
 @pytest.fixture
 def shutdown_only():
     yield
     ray.shutdown()
-
-
-_RUN_ID = "mock_run_id"
-
-
-def _create_mock_train_run(status: RunStatus = RunStatus.RUNNING):
-    return TrainRun(
-        schema_version=0,
-        id=_RUN_ID,
-        name="test_run",
-        job_id=uuid.uuid4().hex,
-        controller_actor_id=uuid.uuid4().hex,
-        status=status,
-        status_detail=None,
-        start_time_ns=time.time_ns(),
-        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
-    )
-
-
-def _create_mock_train_run_attempt(
-    attempt_id: str = "mock_attempt_id",
-    status: RunAttemptStatus = RunAttemptStatus.RUNNING,
-):
-    worker = TrainWorker(
-        world_rank=0,
-        local_rank=0,
-        node_rank=0,
-        actor_id=uuid.uuid4().hex,
-        node_id=uuid.uuid4().hex,
-        node_ip="127.0.0.1",
-        pid=1234,
-        gpu_ids=[0],
-        status=ActorStatus.ALIVE,
-        resources=TrainResources(resources={"CPU": 1}),
-        log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
-    )
-
-    return TrainRunAttempt(
-        schema_version=0,
-        run_id=_RUN_ID,
-        attempt_id=attempt_id,
-        status=status,
-        status_detail=None,
-        start_time_ns=time.time_ns(),
-        resources=[TrainResources(resources={"CPU": 1})],
-        workers=[worker],
-    )
 
 
 def _get_export_file_path() -> str:
@@ -117,10 +67,10 @@ def test_export_disabled(ray_start_4_cpus):
     state_actor = get_or_create_state_actor()
 
     # Create or update train run
-    ray.get(state_actor.create_or_update_train_run.remote(_create_mock_train_run()))
+    ray.get(state_actor.create_or_update_train_run.remote(create_mock_train_run()))
     ray.get(
         state_actor.create_or_update_train_run_attempt.remote(
-            _create_mock_train_run_attempt()
+            create_mock_train_run_attempt()
         )
     )
 
@@ -135,7 +85,7 @@ def _test_train_run_export():
     # Create or update train run
     ray.get(
         state_actor.create_or_update_train_run.remote(
-            _create_mock_train_run(RunStatus.RUNNING)
+            create_mock_train_run(RunStatus.RUNNING)
         )
     )
 
@@ -161,7 +111,7 @@ def test_export_train_run_attempt(enable_export_api_write):
     # Create or update train run attempt
     ray.get(
         state_actor.create_or_update_train_run_attempt.remote(
-            _create_mock_train_run_attempt(RunAttemptStatus.RUNNING)
+            create_mock_train_run_attempt(RunAttemptStatus.RUNNING)
         )
     )
 
@@ -177,30 +127,30 @@ def test_export_multiple_source_types(enable_export_api_write):
 
     events = [
         state_actor.create_or_update_train_run.remote(
-            _create_mock_train_run(RunStatus.RUNNING)
+            create_mock_train_run(RunStatus.RUNNING)
         ),
         state_actor.create_or_update_train_run_attempt.remote(
-            _create_mock_train_run_attempt(
+            create_mock_train_run_attempt(
                 attempt_id="attempt_1", status=RunAttemptStatus.RUNNING
             )
         ),
         state_actor.create_or_update_train_run_attempt.remote(
-            _create_mock_train_run_attempt(
+            create_mock_train_run_attempt(
                 attempt_id="attempt_2", status=RunAttemptStatus.RUNNING
             )
         ),
         state_actor.create_or_update_train_run_attempt.remote(
-            _create_mock_train_run_attempt(
+            create_mock_train_run_attempt(
                 attempt_id="attempt_1", status=RunAttemptStatus.FINISHED
             )
         ),
         state_actor.create_or_update_train_run_attempt.remote(
-            _create_mock_train_run_attempt(
+            create_mock_train_run_attempt(
                 attempt_id="attempt_2", status=RunAttemptStatus.FINISHED
             )
         ),
         state_actor.create_or_update_train_run.remote(
-            _create_mock_train_run(RunStatus.FINISHED)
+            create_mock_train_run(RunStatus.FINISHED)
         ),
     ]
     ray.get(events)
@@ -222,12 +172,12 @@ def test_export_optional_fields(enable_export_api_write):
     state_actor = get_or_create_state_actor()
 
     # Create run with optional fields
-    run_with_optional = _create_mock_train_run(RunStatus.FINISHED)
+    run_with_optional = create_mock_train_run(RunStatus.FINISHED)
     run_with_optional.status_detail = "Finished with details"
     run_with_optional.end_time_ns = 1000000000000000000
 
     # Create attempt with optional fields
-    attempt_with_optional = _create_mock_train_run_attempt(
+    attempt_with_optional = create_mock_train_run_attempt(
         attempt_id="attempt_with_optional",
         status=RunAttemptStatus.FINISHED,
     )
@@ -236,9 +186,9 @@ def test_export_optional_fields(enable_export_api_write):
 
     # Create and update states
     events = [
-        state_actor.create_or_update_train_run.remote(_create_mock_train_run()),
+        state_actor.create_or_update_train_run.remote(create_mock_train_run()),
         state_actor.create_or_update_train_run_attempt.remote(
-            _create_mock_train_run_attempt()
+            create_mock_train_run_attempt()
         ),
         state_actor.create_or_update_train_run.remote(run_with_optional),
         state_actor.create_or_update_train_run_attempt.remote(attempt_with_optional),

@@ -107,14 +107,14 @@ rsmi_status_verbose_err_out = {
     rsmi_status_t.RSMI_STATUS_OUT_OF_RESOURCES: 'Unable to acquire memory or other resource',
     rsmi_status_t.RSMI_STATUS_INTERNAL_EXCEPTION: 'An internal exception was caught',
     rsmi_status_t.RSMI_STATUS_INPUT_OUT_OF_BOUNDS: 'Provided input is out of allowable or safe range',
-    rsmi_status_t.RSMI_INITIALIZATION_ERROR: 'Error occured during rsmi initialization',
+    rsmi_status_t.RSMI_INITIALIZATION_ERROR: 'Error occurred during rsmi initialization',
     rsmi_status_t.RSMI_STATUS_NOT_YET_IMPLEMENTED: 'Requested function is not implemented on this setup',
     rsmi_status_t.RSMI_STATUS_NOT_FOUND: 'Item searched for but not found',
     rsmi_status_t.RSMI_STATUS_INSUFFICIENT_SIZE: 'Insufficient resources available',
-    rsmi_status_t.RSMI_STATUS_INTERRUPT: 'Interrupt occured during execution',
+    rsmi_status_t.RSMI_STATUS_INTERRUPT: 'Interrupt occurred during execution',
     rsmi_status_t.RSMI_STATUS_UNEXPECTED_SIZE: 'Unexpected amount of data read',
     rsmi_status_t.RSMI_STATUS_NO_DATA: 'No data found for the given input',
-    rsmi_status_t.RSMI_STATUS_UNKNOWN_ERROR: 'Unknown error occured'
+    rsmi_status_t.RSMI_STATUS_UNKNOWN_ERROR: 'Unknown error occurred'
 }
 
 
@@ -521,6 +521,23 @@ def smi_get_device_compute_process():
     else:
         return []
 
+def smi_get_compute_process_info_by_device(device_id: int, proc_ids: list) -> list:
+    """Returns list of process info running compute on the specified device by process IDs.
+
+    Args:
+        device_id: The device index to query
+        proc_ids: List of process IDs to get info for
+
+    Returns:
+        List of process info structures for the specified device and process IDs
+    """
+    proc_infos = []
+    for proc_id in proc_ids:
+        proc_info = rsmi_process_info_t()
+        ret = rocm_lib.rsmi_compute_process_info_by_device_get(proc_id, device_id, byref(proc_info))
+        if rsmi_ret_ok(ret):
+            proc_infos.append(proc_info)
+    return proc_infos
 
 def smi_get_device_average_power(dev):
     """returns average power of device_id dev"""

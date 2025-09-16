@@ -14,6 +14,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     One bundle is created for each input block.
     """
     import pandas as pd
+    import pyarrow as pa
 
     from ray.data._internal.execution.interfaces import RefBundle
 
@@ -29,6 +30,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
                     )
                 ],
                 owns_blocks=True,
+                schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
             )
         )
     return output

@@ -94,18 +94,20 @@ class DatabricksUCDatasource(Datasource):
             raise
 
         if state != "SUCCEEDED":
-            raise RuntimeError(f"Query {self.query!r} execution failed.")
+            raise RuntimeError(
+                f"Query {self.query!r} execution failed.\n{response.json()}"
+            )
 
         manifest = response.json()["manifest"]
-        is_truncated = manifest["truncated"]
+        self.is_truncated = manifest.get("truncated", False)
 
-        if is_truncated:
+        if self.is_truncated:
             logger.warning(
                 f"The resulting size of the dataset of '{query!r}' exceeds "
                 "100GiB and it is truncated."
             )
 
-        chunks = manifest["chunks"]
+        chunks = manifest.get("chunks", [])
 
         # Make chunks metadata are ordered by index.
         chunks = sorted(chunks, key=lambda x: x["chunk_index"])
@@ -114,6 +116,22 @@ class DatabricksUCDatasource(Datasource):
         self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
 
         def get_read_task(task_index, parallelism):
+            # Handle empty chunk list by yielding an empty PyArrow table
+            if num_chunks == 0:
+                import pyarrow as pa
+
+                metadata = BlockMetadata(
+                    num_rows=0,
+                    size_bytes=0,
+                    input_files=None,
+                    exec_stats=None,
+                )
+
+                def empty_read_fn():
+                    yield pa.Table.from_pydict({})
+
+                return ReadTask(read_fn=empty_read_fn, metadata=metadata)
+
             # get chunk list to be read in this task and preserve original chunk order
             chunk_index_list = list(
                 np.array_split(range(num_chunks), parallelism)[task_index]
@@ -129,7 +147,6 @@ class DatabricksUCDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=num_rows,
                 size_bytes=size_bytes,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )
@@ -178,6 +195,10 @@ class DatabricksUCDatasource(Datasource):
         return self._estimate_inmemory_data_size
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        # Handle empty dataset case
+        if self.num_chunks == 0:
+            return [self._get_read_task(0, 1)]
+
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
 
         if parallelism > self.num_chunks:

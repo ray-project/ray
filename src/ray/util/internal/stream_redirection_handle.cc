@@ -21,11 +21,11 @@
 
 namespace ray::internal {
 
-StreamRedirectionHandle::StreamRedirectionHandle(MEMFD_TYPE_NON_UNIQUE stream_fd,
+StreamRedirectionHandle::StreamRedirectionHandle(int stream_fd,
                                                  const StreamRedirectionOption &opt)
     : filepath_(opt.file_path) {
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
-  scoped_dup2_wrapper_ = ScopedDup2Wrapper::New(handle.GetWriteHandle(), stream_fd);
+  scoped_dup2_wrapper_ = ScopedDup2Wrapper::New(handle.GetWriteFd(), stream_fd);
   redirection_file_handle_ = std::move(handle);
 }
 

@@ -1,0 +1,63 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/export_task_event.proto";
+import "src/ray/protobuf/export_node_data.proto";
+import "src/ray/protobuf/export_actor_data.proto";
+import "src/ray/protobuf/export_driver_job_event.proto";
+import "src/ray/protobuf/export_submission_job_event.proto";
+
+import "src/ray/protobuf/export_train_state.proto";
+import "src/ray/protobuf/export_dataset_operator_event.proto";
+import "src/ray/protobuf/export_dataset_metadata.proto";
+
+// ExportEvent defines events stored by the export API. This
+// schema is public and any changes must be backward compatible.
+message ExportEvent {
+  enum SourceType {
+    EXPORT_TASK = 0;
+    EXPORT_NODE = 1;
+    EXPORT_ACTOR = 2;
+    EXPORT_DRIVER_JOB = 3;
+    EXPORT_SUBMISSION_JOB = 4;
+    EXPORT_TRAIN_RUN = 5;
+    EXPORT_TRAIN_RUN_ATTEMPT = 6;
+    EXPORT_DATASET_METADATA = 7;
+    EXPORT_DATASET_OPERATOR_EVENT = 8;
+  }
+
+  // event_id is the unique ID of this event
+  string event_id = 1;
+  // source type is the type of the source
+  SourceType source_type = 2;
+  // source_hostname is the hostname of the source
+  // timestamp is the report milliseconds since 00:00, Jan 1 1970 UTC
+  int64 timestamp = 3;
+  // event_data follows the schema associated with the source_type
+  oneof event_data {
+    ExportTaskEventData task_event_data = 4;
+    ExportNodeData node_event_data = 5;
+    ExportActorData actor_event_data = 6;
+    ExportDriverJobEventData driver_job_event_data = 7;
+    ExportSubmissionJobEventData submission_job_event_data = 8;
+    ExportTrainRunEventData train_run_event_data = 9;
+    ExportTrainRunAttemptEventData train_run_attempt_event_data = 10;
+    ExportDatasetMetadata dataset_metadata = 11;
+    ExportDatasetOperatorEventData dataset_operator_event_data = 12;
+  }
+}

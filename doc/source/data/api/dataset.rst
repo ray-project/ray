@@ -4,7 +4,16 @@ Dataset API
 ==============
 
 .. include:: ray.data.Dataset.rst
-.. include:: ray.data.Schema.rst
+
+
+Schema
+------
+.. currentmodule:: ray.data
+
+.. autoclass:: Schema
+    :members:
+
+
 
 Developer API
 -------------
@@ -34,4 +43,3 @@ Deprecated API
   :toctree: doc/
 
   Dataset.iter_tf_batches
-  Dataset.to_torch

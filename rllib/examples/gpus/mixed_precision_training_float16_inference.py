@@ -20,7 +20,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -73,7 +73,6 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     algo="PPO",
-    enable_new_api_stack=True,
 )
 
 
@@ -135,14 +134,13 @@ class PPOTorchMixedPrecisionLearner(PPOTorchLearner):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
     assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (
         (PPOConfig().environment("CartPole-v1"))
-        .env_runners(env_to_module_connector=lambda env: Float16Connector())
+        .env_runners(
+            env_to_module_connector=lambda env, spaces, device: Float16Connector()
+        )
         # Plug in our custom callback (on_algorithm_init) to make EnvRunner RLModules
         # float16 models.
         .callbacks(on_algorithm_init=on_algorithm_init)

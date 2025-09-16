@@ -10,9 +10,8 @@ import pytest
 
 import ray
 from ray import logger, tune
-from ray.tune import CheckpointConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-from ray.tune import Trainable, register_trainable, run_experiments
+from ray.tune import CheckpointConfig, Trainable, register_trainable, run_experiments
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler

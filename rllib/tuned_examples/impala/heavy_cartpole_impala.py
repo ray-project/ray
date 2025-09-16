@@ -1,5 +1,5 @@
 # Non-learning, throughput-only benchmark used to tune and test the usage of
-# AggregationActors in IMPALA and APPO.
+# AggregatorActor in IMPALA and APPO.
 
 # With the current setup below, 27 EnvRunners (+ 2 eval EnvRunners), 0 Learners
 # 1 local A10 GPU Learner and 2 Aggregator actors, the achieved training throughput
@@ -40,7 +40,6 @@ parser = add_rllib_example_script_args(
     default_reward=450.0,
     default_timesteps=2000000,
 )
-parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()

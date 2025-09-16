@@ -20,7 +20,6 @@ class TestDatasource(Datasource):
         meta = BlockMetadata(
             num_rows=None,
             size_bytes=None,
-            schema=None,
             input_files=None,
             exec_stats=None,
         )

@@ -2,12 +2,12 @@ import functools
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.util import unify_block_metadata_schema
+from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
+from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.block import BlockMetadata
 
 
-class InputData(LogicalOperator):
+class InputData(LogicalOperator, SourceOperator):
     """Logical operator for input data.
 
     This may hold cached blocks from a previous Dataset execution.
@@ -18,13 +18,12 @@ class InputData(LogicalOperator):
         input_data: List[RefBundle],
     ):
         super().__init__("InputData", [], len(input_data))
-
         self.input_data = input_data
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> BlockMetadata:
         return self._cached_output_metadata
 
     @functools.cached_property
@@ -32,7 +31,6 @@ class InputData(LogicalOperator):
         return BlockMetadata(
             num_rows=self._num_rows(),
             size_bytes=self._size_bytes(),
-            schema=self._schema(),
             input_files=None,
             exec_stats=None,
         )
@@ -50,9 +48,8 @@ class InputData(LogicalOperator):
         else:
             return None
 
-    def _schema(self):
-        metadata = [m for bundle in self.input_data for m in bundle.metadata]
-        return unify_block_metadata_schema(metadata)
+    def infer_schema(self):
+        return unify_schemas_with_validation([data.schema for data in self.input_data])
 
     def is_lineage_serializable(self) -> bool:
         # This operator isn't serializable because it contains ObjectRefs.

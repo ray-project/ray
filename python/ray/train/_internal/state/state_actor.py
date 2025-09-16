@@ -6,8 +6,8 @@ from typing import Dict, Optional
 import ray
 from ray._private.event.export_event_logger import (
     EventLogType,
-    get_export_event_logger,
     check_export_api_enabled,
+    get_export_event_logger,
 )
 from ray.actor import ActorHandle
 from ray.train._internal.state.schema import TrainRunInfo

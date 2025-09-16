@@ -1,26 +1,24 @@
-from collections import defaultdict
-from typing import Dict
-
-import os
-import pytest
 import sys
 import threading
 import time
+from collections import defaultdict
+from typing import Dict
+
+import pytest
+
+import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
-from ray.exceptions import RuntimeEnvSetupError
-from ray.runtime_env import RuntimeEnv
-
-import ray
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
-from ray.util.state import list_tasks
-
 from ray._private.worker import RayContext
+from ray.exceptions import RuntimeEnvSetupError
+from ray.runtime_env import RuntimeEnv
+from ray.util.state import list_tasks
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -558,7 +556,4 @@ def test_is_debugger_paused_async_actor(shutdown_only, actor_concurrency):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

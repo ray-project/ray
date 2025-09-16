@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "ray/util/compat.h"
+#include "ray/util/logging.h"
 
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
@@ -39,6 +40,17 @@ enum { PID_MAX_LIMIT = 1 << 22 };
 #endif
 
 namespace ray {
+
+#if !defined(_WIN32)
+/// Sets the FD_CLOEXEC flag on a file descriptor.
+/// This means when the process is forked, this fd would be closed in the child process
+/// side.
+///
+/// Idempotent.
+/// Not thread safe.
+/// See https://github.com/ray-project/ray/issues/40813
+void SetFdCloseOnExec(int fd);
+#endif
 
 class EnvironmentVariableLess {
  public:
@@ -144,6 +156,9 @@ std::optional<std::error_code> KillProc(pid_t pid);
 //
 // Currently only supported on Linux. Returns nullopt on other platforms.
 std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
+
+/// Terminate the process without cleaning up the resources.
+void QuickExit();
 
 }  // namespace ray
 

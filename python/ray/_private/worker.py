@@ -16,7 +16,9 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from typing import (
+    TYPE_CHECKING,
     Any,
     AnyStr,
     Callable,
@@ -24,22 +26,24 @@ from typing import (
     Generic,
     Iterator,
     List,
+    Literal,
     Optional,
+    Protocol,
     Sequence,
     Tuple,
+    Type,
     TypeVar,
     Union,
     overload,
 )
 from urllib.parse import urlparse
 
-import colorama
-import setproctitle
+if TYPE_CHECKING:
+    import torch
 
-from typing import Literal, Protocol
+import colorama
 
 import ray
-import ray._private.worker
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -47,9 +51,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.serialization as serialization
 import ray._private.services as services
 import ray._private.state
-import ray._private.storage as storage
-
-from ray._private.ray_logging.logging_config import LoggingConfig
+import ray._private.worker
 
 # Ray modules
 import ray.actor
@@ -57,44 +59,50 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import raise_sys_exit_with_custom_error_message
-from ray._raylet import ObjectRefGenerator, TaskID
-from ray.runtime_env.runtime_env import _merge_runtime_env
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
+from ray._common.utils import load_class
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
-
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
-    stdout_deduplicator,
-    stderr_deduplicator,
     setup_logger,
+    stderr_deduplicator,
+    stdout_deduplicator,
 )
+from ray._private.ray_logging.logging_config import LoggingConfig
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
-from ray._private.utils import get_ray_doc_version, load_class
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.utils import get_ray_doc_version
+from ray._raylet import (
+    ObjectRefGenerator,
+    TaskID,
+    raise_sys_exit_with_custom_error_message,
+)
+from ray.actor import ActorClass
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
+from ray.experimental import tqdm_ray
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_reset,
 )
-from ray.experimental import tqdm_ray
-from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -441,6 +449,12 @@ class Worker:
         self.node = None
         self.mode = None
         self.actors = {}
+        # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
+        # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
+        # We create the GPU object manager lazily, if a user specifies a
+        # non-default tensor_transport, to avoid circular import and because it
+        # imports third-party dependencies like PyTorch.
+        self._gpu_object_manager = None
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
@@ -489,6 +503,17 @@ class Worker:
         # Indicates whether the worker is connected to the Ray cluster.
         # It should be set to True in `connect` and False in `disconnect`.
         self._is_connected: bool = False
+
+    @property
+    def gpu_object_manager(self) -> "ray.experimental.GPUObjectManager":
+        if self._gpu_object_manager is None:
+            # We create the GPU object manager lazily, if a user specifies a
+            # non-default tensor_transport, to avoid circular import and because it
+            # imports third-party dependencies like PyTorch.
+            from ray.experimental import GPUObjectManager
+
+            self._gpu_object_manager = GPUObjectManager()
+        return self._gpu_object_manager
 
     @property
     def connected(self):
@@ -592,6 +617,11 @@ class Worker:
             return None
         logging_config = pickle.loads(job_config.serialized_py_logging_config)
         return logging_config
+
+    @property
+    def current_node_labels(self):
+        # Return the node labels of this worker's current node.
+        return self.node.node_labels
 
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
@@ -765,29 +795,26 @@ class Worker:
     def put_object(
         self,
         value: Any,
-        object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
+        _tensor_transport: str = "object_store",
     ):
-        """Put value in the local object store with object reference `object_ref`.
+        """Put value in the local object store.
 
-        This assumes that the value for `object_ref` has not yet been placed in
-        the local object store. If the plasma store is full, the worker will
-        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
-        retry will delay for an exponentially doubling amount of time,
+        If the plasma store is full, the worker will automatically
+        retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each retry
+        will delay for an exponentially doubling amount of time,
         starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
         will be raised.
 
         Args:
             value: The value to put in the object store.
-            object_ref: The object ref of the value to be
-                put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-
+            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this supports "object_store" and "nixl".
         Returns:
             ObjectRef: The object ref the object was put under.
 
@@ -803,14 +830,25 @@ class Worker:
                 "If you really want to do this, you can wrap the "
                 "ray.ObjectRef in a list and call 'put' on it."
             )
-
-        if self.mode == LOCAL_MODE:
-            assert (
-                object_ref is None
-            ), "Local Mode does not support inserting with an ObjectRef"
-
+        tensors = None
+        tensor_transport: TensorTransportEnum = TensorTransportEnum.from_str(
+            _tensor_transport
+        )
+        if tensor_transport not in [
+            TensorTransportEnum.OBJECT_STORE,
+            TensorTransportEnum.NIXL,
+        ]:
+            raise ValueError(
+                "Currently, Ray Direct Transport only supports 'object_store' and 'nixl' for tensor transport in ray.put()."
+            )
         try:
-            serialized_value = self.get_serialization_context().serialize(value)
+            if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+                (
+                    serialized_value,
+                    tensors,
+                ) = self.get_serialization_context().serialize_gpu_objects(value)
+            else:
+                serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
             sio = io.StringIO()
             ray.util.inspect_serializability(value, print_file=sio)
@@ -831,33 +869,77 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return ray.ObjectRef(
-            self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value,
-                object_ref=object_ref,
-                pin_object=pin_object,
-                owner_address=owner_address,
-                _is_experimental_channel=_is_experimental_channel,
-            ),
-            # The initial local reference is already acquired internally.
-            skip_adding_local_ref=True,
+        ret = self.core_worker.put_object(
+            serialized_value,
+            pin_object=pin_object,
+            owner_address=owner_address,
+            inline_small_object=True,
+            _is_experimental_channel=_is_experimental_channel,
+            tensor_transport_val=tensor_transport.value,
         )
+        if tensors:
+            self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
+        return ret
 
-    def raise_errors(self, data_metadata_pairs, object_refs):
-        out = self.deserialize_objects(data_metadata_pairs, object_refs)
+    def raise_errors(self, serialized_objects, object_refs):
+        out = self.deserialize_objects(serialized_objects, object_refs)
         if "RAY_IGNORE_UNHANDLED_ERRORS" in os.environ:
             return
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(self, data_metadata_pairs, object_refs):
+    def deserialize_objects(
+        self,
+        serialized_objects,
+        object_refs,
+        tensor_transport_hint: Optional[TensorTransportEnum] = None,
+    ):
+        gpu_objects: Dict[str, List["torch.Tensor"]] = {}
+        for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
+            # TODO: Here tensor_transport_hint is set by the user in ray.get(), tensor_transport is set
+            # in serialize_objects by ray.method(tensor_transport="xxx"), and obj_ref.tensor_transport()
+            # is set by ray.put(). We may clean up this logic in the future.
+            if (
+                tensor_transport is None
+                or tensor_transport == TensorTransportEnum.OBJECT_STORE
+            ) and (
+                obj_ref is None
+                or obj_ref.tensor_transport() == TensorTransportEnum.OBJECT_STORE.value
+            ):
+                # The object is not a gpu object, so we cannot use other external transport to
+                # fetch it.
+                continue
+
+            # If the object is a gpu object, we can choose to use the object store or other external
+            # transport to fetch it. The `tensor_transport_hint` has the highest priority, then the
+            # tensor_transport in obj_ref.tensor_transport(), then the tensor_transport in serialize_objects,
+            # then the default value `OBJECT_STORE`.
+            chosen_tensor_transport = (
+                tensor_transport_hint
+                or (
+                    TensorTransportEnum(obj_ref.tensor_transport()) if obj_ref else None
+                )
+                or tensor_transport
+                or TensorTransportEnum.OBJECT_STORE
+            )
+
+            object_id = obj_ref.hex()
+            if object_id not in gpu_objects:
+                # If using a non-object store transport, then tensors will be sent
+                # out-of-band. Get them before deserializing the object store data.
+                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
+                    object_id, tensor_transport == chosen_tensor_transport
+                )
+
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
         # TODO: We may be better off locking on all imports or injecting a lock
         # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
-            return context.deserialize_objects(data_metadata_pairs, object_refs)
+            return context.deserialize_objects(
+                serialized_objects, object_refs, gpu_objects
+            )
 
     def get_objects(
         self,
@@ -865,7 +947,8 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-    ):
+        _tensor_transport: Optional[str] = None,
+    ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -883,6 +966,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
+            _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -895,19 +979,28 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-
+        tensor_transport: TensorTransportEnum = (
+            TensorTransportEnum.from_str(_tensor_transport)
+            if _tensor_transport is not None
+            else None
+        )
+        assert tensor_transport in [
+            TensorTransportEnum.OBJECT_STORE,
+            TensorTransportEnum.NIXL,
+            None,
+        ], "Currently, RDT only supports 'object_store' and 'nixl' for tensor transport in ray.get()."
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
-        data_metadata_pairs: List[
-            Tuple[ray._raylet.Buffer, bytes]
+        serialized_objects: List[
+            serialization.SerializedRayObject
         ] = self.core_worker.get_objects(
             object_refs,
             timeout_ms,
         )
 
         debugger_breakpoint = b""
-        for data, metadata in data_metadata_pairs:
+        for data, metadata, _ in serialized_objects:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -919,13 +1012,15 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        values = self.deserialize_objects(
+            serialized_objects, object_refs, tensor_transport_hint=tensor_transport
+        )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
                     if isinstance(value, ray.exceptions.ObjectLostError):
-                        global_worker.core_worker.dump_object_store_memory_usage()
+                        global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
                     else:
@@ -1036,14 +1131,28 @@ class Worker:
             # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_accelerators = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_and_label_spec().num_gpus
                 else:
-                    max_accelerators = self.node.get_resource_spec().resources.get(
-                        resource_name, None
+                    max_accelerators = (
+                        self.node.get_resource_and_label_spec().resources.get(
+                            resource_name, None
+                        )
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
+
+
+_connect_or_shutdown_lock = threading.RLock()
+
+
+def with_connect_or_shutdown_lock(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with _connect_or_shutdown_lock:
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 @PublicAPI
@@ -1281,6 +1390,33 @@ _global_node = None
 """ray._private.node.Node: The global node object that is created by ray.init()."""
 
 
+def _maybe_modify_runtime_env(
+    runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool
+) -> Dict[str, Any]:
+    """
+    If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
+    this function sets up a runtime environment that replicates the driver's environment to the
+    workers. Otherwise, if a runtime environment hook is present it will modify the runtime environment.
+    """
+
+    if ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
+        from ray._private.runtime_env.uv_runtime_env_hook import (
+            _get_uv_run_cmdline,
+            hook,
+        )
+
+        cmdline = _get_uv_run_cmdline()
+        if cmdline:
+            # This means the current driver is running in `uv run`, in which case we want
+            # to propagate the uv environment to the workers.
+            return hook(runtime_env)
+
+    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
+        return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(runtime_env)
+
+    return runtime_env
+
+
 @PublicAPI
 @client_mode_hook
 def init(
@@ -1304,7 +1440,6 @@ def init(
     log_to_driver: Optional[bool] = None,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
-    storage: Optional[str] = None,
     enable_resource_isolation: bool = False,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
@@ -1381,7 +1516,7 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Debugger instead.
+        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1415,8 +1550,6 @@ def init(
             for this job (see :ref:`runtime-environments` for details).
         object_spilling_directory: The path to spill objects to. The same path will
             be used as the object store fallback directory as well.
-        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
-            be removed in a future version of Ray.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
@@ -1577,7 +1710,7 @@ def init(
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
         ctx = builder.connect()
-        from ray._private.usage import usage_lib
+        from ray._common.usage import usage_lib
 
         if passed_kwargs.get("allow_multiple") is True:
             with ctx:
@@ -1596,6 +1729,12 @@ def init(
             "/running-applications/job-submission"
             "/ray-client.html#connect-to-multiple-ray-clusters-experimental). "
             "Do not pass the `allow_multiple` to `ray.init` to fix the issue."
+        )
+
+    if kwargs.get("storage"):
+        raise RuntimeError(
+            "Cluster-wide storage configuration has been removed. "
+            "The last Ray version supporting the `storage` argument is `ray==2.47`."
         )
 
     if kwargs:
@@ -1661,10 +1800,8 @@ def init(
                 "a conflict."
             )
 
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                runtime_env
-            )
+        runtime_env = _maybe_modify_runtime_env(runtime_env, _skip_env_hook)
+
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():
@@ -1673,10 +1810,7 @@ def init(
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
     else:
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                runtime_env
-            )
+        runtime_env = _maybe_modify_runtime_env(runtime_env, _skip_env_hook)
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
@@ -1698,18 +1832,12 @@ def init(
         warnings.warn(
             "DeprecationWarning: local mode is an experimental feature that is no "
             "longer maintained and will be removed in the future."
-            "For debugging consider using Ray debugger. ",
+            " For debugging consider using Ray Distributed Debugger. ",
             DeprecationWarning,
             stacklevel=2,
         )
     else:
         driver_mode = SCRIPT_MODE
-
-    if storage is not None:
-        warnings.warn(
-            "Cluster-wide storage configuration is deprecated and will be removed in a "
-            "future version of Ray."
-        )
 
     global _global_node
 
@@ -1734,7 +1862,7 @@ def init(
         # In this case, we need to start a new cluster.
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
-        from ray._private.usage import usage_lib
+        from ray._common.usage import usage_lib
 
         if usage_lib.is_nightly_wheel():
             usage_lib.show_usage_stats_prompt(cli=False)
@@ -1744,7 +1872,6 @@ def init(
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
-            object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
             num_cpus=num_cpus,
@@ -1765,7 +1892,6 @@ def init(
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            storage=storage,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -1806,11 +1932,6 @@ def init(
                 "When connecting to an existing cluster, "
                 "object_store_memory must not be provided."
             )
-        if storage is not None:
-            raise ValueError(
-                "When connecting to an existing cluster, "
-                "storage must not be provided."
-            )
         if _system_config is not None and len(_system_config) != 0:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -1834,7 +1955,6 @@ def init(
             redis_address=redis_address,
             redis_username=_redis_username,
             redis_password=_redis_password,
-            object_ref_seed=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -1916,6 +2036,21 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
+    # Check and show accelerator override warning during driver initialization
+    from ray._private.ray_constants import env_bool
+
+    override_on_zero = env_bool(
+        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+        True,
+    )
+    if override_on_zero and log_once("ray_accel_env_var_override_on_zero"):
+        warnings.warn(
+            "Tip: In future versions of Ray, Ray will no longer override accelerator "
+            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
+            "this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0",
+            FutureWarning,
+        )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -1928,6 +2063,7 @@ _post_init_hooks = []
 
 @PublicAPI
 @client_mode_hook
+@with_connect_or_shutdown_lock
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -1981,7 +2117,6 @@ def shutdown(_exiting_interpreter: bool = False):
             _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
-    storage._reset()
 
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
@@ -2069,7 +2204,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
-        from ray._private.event.event_logger import parse_event, filter_event_by_level
+        from ray._private.event.event_logger import filter_event_by_level, parse_event
 
         for event_line in lines:
             if autoscaler_log_fyi_needed():
@@ -2305,7 +2440,7 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
-# TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
+@with_connect_or_shutdown_lock
 def connect(
     node,
     session_name: str,
@@ -2323,13 +2458,12 @@ def connect(
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
     debug_source: str = "",
-    enable_resource_isolation: bool = False,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
     Args:
         node (ray._private.node.Node): The node to connect.
-        session_name: The session name (cluster id) of this cluster.
+        session_name: The current Ray session name.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
@@ -2352,7 +2486,6 @@ def connect(
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
         debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
-        enable_resource_isolation: If true, core worker enables resource isolation by adding itself into appropriate cgroup.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2376,7 +2509,6 @@ def connect(
             fetch_cluster_id_if_nil=False,
         )
     )
-    worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2387,13 +2519,13 @@ def connect(
         if job_id is None:
             job_id = ray._private.state.next_job_id()
 
-    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is SPILL_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
         elif mode is RESTORE_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE
-        setproctitle.setproctitle(process_name)
+        ray._raylet.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -2415,8 +2547,7 @@ def connect(
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                gcs_publisher=worker.gcs_publisher,
-                num_retries=1,
+                gcs_client=worker.gcs_client,
             )
 
     driver_name = ""
@@ -2477,7 +2608,7 @@ def connect(
         )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
-        job_config.set_runtime_env(runtime_env)
+        job_config.set_runtime_env(runtime_env, validate=True)
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
@@ -2521,7 +2652,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,
@@ -2534,7 +2664,6 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
         debug_source,
-        enable_resource_isolation,
     )
 
     if mode == SCRIPT_MODE:
@@ -2642,12 +2771,12 @@ def disconnect(exiting_interpreter=False):
 @contextmanager
 def _changeproctitle(title, next_title):
     if _mode() is not LOCAL_MODE:
-        setproctitle.setproctitle(title)
+        ray._raylet.setproctitle(title)
     try:
         yield
     finally:
         if _mode() is not LOCAL_MODE:
-            setproctitle.setproctitle(next_title)
+            ray._raylet.setproctitle(next_title)
 
 
 @DeveloperAPI
@@ -2724,6 +2853,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
+    _tensor_transport: Optional[str] = None,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2759,6 +2889,7 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
+        _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
 
     Returns:
         A Python object or a list of Python objects.
@@ -2818,12 +2949,13 @@ def get(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
-        # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout=timeout, _tensor_transport=_tensor_transport
+        )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
-                    worker.core_worker.dump_object_store_memory_usage()
+                    worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
                 else:
@@ -2855,6 +2987,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
+    _tensor_transport: str = "object_store",
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2874,6 +3007,7 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
+        _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, this supports "object_store" and "nixl" for tensor transport in ray.put().
 
     Returns:
         The object ref assigned to this value.
@@ -2900,7 +3034,11 @@ def put(
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_object(
+                value,
+                owner_address=serialize_owner_address,
+                _tensor_transport=_tensor_transport,
+            )
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -3304,6 +3442,11 @@ class RemoteDecorator(Protocol):
 
 
 @overload
+def remote(__t: Type[T]) -> ActorClass[T]:
+    ...
+
+
+@overload
 def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 
@@ -3372,13 +3515,6 @@ def remote(
     ...
 
 
-# Pass on typing actors for now. The following makes it so no type errors
-# are generated for actors.
-@overload
-def remote(__t: type) -> Any:
-    ...
-
-
 # Passing options
 @overload
 def remote(
@@ -3398,6 +3534,7 @@ def remote(
     scheduling_strategy: Union[
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
+    label_selector: Dict[str, str] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3538,7 +3675,7 @@ def remote(
             (This means, by default, actors cannot get scheduled on a zero-cpu node,
             but an infinite number of them can run on any non-zero cpu node.
             The default value for actors was chosen for historical reasons.
-            It’s recommended to always explicitly set num_cpus for actors
+            It's recommended to always explicitly set num_cpus for actors
             to avoid any surprises.
             If resources are specified explicitly,
             they are required for both scheduling and running.)
@@ -3553,6 +3690,10 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
+        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+                which this actor can be scheduled on. The label selector consist of key-value pairs,
+                where the keys are label names and the value are expressions consisting of an operator
+                with label values or just a value to indicate equality.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.
@@ -3591,6 +3732,11 @@ def remote(
             the default value is 3, and a value of -1 indicates
             infinite retries.
             See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
+        allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+            tasks out of order. If you're using multi-threaded (``max_concurrency > 1``)
+            or async actors, you can't set this to False. Defaults to True if you're
+            using multi-threaded or async actors, and False otherwise. Actor task
+            retries are always executed out of order.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.

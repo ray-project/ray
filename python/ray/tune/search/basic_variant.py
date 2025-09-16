@@ -87,7 +87,7 @@ class _TrialIterator:
             Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
             (``np.random``). Please note that full reproducibility cannot
-            be guaranteed in a distributed enviroment.
+            be guaranteed in a distributed environment.
     """
 
     def __init__(

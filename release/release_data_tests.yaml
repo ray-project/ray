@@ -32,7 +32,23 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
+      --iter-bundles
+
+- name: "read_large_parquet_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles
 
 - name: "read_images_{{scaling}}"
@@ -55,7 +71,7 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
 - name: "read_from_uris_{{scaling}}"
@@ -180,6 +196,68 @@
       python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
+###############
+# Join tests
+###############
+
+# NOTE:
+# Joining on Benchmark TPCH parquet datasets
+# Left dataset 'LINEITEM' = SF*6M rows
+# Right dataset 'ORDERS' = SF*1.5M rows
+# Join key = 'l_orderkey', 'o_orderkey' respectively from 'LINEITEM', 'ORDERS' dataset. In the generated dataset,
+# * For 'LINEITEM' dataset, 'column_00' corresponds to l_orderkey
+# * For 'ORDERS' dataset, 'column_0' corresponds to o_orderkey.
+# Join type = inner, left_join, right_join and full_join
+#
+# Dataset TPCH Scale Factor (SF) for CSV files. Note that parquet files will be low smaller with column compression.
+# SF1 = 1GB
+# SF10 = 10GB
+# SF100 = 100GB
+# SF1000 = 1TB
+# SF10000 = 10TB
+#
+# Do adjust timeout below based on SF above.
+#
+
+- name: joins_{{dataset}}_{{join_type}}
+
+  cluster:
+    cluster_compute: fixed_size_100_cpu_compute.yaml
+
+  matrix:
+    setup:
+      dataset: [sf100]
+      join_type: [inner, left_outer, right_outer, full_outer]
+
+  run:
+    timeout: 3600
+    script: >
+      python join_benchmark.py
+      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
+      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
+      --left_join_keys column00
+      --right_join_keys column0
+      --join_type {{join_type}}
+      --num_partitions 50
+
+###############
+# Wide Schema tests
+###############
+
+- name: wide_schema_pipeline_{{data_type}}
+
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  matrix:
+    setup:
+      data_type: [primitives, tensors, objects, nested_structs]
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type {{data_type}}
 
 #######################
 # Streaming split tests
@@ -282,33 +360,43 @@
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 10
 
-- name: "map_batches_{{scaling}}_{{compute}}_{{format}}"
+- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
 
   matrix:
     setup:
+      # Fixed-size task tests with different formats.
       format: [numpy, pandas, pyarrow]
       compute: [tasks]
       scaling: [fixed_size]
+      repeat_map_batches: [once, repeat]
     adjustments:
-      # Include at least one test with actors.
+      # Fixed-size actor test.
       - with:
           format: numpy
           compute: actors
           scaling: fixed_size
-      # Include at least one autoscaling test.
+          repeat_map_batches: once
+      # Autoscaling task test
       - with:
           format: numpy
           compute: tasks
           scaling: autoscaling
+          repeat_map_batches: once
+      # Autoscaling actor test
+      - with:
+          format: numpy
+          compute: actors
+          scaling: autoscaling
+          repeat_map_batches: once
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
-    timeout: 5400
+    timeout: 10800
     script: >
       python map_benchmark.py --api map_batches --batch-format {{format}}
-      --compute {{compute}} --sf 1000
+      --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
 
 ########################
@@ -360,9 +448,6 @@
 
 
 - name: "sort_{{scaling}}"
-  # This test intermittently fails due to Arrow offset overflow errors, or OOD from
-  # overly-conservative autoscaling.
-  stable: False
 
   matrix:
     setup:
@@ -407,7 +492,8 @@
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
-- name: "batch_inference_{{scaling}}"
+- name: "image_classification_{{scaling}}"
+  group: batch-inference
 
   cluster:
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
@@ -422,22 +508,12 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-- name: batch_inference_from_metadata
-  # This benchmark errors because of the issues described in PLAN-383.
-  frequency: manual
-
-  cluster:
-    cluster_compute: autoscaling_hetero_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python batch_inference_benchmark.py
-
-- name: batch_inference_chaos
+- name: image_classification_chaos
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
+  group: batch-inference
 
   cluster:
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
@@ -449,9 +525,10 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-- name: batch_inference_chaos_no_scale_back
+- name: image_classification_chaos_no_scale_back
   stable: False
   working_dir: nightly_tests
+  group: batch-inference
 
   cluster:
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
@@ -463,19 +540,102 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-# 10 TB image classification parquet data with autoscaling heterogenous cluster
-# 10 g4dn.12xlarge, 10 m5.16xlarge
-- name: batch_inference_hetero
+
+- name: image_embedding_from_uris_{{case}}
   frequency: weekly
+  group: batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 100
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100 --chaos
 
   cluster:
-    cluster_compute: autoscaling_hetero_compute.yaml
+    cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
 
   run:
-    timeout: 7200
-    script: >
-      python gpu_batch_inference.py
-      --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+    timeout: 3600
+    script: python image_embedding_from_uris/main.py {{args}}
+
+
+- name: image_embedding_from_jsonl_{{case}}
+  frequency: weekly
+  group: batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 40
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40 --chaos
+
+  cluster:
+    cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      post_build_script: byod_install_pybase64.sh
+
+  run:
+    timeout: 3600
+    script: python image_embedding_from_jsonl/main.py {{args}}
+
+- name: text_embedding_{{case}}
+  frequency: weekly
+  group: batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 100
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100 --chaos
+
+  cluster:
+    cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      type: cu123
+      post_build_script: byod_install_text_embedding.sh
+
+  run:
+    timeout: 3600
+    script: python text_embedding/main.py {{args}}
 
 ##############
 # TPCH Queries

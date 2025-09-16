@@ -46,7 +46,7 @@ def perform_auth():
 def handle_docker_login(resp):
     pwd = resp.json()["docker_password"]
     subprocess.check_call(
-        ["docker", "login", "--username", "raytravisbot", "--password", pwd]
+        ["docker", "login", "--username", "raydockerreleaser", "--password", pwd]
     )
 
 

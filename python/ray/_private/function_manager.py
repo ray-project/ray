@@ -1,19 +1,18 @@
 import dis
-import sys
 import hashlib
 import importlib
 import inspect
 import json
 import logging
 import os
+import sys
 import threading
 import time
 import traceback
 from collections import defaultdict, namedtuple
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 import ray
-from ray.remote_function import RemoteFunction
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
@@ -23,17 +22,18 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+from ray._private.serialization import pickle_dumps
 from ray._private.utils import (
     check_oversized_function,
     ensure_str,
     format_error_message,
 )
-from ray._private.serialization import pickle_dumps
 from ray._raylet import (
+    WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
     JobID,
     PythonFunctionDescriptor,
-    WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
 )
+from ray.remote_function import RemoteFunction
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -600,7 +600,11 @@ class FunctionActorManager:
         self, actor_class_name, actor_method_names, traceback_str
     ):
         class TemporaryActor:
-            pass
+            async def __dummy_method(self):
+                """Dummy method for this fake actor class to work for async actors.
+                Without this method, this temporary actor class fails to initialize
+                if the original actor class was async."""
+                pass
 
         def temporary_actor_method(*args, **kwargs):
             raise RuntimeError(

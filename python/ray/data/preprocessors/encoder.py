@@ -268,25 +268,37 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
+        from typing import Any
+
+        def safe_get(v: Any, stats: Dict[str, int]):
+            from collections.abc import Hashable
+
+            if isinstance(v, Hashable):
+                return stats.get(v, -1)
+            else:
+                return -1  # Unhashable type treated as a missing category
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
-            column_values = self.stats_[f"unique_values({column})"]
             if _is_series_composed_of_lists(df[column]):
-                df[column] = df[column].map(lambda x: tuple(x))
-            for column_value in column_values:
-                df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
-                    int
-                )
-            # Concatenate the value columns
-            value_columns = [
-                f"{column}_{column_value}" for column_value in column_values
-            ]
-            concatenated = df[value_columns].to_numpy()
-            df = df.drop(columns=value_columns)
-            # Use a Pandas Series for column assignment to get more consistent
-            # behavior across Pandas versions.
-            df.loc[:, output_column] = pd.Series(list(concatenated))
+                df[column] = df[column].map(tuple)
+
+            stats = self.stats_[f"unique_values({column})"]
+            num_categories = len(stats)
+            one_hot = np.zeros((len(df), num_categories), dtype=np.uint8)
+            # Integer indices for each category in the column
+            codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
+            # Filter to only the rows that have a valid category
+            valid_category_mask = codes != -1
+            # Dimension should be (num_rows, ) - 1D boolean array
+            non_zero_indices = np.nonzero(valid_category_mask)[0]
+            # Mark the corresponding categories as 1
+            one_hot[
+                non_zero_indices,
+                codes[valid_category_mask],
+            ] = 1
+            df[output_column] = one_hot.tolist()
+
         return df
 
     def __repr__(self):

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
+from ray._raylet import GcsClient
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JobInfoStorageClient,
@@ -34,9 +34,9 @@ MAX_CHUNK_LINE_LENGTH = 10
 MAX_CHUNK_CHAR_LENGTH = 20000
 
 
-async def get_head_node_id(gcs_aio_client: GcsAioClient) -> Optional[str]:
+async def get_head_node_id(gcs_client: GcsClient) -> Optional[str]:
     """Fetches Head node id persisted in GCS"""
-    head_node_id_hex_bytes = await gcs_aio_client.internal_kv_get(
+    head_node_id_hex_bytes = await gcs_client.async_internal_kv_get(
         ray_constants.KV_HEAD_NODE_ID_KEY,
         namespace=ray_constants.KV_NAMESPACE_JOB,
         timeout=30,
@@ -148,7 +148,7 @@ async def parse_and_validate_request(
 
 
 async def get_driver_jobs(
-    gcs_aio_client: GcsAioClient,
+    gcs_client: GcsClient,
     job_or_submission_id: Optional[str] = None,
     timeout: Optional[int] = None,
 ) -> Tuple[Dict[str, JobDetails], Dict[str, DriverInfo]]:
@@ -162,7 +162,7 @@ async def get_driver_jobs(
     An optional job_or_submission_id filter can be provided to only return
     jobs with the job id or submission id.
     """
-    job_infos = await gcs_aio_client.get_all_job_info(
+    job_infos = await gcs_client.async_get_all_job_info(
         job_or_submission_id=job_or_submission_id,
         skip_submission_job_info_field=True,
         skip_is_running_tasks_field=True,
@@ -219,7 +219,7 @@ async def get_driver_jobs(
 
 
 async def find_job_by_ids(
-    gcs_aio_client: GcsAioClient,
+    gcs_client: GcsClient,
     job_info_client: JobInfoStorageClient,
     job_or_submission_id: str,
 ) -> Optional[JobDetails]:
@@ -228,7 +228,7 @@ async def find_job_by_ids(
     """
     # First try to find by job_id
     driver_jobs, submission_job_drivers = await get_driver_jobs(
-        gcs_aio_client, job_or_submission_id=job_or_submission_id
+        gcs_client, job_or_submission_id=job_or_submission_id
     )
     job = driver_jobs.get(job_or_submission_id)
     if job:
@@ -264,7 +264,7 @@ async def find_job_by_ids(
 
 
 async def find_jobs_by_job_ids(
-    gcs_aio_client: GcsAioClient,
+    gcs_client: GcsClient,
     job_info_client: JobInfoStorageClient,
     job_ids: List[str],
 ) -> Dict[str, JobDetails]:
@@ -273,7 +273,7 @@ async def find_jobs_by_job_ids(
 
     This only accepts job ids and not submission ids.
     """
-    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_aio_client)
+    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_client)
 
     # Filter down to the request job_ids
     driver_jobs = {key: job for key, job in driver_jobs.items() if key in job_ids}

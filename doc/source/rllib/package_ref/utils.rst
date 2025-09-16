@@ -41,7 +41,7 @@ For example:
     MetricsLogger.peek
     MetricsLogger.log_value
     MetricsLogger.log_dict
-    MetricsLogger.merge_and_log_n_dicts
+    MetricsLogger.aggregate
     MetricsLogger.log_time
 
 

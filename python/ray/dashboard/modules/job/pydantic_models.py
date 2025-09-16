@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from ray._private.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
 from ray.dashboard.modules.job.common import JobStatus
 from ray.util.annotations import PublicAPI
 

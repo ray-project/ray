@@ -4,7 +4,7 @@ import collections
 import pickle
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Union, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -118,7 +118,15 @@ class Preprocessor(abc.ABC):
         self._fitted = True
         return fitted_ds
 
-    def fit_transform(self, ds: "Dataset") -> "Dataset":
+    def fit_transform(
+        self,
+        ds: "Dataset",
+        *,
+        transform_num_cpus: Optional[float] = None,
+        transform_memory: Optional[float] = None,
+        transform_batch_size: Optional[int] = None,
+        transform_concurrency: Optional[int] = None,
+    ) -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
         Calling it more than once will overwrite all previously fitted state:
@@ -127,18 +135,40 @@ class Preprocessor(abc.ABC):
 
         Args:
             ds: Input Dataset.
+            transform_num_cpus: [experimental] The number of CPUs to reserve for each parallel map worker.
+            transform_memory: [experimental] The heap memory in bytes to reserve for each parallel map worker.
+            transform_batch_size: [experimental] The maximum number of rows to return.
+            transform_concurrency: [experimental] The maximum number of Ray workers to use concurrently.
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
         """
         self.fit(ds)
-        return self.transform(ds)
+        return self.transform(
+            ds,
+            num_cpus=transform_num_cpus,
+            memory=transform_memory,
+            batch_size=transform_batch_size,
+            concurrency=transform_concurrency,
+        )
 
-    def transform(self, ds: "Dataset") -> "Dataset":
+    def transform(
+        self,
+        ds: "Dataset",
+        *,
+        batch_size: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[int] = None,
+    ) -> "Dataset":
         """Transform the given dataset.
 
         Args:
             ds: Input Dataset.
+            batch_size: [experimental] Advanced configuration for adjusting input size for each worker.
+            num_cpus: [experimental] The number of CPUs to reserve for each parallel map worker.
+            memory: [experimental] The heap memory in bytes to reserve for each parallel map worker.
+            concurrency: [experimental] The maximum number of Ray workers to use concurrently.
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
@@ -155,7 +185,13 @@ class Preprocessor(abc.ABC):
                 "`fit` must be called before `transform`, "
                 "or simply use fit_transform() to run both steps"
             )
-        transformed_ds = self._transform(ds)
+        transformed_ds = self._transform(
+            ds,
+            batch_size=batch_size,
+            num_cpus=num_cpus,
+            memory=memory,
+            concurrency=concurrency,
+        )
         return transformed_ds
 
     def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
@@ -217,14 +253,28 @@ class Preprocessor(abc.ABC):
                 "for Preprocessor transforms."
             )
 
-    def _transform(self, ds: "Dataset") -> "Dataset":
-        # TODO(matt): Expose `batch_size` or similar configurability.
-        # The default may be too small for some datasets and too large for others.
+    def _transform(
+        self,
+        ds: "Dataset",
+        batch_size: Optional[int],
+        num_cpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[int] = None,
+    ) -> "Dataset":
         transform_type = self._determine_transform_to_use()
 
         # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
         kwargs = self._get_transform_config()
+        if num_cpus is not None:
+            kwargs["num_cpus"] = num_cpus
+        if memory is not None:
+            kwargs["memory"] = memory
+        if batch_size is not None:
+            kwargs["batch_size"] = batch_size
+        if concurrency is not None:
+            kwargs["concurrency"] = concurrency
+
         if transform_type == BatchFormat.PANDAS:
             return ds.map_batches(
                 self._transform_pandas, batch_format=BatchFormat.PANDAS, **kwargs
@@ -287,8 +337,8 @@ class Preprocessor(abc.ABC):
         the input columns.
 
         Raises:
-            ValueError if the length of the output columns does not match the
-        length of the input columns.
+            ValueError: If the length of the output columns does not match the
+                length of the input columns.
         """
 
         if output_columns and len(columns) != len(output_columns):
@@ -326,7 +376,8 @@ class Preprocessor(abc.ABC):
     @DeveloperAPI
     def serialize(self) -> str:
         """Return this preprocessor serialized as a string.
-        Note: this is not a stable serialization format as it uses `pickle`.
+
+        Note: This is not a stable serialization format as it uses `pickle`.
         """
         # Convert it to a plain string so that it can be included as JSON metadata
         # in Trainer checkpoints.

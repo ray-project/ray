@@ -4,8 +4,8 @@ from collections import defaultdict
 from typing import List
 
 import ray._private.ray_constants as ray_constants
-from ray._private.ray_constants import env_bool
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback

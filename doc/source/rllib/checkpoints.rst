@@ -347,6 +347,7 @@ and this `example of how to run policy inference with an LSTM <https://github.co
     `PyTorch Module <https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module>`__,
     you can easily export your model to `ONNX <https://onnx.ai/>`__, `IREE <https://iree.dev/>`__,
     or other deployment-friendly formats.
+    See this `example script supporting ONNX <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__ for more details.
 
 
 Restoring state from a checkpoint with `restore_from_path`

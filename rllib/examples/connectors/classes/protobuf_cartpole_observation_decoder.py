@@ -18,7 +18,9 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
     Add this connector piece to your env-to-module pipeline, through your algo config:
     ```
     config.env_runners(
-        env_to_module_connector=lambda env: ProtobufCartPoleObservationDecoder()
+        env_to_module_connector=(
+            lambda env, spaces, device: ProtobufCartPoleObservationDecoder()
+        )
     )
     ```
 

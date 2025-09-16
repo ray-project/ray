@@ -8,6 +8,9 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
+import pyarrow as pa
+from packaging import version
+
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -34,21 +37,47 @@ def _get_read_task(
     limit: Optional[int],
     schema: "Schema",
 ) -> Iterable[Block]:
-    from pyiceberg.io import pyarrow as pyi_pa_io
+    # Determine the PyIceberg version to handle backward compatibility
+    import pyiceberg
 
-    # Use the PyIceberg API to read only a single task (specifically, a
-    # FileScanTask) - note that this is not as simple as reading a single
-    # parquet file, as there might be delete files, etc. associated, so we
-    # must use the PyIceberg API for the projection.
-    yield pyi_pa_io.project_table(
-        tasks=tasks,
-        table_metadata=table_metadata,
-        io=table_io,
-        row_filter=row_filter,
-        projected_schema=schema,
-        case_sensitive=case_sensitive,
-        limit=limit,
-    )
+    if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
+        # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
+        from pyiceberg.io.pyarrow import ArrowScan
+
+        # Initialize scanner with Iceberg metadata and query parameters
+        scanner = ArrowScan(
+            table_metadata=table_metadata,
+            io=table_io,
+            row_filter=row_filter,
+            projected_schema=schema,
+            case_sensitive=case_sensitive,
+            limit=limit,
+        )
+
+        # Convert scanned data to Arrow Table format
+        result_table = scanner.to_table(tasks=tasks)
+
+        # Stream results as RecordBatches for memory efficiency
+        for batch in result_table.to_batches():
+            yield pa.Table.from_batches([batch])
+
+    else:
+        # Legacy implementation using project_table (PyIceberg <0.9.0)
+        from pyiceberg.io import pyarrow as pyi_pa_io
+
+        # Use the PyIceberg API to read only a single task (specifically, a
+        # FileScanTask) - note that this is not as simple as reading a single
+        # parquet file, as there might be delete files, etc. associated, so we
+        # must use the PyIceberg API for the projection.
+        yield pyi_pa_io.project_table(
+            tasks=tasks,
+            table_metadata=table_metadata,
+            io=table_io,
+            row_filter=row_filter,
+            projected_schema=schema,
+            case_sensitive=case_sensitive,
+            limit=limit,
+        )
 
 
 @DeveloperAPI
@@ -247,7 +276,6 @@ class IcebergDatasource(Datasource):
                 num_rows=sum(task.file.record_count for task in chunk_tasks)
                 - position_delete_count,
                 size_bytes=sum(task.length for task in chunk_tasks),
-                schema=pya_schema,
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
             )
@@ -255,6 +283,7 @@ class IcebergDatasource(Datasource):
                 ReadTask(
                     read_fn=lambda tasks=chunk_tasks: get_read_task(tasks),
                     metadata=metadata,
+                    schema=pya_schema,
                 )
             )
 

@@ -1,5 +1,18 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+# https://github.com/ray-project/ray/issues/54868
+# In the future, ray will avoid overriding the accelerator ids environment variables
+# when the number of accelerators is zero.
+# For example, when this environment variable is set, if a user sets `num_gpus=0`
+# in the `ray.init()` call, the environment variable `CUDA_VISIBLE_DEVICES` will
+# not be set to an empty string.
+#
+# This environment variable is used to disable this behavior temporarily.
+# And to avoid breaking changes, this environment variable is set to True by default
+# to follow the previous behavior.
+#
+RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR = "RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"
 
 
 class AcceleratorManager(ABC):
@@ -12,7 +25,7 @@ class AcceleratorManager(ABC):
         """Get the name of the resource representing this accelerator family.
 
         Returns:
-            The resource name: e.g., the resource name for Nvidia GPUs is "GPU"
+            The resource name: e.g., the resource name for NVIDIA GPUs is "GPU"
         """
 
     @staticmethod
@@ -22,7 +35,7 @@ class AcceleratorManager(ABC):
 
         Returns:
             The env var for setting visible accelerator ids: e.g.,
-                CUDA_VISIBLE_DEVICES for Nvidia GPUs.
+                CUDA_VISIBLE_DEVICES for NVIDIA GPUs.
         """
 
     @staticmethod
@@ -46,7 +59,7 @@ class AcceleratorManager(ABC):
         The result should only be used when get_current_node_num_accelerators() > 0.
 
         Returns:
-            The detected accelerator type of this family: e.g., H100 for Nvidia GPU.
+            The detected accelerator type of this family: e.g., H100 for NVIDIA GPU.
             Return None if it's unknown or the node doesn't have
             accelerators of this family.
         """
@@ -134,5 +147,14 @@ class AcceleratorManager(ABC):
         Returns:
             The accelerator type of this family on the ec2 instance with given type.
             Return None if it's unknown.
+        """
+        return None
+
+    @staticmethod
+    def get_current_node_accelerator_labels() -> Optional[Dict[str, str]]:
+        """Get accelerator related Ray node labels of the curent node.
+
+        Returns:
+            A dictionary mapping accelerator related label keys to values.
         """
         return None

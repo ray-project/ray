@@ -79,6 +79,7 @@ swap:
   tablename: table name
   tablet: device
   # touch: tap  # We rarely use touch in the sense of "tap" in our docs.
+  timeseries: time-series
   url: URL
   vs\.: versus
   walkthrough: walk-through

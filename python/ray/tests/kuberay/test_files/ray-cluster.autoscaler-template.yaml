@@ -9,7 +9,7 @@ metadata:
   name: raycluster-autoscaler
 spec:
   # The version of Ray you are using. Make sure all Ray containers are running this version of Ray.
-  rayVersion: '2.7.0'
+  rayVersion: '2.46.0'
   # If `enableInTreeAutoscaling` is true, the Autoscaler sidecar will be added to the Ray head pod.
   # Ray Autoscaler integration is Beta with KubeRay >= 0.3.0 and Ray >= 2.0.0.
   enableInTreeAutoscaling: true
@@ -25,12 +25,11 @@ spec:
         cpu: "500m"
         memory: "512Mi"
   headGroupSpec:
-    rayStartParams: {}
     template:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray:2.7.0
+          image: rayproject/ray:2.46.0
           ports:
           - containerPort: 6379
             name: gcs
@@ -55,12 +54,11 @@ spec:
     minReplicas: 1
     maxReplicas: 10
     groupName: small-group
-    rayStartParams: {}
     template:
       spec:
         containers:
         - name: ray-worker
-          image: rayproject/ray:2.7.0
+          image: rayproject/ray:2.46.0
           lifecycle:
             preStop:
               exec:

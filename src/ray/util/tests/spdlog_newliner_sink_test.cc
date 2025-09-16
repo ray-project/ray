@@ -21,7 +21,9 @@
 #include <string_view>
 #include <utility>
 
-#include "ray/common/test/testing.h"
+#include "absl/strings/str_format.h"
+#include "ray/common/id.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/compat.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/spdlog_fd_sink.h"
@@ -32,10 +34,12 @@ namespace ray {
 
 namespace {
 
+inline std::string RandomID() { return ray::UniqueID::FromRandom().Hex(); }
+
 std::shared_ptr<spdlog::logger> CreateLogger() {
   auto fd_formatter = std::make_unique<spdlog::pattern_formatter>(
       "%v", spdlog::pattern_time_type::local, std::string(""));
-  auto fd_sink = std::make_shared<non_owned_fd_sink_st>(GetStdoutHandle());
+  auto fd_sink = std::make_shared<non_owned_fd_sink_st>(GetStdoutFd());
   // We have to manually set the formatter, since it's not managed by logger.
   fd_sink->set_formatter(std::move(fd_formatter));
 
@@ -182,7 +186,7 @@ TEST(NewlinerSinkWithFileinkTest, AppendAndFlushTest) {
 
   // Case-1: string with newliner at the end.
   {
-    const auto filepath = (dir.GetDirectory() / GenerateUUIDV4()).string();
+    const auto filepath = (dir.GetDirectory() / RandomID()).string();
     auto logger = CreateLogger(filepath);
     constexpr std::string_view kContent = "hello\n";
 
@@ -199,7 +203,7 @@ TEST(NewlinerSinkWithFileinkTest, AppendAndFlushTest) {
 
   // Case-2: string with no newliner at the end.
   {
-    const auto filepath = (dir.GetDirectory() / GenerateUUIDV4()).string();
+    const auto filepath = (dir.GetDirectory() / RandomID()).string();
     auto logger = CreateLogger(filepath);
     constexpr std::string_view kContent = "hello";
 
@@ -218,7 +222,7 @@ TEST(NewlinerSinkWithFileinkTest, AppendAndFlushTest) {
 
   // Case-3: newliner in the middle, with trailing newliner.
   {
-    const auto filepath = (dir.GetDirectory() / GenerateUUIDV4()).string();
+    const auto filepath = (dir.GetDirectory() / RandomID()).string();
     auto logger = CreateLogger(filepath);
     constexpr std::string_view kContent = "hello\nworld\n";
 
@@ -235,7 +239,7 @@ TEST(NewlinerSinkWithFileinkTest, AppendAndFlushTest) {
 
   // // Case-4: newliner in the middle, without trailing newliner.
   {
-    const auto filepath = (dir.GetDirectory() / GenerateUUIDV4()).string();
+    const auto filepath = (dir.GetDirectory() / RandomID()).string();
     auto logger = CreateLogger(filepath);
     constexpr std::string_view kContent = "hello\nworld";
 
@@ -254,7 +258,7 @@ TEST(NewlinerSinkWithFileinkTest, AppendAndFlushTest) {
 
   // // Case-5: multiple writes.
   {
-    const auto filepath = (dir.GetDirectory() / GenerateUUIDV4()).string();
+    const auto filepath = (dir.GetDirectory() / RandomID()).string();
     auto logger = CreateLogger(filepath);
     constexpr std::string_view kContent1 = "hello\nworld";
     constexpr std::string_view kContent2 = "hello\nworld\n";

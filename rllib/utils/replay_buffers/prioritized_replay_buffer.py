@@ -29,7 +29,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         alpha: float = 1.0,
-        **kwargs
+        **kwargs,
     ):
         """Initializes a PrioritizedReplayBuffer instance.
 
@@ -115,7 +115,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Args:
             num_items: Number of items to sample from this buffer.
             beta: To what degree to use importance weights (0 - no corrections,
-            1 - full correction).
+                1 - full correction).
             ``**kwargs``: Forward compatibility kwargs.
 
         Returns:
@@ -170,7 +170,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Args:
             idxes: List of indices of items
             priorities: List of updated priorities corresponding to items at the
-            idxes denoted by variable `idxes`.
+                idxes denoted by variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(
@@ -232,7 +232,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             state: The new state to set this buffer. Can be obtained by calling
-            `self.get_state()`.
+                `self.get_state()`.
         """
         super().set_state(state)
         self._it_sum.set_state(state["sum_segment_tree"])

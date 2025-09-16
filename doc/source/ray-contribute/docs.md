@@ -25,7 +25,7 @@ The editorial style is enforced in CI by Vale. For more information, see
 If you want to contribute to the Ray documentation, you need a way to build it.
 Don't install Ray in the environment you plan to use to build documentation. The requirements for the docs build system are generally not compatible with those you need to run Ray itself.
 
-Follow the these instructions to build the documentation:
+Follow these instructions to build the documentation:
 
 ### Fork Ray
 1. [Fork the Ray repository](https://docs.ray.io/en/master/ray-contribute/development.html#fork-the-ray-repository)
@@ -418,7 +418,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules like
 
 ### How do you run Vale?
 
-#### How to use the VSCode extension
+#### How to use the VS Code extension
 
 1. Install Vale. If you use macOS, use Homebrew.
 
@@ -434,10 +434,10 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules like
 
     For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
 
-2. Install the Vale VSCode extension by following these
+2. Install the Vale VS Code extension by following these
 [installation instructions](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode).
 
-3. VSCode should show warnings in your code editor and in the “Problems” panel.
+3. VS Code should show warnings in your code editor and in the “Problems” panel.
 
     ![Vale](../images/vale.png)
 

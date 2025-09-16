@@ -11,20 +11,36 @@ import pytest
 
 import ray
 import ray.util.state
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import ShuffleStrategy
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start, wait_for_condition
+from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
+
+
+@pytest.fixture(scope="module")
+def data_context_override(request):
+    overrides = getattr(request, "param", {})
+
+    ctx = DataContext.get_current()
+    copy = ctx.copy()
+
+    for k, v in overrides.items():
+        assert hasattr(ctx, k), f"Key '{k}' not found in DataContext"
+
+        setattr(ctx, k, v)
+
+    yield ctx
+
+    DataContext._set_current(copy)
 
 
 @pytest.fixture(scope="module")
@@ -128,19 +144,38 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
-    fs = pa.fs.S3FileSystem(
-        region="us-west-2",
-        endpoint_override=s3_server,
-        **kwargs,
-    )
-    if s3_path.startswith("s3://"):
-        if "@" in s3_path:
-            s3_path = s3_path.split("@")[-1]
-        else:
-            s3_path = s3_path[len("s3://") :]
-    s3_path = urllib.parse.quote(s3_path)
-    fs.create_dir(s3_path)
-    yield fs
+    fs = None
+    try:
+        fs = pa.fs.S3FileSystem(
+            region="us-west-2",
+            endpoint_override=s3_server,
+            **kwargs,
+        )
+        if s3_path.startswith("s3://"):
+            if "@" in s3_path:
+                s3_path = s3_path.split("@")[-1]
+            else:
+                s3_path = s3_path[len("s3://") :]
+        s3_path = urllib.parse.quote(s3_path)
+        fs.create_dir(s3_path)
+        yield fs
+
+    finally:
+        # Explicit cleanup for S3FileSystem resources
+        if fs is not None:
+            try:
+                # Clean up test directory if it exists
+                try:
+                    file_info = fs.get_file_info(s3_path)
+                    if file_info.type != pa.fs.FileType.NotFound:
+                        fs.delete_dir(s3_path)
+                except (OSError, pa.lib.ArrowIOError):
+                    # Directory doesn't exist or can't be deleted, that's fine
+                    pass
+            except Exception as e:
+                print(f"Warning: S3 filesystem cleanup error: {e}")
+            finally:
+                fs = None
 
 
 @pytest.fixture(scope="function")
@@ -196,70 +231,12 @@ def write_partitioned_df():
     yield _write_partitioned_df
 
 
-@pytest.fixture(scope="function")
-def write_base_partitioned_df(base_partitioned_df, write_partitioned_df):
-    def _write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        file_writer_fn,
-    ):
-        write_partitioned_df(
-            base_partitioned_df,
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-
-    yield _write_base_partitioned_df
-
-
-@pytest.fixture(scope="function")
-def assert_base_partitioned_ds():
-    def _assert_base_partitioned_ds(
-        ds,
-        count=6,
-        num_input_files=2,
-        num_rows=6,
-        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.string())])),
-        sorted_values=None,
-        ds_take_transform_fn=None,
-        sorted_values_transform_fn=None,
-    ):
-        if ds_take_transform_fn is None:
-            ds_take_transform_fn = lambda taken: [  # noqa: E731
-                [s["one"], s["two"]] for s in taken
-            ]
-
-        if sorted_values_transform_fn is None:
-            sorted_values_transform_fn = (  # noqa: E731
-                lambda sorted_values: sorted_values
-            )
-
-        if sorted_values is None:
-            sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
-        # Test metadata ops.
-        assert not ds._plan.has_started_execution
-        assert ds.count() == count, f"{ds.count()} != {count}"
-        assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
-        assert ds.schema() == schema
-        actual_input_files = ds.input_files()
-        assert len(actual_input_files) == num_input_files, actual_input_files
-
-        # Force a data read.
-        values = ds_take_transform_fn(ds.take_all())
-        actual_sorted_values = sorted_values_transform_fn(sorted(values))
-        assert (
-            actual_sorted_values == sorted_values
-        ), f"{actual_sorted_values} != {sorted_values}"
-
-    yield _assert_base_partitioned_ds
-
-
 @pytest.fixture
 def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DataContext.get_current())
-    yield
+    ctx = ray.data.context.DataContext.get_current()
+    original = copy.deepcopy(ctx)
+    yield ctx
     ray.data.context.DataContext._set_current(original)
 
 
@@ -278,27 +255,35 @@ def configure_shuffle_method(request):
     ctx = ray.data.context.DataContext.get_current()
 
     original_shuffle_strategy = ctx.shuffle_strategy
+    original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
 
     ctx.shuffle_strategy = shuffle_strategy
+
+    # NOTE: We override default parallelism for hash-based shuffling to
+    #       avoid excessive partitioning of the data (to achieve desired
+    #       parallelism
+    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        ctx.default_hash_shuffle_parallelism = 8
 
     yield request.param
 
     ctx.shuffle_strategy = original_shuffle_strategy
+    ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
 
 
 @pytest.fixture(params=[True, False])
-def use_polars(request):
-    use_polars = request.param
+def use_polars_sort(request):
+    use_polars_sort = request.param
 
     ctx = ray.data.context.DataContext.get_current()
 
-    original_use_polars = ctx.use_polars
+    original_use_polars = ctx.use_polars_sort
 
-    ctx.use_polars = use_polars
+    ctx.use_polars_sort = use_polars_sort
 
     yield request.param
 
-    ctx.use_polars = original_use_polars
+    ctx.use_polars_sort = original_use_polars
 
 
 @pytest.fixture(params=[True, False])
@@ -331,6 +316,26 @@ def target_max_block_size(request):
     original = ctx.target_max_block_size
     ctx.target_max_block_size = request.param
     yield request.param
+    ctx.target_max_block_size = original
+
+
+@pytest.fixture(params=[None, DEFAULT_TARGET_MAX_BLOCK_SIZE])
+def target_max_block_size_infinite_or_default(request):
+    """Fixture that sets target_max_block_size to None/DEFAULT_TARGET_MAX_BLOCK_SIZE and resets after test finishes."""
+    ctx = ray.data.context.DataContext.get_current()
+    original = ctx.target_max_block_size
+    ctx.target_max_block_size = request.param
+    yield
+    ctx.target_max_block_size = original
+
+
+@pytest.fixture(params=[None])
+def target_max_block_size_infinite(request):
+    """Fixture that sets target_max_block_size to None and resets after test finishes."""
+    ctx = ray.data.context.DataContext.get_current()
+    original = ctx.target_max_block_size
+    ctx.target_max_block_size = request.param
+    yield
     ctx.target_max_block_size = original
 
 
@@ -453,7 +458,6 @@ def op_two_block():
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],
                 size_bytes=block_params["size_bytes"][i],
-                schema=None,
                 input_files=None,
                 exec_stats=block_exec_stats,
             )
@@ -701,17 +705,10 @@ def assert_blocks_expected_in_plasma(
     last_snapshot,
     num_blocks_expected,
     block_size_expected=None,
-    total_bytes_expected=None,
 ):
-    assert not (
-        block_size_expected is not None and total_bytes_expected is not None
-    ), "only specify one of block_size_expected, total_bytes_expected"
+    total_bytes_expected = None
 
-    if total_bytes_expected is None:
-        if block_size_expected is None:
-            block_size_expected = (
-                ray.data.context.DataContext.get_current().target_max_block_size
-            )
+    if block_size_expected is not None:
         total_bytes_expected = num_blocks_expected * block_size_expected
 
     print(f"Expecting {total_bytes_expected} bytes, {num_blocks_expected} blocks")
@@ -726,7 +723,8 @@ def assert_blocks_expected_in_plasma(
                         <= 1.5 * num_blocks_expected
                     ),
                     "cumulative_created_plasma_bytes": (
-                        lambda count: total_bytes_expected * 0.5
+                        lambda count: total_bytes_expected is None
+                        or total_bytes_expected * 0.5
                         <= count
                         <= 1.5 * total_bytes_expected
                     ),

@@ -3,7 +3,7 @@
 Tasks
 =====
 
-Ray enables arbitrary functions to be executed asynchronously on separate Python workers. Such functions are called **Ray remote functions** and their asynchronous invocations are called **Ray tasks**. Here is an example.
+Ray enables arbitrary functions to be executed asynchronously on separate worker processes. Such functions are called **Ray remote functions** and their asynchronous invocations are called **Ray tasks**. Here is an example.
 
 .. tab-set::
 
@@ -287,6 +287,8 @@ You can change this behavior by setting
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
+.. _task-events:
+
 Task Events
 -----------
 
@@ -307,4 +309,3 @@ More about Ray Tasks
     :maxdepth: 1
 
     tasks/nested-tasks.rst
-    tasks/generators.rst

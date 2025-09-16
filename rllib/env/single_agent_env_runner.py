@@ -29,7 +29,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
@@ -76,10 +76,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
-        self.worker_index: int = kwargs.get("worker_index")
-        self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
         self.spaces = kwargs.get("spaces", {})
 
@@ -742,8 +740,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        observations, infos = self._try_env_reset()
+        observations, infos = self._try_env_reset(
+            # Only seed (if seed provided) upon initial reset.
+            seed=self._seed if self._needs_initial_reset else None,
+            # TODO (sven): Support options?
+            options=None,
+        )
         observations = unbatch(observations)
 
         # Set initial obs and infos in the episodes.
@@ -779,20 +781,26 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
-        self, which: str, idx: int, episodes: List[SingleAgentEpisode] = None
+        self, which: str, idx: int, episodes: List[SingleAgentEpisode]
     ):
+        kwargs = dict(
+            episode=episodes[idx],
+            env_runner=self,
+            metrics_logger=self.metrics,
+            env=self.env.unwrapped,
+            rl_module=self.module,
+            env_index=idx,
+        )
+        if which == "on_episode_end":
+            kwargs["prev_episode_chunks"] = self._ongoing_episodes_for_metrics[
+                episodes[idx].id_
+            ]
+
         make_callback(
             which,
             callbacks_objects=self._callbacks,
             callbacks_functions=getattr(self.config, f"callbacks_{which}"),
-            kwargs=dict(
-                episode=episodes[idx],
-                env_runner=self,
-                metrics_logger=self.metrics,
-                env=self.env.unwrapped,
-                rl_module=self.module,
-                env_index=idx,
-            ),
+            kwargs=kwargs,
         )
 
     def _increase_sampled_metrics(self, num_steps, num_episodes_completed):
@@ -861,11 +869,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
         # Per-agent returns.
         self.metrics.log_value(
-            ("agent_episode_returns_mean", DEFAULT_AGENT_ID), ret, window=win
+            ("agent_episode_return_mean", DEFAULT_AGENT_ID), ret, window=win
         )
         # Per-RLModule returns.
         self.metrics.log_value(
-            ("module_episode_returns_mean", DEFAULT_MODULE_ID), ret, window=win
+            ("module_episode_return_mean", DEFAULT_MODULE_ID), ret, window=win
         )
 
         # For some metrics, log min/max as well.

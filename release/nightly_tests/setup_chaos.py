@@ -8,6 +8,7 @@ from ray._private.test_utils import (
     RayletKiller,
     WorkerKillerActor,
     EC2InstanceTerminator,
+    EC2InstanceTerminatorWithGracePeriod,
 )
 
 
@@ -17,11 +18,14 @@ def parse_script_args():
     parser.add_argument(
         "--chaos",
         type=str,
-        default="",
-        help=(
-            "Chaos to inject into the test environment. "
-            "Options: KillRaylet, KillWorker, TerminateEC2Instance."
-        ),
+        default="KillRaylet",
+        choices=[
+            "KillRaylet",
+            "KillWorker",
+            "TerminateEC2Instance",
+            "TerminateEC2InstanceWithGracePeriod",
+        ],
+        help="Chaos to inject into the test environment.",
     )
 
     parser.add_argument("--kill-interval", type=int, default=60)
@@ -90,19 +94,15 @@ def task_node_filter(task_names):
 
 
 def get_chaos_killer(args):
-    if args.chaos != "":
-        chaos_type = args.chaos
-    else:
-        chaos_type = "KillRaylet"  # default
-
-    if chaos_type == "KillRaylet":
+    if args.chaos == "KillRaylet":
         return RayletKiller, task_node_filter(args.task_names)
-    elif chaos_type == "KillWorker":
+    elif args.chaos == "KillWorker":
         return WorkerKillerActor, task_filter(args.task_names)
-    elif chaos_type == "TerminateEC2Instance":
+    elif args.chaos == "TerminateEC2Instance":
         return EC2InstanceTerminator, task_node_filter(args.task_names)
-    else:
-        raise ValueError(f"Chaos type {chaos_type} not supported.")
+    elif args.chaos == "TerminateEC2InstanceWithGracePeriod":
+        return EC2InstanceTerminatorWithGracePeriod, task_node_filter(args.task_names)
+    assert False, f"Chaos type {args.chaos} not supported."
 
 
 def main():

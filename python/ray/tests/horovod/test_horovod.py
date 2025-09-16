@@ -1,13 +1,16 @@
+import sys
+
 import pytest
 import torch
+
 import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 pytest.importorskip("horovod")
 
 try:
-    from horovod.ray.runner import RayExecutor
     from horovod.common.util import gloo_built
+    from horovod.ray.runner import RayExecutor
 except ImportError:
     pass  # This shouldn't be reached - the test should be skipped.
 
@@ -27,11 +30,12 @@ def ray_start_4_cpus(request):
 
 
 def _train(batch_size=32, batch_per_iter=10):
+    import timeit
+
+    import horovod.torch as hvd
     import torch.nn.functional as F
     import torch.optim as optim
     import torch.utils.data.distributed
-    import horovod.torch as hvd
-    import timeit
 
     hvd.init()
 
@@ -91,7 +95,4 @@ def test_horovod_example(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

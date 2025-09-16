@@ -34,9 +34,9 @@ class FilenameProvider:
                 def __init__(self, file_format: str):
                     self.file_format = file_format
 
-                def get_filename_for_row(self, row, task_index, block_index, row_index):
+                def get_filename_for_row(self, row, write_uuid, task_index, block_index, row_index):
                     return (
-                        f"{row['label']}_{task_index:06}_{block_index:06}"
+                        f"{row['label']}_{write_uuid}_{task_index:06}_{block_index:06}"
                         f"_{row_index:06}.{self.file_format}"
                     )
 
@@ -49,31 +49,38 @@ class FilenameProvider:
     """  # noqa: E501
 
     def get_filename_for_block(
-        self, block: Block, task_index: int, block_index: int
+        self, block: Block, write_uuid: str, task_index: int, block_index: int
     ) -> str:
         """Generate a filename for a block of data.
 
         .. note::
-            Filenames must be unique and deterministic for a given task and block index.
+            Filenames must be unique and deterministic for a given write UUID, and
+            task and block index.
 
             A block consists of multiple rows and corresponds to a single output file.
             Each task might produce a different number of blocks.
 
         Args:
             block: The block that will be written to a file.
-            task_index: The index of the the write task.
+            write_uuid: The UUID of the write operation.
+            task_index: The index of the write task.
             block_index: The index of the block *within* the write task.
         """
         raise NotImplementedError
 
     def get_filename_for_row(
-        self, row: Dict[str, Any], task_index: int, block_index: int, row_index: int
+        self,
+        row: Dict[str, Any],
+        write_uuid: str,
+        task_index: int,
+        block_index: int,
+        row_index: int,
     ) -> str:
         """Generate a filename for a row.
 
         .. note::
-            Filenames must be unique and deterministic for a given task, block, and row
-            index.
+            Filenames must be unique and deterministic for a given write UUID, and
+            task, block, and row index.
 
             A block consists of multiple rows, and each row corresponds to a single
             output file. Each task might produce a different number of blocks, and each
@@ -86,7 +93,8 @@ class FilenameProvider:
 
         Args:
             row: The row that will be written to a file.
-            task_index: The index of the the write task.
+            write_uuid: The UUID of the write operation.
+            task_index: The index of the write task.
             block_index: The index of the block *within* the write task.
             row_index: The index of the row *within* the block.
         """
@@ -101,15 +109,20 @@ class _DefaultFilenameProvider(FilenameProvider):
         self._file_format = file_format
 
     def get_filename_for_block(
-        self, block: Block, task_index: int, block_index: int
+        self, block: Block, write_uuid: str, task_index: int, block_index: int
     ) -> str:
-        file_id = f"{task_index:06}_{block_index:06}"
+        file_id = f"{write_uuid}_{task_index:06}_{block_index:06}"
         return self._generate_filename(file_id)
 
     def get_filename_for_row(
-        self, row: Dict[str, Any], task_index: int, block_index: int, row_index: int
+        self,
+        row: Dict[str, Any],
+        write_uuid: str,
+        task_index: int,
+        block_index: int,
+        row_index: int,
     ) -> str:
-        file_id = f"{task_index:06}_{block_index:06}_{row_index:06}"
+        file_id = f"{write_uuid}_{task_index:06}_{block_index:06}_{row_index:06}"
         return self._generate_filename(file_id)
 
     def _generate_filename(self, file_id: str) -> str:

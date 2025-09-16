@@ -1,4 +1,3 @@
-import os
 import signal
 import sys
 
@@ -17,6 +16,8 @@ def config(request):
         "health_check_period_ms": 100,
         "health_check_failure_threshold": 10,
         "object_timeout_milliseconds": 200,
+        # Required for reducing the retry time of RequestWorkerLease
+        "raylet_rpc_server_reconnect_timeout_s": 0,
     }
     yield config
 
@@ -71,9 +72,4 @@ def test_reconstruction_stress(config, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

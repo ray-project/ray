@@ -2,7 +2,7 @@
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2`
+`python [script file name].py --num-agents=2`
 
 Control the number of agents and policies (RLModules) via --num-agents and
 --num-policies.
@@ -30,7 +30,11 @@ parser = add_rllib_example_script_args(
     default_reward=600.0,
 )
 # TODO (sven): This arg is currently ignored (hard-set to 2).
-parser.add_argument("--num-policies", type=int, default=2)
+parser.add_argument(
+    "--num-policies",
+    type=int,
+    default=2,
+)
 
 
 if __name__ == "__main__":
@@ -48,12 +52,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
         .env_runners(
-            # TODO (sven): MAEnvRunner does not support vectorized envs yet
-            #  due to gym's env checkers and non-compatability with RLlib's
-            #  MultiAgentEnv API.
-            num_envs_per_env_runner=1
-            if args.num_agents > 0
-            else 20,
+            num_envs_per_env_runner=20,
         )
     )
 

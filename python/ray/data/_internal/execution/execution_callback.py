@@ -1,6 +1,6 @@
-from typing import List, TYPE_CHECKING
 import importlib
 import os
+from typing import TYPE_CHECKING, List
 
 from ray.data.context import DataContext
 
@@ -60,7 +60,13 @@ def get_execution_callbacks(context: DataContext) -> List[ExecutionCallback]:
         _initialize_env_callbacks(context)
         context.set_config(ENV_CALLBACKS_INITIALIZED_KEY, True)
 
-    return context.get_config(EXECUTION_CALLBACKS_CONFIG_KEY, [])
+    from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+        IssueDetectionExecutionCallback,
+    )
+
+    return context.get_config(
+        EXECUTION_CALLBACKS_CONFIG_KEY, [IssueDetectionExecutionCallback()]
+    )
 
 
 def add_execution_callback(callback: ExecutionCallback, context: DataContext):

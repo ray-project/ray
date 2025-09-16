@@ -13,7 +13,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class _FrameStacking(ConnectorV2):
+class FrameStacking(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
     @override(ConnectorV2)
@@ -41,7 +41,7 @@ class _FrameStacking(ConnectorV2):
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a _FrameStackingConnector instance.
+        """Initializes a FrameStackingConnector instance.
 
         Args:
             num_frames: The number of observation frames to stack up (into a single

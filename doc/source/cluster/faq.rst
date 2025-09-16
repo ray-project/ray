@@ -43,7 +43,7 @@ connect. Use this command:
 
 .. code:: bash
 
-    ray start --head --node-ip-address xx.xx.xx.xx --port nnnn``
+    ray start --head --node-ip-address xx.xx.xx.xx --port nnnn
 
 Then when starting the worker node, use this command to connect to the head node:
 
@@ -66,8 +66,8 @@ debugging routing issues.
 
 You may also see failures in the log like:
 
-    This node has an IP address of xx.xx.xx.xx, while we can not found the
-    matched Raylet address. This maybe come from when you connect the Ray
+    This node has an IP address of xx.xx.xx.xx, while we cannot find the
+    matched Raylet address. This may come from when you connect the Ray
     cluster with a different IP address or connect a container.
 
 The cause of this error may be the head node overloading with too many simultaneous
@@ -89,7 +89,7 @@ reported are as follows:
   starting Ray to verify that the allocations are as expected. For more
   detailed information see :ref:`ray-slurm-deploy`.
 
-.. _`known OpenBLAS limitation`: https://github.com/xianyi/OpenBLAS/wiki/faq#how-can-i-use-openblas-in-multi-threaded-applications
+.. _`known OpenBLAS limitation`: http://www.openmathlib.org/OpenBLAS/docs/faq/#how-can-i-use-openblas-in-multi-threaded-applications
 
 Where does my Ray Job entrypoint script run? On the head node or worker nodes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

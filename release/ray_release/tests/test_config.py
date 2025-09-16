@@ -1,5 +1,5 @@
 import sys
-
+import copy
 import pytest
 import yaml
 from ray_release.config import (
@@ -19,29 +19,27 @@ _TEST_COLLECTION_FILES = [
     "release/ray_release/tests/test_collection_data.yaml",
 ]
 
-VALID_TEST = Test(
-    **{
-        "name": "validation_test",
-        "group": "validation_group",
-        "working_dir": "validation_dir",
-        "python": "3.9",
-        "frequency": "nightly",
-        "team": "release",
-        "cluster": {
-            "byod": {"type": "gpu"},
-            "cluster_compute": "tpl_cpu_small.yaml",
-            "autosuspend_mins": 10,
-        },
-        "run": {
-            "timeout": 100,
-            "script": "python validate.py",
-            "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
-            "type": "client",
-        },
-        "smoke_test": {"run": {"timeout": 20}, "frequency": "multi"},
-        "alert": "default",
-    }
-)
+VALID_TEST = {
+    "name": "validation_test",
+    "group": "validation_group",
+    "working_dir": "validation_dir",
+    "python": "3.9",
+    "frequency": "nightly",
+    "team": "release",
+    "cluster": {
+        "byod": {"type": "gpu"},
+        "cluster_compute": "tpl_cpu_small.yaml",
+        "autosuspend_mins": 10,
+    },
+    "run": {
+        "timeout": 100,
+        "script": "python validate.py",
+        "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
+        "type": "client",
+    },
+    "smoke_test": {"run": {"timeout": 20}, "frequency": "nightly"},
+    "alert": "default",
+}
 
 
 def test_parse_test_definition():
@@ -239,7 +237,7 @@ def test_schema_validation():
 
     schema = load_schema_file()
 
-    assert not validate_test(test, schema)
+    assert not validate_test(Test(**test), schema)
 
     # Remove some optional arguments
     del test["alert"]
@@ -247,38 +245,50 @@ def test_schema_validation():
     del test["run"]["wait_for_nodes"]
     del test["cluster"]["autosuspend_mins"]
 
-    assert not validate_test(test, schema)
+    assert not validate_test(Test(**test), schema)
 
     # Add some faulty arguments
 
     # Faulty frequency
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["frequency"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty job type
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["type"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty file manager type
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["file_manager"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty smoke test
-    invalid_test = test.copy()
+
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     del invalid_test["smoke_test"]["frequency"]
 
     assert validate_test(invalid_test, schema)
 
     # Faulty Python version
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["python"] = "invalid"
 
+    assert validate_test(invalid_test, schema)
+
+    # Faulty BYOD type
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
+    invalid_test["cluster"]["byod"]["type"] = "invalid"
+    assert validate_test(invalid_test, schema)
+
+    # Faulty BYOD and Python version match
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
+    invalid_test["cluster"]["byod"]["type"] = "gpu"
+    invalid_test["python"] = "3.11"
     assert validate_test(invalid_test, schema)
 
 

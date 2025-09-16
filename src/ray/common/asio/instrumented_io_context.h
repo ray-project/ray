@@ -15,12 +15,9 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <limits>
 #include <memory>
 #include <string>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/synchronization/mutex.h"
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
@@ -31,10 +28,16 @@ class instrumented_io_context : public boost::asio::io_context {
   /// Initializes the global stats struct after calling the base contructor.
   /// TODO(ekl) allow taking an externally defined event tracker.
   ///
-  /// \param enable_lag_probe If true, and if related Ray configs are set, schedule a
-  /// probe to measure the event loop lag. After a probe is done, it schedules another one
-  /// so a io_context.run() call will never return.
-  explicit instrumented_io_context(bool enable_lag_probe = false);
+  /// \param emit_metrics enables or disables metric emission on this io_context
+  /// \param running_on_single_thread hints to the underlying io_context if locking should
+  /// be enabled or not (that is, if running on multiple threads is true, then concurrency
+  /// controls will engage)
+  /// \param context_name optional name assigned to this io_context used for metric
+  /// emission
+  explicit instrumented_io_context(
+      bool emit_metrics = false,
+      bool running_on_single_thread = false,
+      std::optional<std::string> context_name = std::nullopt);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -43,7 +46,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
   /// \param delay_us Delay time before the handler will be executed.
-  void post(std::function<void()> handler, const std::string &name, int64_t delay_us = 0);
+  void post(std::function<void()> handler, std::string name, int64_t delay_us = 0);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -51,11 +54,13 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  void dispatch(std::function<void()> handler, const std::string &name);
+  void dispatch(std::function<void()> handler, std::string name);
 
   EventTracker &stats() const { return *event_stats_; };
 
  private:
   /// The event stats tracker to use to record asio handler stats to.
   std::shared_ptr<EventTracker> event_stats_;
+  bool emit_metrics_;
+  std::optional<std::string> context_name_;
 };

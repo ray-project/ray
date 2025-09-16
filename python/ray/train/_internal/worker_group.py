@@ -45,7 +45,7 @@ class WorkerMetadata:
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
         resource_ids: Map of accelerator resources
-        ("GPU", "neuron_cores", ..) to their IDs.
+            ("GPU", "neuron_cores", ..) to their IDs.
         pid: Process ID of this worker.
     """
 
@@ -269,6 +269,8 @@ class WorkerGroup:
                 worker. The order is the same as ``self.workers``.
 
         """
+        # TODO: Add a timeout in the case of a hang, particularly
+        # relevant when func is TorchConfig.on_shutdown
         return ray.get(self.execute_async(func, *args, **kwargs))
 
     def execute_single_async(

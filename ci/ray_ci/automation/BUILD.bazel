@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
     name = "automation",
@@ -107,8 +107,9 @@ py_library(
     ],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [
-        ci_require("requests"),
         "//ci/ray_ci:ray_ci_lib",
+        ci_require("docker"),
+        ci_require("requests"),
         ci_require("bazel-runfiles"),
     ],
 )
@@ -117,6 +118,9 @@ py_test(
     name = "test_docker_tags_lib",
     size = "small",
     srcs = ["test_docker_tags_lib.py"],
+    data = [
+        "@registry_x86_64//:file",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "ci_unit",
@@ -124,7 +128,6 @@ py_test(
     ],
     deps = [
         ci_require("pytest"),
-        ci_require("docker"),
         ":docker_tags_lib",
     ],
 )
@@ -199,6 +202,16 @@ py_binary(
 )
 
 py_binary(
+    name = "generate_index",
+    srcs = ["generate_index.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
     name = "check_nightly_ray_commit",
     srcs = ["check_nightly_ray_commit.py"],
     exec_compatible_with = ["//:hermetic_python"],
@@ -220,5 +233,16 @@ py_test(
     deps = [
         ci_require("pytest"),
         ":automation",
+    ],
+)
+
+py_binary(
+    name = "get_contributors",
+    srcs = ["get_contributors.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        ci_require("pygithub"),
+        ci_require("tqdm"),
     ],
 )

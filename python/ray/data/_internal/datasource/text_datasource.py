@@ -31,7 +31,7 @@ class TextDatasource(FileBasedDatasource):
 
         builder = DelegatingBlockBuilder()
 
-        lines = data.decode(self.encoding).split("\n")
+        lines = data.decode(self.encoding).splitlines()
         for line in lines:
             if self.drop_empty_lines and line.strip() == "":
                 continue

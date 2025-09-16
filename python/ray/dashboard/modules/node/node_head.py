@@ -2,10 +2,10 @@ import asyncio
 import json
 import logging
 import time
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Iterable, List, Dict, Any, Optional, Set
+from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Set
 
 import aiohttp.web
 import grpc
@@ -13,17 +13,19 @@ import grpc
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private import ray_constants
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_pubsub import GcsAioActorSubscriber
+from ray._private import ray_constants
 from ray._private.collections_utils import split
-from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
+from ray._private.gcs_pubsub import (
+    GcsAioActorSubscriber,
+    GcsAioNodeInfoSubscriber,
+    GcsAioResourceUsageSubscriber,
+)
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
     env_integer,
 )
-from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
@@ -31,16 +33,15 @@ from ray.autoscaler._private.util import (
 )
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.dashboard.consts import (
-    GCS_RPC_TIMEOUT_SECONDS,
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_RPC_TIMEOUT_SECONDS,
 )
+from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
-from ray.dashboard.modules.node import node_consts
-from ray.dashboard.modules.node import actor_consts
-from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def _actor_table_data_to_dict(message):
             "parentId",
             "jobId",
             "workerId",
-            "rayletId",
+            "nodeId",
             "callerId",
             "taskId",
             "parentTaskId",
@@ -114,6 +115,7 @@ def _actor_table_data_to_dict(message):
         "reprName",
         "placementGroupId",
         "callSite",
+        "labelSelector",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -134,7 +136,7 @@ def _actor_table_data_to_dict(message):
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
     light_message["requiredResources"] = dict(message.required_resources)
-
+    light_message["labelSelector"] = dict(message.label_selector)
     return light_message
 
 
@@ -150,6 +152,8 @@ class NodeHead(SubprocessModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        # The node ID of the current head node
+        self._registered_head_node_id = None
         # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
         self._dead_node_queue = deque()
 
@@ -193,7 +197,7 @@ class NodeHead(SubprocessModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.gcs_aio_client.get_all_node_info(timeout=None)
+        all_node_info = await self.gcs_client.async_get_all_node_info(timeout=None)
 
         def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
             return [_gcs_node_info_to_dict(m) for m in messages]
@@ -231,12 +235,24 @@ class NodeHead(SubprocessModule):
 
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]  # hex
-        if node["isHeadNode"] and not self._head_node_registration_time_s:
+        if (
+            node["isHeadNode"]
+            and node["state"] == "ALIVE"
+            and self._registered_head_node_id != node_id
+        ):
+            if self._registered_head_node_id is not None:
+                logger.warning(
+                    "A new head node has become ALIVE. New head node ID: %s, old head node ID: %s, internal states: %s",
+                    node_id,
+                    self._registered_head_node_id,
+                    self.get_internal_states(),
+                )
+            self._registered_head_node_id = node_id
             self._head_node_registration_time_s = time.time() - self._module_start_time
             # Put head node ID in the internal KV to be read by JobAgent.
             # TODO(architkulkarni): Remove once State API exposes which
             # node is the head node.
-            await self.gcs_aio_client.internal_kv_put(
+            await self.gcs_client.async_internal_kv_put(
                 ray_constants.KV_HEAD_NODE_ID_KEY,
                 node_id.encode(),
                 overwrite=True,
@@ -252,7 +268,7 @@ class NodeHead(SubprocessModule):
                 f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
             ]
             tasks = [
-                self.gcs_aio_client.internal_kv_del(
+                self.gcs_client.async_internal_kv_del(
                     key,
                     del_by_prefix=False,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -309,13 +325,13 @@ class NodeHead(SubprocessModule):
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
         if is_autoscaler_v2():
-            from ray.autoscaler.v2.sdk import ClusterStatusParser
             from ray.autoscaler.v2.schema import Stats
+            from ray.autoscaler.v2.sdk import ClusterStatusParser
 
             try:
                 # here we have a sync request
                 req_time = time.time()
-                cluster_status = await self.gcs_aio_client.get_cluster_status()
+                cluster_status = await self.gcs_client.async_get_cluster_status()
                 reply_time = time.time()
                 cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
                     cluster_status,
@@ -346,7 +362,7 @@ class NodeHead(SubprocessModule):
         # Legacy autoscaler status code.
         (status_string, error) = await asyncio.gather(
             *[
-                self.gcs_aio_client.internal_kv_get(
+                self.gcs_client.async_internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -560,7 +576,7 @@ class NodeHead(SubprocessModule):
                 # Update node actors and job actors.
                 node_actors = defaultdict(dict)
                 for actor_id_bytes, updated_actor_table in actor_dicts.items():
-                    node_id = updated_actor_table["address"]["rayletId"]
+                    node_id = updated_actor_table["address"]["nodeId"]
                     # Update only when node_id is not Nil.
                     if node_id != actor_consts.NIL_NODE_ID:
                         node_actors[node_id][actor_id_bytes] = updated_actor_table
@@ -637,7 +653,7 @@ class NodeHead(SubprocessModule):
             actor_table_data = actor
 
         actor_id = actor_table_data["actorId"]
-        node_id = actor_table_data["address"]["rayletId"]
+        node_id = actor_table_data["address"]["nodeId"]
 
         if actor_table_data["state"] == "DEAD":
             self._destroyed_actors_queue.append(actor_id)
@@ -651,7 +667,7 @@ class NodeHead(SubprocessModule):
             DataSource.node_actors[node_id] = node_actors
 
     async def _get_all_actors(self) -> Dict[str, dict]:
-        actors = await self.gcs_aio_client.get_all_actor_info(
+        actors = await self.gcs_client.async_get_all_actor_info(
             timeout=GCS_RPC_TIMEOUT_SECONDS
         )
 
@@ -672,7 +688,7 @@ class NodeHead(SubprocessModule):
                     actor_id = self._destroyed_actors_queue.popleft()
                     if actor_id in DataSource.actors:
                         actor = DataSource.actors.pop(actor_id)
-                        node_id = actor["address"].get("rayletId")
+                        node_id = actor["address"].get("nodeId")
                         if node_id and node_id != actor_consts.NIL_NODE_ID:
                             del DataSource.node_actors[node_id][actor_id]
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)

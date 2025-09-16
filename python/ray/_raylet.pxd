@@ -31,6 +31,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CLabelMatchExpressions,
+    CTensorTransport,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -109,8 +110,11 @@ cdef class ObjectRef(BaseID):
         # it up.
         c_bool in_core_worker
         c_string call_site_data
+        int tensor_transport_val
 
     cdef CObjectID native(self)
+
+    cdef CTensorTransport c_tensor_transport(self)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -125,7 +129,6 @@ cdef class CoreWorker:
         c_bool is_driver
         object async_thread
         object async_event_loop
-        object plasma_event_handler
         object job_config
         object current_runtime_env
         c_bool is_local_mode
@@ -137,15 +140,8 @@ cdef class CoreWorker:
         object _task_id_to_future_lock
         dict _task_id_to_future
         object event_loop_executor
+        object _gc_thread
 
-    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
-                            c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            c_bool created_by_worker,
-                            owner_address=*,
-                            c_bool inline_small_object=*,
-                            c_bool is_experimental_channel=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
             self, serialized_object,
@@ -161,6 +157,7 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             ref_generator_id=*, # CObjectID
+            CTensorTransport c_tensor_transport=*,
         )
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref)

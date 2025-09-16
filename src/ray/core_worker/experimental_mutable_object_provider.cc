@@ -23,12 +23,12 @@ namespace core {
 namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                                             RayletFactory factory,
+                                             RayletFactory raylet_client_factory,
                                              std::function<Status(void)> check_signals)
     : plasma_(plasma),
       object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(
           std::move(check_signals))),
-      raylet_client_factory_(std::move(std::move(factory))) {}
+      raylet_client_factory_(std::move(raylet_client_factory)) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
@@ -57,9 +57,8 @@ void MutableObjectProvider::RegisterWriterChannel(
     return;
   }
 
-  std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
-      remote_readers =
-          std::make_shared<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>();
+  std::shared_ptr<std::vector<std::shared_ptr<RayletClientInterface>>> remote_readers =
+      std::make_shared<std::vector<std::shared_ptr<RayletClientInterface>>>();
   // TODO(sang): Currently, these attributes are not cleaned up.
   // Start a thread that repeatedly listens for values on this object and then sends
   // them via RPC to the remote reader.
@@ -72,10 +71,9 @@ void MutableObjectProvider::RegisterWriterChannel(
 
   // Find remote readers.
   for (const auto &node_id : remote_reader_node_ids) {
-    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_context));
-    std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(node_id, *client_call_managers_.back());
-    RAY_CHECK(reader);
+    client_call_managers_.push_back(
+        std::make_unique<rpc::ClientCallManager>(io_context, /*record_stats=*/false));
+    std::shared_ptr<RayletClientInterface> reader = raylet_client_factory_(node_id);
     remote_readers->push_back(reader);
   }
 
@@ -131,7 +129,6 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
   size_t total_data_size = request.total_data_size();
   size_t total_metadata_size = request.total_metadata_size();
-  size_t total_size = total_data_size + total_metadata_size;
 
   uint64_t offset = request.offset();
   uint64_t chunk_size = request.chunk_size();
@@ -142,7 +139,7 @@ void MutableObjectProvider::HandlePushMutableObject(
 
     tmp_written_so_far = written_so_far_[writer_object_id];
     written_so_far_[writer_object_id] += chunk_size;
-    if (written_so_far_[writer_object_id] == total_size) {
+    if (written_so_far_[writer_object_id] == total_data_size) {
       written_so_far_.erase(written_so_far_.find(writer_object_id));
     }
   }
@@ -150,9 +147,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   std::shared_ptr<Buffer> object_backing_store;
   if (tmp_written_so_far == 0u) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
-    // we will not have until the last chunk is received (or until the two last chunks are
-    // received, if the metadata happens to span both). The metadata will end up being
-    // written along with the data as the chunks are written.
+    // we will not have until the last chunk is received.
     RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
                                                total_data_size,
                                                /*metadata=*/nullptr,
@@ -167,20 +162,14 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
   RAY_CHECK(object_backing_store);
 
-  // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
-  // above checks that the buffer size is large enough to hold both the data and the
-  // metadata.
-  size_t chunk_offset = 0;
-  for (absl::string_view cord_chunk : request.payload().Chunks()) {
-    memcpy(object_backing_store->Data() + offset + chunk_offset,
-           cord_chunk.data(),
-           cord_chunk.size());
-    chunk_offset += cord_chunk.size();
-  }
-
+  memcpy(object_backing_store->Data() + offset, request.data().data(), chunk_size);
   size_t total_written = tmp_written_so_far + chunk_size;
-  RAY_CHECK_LE(total_written, total_size);
-  if (total_written == total_size) {
+  RAY_CHECK_LE(total_written, total_data_size);
+  if (total_written == total_data_size) {
+    // Copy the metadata to the end of the object.
+    memcpy(object_backing_store->Data() + total_data_size,
+           request.metadata().data(),
+           total_metadata_size);
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
     reply->set_done(true);
@@ -226,7 +215,7 @@ Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &writer_object_id,
-    const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+    const std::shared_ptr<std::vector<std::shared_ptr<RayletClientInterface>>>
         &remote_readers) {
   // NOTE: There's only 1 PollWriterClosure at any time in a single thread.
   std::shared_ptr<RayObject> object;
@@ -251,10 +240,11 @@ void MutableObjectProvider::PollWriterClosure(
         object->GetData()->Size(),
         object->GetMetadata()->Size(),
         object->GetData()->Data(),
+        object->GetMetadata()->Data(),
         [this, &io_context, writer_object_id, remote_readers, num_replied](
-            const Status &status, const rpc::PushMutableObjectReply &reply) {
+            const Status &push_object_status, const rpc::PushMutableObjectReply &reply) {
           *num_replied += 1;
-          if (!status.ok()) {
+          if (!push_object_status.ok()) {
             RAY_LOG(ERROR)
                 << "Failed to transfer object to a remote node for an object id "
                 << writer_object_id << ". It can cause hang.";

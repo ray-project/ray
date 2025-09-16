@@ -10,6 +10,7 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
       IMAGE_TO: rllibbuild
       RAYCI_IS_GPU_BUILD: "false"
+    tags: cibase
 
   - name: rllibgpubuild
     wanda: ci/docker/rllib.build.wanda.yaml
@@ -18,6 +19,7 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
       IMAGE_TO: rllibgpubuild
       RAYCI_IS_GPU_BUILD: "true"
+    tags: cibase
 
   # tests
   - label: ":brain: rllib: algorithm, model and others"

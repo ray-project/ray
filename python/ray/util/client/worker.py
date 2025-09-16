@@ -66,9 +66,9 @@ MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
-DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.f7ins22n6nyl"  # noqa E501
+DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/too-fine-grained-tasks.html"  # noqa E501
 
-DESIGN_PATTERN_LARGE_OBJECTS_LINK = "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.1afmymq455wu"  # noqa E501
+DESIGN_PATTERN_LARGE_OBJECTS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/closure-capture-large-objects.html"  # noqa E501
 
 
 def backoff(timeout: int) -> int:
@@ -361,7 +361,7 @@ class Worker:
         from being replayed on the server side in the event that the client
         must retry a requsest.
         Args:
-            metadata - the gRPC metadata to append the IDs to
+            metadata: the gRPC metadata to append the IDs to
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
@@ -899,7 +899,7 @@ def make_client_id() -> str:
 def decode_exception(e: grpc.RpcError) -> Exception:
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
-        # error is serialized into the the exception details. If the code
+        # error is serialized into the exception details. If the code
         # isn't ABORTED, then return the original error since there's no
         # serialized error to decode.
         # See server.py::return_exception_in_context for details

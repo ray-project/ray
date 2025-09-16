@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 import unittest
@@ -5,8 +6,7 @@ from unittest import mock
 
 import pytest
 
-from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
-from ray.autoscaler._private.aws.node_provider import TAG_BATCH_DELAY
+from ray.autoscaler._private.aws.node_provider import TAG_BATCH_DELAY, AWSNodeProvider
 
 
 def mock_create_tags(provider, batch_updates):
@@ -65,6 +65,4 @@ class TagBatchTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

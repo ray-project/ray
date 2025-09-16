@@ -1,12 +1,19 @@
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock
+
 from ray.llm._internal.batch.stages.chat_template_stage import ChatTemplateUDF
 
 
 @pytest.fixture
 def mock_tokenizer_setup():
+    # As of writing, the test environment does not have TYPE_CHECKING, which
+    # triggers lazy module import in transformers/__init__.py. This means the
+    # mocking may not work without explicitly importing AutoProcessor, hence
+    # the following import.
+    from transformers import AutoProcessor  # noqa: F401
+
     with patch("transformers.AutoProcessor") as mock_auto_processor:
         mock_processor = MagicMock()
         mock_auto_processor.from_pretrained.return_value = mock_processor
@@ -36,10 +43,10 @@ async def test_chat_template_udf_basic(mock_tokenizer_setup):
 
     results = []
     async for result in udf(batch):
-        results.append(result)
+        results.extend(result["__data"])
 
     assert len(results) == 1
-    assert results[0]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
+    assert results[0]["prompt"] == "<chat>Hello AI</chat>"
     mock_tokenizer.apply_chat_template.assert_called_once()
 
 
@@ -76,9 +83,9 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
     async for result in udf(batch):
         results.append(result)
 
-    assert len(results) == 2
+    assert len(results) == 1
     assert results[0]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
-    assert results[1]["__data"][0]["prompt"] == "<chat>How are you?</chat>"
+    assert results[0]["__data"][1]["prompt"] == "<chat>How are you?</chat>"
     assert mock_tokenizer.apply_chat_template.call_count == 2
 
 
@@ -116,14 +123,12 @@ async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
 
     results = []
     async for result in udf(batch):
-        results.append(result)
+        results.extend(result["__data"])
 
     assert len(results) == 2
     assert mock_tokenizer.apply_chat_template.call_count == 2
-    assert (
-        results[0]["__data"][0]["prompt"] == "<chat>Hello AI<assistant><think>\n</chat>"
-    )
-    assert results[1]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
+    assert results[0]["prompt"] == "<chat>Hello AI<assistant><think>\n</chat>"
+    assert results[1]["prompt"] == "<chat>Hello AI</chat>"
     # check if kwargs were set properly
     call_args_list = mock_tokenizer.apply_chat_template.call_args_list
     args1, kwargs1 = call_args_list[0]

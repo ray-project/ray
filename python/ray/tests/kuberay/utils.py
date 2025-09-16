@@ -4,14 +4,14 @@ For consistency, all K8s interactions use kubectl through subprocess calls.
 import atexit
 import contextlib
 import logging
+import os
 import pathlib
 import subprocess
 import tempfile
 import time
 from typing import Any, Dict, Generator, List, Optional
-import yaml
-import os
 
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,6 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
     Raise an exception after exceeding `tries` attempts with `backoff_s` second waits.
     """
     for i in range(tries):
-
         cur_num_pods = _get_num_pods(namespace)
         if cur_num_pods == goal_num_pods:
             logger.info(f"Confirmed {goal_num_pods} pod(s) in namespace {namespace}.")
@@ -387,7 +386,7 @@ def _kubectl_port_forward(
         namespace: Namespace to which the service belongs.
         target_port: The port targeted by the service.
         local_port: Forward from this port. Optional. By default, uses the port exposed
-        by the service.
+            by the service.
 
     Yields:
         The local port. The service can then be accessed at 127.0.0.1:<local_port>.

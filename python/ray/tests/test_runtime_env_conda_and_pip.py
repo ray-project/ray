@@ -1,28 +1,28 @@
 import os
-import pytest
-import sys
 import platform
-import time
-from ray._private.test_utils import (
-    wait_for_condition,
-    chdir,
-    check_local_files_gced,
-    generate_runtime_env_dict,
-)
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+import yaml
+
+import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
 from ray._private.runtime_env.dependency_utils import (
     INTERNAL_PIP_FILENAME,
     MAX_INTERNAL_PIP_FILENAME_TRIES,
 )
+from ray._private.test_utils import (
+    chdir,
+    check_local_files_gced,
+    generate_runtime_env_dict,
+)
 from ray.runtime_env import RuntimeEnv
-
-import yaml
-import tempfile
-from pathlib import Path
-import subprocess
-
-import ray
+from ray.util.state import list_tasks
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -116,7 +116,7 @@ class TestGC:
         reason="Needs PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_job_level_gc(
         self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
     ):
@@ -139,10 +139,12 @@ class TestGC:
 
         # Ensure that the runtime env has been installed.
         assert ray.get(f.remote())
-        # Sleep some seconds before checking that we didn't GC. Otherwise this
-        # check may spuriously pass.
-        time.sleep(2)
-        assert not check_local_files_gced(cluster)
+
+        # Check that after the task is finished, the runtime_env is not GC'd
+        # because the job is still alive.
+        wait_for_condition(lambda: list_tasks()[0].state == "FINISHED")
+        for _ in range(5):
+            assert not check_local_files_gced(cluster)
 
         ray.shutdown()
 
@@ -163,7 +165,7 @@ class TestGC:
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
+    @pytest.mark.parametrize("spec_format", ["python_object"])
     def test_detached_actor_gc(
         self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
     ):
@@ -202,9 +204,6 @@ class TestGC:
 
 
 def test_import_in_subprocess(shutdown_only):
-
-    ray.init()
-
     @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
     def f():
         return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
@@ -333,6 +332,10 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
     assert ray.get(test_import.remote()) == "pip_install_test"
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
     cluster, address = start_cluster
 
@@ -367,8 +370,25 @@ def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
     assert ray.get(test_import.remote()) == "pip_install_test"
 
 
+def test_pip_install_options(shutdown_only):
+    # Test that this successfully builds a ray runtime environment using pip_install_options
+    @ray.remote(
+        runtime_env={
+            "pip": {
+                "packages": ["pip-install-test==0.5"],
+                "pip_install_options": [
+                    "--no-cache-dir",
+                    "--no-build-isolation",
+                    "--disable-pip-version-check",
+                ],
+            }
+        }
+    )
+    def f():
+        return True
+
+    assert ray.get(f.remote())
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

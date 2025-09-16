@@ -33,7 +33,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         # changed.
         self._dashboard_http_address = None
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
-        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self._gcs_client = dashboard_agent.gcs_client
         # Total number of event created from this agent.
         self.total_event_reported = 0
         # Total number of event report request sent.
@@ -56,7 +56,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
             if self._dashboard_http_address:
                 return self._dashboard_http_address
             try:
-                dashboard_http_address = await self._gcs_aio_client.internal_kv_get(
+                dashboard_http_address = await self._gcs_client.async_internal_kv_get(
                     ray_constants.DASHBOARD_ADDRESS.encode(),
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
                     timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,

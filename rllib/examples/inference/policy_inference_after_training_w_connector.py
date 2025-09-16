@@ -18,11 +18,14 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --stop-reward=200.0`
+`python [script file name].py --stop-reward=200.0`
 
+Use the `--use-onnx-for-inference` option to perform action computations after training
+through an ONNX runtime session.
 Use the `--explore-during-inference` option to switch on exploratory behavior
 during inference. Normally, you should not explore during inference, though,
-unless your environment has a stochastic optimal solution.
+unless your environment has a stochastic optimal solution. Note also that this option
+doesn't work in combination with the `--use-onnx-for-inference` option.
 Use the `--num-episodes-during-inference=[int]` option to set the number of
 episodes to run through during the inference phase using the restored RLModule.
 
@@ -83,6 +86,8 @@ Done performing action inference through 10 Episodes
 """
 import os
 
+import tree  # pip install dm_tree
+
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
 from ray.rllib.core import (
@@ -121,14 +126,11 @@ register_env("stateless-cart", _env_creator)
 
 
 parser = add_rllib_example_script_args(default_reward=200.0)
-parser.set_defaults(
-    # Script only runs on new API stack.
-    enable_new_api_stack=True,
-    # Make sure that - by default - we produce checkpoints during training.
-    checkpoint_freq=1,
-    checkpoint_at_end=True,
-    # Use StatelessCartPole by default.
-    env="stateless-cart",
+parser.add_argument(
+    "--use-onnx-for-inference",
+    action="store_true",
+    help="Whether to convert the loaded module to ONNX format and then perform "
+    "inference through this ONNX model.",
 )
 parser.add_argument(
     "--explore-during-inference",
@@ -142,10 +144,26 @@ parser.add_argument(
     default=10,
     help="Number of episodes to do inference over (after restoring from a checkpoint).",
 )
+parser.set_defaults(
+    # Make sure that - by default - we produce checkpoints during training.
+    checkpoint_freq=1,
+    checkpoint_at_end=True,
+    # Use StatelessCartPole by default.
+    env="stateless-cart",
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if args.use_onnx_for_inference:
+        if args.explore_during_inference:
+            raise ValueError(
+                "Can't set `--explore-during-inference` and `--use-onnx-for-inference` "
+                "together! ONNX models use the original RLModule's `forward_inference` "
+                "only."
+            )
+        import onnxruntime
 
     base_config = (
         get_trainable_cls(args.algo)
@@ -185,6 +203,10 @@ if __name__ == "__main__":
             COMPONENT_ENV_TO_MODULE_CONNECTOR,
         )
     )
+    # For ONNX, we remove the NumpyToTensor connector piece from the pipeline,
+    # because ONNX operates only on numpy arrays.
+    if args.use_onnx_for_inference:
+        env_to_module.remove("NumpyToTensor")
     print(" ok")
 
     print("Restore RLModule from checkpoint ...", end="")
@@ -198,6 +220,7 @@ if __name__ == "__main__":
             DEFAULT_MODULE_ID,
         )
     )
+    ort_session = None
     print(" ok")
 
     # For the module-to-env pipeline, we will use the convenient config utility.
@@ -230,10 +253,44 @@ if __name__ == "__main__":
             explore=args.explore_during_inference,
             shared_data=shared_data,
         )
-        # No exploration.
-        if not args.explore_during_inference:
+
+        # If ONNX and module has not been exported yet, do this here using
+        # the input_dict as example input.
+        if args.use_onnx_for_inference and ort_session is None:
+            tensor_input_dict = tree.map_structure(
+                lambda s: torch.from_numpy(s), input_dict
+            )
+            torch.onnx.export(rl_module, {"batch": tensor_input_dict}, f="test.onnx")
+            ort_session = onnxruntime.InferenceSession(
+                "test.onnx", providers=["CPUExecutionProvider"]
+            )
+
+        # No exploration (using ONNX).
+        if ort_session is not None:
+            rl_module_out = ort_session.run(
+                None,
+                {
+                    key.name: val
+                    for key, val in dict(
+                        zip(
+                            tree.flatten(ort_session.get_inputs()),
+                            tree.flatten(input_dict),
+                        )
+                    ).items()
+                },
+            )
+            # [0] and [1]: LSTM states; [2]=encoder outs; [3]=action logits
+            rl_module_out = {
+                Columns.STATE_OUT: {
+                    "h": torch.from_numpy(rl_module_out[0]),
+                    "c": torch.from_numpy(rl_module_out[1]),
+                },
+                Columns.ACTION_DIST_INPUTS: torch.from_numpy(rl_module_out[3]),
+            }
+        # No exploration (using RLModule).
+        elif not args.explore_during_inference:
             rl_module_out = rl_module.forward_inference(input_dict)
-        # Using exploration.
+        # W/ exploration (using RLModule).
         else:
             rl_module_out = rl_module.forward_exploration(input_dict)
 

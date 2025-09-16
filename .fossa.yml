@@ -1,0 +1,19 @@
+version: 3
+
+paths:
+  only:
+    - ./bazel
+    - ./ci
+    - ./cpp
+    - ./docker
+    - ./java
+    - ./python
+    - ./rllib
+    - ./scripts
+    - ./src
+    - ./thirdparty
+    - ./BUILD.bazel
+    - ./LICENSE
+    - ./SECURITY.md
+    - ./WORKSPACE
+    - ./pyproject.toml

@@ -1,10 +1,12 @@
-import logging
 import importlib
+import logging
+import sys
 from unittest import mock
 
 import pytest
+
 import ray
-from ray.widgets.util import repr_with_fallback, _can_display_ipywidgets
+from ray.widgets.util import _can_display_ipywidgets, repr_with_fallback
 
 
 @pytest.fixture
@@ -181,6 +183,4 @@ def test_can_display_ipywidgets(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

@@ -13,8 +13,8 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
     get_export_event_logger,
 )
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
+from ray._raylet import GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
@@ -66,6 +66,28 @@ class JobStatus(str, Enum):
         return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
+@PublicAPI(stability="stable")
+class JobErrorType(str, Enum):
+    """An enumeration for describing the error type of a job."""
+
+    # Runtime environment failed to be set up
+    RUNTIME_ENV_SETUP_FAILURE = "RUNTIME_ENV_SETUP_FAILURE"
+    # Job supervisor actor launched, but job failed to start within timeout
+    JOB_SUPERVISOR_ACTOR_START_TIMEOUT = "JOB_SUPERVISOR_ACTOR_START_TIMEOUT"
+    # Job supervisor actor failed to start
+    JOB_SUPERVISOR_ACTOR_START_FAILURE = "JOB_SUPERVISOR_ACTOR_START_FAILURE"
+    # Job supervisor actor failed to be scheduled
+    JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE = "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
+    # Job supervisor actor failed for unknown exception
+    JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE = "JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE"
+    # Job supervisor actor died
+    JOB_SUPERVISOR_ACTOR_DIED = "JOB_SUPERVISOR_ACTOR_DIED"
+    # Job driver script failed to start due to exception
+    JOB_ENTRYPOINT_COMMAND_START_ERROR = "JOB_ENTRYPOINT_COMMAND_START_ERROR"
+    # Job driver script failed due to non-zero exit code
+    JOB_ENTRYPOINT_COMMAND_ERROR = "JOB_ENTRYPOINT_COMMAND_ERROR"
+
+
 # TODO(aguo): Convert to pydantic model
 @PublicAPI(stability="stable")
 @dataclass
@@ -81,9 +103,8 @@ class JobInfo:
     entrypoint: str
     #: A message describing the status in more detail.
     message: Optional[str] = None
-    # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     #: Internal error, user script error
-    error_type: Optional[str] = None
+    error_type: Optional[JobErrorType] = None
     #: The time when the job was started.  A Unix timestamp in ms.
     start_time: Optional[int] = None
     #: The time when the job moved into a terminal state.  A Unix timestamp in ms.
@@ -157,6 +178,9 @@ class JobInfo:
 
         # Convert enum values to strings.
         json_dict["status"] = str(json_dict["status"])
+        json_dict["error_type"] = (
+            json_dict["error_type"].value if json_dict.get("error_type") else None
+        )
 
         # Convert runtime_env to a JSON-serialized string.
         if "runtime_env" in json_dict:
@@ -181,6 +205,11 @@ class JobInfo:
         """
         # Convert enum values to enum objects.
         json_dict["status"] = JobStatus(json_dict["status"])
+        json_dict["error_type"] = (
+            JobErrorType(json_dict["error_type"])
+            if json_dict.get("error_type")
+            else None
+        )
 
         # Convert runtime_env from a JSON-serialized string to a dictionary.
         if "runtime_env_json" in json_dict:
@@ -203,7 +232,7 @@ class JobInfoStorageClient:
 
     def __init__(
         self,
-        gcs_aio_client: GcsAioClient,
+        gcs_client: GcsClient,
         export_event_log_dir_root: Optional[str] = None,
     ):
         """
@@ -213,7 +242,7 @@ class JobInfoStorageClient:
         export_event_log_dir_root doesn't need to be passed if the caller
         is not modifying data in the KV store.
         """
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         self._export_submission_job_event_logger: logging.Logger = None
         try:
             if (
@@ -231,7 +260,11 @@ class JobInfoStorageClient:
             )
 
     async def put_info(
-        self, job_id: str, job_info: JobInfo, overwrite: bool = True
+        self,
+        job_id: str,
+        job_info: JobInfo,
+        overwrite: bool = True,
+        timeout: Optional[int] = 30,
     ) -> bool:
         """Put job info to the internal kv store.
 
@@ -239,15 +272,17 @@ class JobInfoStorageClient:
             job_id: The job id.
             job_info: The job info.
             overwrite: Whether to overwrite the existing job info.
+            timeout: The timeout in seconds for the GCS operation.
 
         Returns:
             True if a new key is added.
         """
-        added_num = await self._gcs_aio_client.internal_kv_put(
+        added_num = await self._gcs_client.async_internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             json.dumps(job_info.to_json()).encode(),
             overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
         if added_num == 1 or overwrite:
             # Write export event if data was updated in the KV store
@@ -298,7 +333,7 @@ class JobInfoStorageClient:
         self._export_submission_job_event_logger.send_event(submission_event_data)
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
-        serialized_info = await self._gcs_aio_client.internal_kv_get(
+        serialized_info = await self._gcs_client.async_internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
             timeout=timeout,
@@ -309,7 +344,7 @@ class JobInfoStorageClient:
             return JobInfo.from_json(json.loads(serialized_info))
 
     async def delete_info(self, job_id: str, timeout: int = 30):
-        await self._gcs_aio_client.internal_kv_del(
+        await self._gcs_client.async_internal_kv_del(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             False,
             namespace=ray_constants.KV_NAMESPACE_JOB,
@@ -322,16 +357,21 @@ class JobInfoStorageClient:
         status: JobStatus,
         message: Optional[str] = None,
         driver_exit_code: Optional[int] = None,
+        error_type: Optional[JobErrorType] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
+        timeout: Optional[int] = 30,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
-        old_info = await self.get_info(job_id)
+        old_info = await self.get_info(job_id, timeout=timeout)
 
         if jobinfo_replace_kwargs is None:
             jobinfo_replace_kwargs = dict()
         jobinfo_replace_kwargs.update(
-            status=status, message=message, driver_exit_code=driver_exit_code
+            status=status,
+            message=message,
+            driver_exit_code=driver_exit_code,
+            error_type=error_type,
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
@@ -345,17 +385,17 @@ class JobInfoStorageClient:
         if status.is_terminal():
             new_info.end_time = int(time.time() * 1000)
 
-        await self.put_info(job_id, new_info)
+        await self.put_info(job_id, new_info, timeout=timeout)
 
-    async def get_status(self, job_id: str) -> Optional[JobStatus]:
-        job_info = await self.get_info(job_id)
+    async def get_status(self, job_id: str, timeout: int = 30) -> Optional[JobStatus]:
+        job_info = await self.get_info(job_id, timeout)
         if job_info is None:
             return None
         else:
             return job_info.status
 
     async def get_all_jobs(self, timeout: int = 30) -> Dict[str, JobInfo]:
-        raw_job_ids_with_prefixes = await self._gcs_aio_client.internal_kv_keys(
+        raw_job_ids_with_prefixes = await self._gcs_client.async_internal_kv_keys(
             self.JOB_DATA_KEY_PREFIX.encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
             timeout=timeout,

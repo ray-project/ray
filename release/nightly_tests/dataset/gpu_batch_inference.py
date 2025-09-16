@@ -1,12 +1,12 @@
-from typing import Dict
 import argparse
 import time
+from typing import Dict
 
 import numpy as np
 import torch
-from torchvision.models import resnet50, ResNet50_Weights
-
 from benchmark import Benchmark, BenchmarkMetric
+from torchvision.models import ResNet50_Weights, resnet50
+
 import ray
 from ray.data import ActorPoolStrategy
 
@@ -48,8 +48,13 @@ def main(args):
 
     print(f"Running GPU batch prediction with data from {data_url}")
 
+    # The preprocessing UDF converts images from uint8 to float64, which increases
+    # memory usage 8x. Each processed image is about 1.5 MiB (256×256×3×8 bytes). Since
+    # our target block size is 128 MiB, we set the batch size to around 90 images (128
+    # MiB / 1.5) to avoid running out of memory.
+    PREPROCESS_BATCH_SIZE = 90
     # Largest batch that can fit on a T4.
-    BATCH_SIZE = 900
+    INFERENCE_BATCH_SIZE = 900
 
     device = "cpu" if smoke_test else "cuda"
 
@@ -97,13 +102,12 @@ def main(args):
         compute = ActorPoolStrategy(size=4)
         num_gpus = 0
     else:
-        # Autoscale to use as many GPUs as possible.
-        compute = ActorPoolStrategy(min_size=1, max_size=None)
+        compute = ActorPoolStrategy(min_size=1, max_size=10)
         num_gpus = 1
-    ds = ds.map_batches(preprocess)
+    ds = ds.map_batches(preprocess, batch_size=PREPROCESS_BATCH_SIZE)
     ds = ds.map_batches(
         Predictor,
-        batch_size=BATCH_SIZE,
+        batch_size=INFERENCE_BATCH_SIZE,
         compute=compute,
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},

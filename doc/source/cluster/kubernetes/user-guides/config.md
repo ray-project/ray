@@ -128,30 +128,33 @@ Therefore, make sure to specify any sidecar containers
 in the `containers` list.
 
 #### resources
-It’s important to specify container CPU and memory requests and limits for
-each group spec. For GPU workloads, you may also wish to specify GPU
-limits. For example, set `nvidia.com/gpu:2` if using an Nvidia GPU device plugin
+
+It's important to specify container CPU and memory resources for each group spec. Since CPU is a
+[compressible resource], you may want to set only CPU requests and not limits to guarantee your
+workloads a minimum amount of CPU but [allow them to take advantage of unused CPU and not get
+throttled][1] if they use more than their requested CPU.
+
+For GPU workloads, you may also wish to specify GPU
+limits. For example, set `nvidia.com/gpu: 2` if using an NVIDIA GPU device plugin
 and you wish to specify a pod with access to 2 GPUs.
 See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 
+KubeRay automatically configures Ray to use the CPU, memory, and GPU **limits** in the Ray container
+config. These values are the logical resource capacities of Ray pods in the head or
+worker group. As of KubeRay 1.3.0, KubeRay uses the CPU request if the limit is absent.
+KubeRay rounds up CPU quantities to the nearest integer. You can override these resource capacities
+with {ref}`rayStartParams`. KubeRay ignores memory and GPU **requests**. So
+**set memory and GPU resource requests equal to their limits** when possible
+
 It's ideal to size each Ray pod to take up the
-entire Kubernetes node on which it is scheduled. In other words, it’s
+entire Kubernetes node. In other words, it's
 best to run one large Ray pod per Kubernetes node.
-In general, it is more efficient to use a few large Ray pods than many small ones.
+In general, it's more efficient to use a few large Ray pods than many small ones.
 The pattern of fewer large Ray pods has the following advantages:
+
 - more efficient use of each Ray pod's shared memory object store
 - reduced communication overhead between Ray pods
 - reduced redundancy of per-pod Ray control structures such as Raylets
-
-The CPU, GPU, and memory **limits** specified in the Ray container config
-will be automatically advertised to Ray. These values will be used as
-the logical resource capacities of Ray pods in the head or worker group.
-Note that CPU quantities will be rounded up to the nearest integer
-before being relayed to Ray.
-The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.
-
-On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
-For this reason, it is best when possible to **set resource requests equal to resource limits**.
 
 #### nodeSelector and tolerations
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and
@@ -191,7 +194,11 @@ See [KubeRay issue #587](https://github.com/ray-project/kuberay/pull/587) for mo
 ## Ray Start Parameters
 The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
 container’s `ray start` entrypoint. For the full list of arguments, refer to
-the documentation for {ref}`ray start <ray-start-doc>`. We make special note of the following arguments:
+the documentation for {ref}`ray start <ray-start-doc>`. The RayCluster Kubernetes custom resource
+Custom Resource Definition (CRD) in KubeRay versions before 1.4.0 required this field to exist, but the value could be
+an empty map. As of KubeRay 1.4.0, ``rayStartParams`` is optional.
+
+Note the following arguments:
 
 ### dashboard-host
 For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.
@@ -299,4 +306,5 @@ rayStartParams:
   ...
 ```
 
-[IngressDoc]: kuberay-ingress
+[compressible resource]: https://kubernetes.io/blog/2021/11/26/qos-memory-resources/#:~:text=CPU%20is%20considered%20a%20%22compressible%22%20resource.%20If%20your%20app%20starts%20hitting%20your%20CPU%20limits%2C%20Kubernetes%20starts%20throttling%20your%20container%2C%20giving%20your%20app%20potentially%20worse%20performance.%20However%2C%20it%20won%E2%80%99t%20be%20terminated.%20That%20is%20what%20%22compressible%22%20means
+[1]: https://home.robusta.dev/blog/stop-using-cpu-limits

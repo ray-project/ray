@@ -63,10 +63,10 @@ These are the environment variables Ray Tune currently considers:
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
-* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
+* **TUNE_WARN_INSUFFICIENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
   the warning message is printed repeatedly every this amount of seconds. Defaults to 60 (seconds).
-* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning when the autoscaler is enabled and
+* **TUNE_WARN_INSUFFICIENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning when the autoscaler is enabled and
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
@@ -78,6 +78,10 @@ These are the environment variables Ray Tune currently considers:
   unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.
   Default is ``0``. While this retry counter is taking effect, per trial failure number will not be incremented, which
   is compared against ``max_failures``.
+* **TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE**:  If set to ``1``, only the metric defined by ``checkpoint_score_attribute``
+  will be stored with each ``Checkpoint``. As a result, ``Result.best_checkpoints`` will contain only this metric,
+  omitting others that would normally be included. This can significantly reduce memory usage, especially when many
+  checkpoints are stored or when metrics are large. Defaults to ``0`` (i.e., all metrics are stored).
 * **RAY_AIR_FULL_TRACEBACKS**: If set to 1, will print full tracebacks for training functions,
   including internal code paths. Otherwise, abbreviated tracebacks that only show user code
   are printed. Defaults to 0 (disabled).

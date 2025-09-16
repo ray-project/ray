@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Dict, List, Optional
 
-from ray._private.pydantic_compat import BaseModel, Field
+from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
 
@@ -27,10 +27,13 @@ class RunStatus(str, Enum):
     # ===== Terminal States ======
     # The Train run completed successfully.
     FINISHED = "FINISHED"
-    # The Train run failed due to an error in the training function.
+    # The Train run failed due to an error in the training workers.
     ERRORED = "ERRORED"
     # The Train run was terminated due to system or controller errors.
     ABORTED = "ABORTED"
+
+    def is_terminal(self) -> bool:
+        return self in [RunStatus.FINISHED, RunStatus.ERRORED, RunStatus.ABORTED]
 
 
 @DeveloperAPI
@@ -46,10 +49,17 @@ class RunAttemptStatus(str, Enum):
     # ===== Terminal States =====
     # The run attempt completed successfully.
     FINISHED = "FINISHED"
-    # The run attempt failed due to an error in the training function.
+    # The run attempt failed due to an error in the training workers.
     ERRORED = "ERRORED"
     # The run attempt was terminated due to system or controller errors.
     ABORTED = "ABORTED"
+
+    def is_terminal(self) -> bool:
+        return self in [
+            RunAttemptStatus.FINISHED,
+            RunAttemptStatus.ERRORED,
+            RunAttemptStatus.ABORTED,
+        ]
 
 
 @DeveloperAPI
@@ -96,7 +106,7 @@ class TrainWorker(BaseModel):
     resources: TrainResources = Field(
         description="The resources allocated to this Train worker."
     )
-    log_file_path: str = Field(
+    log_file_path: Optional[str] = Field(
         description="The path to the log file for the Train worker."
     )
 
@@ -228,7 +238,7 @@ class TrainRun(BaseModel):
         description="The UNIX timestamp (in nanoseconds) when the Train run ended. "
         "If null, the run is still in progress."
     )
-    controller_log_file_path: str = Field(
+    controller_log_file_path: Optional[str] = Field(
         description="The path to the log file for the Train run controller."
     )
 

@@ -2,15 +2,15 @@ import subprocess
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 import yaml
 from fastapi import FastAPI
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
-from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
+from ray._common.test_utils import wait_for_condition
+from ray._common.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.test_utils import (
     check_apps_running,
@@ -280,7 +280,7 @@ def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     handle = serve.run(Caller.bind(Downstream.bind()))
 
     if call_in_deployment:
-        result = requests.get("http://localhost:8000").text
+        result = httpx.get("http://localhost:8000/").text
     else:
         result = handle.remote(call_downstream=False).result()
 
@@ -320,7 +320,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     handle = serve.run(Caller.bind(Downstream.bind()))
 
     if mode == "http":
-        result = requests.get("http://localhost:8000").text
+        result = httpx.get("http://localhost:8000/").text
     elif mode == "outside_deployment":
         result = ray.get(handle.get.remote()._to_object_ref_sync())
     else:
@@ -362,7 +362,7 @@ def test_multiplexed_detect(manage_ray_with_telemetry):
     check_telemetry(ServeUsageTag.MULTIPLEXED_API_USED, expected=None)
 
     headers = {SERVE_MULTIPLEXED_MODEL_ID: "1"}
-    resp = requests.get("http://localhost:8000/app", headers=headers)
+    resp = httpx.get("http://localhost:8000/app", headers=headers)
     assert resp.status_code == 200
 
     wait_for_condition(

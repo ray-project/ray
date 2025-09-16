@@ -94,6 +94,7 @@ class TestResult:
     timestamp: int
     pull_request: str
     rayci_step_id: str
+    duration_ms: Optional[float] = None
 
     @classmethod
     def from_result(cls, result: Result):
@@ -105,6 +106,7 @@ class TestResult:
             timestamp=int(time.time() * 1000),
             pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
             rayci_step_id=os.environ.get("RAYCI_STEP_ID", ""),
+            duration_ms=result.runtime,
         )
 
     @classmethod
@@ -117,6 +119,9 @@ class TestResult:
                 buildkite_url=(
                     f"{os.environ.get('BUILDKITE_BUILD_URL')}"
                     f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+                runtime=cls._to_float_or_none(
+                    event["testResult"].get("testAttemptDurationMillis")
                 ),
             )
         )
@@ -131,7 +136,15 @@ class TestResult:
             timestamp=result["timestamp"],
             pull_request=result.get("pull_request", ""),
             rayci_step_id=result.get("rayci_step_id", ""),
+            duration_ms=result.get("duration_ms"),
         )
+
+    @classmethod
+    def _to_float_or_none(cls, s: str) -> Optional[float]:
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
 
     def is_failing(self) -> bool:
         return not self.is_passing()
@@ -369,6 +382,12 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
+    def is_kuberay(self) -> bool:
+        """
+        Returns whether this test is running on KubeRay.
+        """
+        return self.get("env") == "kuberay"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -512,7 +531,7 @@ class Test(dict):
         """
         return self.get("python", ".".join(str(v) for v in DEFAULT_PYTHON_VERSION))
 
-    def get_byod_base_image_tag(self) -> str:
+    def get_byod_base_image_tag(self, build_id: Optional[str] = None) -> str:
         """
         Returns the byod image tag to use for this test.
         """
@@ -522,34 +541,22 @@ class Test(dict):
             # TODO(can): this is a temporary backdoor that should be removed
             # once civ2 is fully rolled out.
             return byod_image_tag
-        commit = os.environ.get(
-            "COMMIT_TO_TEST",
-            os.environ["BUILDKITE_COMMIT"],
-        )
-        branch = os.environ.get(
-            "BRANCH_TO_TEST",
-            os.environ["BUILDKITE_BRANCH"],
-        )
-        pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        ray_version = commit[:6]
-        if pr != "false":
-            ray_version = f"pr-{pr}.{ray_version}"
-        elif branch.startswith("releases/"):
-            release_name = branch[len("releases/") :]
-            ray_version = f"{release_name}.{ray_version}"
-        python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}-{self.get_tag_suffix()}"
+        build_id = build_id or os.environ.get("RAYCI_BUILD_ID", "")
+        if not build_id:
+            raise ValueError("RAYCI_BUILD_ID is not set")
+        python_version = "py" + self.get_python_version().replace(".", "")
+        return f"{build_id}-{python_version}-{self.get_tag_suffix()}"
 
-    def get_byod_image_tag(self) -> str:
+    def get_byod_image_tag(self, build_id: Optional[str] = None) -> str:
         """
         Returns the byod custom image tag to use for this test.
         """
         if not self.require_custom_byod_image():
-            return self.get_byod_base_image_tag()
+            return self.get_byod_base_image_tag(build_id)
         custom_info = {
             "post_build_script": self.get_byod_post_build_script(),
         }
-        return f"{self.get_byod_base_image_tag()}-{dict_hash(custom_info)}"
+        return f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
 
     def use_byod_ml_image(self) -> bool:
         """Returns whether to use the ML image for this test."""
@@ -572,7 +579,7 @@ class Test(dict):
         """
         Returns the anyscale byod ecr to use for this test.
         """
-        if self.is_gce():
+        if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:
@@ -598,13 +605,13 @@ class Test(dict):
         tag = self.get_byod_base_image_tag()
         return f"{ecr}/{repo_name}:{tag}"
 
-    def get_anyscale_base_byod_image(self) -> str:
+    def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
         """
         return (
             f"{self.get_byod_ecr()}/"
-            f"{self.get_byod_repo()}:{self.get_byod_base_image_tag()}"
+            f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
         )
 
     def require_custom_byod_image(self) -> bool:
@@ -613,13 +620,13 @@ class Test(dict):
         """
         return self.get_byod_post_build_script() is not None
 
-    def get_anyscale_byod_image(self) -> str:
+    def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
         """
         return (
             f"{self.get_byod_ecr()}/"
-            f"{self.get_byod_repo()}:{self.get_byod_image_tag()}"
+            f"{self.get_byod_repo()}:{self.get_byod_image_tag(build_id)}"
         )
 
     def get_test_results(

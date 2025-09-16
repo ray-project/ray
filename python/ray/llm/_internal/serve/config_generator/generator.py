@@ -4,8 +4,6 @@ from typing import Any, Dict
 
 import yaml
 
-from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import DEFAULT_TARGET_ONGOING_REQUESTS
 from ray.llm._internal.serve.config_generator.utils.constants import TEMPLATE_DIR
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionModelConfig,
@@ -16,6 +14,8 @@ from ray.llm._internal.serve.config_generator.utils.overrides import (
 from ray.llm._internal.serve.config_generator.utils.text_completion import (
     populate_text_completion_model_config,
 )
+from ray.serve._private.constants import DEFAULT_TARGET_ONGOING_REQUESTS
+from ray.serve.config import AutoscalingConfig
 
 
 def get_model_base_config(

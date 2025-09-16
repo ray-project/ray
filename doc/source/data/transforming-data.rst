@@ -14,9 +14,10 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Ordering of rows <ordering_of_rows>`
-* :ref:`Stateful transforms <stateful_transforms>`
-* :ref:`Groupby and transform groups <transforming_groupby>`
+* :ref:`Order rows <ordering_of_rows>`
+* :ref:`Perform stateful transformations <stateful_transforms>`
+* :ref:`Perform Aggregations <aggregations>`
+* :ref:`Transform groups <transforming_groupby>`
 
 .. _transforming_rows:
 
@@ -355,13 +356,14 @@ memory your function uses, and prevents Ray from scheduling too many tasks on a 
     # Tell Ray that the function uses 1 GiB of memory
     ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
 
+
 .. _transforming_groupby:
 
-Groupby and transforming groups
-===============================
+Group-by and transforming groups
+================================
 
-To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then, call
-:meth:`~ray.data.grouped_data.GroupedData.map_groups` to transform the groups.
+To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows based on provided ``key`` column values.
+Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a transformation on each group.
 
 .. tab-set::
 

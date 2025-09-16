@@ -1,4 +1,3 @@
-from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
-from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
+from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 
-__all__ = ["ReorderRandomizeBlocksRule", "OperatorFusionRule"]
+__all__ = ["FuseOperators"]

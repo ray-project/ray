@@ -14,6 +14,13 @@
 
 #include "ray/common/scheduling/scheduling_ids.h"
 
+#include <boost/algorithm/string.hpp>
+#include <string>
+#include <vector>
+
+#include "ray/common/ray_config.h"
+#include "ray/util/logging.h"
+
 namespace ray {
 
 int64_t StringIdMap::Get(const std::string &string_id) const {

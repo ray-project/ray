@@ -1,5 +1,5 @@
-from typing import Any, Optional
 from dataclasses import dataclass
+from typing import Any, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
@@ -10,11 +10,6 @@ from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, MAX_SAFE_ROWS_PER_BLOCK
 class OutputBlockSizeOption:
     target_max_block_size: Optional[int] = None
     target_num_rows_per_block: Optional[int] = None
-
-    def __post_init__(self) -> None:
-        assert (self.target_max_block_size is None) != (
-            self.target_num_rows_per_block is None
-        ), "Exactly one of target_max_block_size or target_num_rows_per_block must be set."
 
 
 class BlockOutputBuffer:
@@ -95,7 +90,7 @@ class BlockOutputBuffer:
                 self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
             )
 
-    def _exceeded_block_size_slice_limit(self, block: Block) -> bool:
+    def _exceeded_block_size_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max block size. We only do this if we are
         # more than 50% above the target block size, because this ensures that the last
         # block produced will be at least half the target block size.
@@ -106,7 +101,7 @@ class BlockOutputBuffer:
             * self._output_block_size_option.target_max_block_size
         )
 
-    def _exceeded_block_row_slice_limit(self, block: Block) -> bool:
+    def _exceeded_block_row_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max rows per block. We only do this if we
         # are more than 50% above the target rows per block, because this ensures that
         # the last block produced will be at least half the target row count.

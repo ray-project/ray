@@ -1,8 +1,8 @@
 # coding: utf-8
 import logging
 import os
-import sys
 import subprocess
+import sys
 
 import pytest
 
@@ -151,10 +151,4 @@ assert ray.is_initialized()
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

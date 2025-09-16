@@ -7,7 +7,7 @@ from ray.util.timer import _Timer
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.replay_buffers.replay_buffer import (
     _ALL_POLICIES,
@@ -72,7 +72,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         underlying_buffer_config: dict = None,
-        **kwargs
+        **kwargs,
     ):
         """Initializes a MultiAgentReplayBuffer instance.
 
@@ -242,7 +242,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             policy_id: ID of the policy that corresponds to the underlying
-            buffer
+                buffer
             batch: SampleBatch to add to the underlying buffer
             ``**kwargs``: Forward compatibility kwargs.
         """
@@ -304,7 +304,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         Args:
             num_items: Number of items to sample from a policy's buffer.
             policy_id: ID of the policy that created the experiences we sample. If
-            none is given, sample from all policies.
+                none is given, sample from all policies.
 
         Returns:
             Concatenated MultiAgentBatch of items.
@@ -337,8 +337,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Returns the stats of this buffer and all underlying buffers.
 
         Args:
-            debug: If True, stats of underlying replay buffers will
-            be fetched with debug=True.
+            debug: If True, stats of underlying replay buffers
+                are fetched with debug=True.
 
         Returns:
             stat: Dictionary of buffer stats.

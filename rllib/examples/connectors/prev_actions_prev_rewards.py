@@ -40,7 +40,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-frames=4 --env=ALE/Pong-v5`
+`python [script file name].py --num-frames=4 --env=ALE/Pong-v5`
 
 Use the `--num-frames` option to define the number of observations to framestack.
 If you don't want to use Connectors to perform the framestacking, set the
@@ -99,7 +99,6 @@ torch, nn = try_import_torch()
 parser = add_rllib_example_script_args(
     default_reward=200.0, default_timesteps=1000000, default_iters=2000
 )
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument("--n-prev-rewards", type=int, default=1)
 parser.add_argument("--n-prev-actions", type=int, default=1)
 
@@ -108,7 +107,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define our custom connector pipelines.
-    def _env_to_module(env):
+    def _env_to_module(env, spaces, device):
         # Create the env-to-module connector pipeline.
         return [
             PrevActionsPrevRewards(

@@ -29,7 +29,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_blocks_stats: List[BlockStats] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op, data_context, target_max_block_size=None)
+        super().__init__(self._name, input_op, data_context)
         if self._limit <= 0:
             self.mark_execution_finished()
 
@@ -77,6 +77,7 @@ class LimitOperator(OneToOneOperator):
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
             owns_blocks=refs.owns_blocks,
+            schema=refs.schema,
         )
         self._buffer.append(out_refs)
         self._metrics.on_output_queued(out_refs)

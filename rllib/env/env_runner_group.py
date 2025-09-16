@@ -37,7 +37,7 @@ from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     Deprecated,
     deprecation_warning,
     DEPRECATED_VALUE,
@@ -1003,6 +1003,7 @@ class EnvRunnerGroup:
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
+    @OldAPIStack
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
         """Calls `func` with all workers' sub-environments as args.
 
@@ -1026,6 +1027,7 @@ class EnvRunnerGroup:
             )
         )
 
+    @OldAPIStack
     def foreach_env_with_context(
         self, func: Callable[[BaseEnv, EnvContext], List[T]]
     ) -> List[List[T]]:
@@ -1240,7 +1242,7 @@ class EnvRunnerGroup:
             )
 
         def _create_new_policy_fn(worker):
-            # `foreach_env_runner` function: Adds the policy the the worker (and
+            # `foreach_env_runner` function: Adds the policy to the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(**new_policy_instance_kwargs)
 

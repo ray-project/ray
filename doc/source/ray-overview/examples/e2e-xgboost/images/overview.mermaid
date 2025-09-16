@@ -1,0 +1,28 @@
+flowchart LR
+    %% Nodes
+    A[("Training Dataset")]
+    subgraph XGBoost_Training["Ray Train + Ray Data"]
+        T["Train XGBoost Model"]
+    end
+    subgraph MLflow["MLFlow"]
+        M["Artifact Storage"]
+    end
+    subgraph Model_Validation["Ray Data"]
+        V["Validate Model"]
+    end
+    subgraph Model_Serving["Ray Serve"]
+        S["Serve Model"]
+    end
+
+    %% Flow Connections
+    A --> T
+    T --> M
+    M --> V
+    V --> S
+
+    %% Styling (optional)
+    style A fill:#BBDEFB,stroke:#333,stroke-width:2px
+    style T fill:#E1BEE7,stroke:#333,stroke-width:2px
+    style M fill:#FFE0B2,stroke:#333,stroke-width:2px
+    style V fill:#C8E6C9,stroke:#333,stroke-width:2px
+    style S fill:#FFECB3,stroke:#333,stroke-width:2px

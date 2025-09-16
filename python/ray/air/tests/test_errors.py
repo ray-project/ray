@@ -25,7 +25,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster
 from ray.core.generated import autoscaler_pb2

@@ -1,10 +1,13 @@
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
+)
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
@@ -14,7 +17,6 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.util.common import INT32_MAX
 
@@ -35,7 +37,7 @@ def generate_random_shuffle_fn(
     def fn(
         refs: List[RefBundle],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         num_input_blocks = sum(len(r.blocks) for r in refs)
 
         # If map_transformer is specified (e.g. from fusing
@@ -52,7 +54,7 @@ def generate_random_shuffle_fn(
             # overhead. This can be removed once dynamic block splitting is
             # supported for all-to-all ops.
             # See https://github.com/ray-project/ray/issues/40518.
-            map_transformer.set_target_max_block_size(float("inf"))
+            map_transformer.override_target_max_block_size(float("inf"))
 
             def upstream_map_fn(blocks):
                 return map_transformer.apply_transform(blocks, ctx)
@@ -62,7 +64,7 @@ def generate_random_shuffle_fn(
             ray_remote_args = ctx.upstream_map_ray_remote_args
 
         shuffle_spec = ShuffleTaskSpec(
-            ctx.target_max_block_size,
+            ctx.target_max_block_size_override,
             random_shuffle=True,
             random_seed=seed,
             upstream_map_fn=upstream_map_fn,

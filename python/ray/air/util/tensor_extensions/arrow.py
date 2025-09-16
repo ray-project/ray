@@ -1,35 +1,34 @@
 import abc
-from datetime import datetime
-
 import itertools
 import json
 import logging
 import sys
+from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
 
+import ray.cloudpickle as cloudpickle
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.util.tensor_extensions.utils import (
-    _is_ndarray_variable_shaped_tensor,
-    create_ragged_ndarray,
-    _should_convert_to_tensor,
     ArrayLike,
+    _is_ndarray_variable_shaped_tensor,
+    _should_convert_to_tensor,
+    create_ragged_ndarray,
 )
 from ray.data._internal.numpy_support import (
-    convert_to_numpy,
     _convert_datetime_to_np_datetime,
+    convert_to_numpy,
 )
-from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.common import INT32_MAX
 
 PYARROW_VERSION = get_pyarrow_version()
-# Minimum version of Arrow that supports ExtensionScalars.
-# TODO(Clark): Remove conditional definition once we only support Arrow 8.0.0+.
-MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
@@ -38,12 +37,37 @@ MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
-# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
-#       its offsets
-INT32_OVERFLOW_THRESHOLD = 2 * GiB
+
+class _SerializationFormat(Enum):
+    # JSON format is legacy and inefficient, only kept for backward compatibility
+    JSON = 0
+    CLOUDPICKLE = 1
+
+
+# Set the default serialization format for Arrow extension types.
+ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
+    _SerializationFormat.JSON  # legacy
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
+    else _SerializationFormat.CLOUDPICKLE  # default
+)
 
 
 logger = logging.getLogger(__name__)
+
+
+def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
+    """Deserialize data with cloudpickle first, fallback to JSON."""
+    try:
+        # Try cloudpickle first (new format)
+        return cloudpickle.loads(serialized)
+    except Exception:
+        # Fallback to JSON format (legacy)
+        try:
+            return json.loads(serialized)
+        except json.JSONDecodeError:
+            raise ValueError(
+                f"Unable to deserialize {field_name} from {type(serialized)}"
+            )
 
 
 @DeveloperAPI
@@ -57,17 +81,6 @@ class ArrowConversionError(Exception):
             data_str = data_str[: self.MAX_DATA_STR_LEN] + "..."
         message = f"Error converting data to Arrow: {data_str}"
         super().__init__(message)
-
-
-def _arrow_supports_extension_scalars():
-    """
-    Whether Arrow ExtensionScalars are supported in the current pyarrow version.
-
-    This returns True if the pyarrow version is 8.0.0+, or if the pyarrow version is
-    unknown.
-    """
-    # TODO(Clark): Remove utility once we only support Arrow 8.0.0+.
-    return PYARROW_VERSION is None or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR
 
 
 def _arrow_extension_scalars_are_subclassable():
@@ -339,7 +352,7 @@ def _infer_pyarrow_type(
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):
-            return len(obj) > INT32_OVERFLOW_THRESHOLD
+            return len(obj) > INT32_MAX
 
         return False
 
@@ -469,7 +482,14 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._shape).encode()
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
+            return cloudpickle.dumps(self._shape)
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
+            return json.dumps(self._shape).encode()
+        else:
+            raise ValueError(
+                f"Invalid serialization format: {ARROW_EXTENSION_SERIALIZATION_FORMAT}"
+            )
 
     def __arrow_ext_class__(self):
         """
@@ -489,20 +509,16 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             """
             return ArrowTensorScalar
 
-    if _arrow_supports_extension_scalars():
-        # TODO(Clark): Remove this version guard once we only support Arrow 8.0.0+.
-        def _extension_scalar_to_ndarray(
-            self, scalar: pa.ExtensionScalar
-        ) -> np.ndarray:
-            """
-            Convert an ExtensionScalar to a tensor element.
-            """
-            raw_values = scalar.value.values
-            shape = scalar.type.shape
-            value_type = raw_values.type
-            offset = raw_values.offset
-            data_buffer = raw_values.buffers()[1]
-            return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+    def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
+        """
+        Convert an ExtensionScalar to a tensor element.
+        """
+        raw_values = scalar.value.values
+        shape = scalar.type.shape
+        value_type = raw_values.type
+        offset = raw_values.offset
+        data_buffer = raw_values.buffers()[1]
+        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
     def __str__(self) -> str:
         return (
@@ -531,7 +547,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
 
         Args:
             array_types: List of tensor types to check if a variable-shaped
-            representation is required for concatenation
+                representation is required for concatenation
 
         Returns:
             True if concatenating arrays with types `array_types` requires
@@ -556,6 +572,9 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             shape = arr_type.shape
         return False
 
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._shape))
+
 
 @PublicAPI(stability="beta")
 class ArrowTensorType(_BaseFixedShapeArrowTensorType):
@@ -566,6 +585,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     """
 
     OFFSET_DTYPE = np.int32
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -580,7 +600,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -596,6 +616,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
     OFFSET_DTYPE = np.int64
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -610,7 +631,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -657,42 +678,20 @@ class _ArrowTensorScalarIndexingMixin:
             # support (see comment in __getitem__).
             return list(self)
 
-        if _arrow_supports_extension_scalars():
-            # NOTE(Clark): This __getitem__ override is only needed for Arrow 8.*,
-            # before ExtensionScalar subclassing support was added.
-            # TODO(Clark): Remove these methods once we only support Arrow 9.0.0+.
-            def __getitem__(self, key):
-                # This __getitem__ hook allows us to support proper indexing when
-                # accessing a single tensor (a "scalar" item of the array). Without this
-                # hook for integer keys, the indexing will fail on pyarrow < 9.0.0 due
-                # to a lack of ExtensionScalar subclassing support.
+        def __getitem__(self, key):
+            # This __getitem__ hook allows us to support proper indexing when
+            # accessing a single tensor (a "scalar" item of the array). Without this
+            # hook for integer keys, the indexing will fail on pyarrow < 9.0.0 due
+            # to a lack of ExtensionScalar subclassing support.
 
-                # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
-                # instead, which would obviate the need for overriding __iter__(), but
-                # unfortunately overriding Cython cdef methods with normal Python
-                # methods isn't allowed.
-                item = super().__getitem__(key)
-                if not isinstance(key, slice):
-                    item = item.type._extension_scalar_to_ndarray(item)
-                return item
-
-        else:
-            # NOTE(Clark): This __getitem__ override is only needed for Arrow < 8.0.0,
-            # before any ExtensionScalar support was added.
-            # TODO(Clark): Remove these methods once we only support Arrow 8.0.0+.
-            def __getitem__(self, key):
-                # This __getitem__ hook allows us to support proper indexing when
-                # accessing a single tensor (a "scalar" item of the array). Without this
-                # hook for integer keys, the indexing will fail on pyarrow < 8.0.0 due
-                # to a lack of ExtensionScalar support.
-
-                # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
-                # instead, which would obviate the need for overriding __iter__(), but
-                # unfortunately overriding Cython cdef methods with normal Python
-                # methods isn't allowed.
-                if isinstance(key, slice):
-                    return super().__getitem__(key)
-                return self._to_numpy(key)
+            # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
+            # instead, which would obviate the need for overriding __iter__(), but
+            # unfortunately overriding Cython cdef methods with normal Python
+            # methods isn't allowed.
+            item = super().__getitem__(key)
+            if not isinstance(key, slice):
+                item = item.type._extension_scalar_to_ndarray(item)
+            return item
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
@@ -948,6 +947,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         to_concat: Sequence[
             Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
         ],
+        ensure_copy: bool = False,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
         Concatenate multiple tensor arrays.
@@ -955,6 +955,10 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         If one or more of the tensor arrays in to_concat are variable-shaped and/or any
         of the tensor arrays have a different shape than the others, a variable-shaped
         tensor array will be returned.
+
+        Args:
+            to_concat: Tensor arrays to concat
+            ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
         """
         to_concat_types = [arr.type for arr in to_concat]
         if ArrowTensorType._need_variable_shaped_tensor_array(to_concat_types):
@@ -967,10 +971,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             return ArrowVariableShapedTensorArray.from_numpy(
                 [e for a in to_concat for e in a]
             )
+        elif not ensure_copy and len(to_concat) == 1:
+            # Skip copying
+            return to_concat[0]
         else:
             storage = pa.concat_arrays([c.storage for c in to_concat])
 
-            return ArrowTensorArray.from_storage(to_concat[0].type, storage)
+        return ArrowTensorArray.from_storage(to_concat[0].type, storage)
 
     @classmethod
     def _chunk_tensor_arrays(
@@ -1068,11 +1075,18 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._ndim).encode()
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
+            return cloudpickle.dumps(self._ndim)
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
+            return json.dumps(self._ndim).encode()
+        else:
+            raise ValueError(
+                f"Invalid serialization format: {ARROW_EXTENSION_SERIALIZATION_FORMAT}"
+            )
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        ndim = json.loads(serialized)
+        ndim = _deserialize_with_fallback(serialized, "ndim")
         dtype = storage_type["data"].type.value_type
         return cls(dtype, ndim)
 
@@ -1101,22 +1115,21 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     def __repr__(self) -> str:
         return str(self)
 
-    if _arrow_supports_extension_scalars():
-        # TODO(Clark): Remove this version guard once we only support Arrow 8.0.0+.
-        def _extension_scalar_to_ndarray(
-            self, scalar: pa.ExtensionScalar
-        ) -> np.ndarray:
-            """
-            Convert an ExtensionScalar to a tensor element.
-            """
-            data = scalar.value.get("data")
-            raw_values = data.values
+    def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
+        """
+        Convert an ExtensionScalar to a tensor element.
+        """
+        data = scalar.value.get("data")
+        raw_values = data.values
 
-            shape = tuple(scalar.value.get("shape").as_py())
-            value_type = raw_values.type
-            offset = raw_values.offset
-            data_buffer = raw_values.buffers()[1]
-            return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+        shape = tuple(scalar.value.get("shape").as_py())
+        value_type = raw_values.type
+        offset = raw_values.offset
+        data_buffer = raw_values.buffers()[1]
+        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._ndim))
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the

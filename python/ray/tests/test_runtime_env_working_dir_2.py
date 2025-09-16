@@ -1,23 +1,22 @@
 import os
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
+
+import ray
+from ray._private.runtime_env.packaging import (
+    GCS_STORAGE_MAX_SIZE,
+    get_uri_for_directory,
+    upload_package_if_needed,
+)
 from ray._private.test_utils import (
     chdir,
     run_string_as_driver,
 )
-
-
-import ray
-from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
-from ray.exceptions import RuntimeEnvSetupError
-from ray._private.runtime_env.packaging import (
-    get_uri_for_directory,
-    upload_package_if_needed,
-)
 from ray._private.utils import get_directory_size_bytes
+from ray.exceptions import RuntimeEnvSetupError
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -209,7 +208,4 @@ def test_file_created_before_1980(shutdown_only, tmp_working_dir):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
