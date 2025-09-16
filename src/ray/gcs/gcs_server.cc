@@ -329,7 +329,9 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
                                        gcs_table_storage_.get(),
                                        io_context_provider_.GetDefaultIOContext(),
                                        &raylet_client_pool_,
-                                       rpc_server_.GetClusterId());
+                                       rpc_server_.GetClusterId(),
+                                       *ray_event_recorder_,
+                                       config_.session_name);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(

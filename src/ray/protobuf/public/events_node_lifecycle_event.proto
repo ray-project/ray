@@ -16,7 +16,7 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-package ray.rpc;
+package ray.rpc.events;
 
 // Message containing the lifecycle information of a node, as observed via GCS.
 // It can be used to capture the full state transition history.
