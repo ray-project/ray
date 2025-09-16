@@ -51,14 +51,12 @@ def ray_tpu_multi_host(monkeypatch):
             resources={"TPU": 4},
         )
 
-        runtime_env = (
-            {
-                "pip": ["jax"],
-                "env_vars": {
-                    "JAX_PLATFORMS": "cpu",
-                },
+        runtime_env = {
+            "pip": ["jax"],
+            "env_vars": {
+                "JAX_PLATFORMS": "cpu",
             },
-        )
+        }
 
         ray.init(address=cluster.address, runtime_env=runtime_env)
 
