@@ -67,6 +67,7 @@ from ray.serve.generated.serve_pb2 import (
     EndpointSet,
 )
 from ray.serve.schema import (
+    APIType,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
@@ -921,11 +922,16 @@ class ServeController:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
 
-    def get_serve_instance_details(self) -> Dict:
+    def get_serve_instance_details(self, source: Optional[APIType] = None) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 
         The information includes application and deployment statuses, config options,
         error messages, etc.
+
+        Args:
+            source: If provided, returns application
+                statuses for applications matching this API type.
+                Defaults to None, which means all applications are returned.
 
         Returns:
             Dict that follows the format of the schema ServeInstanceDetails.
@@ -935,7 +941,7 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
-        app_statuses = self.application_state_manager.list_app_statuses()
+        app_statuses = self.application_state_manager.list_app_statuses(source=source)
 
         # If there are no app statuses, there's no point getting the app configs.
         # Moreover, there might be no app statuses because the GCS is down,
