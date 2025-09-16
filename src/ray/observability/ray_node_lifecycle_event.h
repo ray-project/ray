@@ -29,8 +29,10 @@ class RayNodeLifecycleEvent : public RayEvent<rpc::events::NodeLifecycleEvent> {
 
   std::string GetEntityId() const override;
 
+  bool IsFrequentStateChange(const rpc::events::NodeLifecycleEvent::State &state) const;
+
  protected:
-  void MergeData(RayEvent<rpc::events::NodeLifecycleEvent> &&other) override;
+  void MergeSortedData(RayEvent<rpc::events::NodeLifecycleEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() && override;
 };
 

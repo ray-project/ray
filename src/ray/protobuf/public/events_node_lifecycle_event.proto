@@ -24,12 +24,9 @@ package ray.rpc.events;
 // For static information associated with this event, see NodeDefinitionEvent.
 message NodeLifecycleEvent {
   enum State {
-    DEAD = 0;
-    STARTING = 1;
-    IDLE = 2;
-    ACTIVE = 3;
-    DRAINING = 4;
-    UNDEFINED = 5;
+    ALIVE = 0;
+    DEAD = 1;
+    DRAINING = 2;
   }
 
   message DeathInfo {
