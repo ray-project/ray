@@ -617,7 +617,9 @@ class TestLoraMirrorConfig:
     def test_valid_s3_config(self):
         """Test valid S3 LoRA config."""
         config = LoraMirrorConfig(
-            lora_model_id="test-model", bucket_uri="s3://my-bucket/lora-models"
+            lora_model_id="test-model",
+            bucket_uri="s3://my-bucket/lora-models",
+            max_total_tokens=1000,
         )
         assert config.lora_model_id == "test-model"
         assert config.bucket_uri == "s3://my-bucket/lora-models"
@@ -629,6 +631,7 @@ class TestLoraMirrorConfig:
         config = LoraMirrorConfig(
             lora_model_id="test-model",
             bucket_uri="abfss://container@account.dfs.core.windows.net/lora/models",
+            max_total_tokens=1000,
         )
         assert config.lora_model_id == "test-model"
         assert (
@@ -643,6 +646,7 @@ class TestLoraMirrorConfig:
         config = LoraMirrorConfig(
             lora_model_id="test-model",
             bucket_uri="azure://container@account.blob.core.windows.net/lora/models",
+            max_total_tokens=1000,
         )
         assert config.lora_model_id == "test-model"
         assert (
@@ -656,7 +660,9 @@ class TestLoraMirrorConfig:
         """Test bucket path parsing for different URI formats."""
         # S3 with multiple path segments
         config = LoraMirrorConfig(
-            lora_model_id="test", bucket_uri="s3://bucket/path/to/model"
+            lora_model_id="test",
+            bucket_uri="s3://bucket/path/to/model",
+            max_total_tokens=1000,
         )
         assert config.bucket_name == "bucket"
         assert config.bucket_path == "path/to/model"
@@ -665,6 +671,7 @@ class TestLoraMirrorConfig:
         config = LoraMirrorConfig(
             lora_model_id="test",
             bucket_uri="abfss://container@account.dfs.core.windows.net/deep/nested/path",
+            max_total_tokens=1000,
         )
         assert config.bucket_name == "container"
         assert config.bucket_path == "deep/nested/path"
@@ -674,7 +681,11 @@ class TestLoraMirrorConfig:
         with pytest.raises(
             ValueError, match='Got invalid value "file:///tmp" for bucket_uri'
         ):
-            LoraMirrorConfig(lora_model_id="test-model", bucket_uri="file:///tmp")
+            LoraMirrorConfig(
+                lora_model_id="test-model",
+                bucket_uri="file:///tmp",
+                max_total_tokens=1000,
+            )
 
     def test_optional_fields(self):
         """Test optional fields in LoRA config."""
