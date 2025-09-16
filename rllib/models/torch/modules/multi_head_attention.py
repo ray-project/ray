@@ -3,11 +3,10 @@
       Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
       https://arxiv.org/pdf/1706.03762.pdf
 """
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.framework import TensorType, try_import_torch
 from ray.rllib.utils.torch_utils import sequence_mask
-from ray.rllib.utils.framework import TensorType
 
 torch, nn = try_import_torch()
 

@@ -1,9 +1,10 @@
-from collections import defaultdict
 import logging
 import time
-import tree  # pip install dm_tree
+from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple, Union
+
 import numpy as np
+import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
@@ -17,7 +18,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_s
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import unbatch, get_original_space
+from ray.rllib.utils.spaces.space_utils import get_original_space, unbatch
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,

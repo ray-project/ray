@@ -1,9 +1,9 @@
-from typing import Any, List, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule

@@ -1,7 +1,7 @@
 import abc
-from dataclasses import dataclass, field
 import functools
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -14,7 +14,7 @@ from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
-    from ray.rllib.core.models.base import Model, Encoder
+    from ray.rllib.core.models.base import Encoder, Model
 
 
 @ExperimentalAPI

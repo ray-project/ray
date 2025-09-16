@@ -1,10 +1,11 @@
-from functools import partial
-from gymnasium.spaces import Box, Dict, Discrete, Tuple
-import numpy as np
 import unittest
+from functools import partial
+
+import numpy as np
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 
 import ray
-from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models import MODEL_DEFAULTS, ActionDistribution, ModelCatalog
 from ray.rllib.models.preprocessors import (
     Preprocessor,
     TupleFlatteningPreprocessor,
@@ -259,7 +260,8 @@ class TestModelCatalog(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

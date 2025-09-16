@@ -10,6 +10,7 @@ with a configured probability on each `step()` call for a certain amount of time
 """
 from gymnasium.wrappers import TimeLimit
 
+from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.metrics import (
@@ -18,8 +19,6 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-from ray import tune
-
 
 tune.register_env(
     "env",

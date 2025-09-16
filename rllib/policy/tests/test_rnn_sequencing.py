@@ -4,9 +4,9 @@ import numpy as np
 
 import ray
 from ray.rllib.policy.rnn_sequencing import (
-    pad_batch_to_sequences_of_same_size,
     add_time_dimension,
     chop_into_sequences,
+    pad_batch_to_sequences_of_same_size,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -207,7 +207,8 @@ class TestRNNSequencing(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

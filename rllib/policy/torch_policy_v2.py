@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import gymnasium as gym
 import numpy as np
-from packaging import version
 import tree  # pip install dm_tree
+from packaging import version
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -41,8 +41,8 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import (
-    convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
+    convert_to_torch_tensor,
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,

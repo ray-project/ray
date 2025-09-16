@@ -1,7 +1,6 @@
-from gymnasium.spaces import Box
 import numpy as np
-
 from gymnasium.envs.classic_control import PendulumEnv
+from gymnasium.spaces import Box
 
 
 class StatelessPendulum(PendulumEnv):

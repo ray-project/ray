@@ -41,6 +41,7 @@ Note that evaluation results (on the CartPole-v1 env) should be close to perfect
 from typing import Dict
 
 import numpy as np
+
 from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch

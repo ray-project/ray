@@ -1,12 +1,13 @@
 import logging
+from typing import Dict
+
 import gymnasium as gym
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.typing import SampleBatchType
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 

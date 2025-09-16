@@ -65,15 +65,14 @@ Training iteration 1 -> evaluation round 2
 """
 from typing import Tuple
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
-    EVALUATION_RESULTS,
     EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import (
@@ -82,7 +81,7 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls
-
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
     default_iters=50,

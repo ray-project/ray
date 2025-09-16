@@ -1,21 +1,21 @@
-import unittest
 import time
+import unittest
+
 import gymnasium as gym
+import numpy as np
 import torch
 
-import numpy as np
+import ray
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
     ImportanceSampling,
     WeightedImportanceSampling,
 )
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.test_utils import check
-
-import ray
 
 
 class FakePolicy(TorchPolicyV2):
@@ -215,7 +215,8 @@ class TestOPEMath(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

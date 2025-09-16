@@ -19,8 +19,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray._common.deprecation import Deprecated
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI

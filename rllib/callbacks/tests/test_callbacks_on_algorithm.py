@@ -4,8 +4,8 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.test_utils import check
 
@@ -108,7 +108,8 @@ class TestCallbacks(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

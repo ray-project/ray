@@ -1,24 +1,25 @@
-import gymnasium as gym
 from typing import Any, Dict
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import (
-    LOGPS_KEY,
-    QF_LOSS_KEY,
-    QF_MEAN_KEY,
-    QF_MAX_KEY,
-    QF_MIN_KEY,
-    QF_PREDS,
-    QF_TWIN_LOSS_KEY,
-    QF_TWIN_PREDS,
-    TD_ERROR_MEAN_KEY,
     ACTION_LOG_PROBS,
     ACTION_LOG_PROBS_NEXT,
     ACTION_PROBS,
     ACTION_PROBS_NEXT,
+    LOGPS_KEY,
+    QF_LOSS_KEY,
+    QF_MAX_KEY,
+    QF_MEAN_KEY,
+    QF_MIN_KEY,
+    QF_PREDS,
     QF_TARGET_NEXT,
+    QF_TWIN_LOSS_KEY,
+    QF_TWIN_PREDS,
+    TD_ERROR_MEAN_KEY,
     SACLearner,
 )
 from ray.rllib.core.columns import Columns

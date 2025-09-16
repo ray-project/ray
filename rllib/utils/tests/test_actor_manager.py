@@ -1,14 +1,14 @@
 import functools
 import os
-from pathlib import Path
 import pickle
 import sys
 import time
 import unittest
+from pathlib import Path
 
 import ray
-from ray.util.state import list_actors
 from ray.rllib.utils.actor_manager import FaultAwareApply, FaultTolerantActorManager
+from ray.util.state import list_actors
 
 
 def load_random_numbers():

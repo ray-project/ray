@@ -1,5 +1,6 @@
 import gymnasium as gym
 
+from ray import tune
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
@@ -12,7 +13,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 from ray.tune.schedulers.pb2 import PB2
-from ray import tune
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(env="ale_py:ALE/Pong-v5")

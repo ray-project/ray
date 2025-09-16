@@ -1,25 +1,24 @@
 import collections
-from functools import partial
 import itertools
 import sys
+from functools import partial
 from numbers import Number
-from typing import Dict, Iterator, Set, Union
-from typing import List, Optional
+from typing import Dict, Iterator, List, Optional, Set, Union
 
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
-from ray.rllib.utils.compression import pack, unpack, is_compressed
-from ray._common.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.compression import is_compressed, pack, unpack
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     ModuleID,
     PolicyID,
-    TensorType,
     SampleBatchType,
+    TensorType,
     ViewRequirementsDict,
 )
 from ray.util import log_once

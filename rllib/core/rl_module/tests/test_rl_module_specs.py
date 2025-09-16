@@ -3,18 +3,18 @@ import unittest
 import gymnasium as gym
 import numpy as np
 
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
     SHARED_ENCODER_ID,
     SharedEncoder,
-    VPGPolicyAfterSharedEncoder,
     VPGMultiRLModuleWithSharedEncoder,
+    VPGPolicyAfterSharedEncoder,
 )
-from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 
 
 class TestRLModuleSpecs(unittest.TestCase):
@@ -235,7 +235,8 @@ class TestRLModuleSpecs(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

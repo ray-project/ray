@@ -1,23 +1,24 @@
+from typing import Callable
+
 import gymnasium as gym
 import numpy as np
-from typing import Callable
 
 # TODO (simon): Store this function somewhere more central as many
 # algorithms will use it.
 from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
+from ray.rllib.core.distribution.distribution import Distribution
+from ray.rllib.core.distribution.torch.torch_distribution import (
+    TorchCategorical,
+    TorchSquashedGaussian,
+)
+from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
     FreeLogStdMLPHeadConfig,
     MLPEncoderConfig,
     MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.core.distribution.torch.torch_distribution import (
-    TorchSquashedGaussian,
-    TorchCategorical,
-)
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
-from ray.rllib.core.distribution.distribution import Distribution
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
 
 
 # TODO (simon): Check, if we can directly derive from DQNCatalog.

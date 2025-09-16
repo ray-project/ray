@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict, deque
-from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Type, Union
 
 import gymnasium as gym
 import numpy as np
@@ -8,7 +8,7 @@ import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
@@ -314,9 +314,9 @@ def get_tf_eager_cls_if_necessary(
             tf1.enable_eager_execution()
         assert tf1.executing_eagerly()
 
-        from ray.rllib.policy.tf_policy import TFPolicy
         from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
         from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+        from ray.rllib.policy.tf_policy import TFPolicy
 
         # Create eager-class (if not already one).
         if hasattr(orig_cls, "as_eager") and not issubclass(orig_cls, EagerTFPolicy):
