@@ -2,17 +2,15 @@
 
 # Asynchronous inference in Ray Serve
 
-This guide shows how to run long-running inference asynchronously in Ray Serve using background task processing. With async tasks, your HTTP APIs stay responsive while the system performs work in the background.
+This guide shows how to run long-running inference asynchronously in Ray Serve using background task processing. With asynchronous tasks, your HTTP APIs stay responsive while the system performs work in the background.
 
 ## Why asynchronous inference?
 
-Some inference workloads (such as video processing or large document indexing) take longer than typical HTTP timeouts. Asynchronous task processing lets you enqueue work to a background queue and immediately return, decoupling request lifetime from compute time while still leveraging Serve's scalability.
+Ray Serve customers need a way to handle long-running API requests asynchronously. Some inference workloads (such as video processing or large document indexing) take longer than typical HTTP timeouts, so when a user submits one of these requests the system should enqueue the work in a background queue for later processing and immediately return a quick response. This decouples request lifetime from compute time while the task executes asynchronously, while still leveraging Serve's scalability.
 
 ## Use cases
 
-- **Video inference**: Transcoding, detection, transcription over long videos.
-- **Document indexing**: Ingestion, parsing, vectorization of large files or batches.
-- **Any long-running ML task** where immediate results aren't required.
+Common use cases include video inference (such as transcoding, detection, and transcription over long videos) and document indexing pipelines that ingest, parse, and vectorize large files or batches. More broadly, any long-running AI/ML workload where immediate results aren't required benefits from running asynchronously.
 
 ## Key concepts
 
