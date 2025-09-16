@@ -7,6 +7,7 @@ Three examples show how to use ingress to access your Ray cluster:
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
   * [Manually setting up NGINX Ingress on Kind](kuberay-nginx)
+  * [Application Gateway for Containers (AGC) Gateway API support on AKS](kuberay-aks-agc)
 
 
 ```{admonition} Warning
@@ -208,4 +209,179 @@ kubectl describe ingress raycluster-ingress-head-ingress
 # Step 6: Check `<ip>/raycluster-ingress/` on your browser. You will see the Ray Dashboard.
 #        [Note] The forward slash at the end of the address is necessary. `<ip>/raycluster-ingress`
 #               will report "404 Not Found".
+```
+
+(kuberay-aks-agc)=
+## Application Gateway for Containers (AGC) Gateway API support on AKS
+
+### Prerequisites
+* Create an AKS cluster. See [Quickstart: Deploy an Azure Kubernetes Service (AKS) cluster using Azure CLI](https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-cli).
+
+* Deploy Deploy Application Gateway for Containers ALB Controller [Quickstart: Deploy Application Gateway for Containers ALB Controller](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/quickstart-deploy-application-gateway-for-containers-alb-controller?tabs=install-helm-windows).
+
+* Deploy Application Gateway for Containers [Quickstart: Create Application Gateway for Containers managed by ALB Controller](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/quickstart-create-application-gateway-for-containers-managed-by-alb-controller?tabs=new-subnet-aks-vnet) 
+
+* (Optional) Read [What is Application Gateway for Containers](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/overview).
+
+* (Optional) Read [Secure you web applications with Azure Web Application Firewall on Application Gateway for Containers](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/web-application-firewall)
+
+### Instructions
+```sh
+# Step 1: Install KubeRay operator and CRD
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2
+
+# Step 2: Install a RayCluster
+helm install raycluster kuberay/ray-cluster --version 1.4.2
+
+# Step 3: Edit the `ray-operator/config/samples/ray-cluster-agc-gatewayapi.yaml`
+#
+# (1) Annotation `alb.networking.azure.io/alb-namespace`
+#   1. Please update this to the namespace of your alb custom resource.
+#
+# (2) Annotation `alb.networking.azure.io/alb-name`
+#   1. Please update this to the name of your alb custom resource.
+
+# Step 4: Check gateway and http route created by Step 3.
+kubectl describe gateway ray-cluster-gateway
+
+# [Example]
+# Name:         ray-cluster-gateway
+# Namespace:    default
+# Labels:       <none>
+# Annotations:  
+#   alb.networking.azure.io/alb-namespace: alb-test-infra
+#   alb.networking.azure.io/alb-name: alb-test
+# API Version:  gateway.networking.k8s.io/v1
+# Kind:         Gateway
+# Metadata:
+#   Creation Timestamp:  2025-09-12T04:44:18Z
+#   Generation:          1
+#   Resource Version:    247986
+#   UID:                 88c40c06-83fe-4ef3-84e1-7bc36c9b5b43
+# Spec:
+#   Gateway Class Name:  azure-alb-external
+#   Listeners:
+#     Allowed Routes:
+#       Namespaces:
+#         From:  Same
+#     Name:      http
+#     Port:      80
+#     Protocol:  HTTP
+# Status:
+#   Addresses:
+#     Type:   Hostname
+#     Value:  xxxx.yyyy.alb.azure.com
+#   Conditions:
+#     Last Transition Time:  2025-09-12T04:49:30Z
+#     Message:               Valid Gateway
+#     Observed Generation:   1
+#     Reason:                Accepted
+#     Status:                True
+#     Type:                  Accepted
+#     Last Transition Time:  2025-09-12T04:49:30Z
+#     Message:               Application Gateway for Containers resource has been successfully updated.
+#     Observed Generation:   1
+#     Reason:                Programmed
+#     Status:                True
+#     Type:                  Programmed
+#   Listeners:
+#     Attached Routes:  1
+#     Conditions:
+#       Last Transition Time:  2025-09-12T04:49:30Z
+#       Message:
+#       Observed Generation:   1
+#       Reason:                ResolvedRefs
+#       Status:                True
+#       Type:                  ResolvedRefs
+#       Last Transition Time:  2025-09-12T04:49:30Z
+#       Message:               Listener is Accepted
+#       Observed Generation:   1
+#       Reason:                Accepted
+#       Status:                True
+#       Type:                  Accepted
+#       Last Transition Time:  2025-09-12T04:49:30Z
+#       Message:               Application Gateway for Containers resource has been successfully updated.
+#       Observed Generation:   1
+#       Reason:                Programmed
+#       Status:                True
+#       Type:                  Programmed
+#     Name:                    http
+#     Supported Kinds:
+#       Group:  gateway.networking.k8s.io
+#       Kind:   HTTPRoute
+#       Group:  gateway.networking.k8s.io
+#       Kind:   GRPCRoute
+# Events:       <none>
+
+kubectl describe httproutes ray-cluster-http-route
+
+# [Example]
+# Name:         ray-cluster-http-route
+# Namespace:    default
+# Labels:       <none>
+# Annotations:  <none>
+# API Version:  gateway.networking.k8s.io/v1
+# Kind:         HTTPRoute
+# Metadata:
+#   Creation Timestamp:  2025-09-12T04:44:43Z
+#   Generation:          2
+#   Resource Version:    247982
+#   UID:                 54bbd1e6-bd28-4cae-a469-e15105f077b8
+# Spec:
+#   Parent Refs:
+#     Group:  gateway.networking.k8s.io
+#     Kind:   Gateway
+#     Name:   ray-cluster-gateway
+#   Rules:
+#     Backend Refs:
+#       Group:
+#       Kind:    Service
+#       Name:    raycluster-kuberay-head-svc
+#       Port:    8265
+#       Weight:  1
+#     Matches:
+#       Path:
+#         Type:   PathPrefix
+#         Value:  /
+# Status:
+#   Parents:
+#     Conditions:
+#       Last Transition Time:  2025-09-12T04:49:30Z
+#       Message:
+#       Observed Generation:   2
+#       Reason:                ResolvedRefs
+#       Status:                True
+#       Type:                  ResolvedRefs
+#       Last Transition Time:  2025-09-12T04:49:30Z
+#       Message:               Route is Accepted
+#       Observed Generation:   2
+#       Reason:                Accepted
+#       Status:                True
+#       Type:                  Accepted
+#       Last Transition Time:  2025-09-12T04:49:30Z
+#       Message:               Application Gateway for Containers resource has been successfully updated.
+#       Observed Generation:   2
+#       Reason:                Programmed
+#       Status:                True
+#       Type:                  Programmed
+#     Controller Name:         alb.networking.azure.io/alb-controller
+#     Parent Ref:
+#       Group:  gateway.networking.k8s.io
+#       Kind:   Gateway
+#       Name:   ray-cluster-gateway
+# Events:       <none>
+
+# Step 5: Check Ray Dashboard by by visiting the FQDN assigned to your gateway object in your browser
+#        FQDN can be obtained by the command:
+#        kubectl get gateway ray-cluster-gateway -o jsonpath='{.status.addresses[0].value}'       
+
+# Step 6: Delete the gateway and http route
+kubectl delete gateway ray-cluster-gateway
+kubectl delete httproutes ray-cluster-http-route
+
+# Step 6: Delete Application Gateway for containers
+kubectl delete applicationloadbalancer alb-test -n alb-test-infra
+kubectl delete ns alb-test-infra
 ```
