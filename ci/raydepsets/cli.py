@@ -218,10 +218,10 @@ class DependencySetManager:
         return status.stdout
 
     def execute_hook(self, hook: str, node_type: str):
-        status_code = subprocess.call(hook, cwd=self.workspace.dir)
+        status_code = subprocess.run(hook, cwd=self.workspace.dir)
         if status_code != 0:
-            raise RuntimeError(f"Failed to execute {node_type} hook: {hook}")
-        click.echo(f"Executed {node_type} hook: {hook}")
+            raise RuntimeError(f"Failed to execute {node_type}: {hook}")
+        click.echo(f"Executed {node_type} {hook}")
         return status_code
 
     def execute_depset(self, depset: Depset):

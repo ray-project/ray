@@ -2,4 +2,5 @@
 
 set -euo pipefail
 
-echo "Hook test"
+prefix=$1
+echo "$prefix hook test"

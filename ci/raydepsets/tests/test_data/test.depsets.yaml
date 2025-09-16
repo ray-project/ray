@@ -57,6 +57,30 @@ depsets:
       - requirements_test.txt
     output: requirements_compiled_pre_hook.txt
     pre_hooks:
+      - hook-test.sh pre
+  - name: multi_pre_hook_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    pre_hooks:
+      - hook-test.sh pre-1
+      - hook-test.sh pre-2
+  - name: pre_hook_invalid_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    pre_hooks:
+      - hook-error-test.sh
+  - name: multiple_pre_hook_invalid_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    pre_hooks:
+      - hook-test.sh
+      - hook-error-test.sh
       - hook-test.sh
   - name: post_hook_test_depset
     operation: compile
@@ -64,4 +88,28 @@ depsets:
       - requirements_test.txt
     output: requirements_compiled_post_hook.txt
     post_hooks:
+      - hook-test.sh post
+  - name: multi_post_hook_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_post_hook.txt
+    post_hooks:
+      - hook-test.sh post-1
+      - hook-test.sh post-2
+  - name: post_hook_invalid_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_post_hook.txt
+    post_hooks:
+      - hook-error-test.sh
+  - name: multiple_post_hook_invalid_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    post_hooks:
+      - hook-test.sh
+      - hook-error-test.sh
       - hook-test.sh
