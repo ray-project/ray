@@ -177,8 +177,10 @@ class ReplicaMetricsManager:
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
 
-        # Cache whether user autoscaling stats are available to avoid repeated runtime checks
+        # Cache user_callable_wrapper initialization state to avoid repeated runtime checks
         self._user_autoscaling_stats_available = False
+        # On first call to _record_autoscaling_stats_safe. Failing validation disables _user_autoscaling_stats_available
+        self._user_autoscaling_stats_validated = False
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -372,6 +374,63 @@ class ReplicaMetricsManager:
     def _replica_ongoing_requests(self) -> Dict[ReplicaID, int]:
         return {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
 
+    async def _record_autoscaling_stats_safe(
+        self,
+    ) -> Optional[Dict[str, Union[int, float]]]:
+        try:
+            res = await asyncio.wait_for(
+                self.user_callable_wrapper.call_record_autoscaling_stats(),
+                timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+            )
+
+            # Perform validation only first call
+            if not self._user_autoscaling_stats_validated:
+                # Enforce return type to be Dict[str, Union[int, float]]
+                if not isinstance(res, dict):
+                    logger.error(
+                        f"User autoscaling stats method returned {type(res).__name__}, "
+                        f"expected Dict[str, Union[int, float]]. Disabling autoscaling stats."
+                    )
+                    self._user_autoscaling_stats_available = False
+                    return None
+
+                for key, value in res.items():
+                    if not isinstance(value, (int, float)):
+                        logger.error(
+                            f"User autoscaling stats method returned invalid value type "
+                            f"{type(value).__name__} for key '{key}', expected int or float. "
+                            f"Disabling autoscaling stats."
+                        )
+                        self._user_autoscaling_stats_available = False
+                        return None
+
+                self._user_autoscaling_stats_validated = True
+
+            return res
+        except asyncio.TimeoutError as timeout_err:
+            logger.error(
+                f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
+            )
+            self.record_autoscaling_stats_failed_counter.inc(
+                tags={
+                    "app_name": self._deployment_id.app_name,
+                    "deployment_name": self._deployment_id.name,
+                    "replica_id": self._replica_id.unique_id,
+                    "exception_name": timeout_err.__class__.__name__,
+                }
+            )
+        except Exception as err:
+            logger.error(f"Replica autoscaling stats failed. {err}")
+            self.record_autoscaling_stats_failed_counter.inc(
+                tags={
+                    "app_name": self._deployment_id.app_name,
+                    "deployment_name": self._deployment_id.name,
+                    "replica_id": self._replica_id.unique_id,
+                    "exception_name": err.__class__.__name__,
+                }
+            )
+        return None
+
     async def _add_autoscaling_metrics_point_async(self) -> None:
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             metrics_dict = {}
@@ -380,34 +439,9 @@ class ReplicaMetricsManager:
 
         # Use cached availability flag to avoid repeated runtime checks
         if self._user_autoscaling_stats_available:
-            try:
-                res = await asyncio.wait_for(
-                    self.user_callable_wrapper.call_record_autoscaling_stats(),
-                    timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
-                )
-                metrics_dict.update(res)
-            except asyncio.TimeoutError as timeout_err:
-                logger.error(
-                    f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
-                )
-                self.record_autoscaling_stats_failed_counter.inc(
-                    tags={
-                        "app_name": self._deployment_id.app_name,
-                        "deployment_name": self._deployment_id.name,
-                        "replica_id": self._replica_id.unique_id,
-                        "exception_name": timeout_err.__class__.__name__,
-                    }
-                )
-            except Exception as err:
-                logger.error(f"Replica autoscaling stats failed. {err}")
-                self.record_autoscaling_stats_failed_counter.inc(
-                    tags={
-                        "app_name": self._deployment_id.app_name,
-                        "deployment_name": self._deployment_id.name,
-                        "replica_id": self._replica_id.unique_id,
-                        "exception_name": err.__class__.__name__,
-                    }
-                )
+            new_metrics = await self._record_autoscaling_stats_safe()
+            if new_metrics:
+                metrics_dict.update(new_metrics)
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
