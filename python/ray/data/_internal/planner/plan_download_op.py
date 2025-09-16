@@ -62,29 +62,29 @@ def plan_download_op(
             size=1
         )  # Use single actor for partitioning
 
-    fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name, data_context), {})
-    block_fn = _generate_transform_fn_for_map_batches(fn)
+        fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name, data_context), {})
+        block_fn = _generate_transform_fn_for_map_batches(fn)
 
-    partition_transform_fns = [
-        BlockMapTransformFn(
-            block_fn,
-            # NOTE: Disable block-shaping to produce blocks as is
-            disable_block_shaping=True,
-        ),
-    ]
-    partition_map_transformer = MapTransformer(
-        partition_transform_fns,
-        init_fn=init_fn,
-    )
+        partition_transform_fns = [
+            BlockMapTransformFn(
+                block_fn,
+                # NOTE: Disable block-shaping to produce blocks as is
+                disable_block_shaping=True,
+            ),
+        ]
+        partition_map_transformer = MapTransformer(
+            partition_transform_fns,
+            init_fn=init_fn,
+        )
 
-    partition_map_operator = MapOperator.create(
-        partition_map_transformer,
-        input_physical_dag,
-        data_context,
-        name="URIPartitioner",
-        compute_strategy=partition_compute,  # Use actor-based compute for callable class
-        ray_remote_args=ray_remote_args,
-    )
+        partition_map_operator = MapOperator.create(
+            partition_map_transformer,
+            input_physical_dag,
+            data_context,
+            name="URIPartitioner",
+            compute_strategy=partition_compute,  # Use actor-based compute for callable class
+            ray_remote_args=ray_remote_args,
+        )
 
     fn, init_fn = _get_udf(
         download_bytes_threaded,
