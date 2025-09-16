@@ -3,10 +3,16 @@ import pickle
 import socket
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
+from ray.rllib.connectors.env_to_module import EnvToModulePipeline
+from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
 
-from ray.rllib.core import Columns, COMPONENT_RL_MODULE
+from ray.rllib.core import Columns, COMPONENT_RL_MODULE, COMPONENT_ENV_RUNNER, \
+    COMPONENT_ENV_TO_MODULE_CONNECTOR, COMPONENT_LEARNER, \
+    COMPONENT_MODULE_TO_ENV_CONNECTOR, COMPONENT_LEARNER_GROUP
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.env.external.rllink import (
     get_rllink_message,
     send_rllink_message,
@@ -20,7 +26,7 @@ logger = logging.getLogger("ray.rllib")
 
 
 @DeveloperAPI
-class RLlibGateway:
+class SingleAgentRLlibGateway:
     """Gateway class for external, for ex. non-python, simulators to connect to RLlib.
 
     As long as there is a path to bind python code into your simulator's language, for
@@ -126,41 +132,71 @@ class RLlibGateway:
         self,
         address: str = "localhost",
         port: int = 5556,
+        inference_only: bool = False,
+        checkpoint_path: str | None = None,
     ):
         """Initializes a RLlibGateway instance.
 
         Args:
             address: The address under which to connect to the RLlib EnvRunner.
             port: The port to connect to.
+            inference_only: If true, the gateway will just perform inference without
+                connecting to an EnvRunner and sending the collected data to RLlib
+                for training.
+            checkpoint_path: Path to checkpoint to load for inference. Only used
+                with inference_only=True.
         """
         # RLlib SingleAgentEpisode collection buckets.
         self._episodes = []
-        # The open socket connection to an RLlib EnvRunner.
-        self._sock = None
-        # The timesteps sampled thus far.
-        self._timesteps = 0
-        # The RLlib config from the ray cluster.
-        self._config = None
-        # EnvToModule connector pipeline.
-        self._env_to_module = None
-        # ModuleToEnv connector pipeline.
-        self._module_to_env = None
-        # The RLModule for action computations.
-        self._rl_module = None
-        self._weights_seq_no = 0
-        # The client thread running in the background and communicating with an RLlib
-        # EnvRunner.
-        self._client_thread = None
 
         self._prev_action = None
         self._prev_extra_model_outputs = None
 
         self._is_initialized = False
 
-        threading.Thread(
-            target=self._connect_to_server_thread_func,
-            args=(address, port),
-        ).start()
+        self._inference_only = inference_only
+        if self._inference_only:
+            if checkpoint_path is None:
+                raise ValueError(
+                    "You need to provide a checkpoint_path to use RLlibGateway "
+                    "in inference_only mode!"
+                )
+            checkpoint_path = Path(checkpoint_path)
+            self._env_to_module = EnvToModulePipeline.from_checkpoint(
+                checkpoint_path / COMPONENT_ENV_RUNNER /
+                COMPONENT_ENV_TO_MODULE_CONNECTOR
+            )
+            self._rl_module = RLModule.from_checkpoint(
+                checkpoint_path / COMPONENT_LEARNER_GROUP /
+                COMPONENT_LEARNER / COMPONENT_RL_MODULE
+            )
+            self._module_to_env = ModuleToEnvPipeline.from_checkpoint(
+                checkpoint_path / COMPONENT_ENV_RUNNER /
+                COMPONENT_MODULE_TO_ENV_CONNECTOR
+            )
+            self._is_initialized = True
+        else:
+            # The open socket connection to an RLlib EnvRunner.
+            self._sock = None
+            # The timesteps sampled thus far.
+            self._timesteps = 0
+            # The RLlib config from the ray cluster.
+            self._config = None
+            # EnvToModule connector pipeline.
+            self._env_to_module = None
+            # ModuleToEnv connector pipeline.
+            self._module_to_env = None
+            # The RLModule for action computations.
+            self._rl_module = None
+            self._weights_seq_no = 0
+            # The client thread running in the background and communicating
+            # with an RLlib EnvRunner.
+            self._client_thread = None
+
+            threading.Thread(
+                target=self._connect_to_server_thread_func,
+                args=(address, port),
+            ).start()
 
     @property
     def is_initialized(self):
@@ -180,7 +216,7 @@ class RLlibGateway:
             prev_observation: The current observation, from which the action should be
                 computed. Note that first, `observation`, the previously returned
                 action, `prev_reward`, and `terminated/truncated` are logged with the running
-                episdode through `Episode.add_env_step()`, then the env-to-module
+                episode through `Episode.add_env_step()`, then the env-to-module
                 connector creates the inference forward batch for the RLModule based on
                 this running episode.
         """
@@ -298,10 +334,11 @@ class RLlibGateway:
             )
             self._timesteps += 1
 
-            # TODO (sven): If enough timesteps have been collected, send out episodes
-            #  through socket to RLlib server for training.
             # We collected enough samples -> Send them to server.
-            if self._timesteps == self._config.get_rollout_fragment_length():
+            if (
+                not self._inference_only
+                and self._timesteps == self._config.get_rollout_fragment_length()
+            ):
                 assert sum(map(len, self._episodes)) == (
                     self._config.get_rollout_fragment_length()
                 )
@@ -365,7 +402,8 @@ class RLlibGateway:
         self._prev_action = self._prev_action[0]
 
         extra_model_output = {k: v[0] for k, v in to_env.items()}
-        extra_model_output[WEIGHTS_SEQ_NO] = self._weights_seq_no
+        if not self._inference_only:
+            extra_model_output[WEIGHTS_SEQ_NO] = self._weights_seq_no
 
         # Store action for next timestep's logging into the episode.
         self._prev_extra_model_outputs = extra_model_output
