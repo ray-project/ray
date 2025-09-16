@@ -35,8 +35,8 @@ CoreWorkerClient::CoreWorkerClient(
           /*check_channel_status_interval_milliseconds=*/
           ::RayConfig::instance()
               .grpc_client_check_connection_status_interval_milliseconds(),
-          /*server_unavailable_timeout_seconds=*/
-          ::RayConfig::instance().core_worker_rpc_server_reconnect_timeout_s(),
+          /*server_unavailable_base_timeout_seconds=*/
+          ::RayConfig::instance().core_worker_rpc_server_reconnect_base_timeout_ms(),
           /*server_unavailable_timeout_callback=*/
           std::move(core_worker_unavailable_timeout_callback),
           /*server_name=*/"Core worker " + addr_.ip_address())) {}

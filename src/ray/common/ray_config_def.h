@@ -437,7 +437,7 @@ RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
 
 /// The duration between two checks for grpc status.
-RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 1000)
+RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 100)
 
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
@@ -696,8 +696,8 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
-/// Timeout for core worker grpc server reconnection in seconds.
-RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
+/// Timeout for core worker grpc server reconnection in milliseconds.
+RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_base_timeout_ms, 100)
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
@@ -954,8 +954,8 @@ RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1
 // be cancelled.
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
 
-/// Timeout for raylet grpc server reconnection in seconds.
-RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
+/// Base timeout for raylet grpc server reconnection in milliseconds.
+RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_base_timeout_ms, 100)
 
 // The number of grpc threads spun up on the worker process. This config is consumed
 // by the raylet and then broadcast to the worker process at time of the worker

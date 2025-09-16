@@ -72,7 +72,7 @@ namespace ray::rpc {
  * - If a call's timeout_ms reaches during retry, its callback is called with
  * Status::TimedOut.
  * - If the whole client does not reconnect within
- * server_unavailable_timeout_seconds, server_unavailable_timeout_callback is invoked.
+ * an exponential backoff period, server_unavailable_timeout_callback is invoked.
  *
  * When all callers of the client release the shared_ptr of the client, the client
  * destructor is called and the client is shut down.
@@ -111,6 +111,10 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
     int64_t GetTimeoutMs() const { return timeout_ms_; }
 
+    uint32_t GetAttemptNumber() const { return attempt_number_; }
+
+    void SetAttemptNumber(uint32_t attempt_number) { attempt_number_ = attempt_number; }
+
    private:
     RetryableGrpcRequest(
         std::function<void(std::shared_ptr<RetryableGrpcRequest> request)> executor,
@@ -126,6 +130,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
     std::function<void(ray::Status)> failure_callback_;
     const size_t request_bytes_;
     const int64_t timeout_ms_;
+    uint32_t attempt_number_ = 0;
   };
 
  public:
@@ -134,7 +139,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       instrumented_io_context &io_context,
       uint64_t max_pending_requests_bytes,
       uint64_t check_channel_status_interval_milliseconds,
-      uint64_t server_unavailable_timeout_seconds,
+      uint64_t server_unavailable_base_timeout_ms,
       std::function<void()> server_unavailable_timeout_callback,
       std::string server_name) {
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
@@ -144,7 +149,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                                 io_context,
                                 max_pending_requests_bytes,
                                 check_channel_status_interval_milliseconds,
-                                server_unavailable_timeout_seconds,
+                                server_unavailable_base_timeout_ms,
                                 std::move(server_unavailable_timeout_callback),
                                 std::move(server_name)));
   }
@@ -172,7 +177,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                       instrumented_io_context &io_context,
                       uint64_t max_pending_requests_bytes,
                       uint64_t check_channel_status_interval_milliseconds,
-                      uint64_t server_unavailable_timeout_seconds,
+                      uint64_t server_unavailable_base_timeout_ms,
                       std::function<void()> server_unavailable_timeout_callback,
                       std::string server_name)
       : io_context_(io_context),
@@ -181,7 +186,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         max_pending_requests_bytes_(max_pending_requests_bytes),
         check_channel_status_interval_milliseconds_(
             check_channel_status_interval_milliseconds),
-        server_unavailable_timeout_seconds_(server_unavailable_timeout_seconds),
+        server_unavailable_base_timeout_ms_(server_unavailable_base_timeout_ms),
         server_unavailable_timeout_callback_(
             std::move(server_unavailable_timeout_callback)),
         server_name_(std::move(server_name)) {}
@@ -201,9 +206,9 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // to prevent OOM.
   const uint64_t max_pending_requests_bytes_;
   const uint64_t check_channel_status_interval_milliseconds_;
-  const uint64_t server_unavailable_timeout_seconds_;
-  // After the server is unavailable for server_unavailable_timeout_seconds_,
-  // this callback will be called.
+  const uint64_t server_unavailable_base_timeout_ms_;
+  // After the server is unavailable for an exponential backoff period, this callback will
+  // be called.
   std::function<void()> server_unavailable_timeout_callback_;
   // Human readable server name for logging purpose.
   const std::string server_name_;
