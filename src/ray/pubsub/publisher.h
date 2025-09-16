@@ -36,14 +36,6 @@
 namespace ray {
 
 namespace pubsub {
-class Publisher;
-}  // namespace pubsub
-
-namespace core {
-void FlushLongPollingConnection(pubsub::Publisher *object_info_publisher);
-}  // namespace core
-
-namespace pubsub {
 
 class SubscriberState;
 
@@ -263,12 +255,12 @@ class Publisher : public PublisherInterface {
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
-            PeriodicalRunnerInterface *periodical_runner,
+            PeriodicalRunnerInterface &periodical_runner,
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
             UniqueID publisher_id = NodeID::FromRandom())
-      : periodical_runner_(periodical_runner),
+      : periodical_runner_(&periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
@@ -341,7 +333,6 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
-  friend void ray::core::FlushLongPollingConnection(Publisher *object_info_publisher);
   friend class MockPublisher;
   friend class FakePublisher;
 

@@ -62,7 +62,8 @@ class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
-        task_execution_service_work_(task_execution_service_.get_executor()) {
+        task_execution_service_work_(task_execution_service_.get_executor()),
+        current_time_ms_(0.0) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -133,8 +134,8 @@ class CoreWorkerTest : public ::testing::Test {
         std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                       rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-        /*periodical_runner=*/fake_periodical_runner_.get(),
-        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+        /*periodical_runner=*/*fake_periodical_runner_,
+        /*get_time_ms=*/[this]() { return current_time_ms_; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         worker_context->GetWorkerID());
@@ -290,6 +291,9 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeMetric fake_task_by_state_counter_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
+
+  // Controllable time for testing publisher timeouts
+  double current_time_ms_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
@@ -656,13 +660,6 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   EXPECT_EQ(observed_batches[2].size(), 1U);
 }
 
-void FlushLongPollingConnection(pubsub::Publisher *object_info_publisher) {
-  absl::MutexLock lock(&object_info_publisher->mutex_);
-  for (const auto &subscriber : object_info_publisher->subscribers_) {
-    subscriber.second->PublishIfPossible(/*force_noop=*/true);
-  }
-}
-
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
@@ -735,8 +732,9 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
     EXPECT_EQ(msg.worker_object_eviction_message().object_id(), object_id.Binary());
   }
 
-  if (expected_messages == 0) {
-    FlushLongPollingConnection(object_info_publisher_);
+  if (!should_free_object) {
+    current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
+    object_info_publisher_->CheckDeadSubscribers();
   }
 }
 
@@ -815,8 +813,9 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdem
     EXPECT_EQ(msg1.sequence_id(), 1);
     EXPECT_EQ(msg1.worker_ref_removed_message().borrowed_refs_size(), 0);
   }
-  if (expected_messages == 0) {
-    FlushLongPollingConnection(object_info_publisher_);
+  if (!should_remove_ref) {
+    current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
+    object_info_publisher_->CheckDeadSubscribers();
   }
 }
 
@@ -835,6 +834,19 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
   reference_counter_->AddOwnedObject(
       object_id, {}, owner_address, "", object_size, false, true);
   reference_counter_->AddObjectLocation(object_id, node_id);
+
+  rpc::PubsubLongPollingRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  request.set_max_processed_sequence_id(0);
+  request.set_publisher_id("");
+
+  rpc::PubsubLongPollingReply long_polling_reply1;
+  core_worker_->HandlePubsubLongPolling(
+      request,
+      &long_polling_reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
@@ -862,31 +874,35 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
         ASSERT_TRUE(status.ok());
       });
 
-  rpc::PubsubLongPollingRequest request;
-  request.set_subscriber_id(subscriber_id.Binary());
-  request.set_max_processed_sequence_id(0);
-  request.set_publisher_id("");
-
-  rpc::PubsubLongPollingReply reply;
-
+  rpc::PubsubLongPollingReply long_polling_reply2;
   core_worker_->HandlePubsubLongPolling(
       request,
-      &reply,
+      &long_polling_reply2,
       [](Status s, std::function<void()> success, std::function<void()> failure) {
         ASSERT_TRUE(s.ok());
       });
 
   // Each call to HandlePubsubCommandBatch immediately publishes a message containing the
   // object locations
-  EXPECT_EQ(reply.pub_messages_size(), 2);
+  EXPECT_EQ(long_polling_reply1.pub_messages_size(), 1);
+  EXPECT_EQ(long_polling_reply2.pub_messages_size(), 2);
 
-  for (int i = 0; i < 2; i++) {
-    const auto &msg = reply.pub_messages(i);
+  auto CheckMessage = [&](const rpc::PubMessage &msg, int i) {
     EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
     EXPECT_EQ(msg.key_id(), object_id.Binary());
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
+    // AddObjectLocation triggers a publish so the sequence id is bumped by 1
+    EXPECT_EQ(msg.sequence_id(), i + 2);
+  };
+  for (int i = 0; i < 2; i++) {
+    if (i == 0) {
+      const auto &msg = long_polling_reply1.pub_messages(i);
+      CheckMessage(msg, i);
+    }
+    const auto &msg = long_polling_reply2.pub_messages(i);
+    CheckMessage(msg, i);
   }
 }
 

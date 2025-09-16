@@ -269,7 +269,6 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
   // Batch a subscribe command.
   auto command = std::make_unique<CommandItem>();
   command->cmd.set_channel_type(channel_type);
-
   if (key_id.has_value()) {
     command->cmd.set_key_id(*key_id);
   }
