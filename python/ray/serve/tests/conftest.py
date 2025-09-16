@@ -140,11 +140,6 @@ def _shared_serve_instance():
     # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
 
-    # Speed up Serve replica and handle autoscaling metrics pushes,
-    # so that we can test autoscaling more quickly.
-    os.environ["RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S"] = "0.1"
-    os.environ["RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S"] = "0.1"
-
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
         num_cpus=36,
