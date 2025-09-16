@@ -121,11 +121,11 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
 
         # Get supported columns
-        joinable_l, unjoinable_l = _split_unsupported_columns(left_seq_partition)
-        joinable_r, unjoinable_r = _split_unsupported_columns(right_seq_partition)
+        supported_l, unsupported_l = _split_unsupported_columns(left_seq_partition)
+        supported_r, unsupported_r = _split_unsupported_columns(right_seq_partition)
 
         # Handle joins on unsupported columns
-        conflicting_columns: Set[str] = set(unjoinable_l.column_names) & set(left_on)
+        conflicting_columns: Set[str] = set(unsupported_l.column_names) & set(left_on)
         if conflicting_columns:
             raise ValueError(
                 f"Cannot join on columns with unjoinable types. "
@@ -133,7 +133,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"(map, union, list, struct, etc.) which cannot be used for join operations."
             )
 
-        conflicting_columns: Set[str] = set(unjoinable_r.column_names) & set(right_on)
+        conflicting_columns: Set[str] = set(unsupported_r.column_names) & set(right_on)
         if conflicting_columns:
             raise ValueError(
                 f"Cannot join on columns with unjoinable types. "
@@ -142,21 +142,21 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             )
 
         # Index if we have unsupported columns
-        should_index_l = self._should_index_side("left", joinable_l, unjoinable_l)
-        should_index_r = self._should_index_side("right", joinable_r, unjoinable_r)
+        should_index_l = self._should_index_side("left", supported_l, unsupported_l)
+        should_index_r = self._should_index_side("right", supported_r, unsupported_r)
 
         # Add index columns for back-referencing if we have unsupported columns
         # TODO: what are the chances of a collision with the index column?
-        index_name_l = "__index_level_left__"
+        index_name_l = "__ray_data_index_level_left__"
         if should_index_l:
-            joinable_l = _append_index_column(table=joinable_l, col_name=index_name_l)
-        index_name_r = "__index_level_right__"
+            supported_l = _append_index_column(table=supported_l, col_name=index_name_l)
+        index_name_r = "__ray_data_index_level_right__"
         if should_index_r:
-            joinable_r = _append_index_column(table=joinable_r, col_name=index_name_r)
+            supported_r = _append_index_column(table=supported_r, col_name=index_name_r)
 
         # Perform the join on supported columns
-        joined = joinable_l.join(
-            joinable_r,
+        supported = supported_l.join(
+            supported_r,
             join_type=arrow_join_type,
             keys=left_on,
             right_keys=right_on,
@@ -165,20 +165,20 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         )
         # Add back unsupported columns (join type logic is in should_index_* variables)
         if should_index_l:
-            joined = _add_back_unjoinable_columns(
-                joined_table=joined,
-                unjoinable_table=unjoinable_l,
+            supported = _add_back_unjoinable_columns(
+                joined_table=supported,
+                unjoinable_table=unsupported_l,
                 index_col_name=index_name_l,
             )
 
         if should_index_r:
-            joined = _add_back_unjoinable_columns(
-                joined_table=joined,
-                unjoinable_table=unjoinable_r,
+            supported = _add_back_unjoinable_columns(
+                joined_table=supported,
+                unjoinable_table=unsupported_r,
                 index_col_name=index_name_r,
             )
 
-        return joined
+        return supported
 
     def clear(self, partition_id: int):
         self._left_input_seq_partition_builders.pop(partition_id)
