@@ -307,6 +307,12 @@ For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 Using ``uv`` for package management
 """""""""""""""""""""""""""""""""""
 
+
+.. important::
+
+  When launching Ray applications with `uv run`, **always use the `--active` flag** (i.e., `uv run --active main.py`).
+  Omitting `--active` can result in Python version mismatches between your local environment and Ray worker processes, leading to runtime errors or segmentation faults. The `--active` flag ensures Ray uses the currently active Python environment, preventing these issues.
+
 The recommended approach for package management with `uv` in runtime environments is through `uv run`.
 
 This method offers several key advantages:
