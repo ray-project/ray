@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -145,10 +146,11 @@ class BlockOutputBuffer:
         if self._exceeded_block_row_slice_limit(accessor):
             target_num_rows = self._max_num_rows_per_block()
         elif self._exceeded_block_size_slice_limit(accessor):
-            num_bytes_per_row = accessor.size_bytes() // accessor.num_rows()
+            assert accessor.num_rows() > 0, "Block may not be empty"
+            num_bytes_per_row = accessor.size_bytes() / accessor.num_rows()
             target_num_rows = max(
                 1,
-                self._max_bytes_per_block() // num_bytes_per_row,
+                math.ceil(self._max_bytes_per_block() / num_bytes_per_row)
             )
 
         if target_num_rows is not None and target_num_rows < accessor.num_rows():
