@@ -1879,6 +1879,228 @@ class MultiAgentEpisode:
             return 0.0
         return self._last_step_time - self._start_time
 
+    def set_observations(
+        self,
+        *,
+        new_data: MultiAgentDict,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_index_as_lookback: bool = False,
+    ) -> None:
+        """Overwrites all or some single-agent Episode's observations with the provided data.
+
+        This is a helper method to batch `SingleAgentEpisode.set_observations`.
+        For more detail, see `SingleAgentEpisode.set_observations`.
+
+        Args:
+            new_data: A dict mapping agent IDs to new observation data.
+                Each value in the dict is the new observation data to overwrite existing data with.
+                This may be a list of individual observation(s) in case this episode
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
+                observation space and with a batch size of its leafs exactly the size
+                of the to-be-overwritten slice or segment (provided by `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single observation).
+                Each value in the dict is the new observation data to overwrite existing data with.
+                This may be a list of individual observation(s) in case this episode
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
+                observation space and with a batch size of its leafs exactly the size
+                of the to-be-overwritten slice or segment (provided by `at_indices`).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_index_as_lookback=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_index_as_lookback: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                observations = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_observations(individual_observation, -1,
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
+                observations buffer with the provided "individual_observation".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        for agent_id, new_agent_data in new_data.items():
+            assert agent_id in self.agent_episodes
+            self.agent_episodes[agent_id].set_observations(
+                new_data=new_agent_data,
+                at_indices=at_indices,
+                neg_index_as_lookback=neg_index_as_lookback,
+            )
+
+    def set_actions(
+        self,
+        *,
+        new_data: MultiAgentDict,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_index_as_lookback: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's actions with the provided data.
+
+        This is a helper method to batch `SingleAgentEpisode.set_actions`.
+        For more detail, see `SingleAgentEpisode.set_actions`.
+
+        Args:
+            new_data: A dict mapping agent IDs to new action data.
+                Each value in the dict is the new action data to overwrite existing data with.
+                This may be a list of individual action(s) in case this episode
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
+                action space and with a batch size of its leafs exactly the size
+                of the to-be-overwritten slice or segment (provided by `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single action).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_index_as_lookback=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_index_as_lookback: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                actions = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_actions(individual_action, -1,
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
+                actions buffer with the provided "individual_action".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        for agent_id, new_agent_data in new_data.items():
+            assert agent_id in self.agent_episodes
+            self.agent_episodes[agent_id].set_actions(
+                new_data=new_agent_data,
+                at_indices=at_indices,
+                neg_index_as_lookback=neg_index_as_lookback,
+            )
+
+    def set_rewards(
+        self,
+        *,
+        new_data: MultiAgentDict,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_index_as_lookback: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's rewards with the provided data.
+
+        This is a helper method to batch `SingleAgentEpisode.set_rewards`.
+        For more detail, see `SingleAgentEpisode.set_rewards`.
+
+        Args:
+            new_data: A dict mapping agent IDs to new reward data.
+                Each value in the dict is the new reward data to overwrite existing data with.
+                This may be a list of individual reward(s) in case this episode
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
+                the size of the to-be-overwritten slice or segment (provided by
+                `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single reward).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_index_as_lookback=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_index_as_lookback: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_rewards(individual_reward, -1,
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
+                rewards buffer with the provided "individual_reward".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        for agent_id, new_agent_data in new_data.items():
+            assert agent_id in self.agent_episodes
+            self.agent_episodes[agent_id].set_rewards(
+                new_data=new_agent_data,
+                at_indices=at_indices,
+                neg_index_as_lookback=neg_index_as_lookback,
+            )
+
+    def set_extra_model_outputs(
+        self,
+        *,
+        key,
+        new_data: MultiAgentDict,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_index_as_lookback: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's extra model outputs with `new_data`.
+
+        This is a helper method to batch `SingleAgentEpisode.set_extra_model_outputs`.
+        For more detail, see `SingleAgentEpisode.set_extra_model_outputs`.
+
+        Args:
+            key: The `key` within `self.extra_model_outputs` to override data on or
+                to insert as a new key into `self.extra_model_outputs`.
+            new_data: A dict mapping agent IDs to new extra model outputs data.
+                Each value in the dict is the new extra model outputs data to overwrite existing data with.
+                This may be a list of individual reward(s) in case this episode
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
+                the size of the to-be-overwritten slice or segment (provided by
+                `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single reward).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_index_as_lookback=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_index_as_lookback: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_rewards(individual_reward, -1,
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
+                rewards buffer with the provided "individual_reward".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        for agent_id, new_agent_data in new_data.items():
+            assert agent_id in self.agent_episodes
+            self.agent_episodes[agent_id].set_extra_model_outputs(
+                key=key,
+                new_data=new_agent_data,
+                at_indices=at_indices,
+                neg_index_as_lookback=neg_index_as_lookback,
+            )
+
     def env_steps(self) -> int:
         """Returns the number of environment steps.
 
