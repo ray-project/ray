@@ -71,7 +71,8 @@ elif [[ "$BUILD_TYPE" == "asan" ]]; then
 elif [[ "$BUILD_TYPE" == "java" ]]; then
   bash java/build-jar-multiplatform.sh linux
   # Java tests need the C++ API for multi-langauge worker tests.
-  RAY_DISABLE_EXTRA_CPP=0 RAY_INSTALL_JAVA=1 pip install -v -e python/
+  export RAY_DISABLE_EXTRA_CPP=0
+  env RAY_DISABLE_EXTRA_CPP=0 RAY_INSTALL_JAVA=1 pip install -v -e python/
 else
   pip install -v -e python/
 fi
