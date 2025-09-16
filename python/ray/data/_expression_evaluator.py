@@ -32,8 +32,47 @@ _PANDAS_EXPR_OPS_MAP = {
     Operation.OR: operator.or_,
 }
 
+
+def _is_arrow_string_type(t: pa.DataType) -> bool:
+    return pa.types.is_string(t) or pa.types.is_large_string(t)
+
+
+def _is_string_like(x: Any) -> bool:
+    if isinstance(x, (pa.Array, pa.ChunkedArray)):
+        t = x.type
+        if pa.types.is_dictionary(t):
+            return _is_arrow_string_type(t.value_type)
+        return _is_arrow_string_type(t)
+    return isinstance(x, str)
+
+
+def _decode_dict_string_array(x: Any) -> Any:
+    if isinstance(x, (pa.Array, pa.ChunkedArray)) and pa.types.is_dictionary(x.type):
+        if _is_arrow_string_type(x.type.value_type):
+            if hasattr(x, "dictionary_decode"):
+                return x.dictionary_decode()
+            return pc.cast(x, pa.string())
+    return x
+
+
+def _to_arrow_string_input(x: Any) -> Any:
+    x = _decode_dict_string_array(x)
+    if isinstance(x, str):
+        return pa.scalar(x)
+    return x
+
+
+def _arrow_add(left: Any, right: Any) -> Any:
+    # If either side is string-like, perform string concatenation.
+    if _is_string_like(left) or _is_string_like(right):
+        l = _to_arrow_string_input(left)
+        r = _to_arrow_string_input(right)
+        return pc.binary_join_element_wise(l, r, "")
+    return pc.add(left, right)
+
+
 _ARROW_EXPR_OPS_MAP = {
-    Operation.ADD: pc.add,
+    Operation.ADD: _arrow_add,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: pc.divide,
