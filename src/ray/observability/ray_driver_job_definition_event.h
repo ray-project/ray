@@ -31,7 +31,7 @@ class RayDriverJobDefinitionEvent
 
  protected:
   ray::rpc::events::RayEvent SerializeData() && override;
-  void MergeData(RayEvent<rpc::events::DriverJobDefinitionEvent> &&other) override;
+  void MergeSortedData(RayEvent<rpc::events::DriverJobDefinitionEvent> &&other) override;
 };
 
 }  // namespace observability

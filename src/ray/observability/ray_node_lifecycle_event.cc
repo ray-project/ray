@@ -29,27 +29,14 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
   if (data.state() == rpc::GcsNodeInfo::ALIVE) {
-    auto node_snapshot = data.state_snapshot();
-    if (node_snapshot) 
-      switch (node_snapshot->state()) {
-      case rpc::NodeSnapshot::IDLE:
-        state_transition.set_state(rpc::events::NodeLifecycleEvent::IDLE);
-        break;
-      case rpc::NodeSnapshot::ACTIVE:
-        state_transition.set_state(rpc::events::NodeLifecycleEvent::ACTIVE);
-        break;
-      case rpc::NodeSnapshot::DRAINING:
-        state_transition.set_state(rpc::events::NodeLifecycleEvent::DRAINING);
-        break;
-      default:
-        state_transition.set_state(rpc::events::NodeLifecycleEvent::UNDEFINED);
-        break;
-      }
+    if (data.has_state_snapshot() &&
+        data.state_snapshot().state() == rpc::NodeSnapshot::DRAINING) {
+      state_transition.set_state(rpc::events::NodeLifecycleEvent::DRAINING);
     } else {
-      state_transition.set_state(rpc::events::NodeLifecycleEvent::STARTING);
-      state_transition.mutable_resources()->insert(data.resources_total().begin(),
-                                                 data.resources_total().end());
+      state_transition.set_state(rpc::events::NodeLifecycleEvent::ALIVE);
     }
+    state_transition.mutable_resources()->insert(data.resources_total().begin(),
+                                                 data.resources_total().end());
   } else {
     state_transition.set_state(rpc::events::NodeLifecycleEvent::DEAD);
     auto death_info = state_transition.mutable_death_info();
@@ -84,10 +71,39 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
 
 std::string RayNodeLifecycleEvent::GetEntityId() const { return data_.node_id(); }
 
-void RayNodeLifecycleEvent::MergeData(RayEvent<rpc::events::NodeLifecycleEvent> &&other) {
+bool RayNodeLifecycleEvent::IsFrequentStateChange(
+    const rpc::events::NodeLifecycleEvent::State &state) const {
+  // Except for the ALIVE and DEAD states, other states can move between each other
+  // frequently. To avoid excessive emissions, we only emit the most recent state among
+  // the frequent states.
+  return state != rpc::events::NodeLifecycleEvent::ALIVE &&
+         state != rpc::events::NodeLifecycleEvent::DEAD;
+}
+
+void RayNodeLifecycleEvent::MergeSortedData(
+    RayEvent<rpc::events::NodeLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayNodeLifecycleEvent &&>(other);
-  for (auto &state_transition : *other_event.data_.mutable_state_transitions()) {
-    data_.mutable_state_transitions()->Add(std::move(state_transition));
+  // If the other event is empty, do nothing.
+  if (other_event.data_.state_transitions().empty()) {
+    return;
+  }
+  // If the current event is empty, swap the state transitions with the other event.
+  if (data_.state_transitions().empty()) {
+    data_.mutable_state_transitions()->Swap(
+        other_event.data_.mutable_state_transitions());
+    return;
+  }
+  // If the last state of the current event and the first state of the other event are
+  // frequent states, remove the last state of the current event.
+  auto other_first_state = other_event.data_.state_transitions()[0];
+  auto last_state = data_.state_transitions()[data_.state_transitions().size() - 1];
+  if (IsFrequentStateChange(other_first_state.state()) &&
+      IsFrequentStateChange(last_state.state())) {
+    data_.mutable_state_transitions()->RemoveLast();
+  }
+  // Add the state transitions of the other event to the current event.
+  for (auto &state_transition : other_event.data_.state_transitions()) {
+    *data_.mutable_state_transitions()->Add() = state_transition;
   }
 }
 

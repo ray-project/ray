@@ -28,10 +28,10 @@ namespace observability {
 template <typename T>
 class RayEvent : public RayEventInterface {
  public:
-  void Merge(RayEventInterface &&other) override {
+  void MergeSorted(RayEventInterface &&other) override {
     RAY_CHECK_EQ(GetEntityId(), other.GetEntityId());
     RAY_CHECK_EQ(GetEventType(), other.GetEventType());
-    MergeData(static_cast<RayEvent<T> &&>(other));
+    MergeSortedData(static_cast<RayEvent<T> &&>(other));
   }
 
   ray::rpc::events::RayEvent Serialize() && override {
@@ -73,7 +73,7 @@ class RayEvent : public RayEventInterface {
   ray::rpc::events::RayEvent::Severity severity_;
   std::string message_;
   std::string session_name_;
-  virtual void MergeData(RayEvent<T> &&other) = 0;
+  virtual void MergeSortedData(RayEvent<T> &&other) = 0;
   virtual ray::rpc::events::RayEvent SerializeData() && = 0;
 };
 
