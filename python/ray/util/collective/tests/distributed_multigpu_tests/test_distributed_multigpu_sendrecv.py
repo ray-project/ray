@@ -1,8 +1,8 @@
 """Test the send/recv API."""
 import cupy as cp
 import pytest
-import ray
 
+import ray
 from ray.util.collective.tests.util import create_collective_multigpu_workers
 
 

@@ -22,7 +22,6 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -130,6 +129,7 @@ struct ActorCreationOptions {
                        std::vector<ConcurrencyGroup> concurrency_groups_p = {},
                        bool allow_out_of_order_execution_p = false,
                        int32_t max_pending_calls_p = -1,
+                       bool enable_tensor_transport_p = false,
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
                        std::unordered_map<std::string, std::string> label_selector_p = {})
@@ -148,6 +148,7 @@ struct ActorCreationOptions {
         concurrency_groups(std::move(concurrency_groups_p)),
         allow_out_of_order_execution(allow_out_of_order_execution_p),
         max_pending_calls(max_pending_calls_p),
+        enable_tensor_transport(enable_tensor_transport_p),
         scheduling_strategy(std::move(scheduling_strategy_p)),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
@@ -201,6 +202,7 @@ struct ActorCreationOptions {
   const bool allow_out_of_order_execution = false;
   /// The maximum actor call pending count.
   const int max_pending_calls = -1;
+  const bool enable_tensor_transport = false;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
   /// True if task events (worker::TaskEvent) from this creation task should be reported
