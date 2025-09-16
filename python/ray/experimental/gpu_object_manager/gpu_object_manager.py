@@ -196,14 +196,15 @@ class GPUObjectManager:
                 ref_info.communicator_meta,
             )
 
+        # Have to get this name before communicator_meta turns into CollectiveCommunicatorMetadata
+        # without communicator_name
+        collective_group_name = ref_info.communicator_meta.communicator_name
         if isinstance(ref_info.communicator_meta, CollectiveCommunicatorMetadata):
             try:
-                destroy_collective_group(
-                    ref_info.communicator_meta.collective_group_name
-                )
+                destroy_collective_group(collective_group_name)
                 logger.error(
                     "Destroyed collective group %s due to a hanging/failed transfer",
-                    ref_info.communicator_meta.collective_group_name,
+                    collective_group_name,
                 )
             except ValueError:
                 # Collective group was already destroyed
