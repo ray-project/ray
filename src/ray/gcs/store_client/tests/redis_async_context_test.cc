@@ -43,6 +43,11 @@ void DisconnectCallback(const redisAsyncContext *c, int status) {
   ASSERT_EQ(status, REDIS_OK);
 }
 
+void TimeoutDisconnectCallback(const redisAsyncContext *c, int status) {
+  ASSERT_EQ(status, REDIS_ERR);
+  io_service.stop();
+}
+
 void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   redisReply *reply = reinterpret_cast<redisReply *>(r);
   ASSERT_TRUE(reply != nullptr);
@@ -58,6 +63,7 @@ class RedisAsyncContextTest : public ::testing::Test {
 };
 
 TEST_F(RedisAsyncContextTest, TestRedisCommands) {
+  io_service.reset();
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
   ASSERT_EQ(ac->err, 0);
   ray::gcs::RedisAsyncContext redis_async_context(
@@ -81,6 +87,49 @@ TEST_F(RedisAsyncContextTest, TestRedisCommands) {
 
   io_service.run();
 }
+
+TEST_F(RedisAsyncContextTest, TestRedisReplyTimeout) {
+  io_service.reset();
+  // Set the Redis reply timeout to 1s.
+  RayConfig::instance().redis_async_request_timeout_seconds() = 1;
+  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
+  ASSERT_EQ(ac->err, 0);
+  ray::gcs::RedisAsyncContext redis_async_context(
+      io_service,
+      std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac, RedisContextDeleter()));
+
+  redisAsyncSetConnectCallback(ac, ConnectCallback);
+  redisAsyncSetDisconnectCallback(ac, TimeoutDisconnectCallback);
+
+  // Simulate Redis service stuck for about 5s.
+  const char *lua_script =
+      "local t=tonumber(ARGV[1]); "
+      "local s=redis.call('TIME')[1]; "
+      "while (redis.call('TIME')[1]-s)<t do end; "
+      "return 'ok'";
+  redisAsyncCommand(
+      ac,
+      [](redisAsyncContext *c, void *r, void *privdata) {
+        redisReply *reply = reinterpret_cast<redisReply *>(r);
+        // Receive null reply when timeout.
+        ASSERT_TRUE(reply == nullptr);
+      },
+      NULL,
+      "EVAL %s 0 5",
+      lua_script);
+
+  std::shared_ptr<RedisContext> shard_context =
+      std::make_shared<RedisContext>(io_service);
+  ASSERT_TRUE(shard_context
+                  ->Connect(std::string("127.0.0.1"),
+                            TEST_REDIS_SERVER_PORTS.front(),
+                            /*username=*/std::string(),
+                            /*password=*/std::string())
+                  .ok());
+
+  io_service.run();
+}
+
 }  // namespace gcs
 }  // namespace ray
 
