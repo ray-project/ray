@@ -89,7 +89,7 @@ def make_and_upload_dataset(dir_path):
     data_path = os.path.join(dir_path, "data")
     os.makedirs(data_path, exist_ok=True)
     for i in range(NUM_FILES):
-        path = os.path.join(data_path, f"data_{i:05d}.parquet.snappy")
+        path = os.path.join(data_path, f"data_{i:05d}.snappy.parquet")
         if not os.path.exists(path):
             tmp_df = create_data_chunk(
                 n=PARQUET_FILE_CHUNK_SIZE, d=NUM_FEATURES, seed=i, include_label=True
@@ -104,7 +104,7 @@ def make_and_upload_dataset(dir_path):
     inference_path = os.path.join(dir_path, "inference")
     os.makedirs(inference_path, exist_ok=True)
     for i in range(NUM_FILES):
-        path = os.path.join(inference_path, f"data_{i:05d}.parquet.snappy")
+        path = os.path.join(inference_path, f"data_{i:05d}.snappy.parquet")
         if not os.path.exists(path):
             tmp_df = create_data_chunk(
                 n=PARQUET_FILE_CHUNK_SIZE, d=NUM_FEATURES, seed=i, include_label=False
@@ -588,8 +588,8 @@ if __name__ == "__main__":
 
     if smoke_test:
         # Only read a single file.
-        data_path = os.path.join(data_path, "data_00000.parquet.snappy")
-        inference_path = os.path.join(inference_path, "data_00000.parquet.snappy")
+        data_path = os.path.join(data_path, "data_00000.snappy.parquet")
+        inference_path = os.path.join(inference_path, "data_00000.snappy.parquet")
 
     preprocessor = DataPreprocessor()
     train_dataset, test_dataset = preprocessor.preprocess_train_data(
