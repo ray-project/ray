@@ -64,6 +64,7 @@ Start a Ray cluster
 
         .. code-block:: bash
 
+            sudo apt-get update
             sudo apt-get install openssh-server
             sudo mkdir -p /run/sshd
             sudo /usr/sbin/sshd -D
