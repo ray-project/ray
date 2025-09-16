@@ -114,7 +114,7 @@ _autoscaling_requester_lock: threading.RLock = threading.RLock()
 def get_or_create_autoscaling_requester_actor():
     ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
-    # Pin the stats actor to the local node so it fate-shares with the driver.
+    # Pin the autoscaling requester actor to the local node so it fate-shares with the driver.
     # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
     # point to the head node.
     scheduling_strategy = NodeAffinitySchedulingStrategy(
