@@ -10,6 +10,3 @@ steps:
     mount_buildkite_agent: true
     depends_on:
       - forge
-      - anyscalebuild
-      - anyscalellmbuild
-      - anyscalemlbuild
