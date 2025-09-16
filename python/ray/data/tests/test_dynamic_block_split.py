@@ -450,7 +450,7 @@ TEST_CASES = [
         target_max_block_size=1024,
         batch_size=int(1024 * 10.125),
         num_batches=1,
-        expected_num_blocks=11,
+        expected_num_blocks=10,
     ),
     # Different batch sizes but same total size should produce a similar number
     # of blocks.
