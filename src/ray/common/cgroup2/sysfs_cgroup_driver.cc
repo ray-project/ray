@@ -36,6 +36,13 @@
 #include "absl/strings/str_join.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
+#include "ray/util/logging.h"
+
+// Used to identify if a filesystem is mounted using cgroupv2.
+// See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
+#ifndef CGROUP2_SUPER_MAGIC
+#define CGROUP2_SUPER_MAGIC 0x63677270
+#endif
 
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
@@ -280,7 +287,7 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
   out_file.flush();
   if (out_file.fail()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", enabled_ctrls_file));
+        "Could not write to cgroup controllers file %s", enabled_ctrls_file));
   }
   return Status::OK();
 }
@@ -319,7 +326,7 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   out_file.flush();
   if (!out_file.good()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", controller_file_path));
+        "Could not write to cgroup controllers file %s", controller_file_path));
   }
   return Status::OK();
 }
