@@ -23,7 +23,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/rpc/raylet/raylet_client_interface.h"
 
 namespace ray {

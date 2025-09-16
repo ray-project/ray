@@ -14,6 +14,7 @@ from ray.train.v2.api.context import (
     LocalTrainContext,
     TrainContext as ExternalTrainContext,
 )
+from ray.train.v2.api.report_config import CheckpointUploadMode
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ class TrainFnUtils(ABC):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -46,6 +49,10 @@ class TrainFnUtils(ABC):
                 in this iteration. Note: If not set, the checkpoint will
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
+            checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+                Defaults to uploading the checkpoint synchronously.
+                This works when no checkpoint is provided but is not useful in that case.
+            delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
         """
         pass
 
@@ -121,9 +128,15 @@ class DistributedTrainFnUtils(TrainFnUtils):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         return get_internal_train_context().report(
-            metrics, checkpoint, checkpoint_dir_name
+            metrics,
+            checkpoint,
+            checkpoint_dir_name,
+            checkpoint_upload_mode,
+            delete_local_checkpoint_after_upload,
         )
 
     def get_checkpoint(self):
@@ -170,6 +183,8 @@ class LocalTrainFnUtils(TrainFnUtils):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint
