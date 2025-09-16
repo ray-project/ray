@@ -295,9 +295,7 @@ class OneHotEncoder(Preprocessor):
             # Mark the corresponding categories as 1
             one_hot[
                 non_zero_indices,
-                codes[valid_category_mask].astype(
-                    np.min_scalar_type(num_categories - 1)
-                ),
+                codes[valid_category_mask],
             ] = 1
             df[output_column] = one_hot.tolist()
 
