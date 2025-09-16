@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -exo pipefail
+set -euxo pipefail
 
 # Notebooks 4, 5 and 6 require bespoke Anyscale Service (so skip testing)
 
