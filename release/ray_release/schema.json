@@ -90,6 +90,9 @@
 				},
 				"byod": {
 					"$ref": "#/definitions/Byod"
+				},
+				"ray_version": {
+					"type": "string"
 				}
 			},
 			"required": [
