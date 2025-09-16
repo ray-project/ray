@@ -206,6 +206,10 @@ def _set_torch_distributed_env_vars():
 class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
 
+    def jls_extract_def(self):
+        # Use a different port for clarity
+        return 
+
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         if not dist.is_available():
             raise RuntimeError("Distributed torch is not available.")
@@ -218,13 +222,41 @@ class _TorchBackend(Backend):
 
             # 1. Get a coordinator address from Ray's rank 0 worker.
             master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
-            pjrt_port = master_port + 123  # Use a different port for clarity
+            pjrt_port = master_port + 123 
             coordinator = f"{master_addr}:{pjrt_port}"
+            if backend_config.init_method == "env":
+                print(">>> setting master addr port env vars")
+                def set_env_vars(addr, port):
+                    os.environ["MASTER_ADDR"] = addr
+                    os.environ["MASTER_PORT"] = str(port)
 
+                worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
+                
+                print(">>> set up a gloo backend pg.")
+                url = "env://"
+                setup_futures = []
+                for i in range(len(worker_group)):
+                    setup_futures.append(
+                        worker_group.execute_single_async(
+                            i,
+                            _setup_torch_process_group,
+                            backend="gloo",
+                            world_rank=i,
+                            world_size=len(worker_group),
+                            init_method=url,
+                            timeout_s=backend_config.timeout_s,
+                        )
+                    )
+                ray.get(setup_futures)
+                
+                print(">>> set up torch distributed env vars")
+                worker_group.execute(_set_torch_distributed_env_vars)
+    
             # 2. Define the function to set ONLY the necessary PJRT env vars.
             def _xla_worker_bootstrap(coord):
                 context = ray.train.get_context()
-                os.environ["PJRT_DEVICE"] = "TPU"
+                os.environ["PJRT_DEVICE"] = "CUDA"
+                os.environ["XLA_DISABLE_FUNCTIONALIZATION"] = "1"
                 # os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
                 # os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
                 # os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
@@ -252,32 +284,26 @@ class _TorchBackend(Backend):
                 else:
                     shape, axes = (num,), ("data",)   # fallback: 1D data mesh
                 mesh = xs.Mesh(np.arange(num), shape, axes)
+
+                logger.info(
+                    f"PJRT envs set for worker {context.get_world_rank()}: "
+                    f"COORD={coord}, PROCS={context.get_world_size()}, INDEX={context.get_world_rank()}, global runtime device = {xr.global_runtime_device_count()}"
+                )
                 
                 # Store the mesh in the train context so it can be accessed by users
-                context = ray.train.get_context()
-                context.set_xla_mesh(mesh)
-                
-                logger.info(f"XLA mesh created: shape={shape}, axes={axes}, devices={num}")
+                # Use V2 context if available, otherwise fall back to V1
+                try:
+                    from ray.train.v2._internal.execution.context import get_train_context
+                    context = get_train_context()
+                    context.set_xla_mesh(mesh)
+                except (ImportError, RuntimeError):
+                    # Fall back to V1 context or skip if not available
+                    logger.warning("Could not access Train V2 context for mesh storage")
+                    pass
 
 
             # 3. Execute the setup function on all workers.
             worker_group.execute(_xla_worker_bootstrap, coord=coordinator)
-
-            # # 4. Call the process group setup, which will use the PJRT variables.
-            # # We pass an empty URL because the 'xla' backend ignores it and uses env vars.
-            # setup_futures = [
-            #     worker_group.execute_single_async(
-            #         i,
-            #         _setup_torch_process_group,
-            #         backend="xla",
-            #         world_rank=i,
-            #         world_size=len(worker_group),
-            #         init_method="xla://", 
-            #         timeout_s=backend_config.timeout_s,
-            #     )
-            #     for i in range(len(worker_group))
-            # ]
-            # ray.get(setup_futures)
 
         else:
             # Set the appropriate training backend.

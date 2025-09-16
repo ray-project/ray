@@ -245,3 +245,11 @@ class TrainContext:
                             pass
         """
         return get_internal_train_context().get_xla_mesh()
+
+    def set_xla_mesh(self, mesh):
+        """Set the XLA SPMD mesh for this worker.
+        
+        Args:
+            mesh: The XLA SPMD mesh to store.
+        """
+        return get_internal_train_context().set_xla_mesh(mesh)

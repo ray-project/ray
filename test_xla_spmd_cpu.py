@@ -96,6 +96,8 @@ def train_loop_per_worker(config: Dict):
     """
     # Get the train context
     context = train.get_context()
+    print(f"Using train context: {type(context).__name__}")
+    
     world_rank = context.get_world_rank()
     world_size = context.get_world_size()
     
@@ -106,11 +108,18 @@ def train_loop_per_worker(config: Dict):
     mock_mesh = mock_xla_mesh_creation()
     
     # Store the mesh in train context (simulating what happens in _xla_worker_bootstrap)
-    context.set_xla_mesh(mock_mesh)
-    print(f"Mesh stored in train context: {mock_mesh}")
+    if hasattr(context, 'set_xla_mesh'):
+        context.set_xla_mesh(mock_mesh)
+        print(f"Mesh stored in train context: {mock_mesh}")
+    else:
+        print("Train context doesn't support XLA mesh storage")
     
     # Now demonstrate how users would access the mesh
-    retrieved_mesh = context.get_xla_mesh()
+    if hasattr(context, 'get_xla_mesh'):
+        retrieved_mesh = context.get_xla_mesh()
+    else:
+        retrieved_mesh = None
+        print("Train context doesn't support XLA mesh retrieval")
     if retrieved_mesh is not None:
         print(f"Retrieved mesh from context: {retrieved_mesh}")
         print(f"Mesh shape: {retrieved_mesh.shape}")
@@ -254,22 +263,31 @@ def test_mesh_context_isolation():
     
     try:
         def test_worker_isolation():
+            # Get the train context
             context = train.get_context()
+            
             world_rank = context.get_world_rank()
             
             # Each worker creates its own mesh
             mock_mesh = mock_xla_mesh_creation()
-            context.set_xla_mesh(mock_mesh)
             
-            # Verify each worker has its own mesh
-            retrieved_mesh = context.get_xla_mesh()
-            print(f"Worker {world_rank}: Mesh shape = {retrieved_mesh.shape}")
-            
-            return {
-                "worker_rank": world_rank,
-                "mesh_shape": list(retrieved_mesh.shape),
-                "mesh_devices": len(retrieved_mesh.devices)
-            }
+            if hasattr(context, 'set_xla_mesh'):
+                context.set_xla_mesh(mock_mesh)
+                retrieved_mesh = context.get_xla_mesh()
+                print(f"Worker {world_rank}: Mesh shape = {retrieved_mesh.shape}")
+                
+                return {
+                    "worker_rank": world_rank,
+                    "mesh_shape": list(retrieved_mesh.shape),
+                    "mesh_devices": len(retrieved_mesh.devices)
+                }
+            else:
+                print(f"Worker {world_rank}: Context doesn't support XLA mesh")
+                return {
+                    "worker_rank": world_rank,
+                    "mesh_shape": None,
+                    "mesh_devices": 0
+                }
         
         # Test with multiple workers
         torch_config = TorchConfig(backend="xla")

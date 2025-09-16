@@ -62,7 +62,11 @@ def get_xla_mesh() -> Optional[xs.Mesh]:
     try:
         import ray.train as train
         context = train.get_context()
-        return context.get_xla_mesh()
+        if hasattr(context, 'get_xla_mesh'):
+            return context.get_xla_mesh()
+        else:
+            logger.warning("Train context doesn't support XLA mesh access")
+            return None
     except Exception as e:
         logger.warning(f"Could not get XLA mesh from train context: {e}")
         return None
