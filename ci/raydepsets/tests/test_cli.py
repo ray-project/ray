@@ -111,7 +111,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.8.10" in result.stdout.decode("utf-8")
+        assert "uv 0.8.17" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
@@ -351,8 +351,6 @@ class TestCli(unittest.TestCase):
 
     def test_override_uv_flag_multiple_flags(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
-        expected_flags.remove("--unsafe-package")
-        expected_flags.remove("ray")
         expected_flags.remove("--unsafe-package")
         expected_flags.remove("setuptools")
         expected_flags.extend(["--unsafe-package", "dummy"])
