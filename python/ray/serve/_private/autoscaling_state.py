@@ -7,7 +7,7 @@ from typing import Any, Deque, Dict, List, Optional, Set
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     AutoscalingSnapshotError,
-    AutoscalingStatusTrigger,
+    AutoscalingStatus,
     DecisionRecord,
     DeploymentID,
     DeploymentSnapshot,
@@ -274,23 +274,22 @@ class AutoscalingState:
 
         if not _skip_bound_check:
             decision_num_replicas = self.apply_bounds(decision_num_replicas)
-        target_for_record = decision_num_replicas
 
         self._decision_history.append(
             DecisionRecord(
                 timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 prev_num_replicas=ctx.current_num_replicas,
-                curr_num_replicas=target_for_record,
-                reason=f"current={ctx.current_num_replicas}, target={target_for_record}",
+                curr_num_replicas=decision_num_replicas,
+                reason=f"current={ctx.current_num_replicas}, target={decision_num_replicas}",
                 policy_name=getattr(ctx.config.policy, "name", None),
             )
         )
 
         self._cached_deployment_snapshot = self._create_deployment_snapshot(
             ctx=ctx,
-            target_replicas=target_for_record,
+            target_replicas=decision_num_replicas,
         )
-        return target_for_record
+        return decision_num_replicas
 
     def get_recent_decisions(self) -> List[DecisionRecord]:
         return self._decision_history
@@ -359,11 +358,11 @@ class AutoscalingState:
             time_since_last_collected_metrics_s = None
 
         if target_replicas > current_replicas:
-            scaling_status_raw = AutoscalingStatusTrigger.UPSCALE
+            scaling_status_raw = AutoscalingStatus.UPSCALE
         elif target_replicas < current_replicas:
-            scaling_status_raw = AutoscalingStatusTrigger.DOWNSCALE
+            scaling_status_raw = AutoscalingStatus.DOWNSCALE
         else:
-            scaling_status_raw = AutoscalingStatusTrigger.STABLE
+            scaling_status_raw = AutoscalingStatus.STABLE
 
         scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
 
@@ -387,8 +386,8 @@ class AutoscalingState:
             deployment=self._deployment_id.name,
             current_replicas=current_replicas,
             target_replicas=target_replicas,
-            min_replicas=min_replicas if min_replicas is not None else None,
-            max_replicas=max_replicas if max_replicas is not None else None,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
             scaling_status=scaling_status,
             policy_name=getattr(ctx.config.policy, "name", None),
             look_back_period_s=look_back_period_s,

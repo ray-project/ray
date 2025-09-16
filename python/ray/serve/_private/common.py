@@ -759,7 +759,7 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 )
 
 
-class AutoscalingStatusTrigger(str, Enum):
+class AutoscalingStatus(str, Enum):
     UPSCALE = "AUTOSCALING_UPSCALE"
     DOWNSCALE = "AUTOSCALING_DOWNSCALE"
     STABLE = "AUTOSCALING_STABLE"
@@ -836,11 +836,11 @@ class DeploymentSnapshot:
         }
 
     @staticmethod
-    def format_scaling_status(trigger: AutoscalingStatusTrigger) -> str:
+    def format_scaling_status(trigger: AutoscalingStatus) -> str:
         mapping = {
-            AutoscalingStatusTrigger.UPSCALE: "scaling up",
-            AutoscalingStatusTrigger.DOWNSCALE: "scaling down",
-            AutoscalingStatusTrigger.STABLE: "stable",
+            AutoscalingStatus.UPSCALE: "scaling up",
+            AutoscalingStatus.DOWNSCALE: "scaling down",
+            AutoscalingStatus.STABLE: "stable",
         }
         return mapping.get(trigger, str(trigger).lower())
 
