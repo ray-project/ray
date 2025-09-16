@@ -29,7 +29,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix.python}}.txt"
+      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix.python}}.lock"
     depends_on:
       - raycudabaseextra
 
