@@ -165,16 +165,16 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         )
         # Add back unsupported columns (join type logic is in should_index_* variables)
         if should_index_l:
-            supported = _add_back_unjoinable_columns(
+            supported = _add_back_unsupported_columns(
                 joined_table=supported,
-                unjoinable_table=unsupported_l,
+                unsupported_table=unsupported_l,
                 index_col_name=index_name_l,
             )
 
         if should_index_r:
-            supported = _add_back_unjoinable_columns(
+            supported = _add_back_unsupported_columns(
                 joined_table=supported,
-                unjoinable_table=unsupported_r,
+                unsupported_table=unsupported_r,
                 index_col_name=index_name_r,
             )
 
@@ -199,26 +199,28 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         return f"__index_level_{index}__"
 
     def _should_index_side(
-        self, side: str, joinable_table: "pa.Table", unjoinable_table: "pa.Table"
+        self, side: str, supported_table: "pa.Table", unsupported_table: "pa.Table"
     ) -> bool:
         """
         Determine whether to create an index column for a given side of the join.
 
-        Index columns are needed when we have both joinable and unjoinable columns
-        on a side, and that side's columns will appear in the final result.
+        A column is "supported" if it is "joinable", and "unsupported" otherwise.
+        A supported_table is a table with only "supported" columns. Index columns are
+        needed when we have both supported and unsupported columns in a table, and
+        that table's columns will appear in the final result.
 
         Args:
             side: "left" or "right" to indicate which side of the join
-            joinable_table: Table containing joinable columns
-            unjoinable_table: Table containing unjoinable columns
+            supported_table: Table containing ONLY joinable columns
+            unsupported_table: Table containing ONLY unjoinable columns
 
         Returns:
             True if an index column should be created for this side
         """
-        # Must have both joinable and unjoinable columns to need indexing.
+        # Must have both supported and unsupported columns to need indexing.
         # We cannot rely on row_count because it can return a non-zero row count
         # for an empty-schema.
-        if not joinable_table.schema or not unjoinable_table.schema:
+        if not supported_table.schema or not unsupported_table.schema:
             return False
 
         # For semi/anti joins, only index the side that appears in the result
@@ -234,16 +236,16 @@ def _split_unsupported_columns(table: "pa.Table") -> Tuple["pa.Table", "pa.Table
     """
     Split a PyArrow table into two tables based on column joinability.
 
-    Separates columns into joinable types and unjoinable types that cannot be
+    Separates columns into supported types and unsupported types that cannot be
     directly joined on but should be preserved in results.
 
     Args:
         table: Input PyArrow table to split
 
     Returns:
-        Tuple of (joinable_table, unjoinable_table) where:
-        - joinable_table contains columns with primitive/joinable types
-        - unjoinable_table contains columns with complex/unjoinable types
+        Tuple of (supported_table, unsupported_table) where:
+        - supported_table contains columns with primitive/joinable types
+        - unsupported_table contains columns with complex/unjoinable types
     """
     supported, unsupported = [], []
     for idx in range(len(table.columns)):
@@ -261,9 +263,9 @@ def _split_unsupported_columns(table: "pa.Table") -> Tuple["pa.Table", "pa.Table
     return (table.select(supported), table.select(unsupported))
 
 
-def _add_back_unjoinable_columns(
+def _add_back_unsupported_columns(
     joined_table: "pa.Table",
-    unjoinable_table: "pa.Table",
+    unsupported_table: "pa.Table",
     index_col_name: str,
 ) -> "pa.Table":
     # Extract the index column array and drop the column from the joined table
@@ -271,8 +273,8 @@ def _add_back_unjoinable_columns(
     indices = joined_table.column(i)
     joined_table = joined_table.remove_column(i)
 
-    # Project the unjoinable columns using the indices and combine with joined table
-    projected = ArrowBlockAccessor(unjoinable_table).take(indices)
+    # Project the unsupported columns using the indices and combine with joined table
+    projected = ArrowBlockAccessor(unsupported_table).take(indices)
     return ArrowBlockAccessor(joined_table).hstack(projected)
 
 
