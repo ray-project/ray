@@ -166,6 +166,7 @@ assert len(result_grid[0].best_checkpoints) == NUM_EPOCHS // CHECKPOINT_FREQ
 from ray import tune
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.experiment import Trial
+from ray.tune.result import SHOULD_CHECKPOINT
 
 
 class CheckpointByStepsTaken(tune.Callback):
@@ -181,7 +182,7 @@ class CheckpointByStepsTaken(tune.Callback):
             current_step - self._trials_last_checkpoint.get(trial, -1)
             >= self.steps_per_checkpoint
         ):
-            trial.checkpoint_now()
+            result[SHOULD_CHECKPOINT] = True
             self._trials_last_checkpoint[trial] = current_step
 
 

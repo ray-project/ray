@@ -1,4 +1,4 @@
-# Example demonstrating how to use Trial.checkpoint_now() in a tuner callback
+# Example demonstrating how to use SHOULD_CHECKPOINT in a tuner callback
 # for smart checkpointing logic. This shows how to trigger checkpointing from
 # callbacks based on training progress rather than fixed intervals.
 
@@ -9,6 +9,9 @@ import time
 
 from ray import tune
 from ray.tune import Callback
+from ray.tune.result import SHOULD_CHECKPOINT
+
+# Hint: SHOULD_CHECKPOINT is an alias of the string "should_checkpoint"
 
 
 # Some dummy function
@@ -18,7 +21,7 @@ def evaluation_fn(step, width, height):
 
 
 class SmartCheckpointCallback(Callback):
-    """Custom callback that triggers checkpointing using Trial.checkpoint_now()
+    """Custom callback that triggers checkpointing by updating the result dict.
 
     This callback demonstrates checkpointing logic beyond
     simple periodic checkpointing. It checkpoints based on performance improvements
@@ -99,7 +102,7 @@ class SmartCheckpointCallback(Callback):
             print(
                 f"Callback requesting checkpoint for trial {trial_id} at step {current_step}: {reason}"
             )
-            trial.checkpoint_now()
+            result[SHOULD_CHECKPOINT] = True
 
 
 class OptimizationTrainable(tune.Trainable):
@@ -123,7 +126,10 @@ class OptimizationTrainable(tune.Trainable):
         }
 
     def save_checkpoint(self, checkpoint_dir):
-        """Save checkpoint - called automatically by Tune when trial.checkpoint_now() is used"""
+        """Save checkpoint
+
+        Called automatically by Tune when SHOULD_CHECKPOINT is in the result
+        """
         checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.json")
         with open(checkpoint_path, "w") as f:
             json.dump(
@@ -132,9 +138,9 @@ class OptimizationTrainable(tune.Trainable):
             )
         print(f"Checkpoint saved at step {self.current_step}")
 
-    def load_checkpoint(self, checkpoint_dir):
+    def load_checkpoint(self, checkpoint):
         """Load checkpoint - called automatically by Tune during restoration"""
-        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.json")
+        checkpoint_path = os.path.join(checkpoint, "checkpoint.json")
         with open(checkpoint_path, "r") as f:
             state = json.load(f)
         self.current_step = state["step"]
@@ -150,20 +156,22 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
 
-    print("=" * 60)
-    print("Ray Tune Example: Smart Checkpointing with Trial.checkpoint_now()")
-    print("=" * 60)
-    print()
-    print("This example demonstrates how to use Trial.checkpoint_now() in a callback")
-    print("to implement intelligent checkpointing based on training progress.")
-    print()
-    print("Key features:")
-    print("- Callback-driven checkpointing using trial.checkpoint_now()")
-    print("- Checkpoints triggered by performance improvements")
-    print("- Milestone-based checkpointing every 10 steps")
-    print("- Instability detection (high variance in recent losses)")
-    print("- Automatic checkpoint save/load via class trainable")
-    print()
+    print(
+        "=" * 60,
+        "Ray Tune Example: Smart Checkpointing with custom SHOULD_CHECKPOINT key",
+        "=" * 60,
+        "",
+        "This example demonstrates how to set the SHOULD_CHECKPOINT key in a callback",
+        "to implement intelligent checkpointing based on training progress.",
+        "",
+        "Key features:",
+        "- Callback-driven checkpointing by setting result[SHOULD_CHECKPOINT] = True",
+        "- Checkpoints triggered by performance improvements",
+        "- Milestone-based checkpointing every 10 steps",
+        "- Instability detection (high variance in recent losses)",
+        "- Automatic checkpoint save/load via class trainable",
+        sep="\n",
+    )
 
     # Create the smart checkpoint callback
     checkpoint_callback = SmartCheckpointCallback(
@@ -193,18 +201,21 @@ if __name__ == "__main__":
         },
     )
 
-    print("Starting hyperparameter tuning with smart checkpointing...")
-    print("Watch for checkpoint messages triggered by the callback!")
-    print()
+    print(
+        "Starting hyperparameter tuning with smart checkpointing...",
+        "Watch for checkpoint messages triggered by the callback!",
+        sep="\n",
+    )
 
     results = tuner.fit()
     best_result = results.get_best_result()
-    print("\n" + "=" * 60)
-    print("RESULTS")
-    print("=" * 60)
-    print("Best hyperparameters: ", best_result.config)
-    best_checkpoint = best_result.checkpoint
-    print("Best checkpoint: ", best_checkpoint)
-    print()
-    print("The checkpoints were triggered by the SmartCheckpointCallback")
-    print("using trial.checkpoint_now() based on training progress!")
+    print(
+        "\n" + "=" * 60,
+        "RESULTS",
+        "=" * 60,
+        f"Best hyperparameters: {best_result.config}",
+        f"Best checkpoint: {best_result.checkpoint}",
+        "",
+        "The checkpoints were triggered by the SmartCheckpointCallback",
+        sep="\n",
+    )

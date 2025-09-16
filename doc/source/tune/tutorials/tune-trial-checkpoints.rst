@@ -102,12 +102,10 @@ If you want a checkpoint to be created at the end of a trial, you can additional
 Manual Checkpointing by Callback
 --------------------------------
 
-You can also manually trigger checkpointing by calling
-:meth:`checkpoint_now() <ray.tune.experiment.trial.Trial.checkpoint_now>`
-on a trial object.
-When using a :class:`Callback <ray.tune.callback.Callback>`, you can do this at the latest during
-:meth:`on_trial_result() <ray.tune.Callback.on_trial_result>` to trigger a manual
-save of the checkpoint.
+You can also manually trigger checkpointing by setting
+:obj:`result["should_checkpoint"] = True <ray.tune.result.SHOULD_CHECKPOINT>` flag
+during a :class:`Callback <ray.tune.callback.Callback>`'s :meth:`on_trial_result() <ray.tune.Callback.on_trial_result>`
+to trigger a manual save of the checkpoint.
 
 .. literalinclude:: /tune/doc_code/trial_checkpoint.py
     :language: python

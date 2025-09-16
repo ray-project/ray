@@ -516,7 +516,7 @@ def test_checkpoint_force_by_trial_callback(ray_start_4_cpus_2_gpus_extra, tmp_p
             # Checkpoint every two iterations
             if result[TRAINING_ITERATION] % 2 == 0:
                 self.num_checkpoints += 1
-                trial.checkpoint_now()
+                result["should_checkpoint"] = True
 
     storage = mock_storage_context()
 
