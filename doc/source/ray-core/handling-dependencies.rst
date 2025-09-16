@@ -311,7 +311,10 @@ Using ``uv`` for package management
 .. important::
 
   When launching Ray applications with `uv run`, **always use the `--active` flag** (i.e., `uv run --active main.py`).
-  Omitting `--active` can result in Python version mismatches between your local environment and Ray worker processes, leading to runtime errors or segmentation faults. The `--active` flag ensures Ray uses the currently active Python environment, preventing these issues.
+  Omitting `--active` can result in Python version mismatches between your local environment and Ray worker processes, which may cause runtime errors or segmentation faults.
+  If you encounter errors such as version mismatch exceptions, unexpected crashes, or segmentation faults, check that you are using the `--active` flag.
+
+  Note: Some examples below may not yet reflect this best practice. Please ensure you add the `--active` flag when adapting them.
 
 The recommended approach for package management with `uv` in runtime environments is through `uv run`.
 
