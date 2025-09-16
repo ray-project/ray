@@ -721,12 +721,10 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
 void CoreWorker::SubscribeToNodeChanges() {
   std::call_once(subscribe_to_node_changes_flag_, [this]() {
     // Register a callback to monitor add/removed nodes.
-    // Note we capture a shared ownership of reference_counter, rate_limiter, and
-    // raylet_client_pool here to avoid destruction order fiasco between gcs_client and
-    // reference_counter_.
+    // Note we capture a shared ownership of reference_counter and rate_limiter
+    // here to avoid destruction order fiasco between gcs_client and reference_counter_.
     auto on_node_change = [reference_counter = reference_counter_,
-                           rate_limiter = lease_request_rate_limiter_,
-                           raylet_client_pool = raylet_client_pool_](
+                           rate_limiter = lease_request_rate_limiter_](
                               const NodeID &node_id, const rpc::GcsNodeInfo &data) {
       if (data.state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(node_id)

@@ -84,17 +84,18 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
     if (server_unavailable_timeout_time_ < now) {
       uint32_t attempt_number = pending_requests_.begin()->second->GetAttemptNumber();
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
-                       << (attempt_number > 0 ? ExponentialBackoff::GetBackoffMs(
-                                                    attempt_number - 1,
-                                                    server_unavailable_base_timeout_ms_) /
-                                                    1000.0
-                                              : 0)
+                       << (attempt_number > 0
+                               ? ExponentialBackoff::GetBackoffMs(
+                                     attempt_number - 1,
+                                     server_unavailable_base_timeout_s_ * 1000) /
+                                     1000.0
+                               : 0)
                        << " seconds";
       server_unavailable_timeout_callback_();
       // Reset the unavailable timeout.
       server_unavailable_timeout_time_ =
           now + absl::Milliseconds(ExponentialBackoff::GetBackoffMs(
-                    attempt_number, server_unavailable_base_timeout_ms_));
+                    attempt_number, server_unavailable_base_timeout_s_ * 1000));
       pending_requests_.begin()->second->SetAttemptNumber(attempt_number + 1);
     }
 
@@ -162,13 +163,15 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
                            : now + absl::Milliseconds(request->GetTimeoutMs());
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
-    uint32_t attempt_number = request->GetAttemptNumber();
-    server_unavailable_timeout_time_ =
-        now + absl::Milliseconds(ExponentialBackoff::GetBackoffMs(
-                  attempt_number, server_unavailable_base_timeout_ms_));
-    request->SetAttemptNumber(attempt_number + 1);
-    SetupCheckTimer();
+    pending_requests_.emplace(timeout, std::move(request));
+    if (server_name_ == "GCS") {
+      server_unavailable_timeout_time_ =
+          now + absl::Seconds(server_unavailable_base_timeout_s_);
+      SetupCheckTimer();
+    } else {
+      server_unavailable_timeout_time_ = now;
+      CheckChannelStatus();
+    }
   }
-  pending_requests_.emplace(timeout, std::move(request));
 }
 }  // namespace ray::rpc
