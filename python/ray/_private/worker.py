@@ -3695,9 +3695,9 @@ def remote(
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
-        fallback_strategy (List(Dict[str, str])): If specified, expresses soft constraints
+        fallback_strategy (List[Dict[str, str]]): If specified, expresses soft constraints
                 through a list of label selectors to fall back on when scheduling on a node.
-                The label selectors are evaluated in order during scheduling. The first satisfied 
+                The label selectors are evaluated in order during scheduling. The first satisfied
                 label selector is used.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.

@@ -1076,10 +1076,9 @@ class _ActorClassMetadata:
             can be scheduled on. The label selector consist of key-value pairs, where the keys
             are label names and the value are expressions consisting of an operator with label
             values or just a value to indicate equality.
-        fallback_strategy: (List[Dict[str, str]]) If specified, expresses soft constraints
-            through a list of label selectors to fall back on when scheduling on a node.
-            The label selectors are evaluated in order during scheduling. The first satisfied 
-            label selector is used.
+        fallback_strategy: If specified, expresses soft constraints through a list of label
+            selectors to fall back on when scheduling on a node. The label selectors are
+            evaluated in order during scheduling. The first satisfied label selector is used.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
@@ -1372,7 +1371,7 @@ class ActorClass(Generic[T]):
                 on a node which meets the specified label conditions (equals, in, not in, etc.).
             fallback_strategy (List[Dict[str, str]]): If specified, expresses soft constraints
                 through a list of label selectors to fall back on when scheduling on a node.
-                The label selectors are evaluated in order during scheduling. The first satisfied 
+                The label selectors are evaluated in order during scheduling. The first satisfied
                 label selector is used.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
