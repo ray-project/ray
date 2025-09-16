@@ -60,7 +60,7 @@ class LocalTorchController(LocalController):
         if world_size != 1:
             assert (
                 self.datasets is None or len(self.datasets) == 0
-            ), "Local mode with multiple workers doesn't support ray data."
+            ), "Ray Data is not supported in local mode with multiple workers."
         set_train_fn_utils(
             LocalTrainFnUtils(
                 experiment_name=self.experiment_name,
