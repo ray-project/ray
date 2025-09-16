@@ -29,9 +29,27 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
   if (data.state() == rpc::GcsNodeInfo::ALIVE) {
-    state_transition.set_state(rpc::events::NodeLifecycleEvent::ALIVE);
-    state_transition.mutable_resources()->insert(data.resources_total().begin(),
+    auto node_snapshot = data.state_snapshot();
+    if (node_snapshot) 
+      switch (node_snapshot->state()) {
+      case rpc::NodeSnapshot::IDLE:
+        state_transition.set_state(rpc::events::NodeLifecycleEvent::IDLE);
+        break;
+      case rpc::NodeSnapshot::ACTIVE:
+        state_transition.set_state(rpc::events::NodeLifecycleEvent::ACTIVE);
+        break;
+      case rpc::NodeSnapshot::DRAINING:
+        state_transition.set_state(rpc::events::NodeLifecycleEvent::DRAINING);
+        break;
+      default:
+        state_transition.set_state(rpc::events::NodeLifecycleEvent::UNDEFINED);
+        break;
+      }
+    } else {
+      state_transition.set_state(rpc::events::NodeLifecycleEvent::STARTING);
+      state_transition.mutable_resources()->insert(data.resources_total().begin(),
                                                  data.resources_total().end());
+    }
   } else {
     state_transition.set_state(rpc::events::NodeLifecycleEvent::DEAD);
     auto death_info = state_transition.mutable_death_info();
