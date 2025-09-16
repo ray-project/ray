@@ -3571,6 +3571,175 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         return observations, actions, rewards, terminateds, truncateds, infos
 
+    def test_setters(self):
+        """Tests whether the MultiAgentEpisode's setter methods work as expected.
+
+        Also tests numpy'ized episodes.
+
+        This test covers all setter methods:
+        - set_observations
+        - set_actions
+        - set_rewards
+        - set_extra_model_outputs
+
+        Each setter is tested with various indexing scenarios including:
+        - Single index
+        - List of indices
+        - Slice objects
+        - Negative indices (both regular and lookback buffer interpretation)
+
+        Uses two agents: a0 and a1
+        """
+        import copy
+
+        SOME_KEY = "some_key"
+
+        # Create a simple multi-agent episode with two agents without lookback buffer first for basic tests
+        episode = MultiAgentEpisode(
+            observations=[
+                {"a0": 100, "a1": 200},  # Initial observations
+                {"a0": 101, "a1": 201},
+                {"a0": 102, "a1": 202},
+                {"a0": 103, "a1": 203},
+                {"a0": 104, "a1": 204},
+                {"a0": 105, "a1": 205},
+                {"a0": 106, "a1": 206},
+            ],
+            actions=[
+                {"a0": 1, "a1": 11},
+                {"a0": 2, "a1": 12},
+                {"a0": 3, "a1": 13},
+                {"a0": 4, "a1": 14},
+                {"a0": 5, "a1": 15},
+                {"a0": 6, "a1": 16},
+            ],
+            rewards=[
+                {"a0": 0.1, "a1": 1.1},
+                {"a0": 0.2, "a1": 1.2},
+                {"a0": 0.3, "a1": 1.3},
+                {"a0": 0.4, "a1": 1.4},
+                {"a0": 0.5, "a1": 1.5},
+                {"a0": 0.6, "a1": 1.6},
+            ],
+            extra_model_outputs=[
+                {"a0": {SOME_KEY: 0.01}, "a1": {SOME_KEY: 1.01}},
+                {"a0": {SOME_KEY: 0.02}, "a1": {SOME_KEY: 1.02}},
+                {"a0": {SOME_KEY: 0.03}, "a1": {SOME_KEY: 1.03}},
+                {"a0": {SOME_KEY: 0.04}, "a1": {SOME_KEY: 1.04}},
+                {"a0": {SOME_KEY: 0.05}, "a1": {SOME_KEY: 1.05}},
+                {"a0": {SOME_KEY: 0.06}, "a1": {SOME_KEY: 1.06}},
+            ],
+            len_lookback_buffer=0,
+        )
+
+        test_patterns = [
+            # (description, new_data, indices)
+            ("zero index", {"a0": 7353.0, "a1": 8353.0}, 0),
+            ("single index", {"a0": 7353.0, "a1": 8353.0}, 2),
+            ("negative index", {"a0": 7353.0, "a1": 8353.0}, -1),
+            ("short list of indices", {"a0": [7353.0], "a1": [8353.0]}, [1]),
+            (
+                "long list of indices",
+                {"a0": [73.0, 53.0, 35.0, 53.0], "a1": [83.0, 63.0, 45.0, 63.0]},
+                [1, 2, 3, 4],
+            ),
+            ("short slice", {"a0": [7353.0], "a1": [8353.0]}, slice(2, 3)),
+            (
+                "long slice",
+                {"a0": [7.0, 3.0, 5.0, 3.0], "a1": [17.0, 13.0, 15.0, 13.0]},
+                slice(2, 6),
+            ),
+        ]
+
+        # Test setters with all patterns
+        numpy_episode = copy.deepcopy(episode).to_numpy()
+
+        for e in [episode, numpy_episode]:
+            print(f"Testing MultiAgent numpy'ized={e.is_numpy}...")
+            for desc, new_data, indices in test_patterns:
+                print(f"Testing MultiAgent {desc}...")
+
+                expected_data = new_data
+                test_new_data = new_data
+
+                # Convert lists to numpy arrays for numpy episodes
+                if e.is_numpy and isinstance(list(new_data.values())[0], list):
+                    test_new_data = {
+                        agent_id: np.array(agent_data)
+                        for agent_id, agent_data in new_data.items()
+                    }
+
+                # Test set_observations
+                e.set_observations(new_data=test_new_data, at_indices=indices)
+                result = e.get_observations(indices)
+                for agent_id in ["a0", "a1"]:
+                    check(result[agent_id], expected_data[agent_id])
+
+                # Test set_actions
+                e.set_actions(new_data=test_new_data, at_indices=indices)
+                result = e.get_actions(indices)
+                for agent_id in ["a0", "a1"]:
+                    check(result[agent_id], expected_data[agent_id])
+
+                # Test set_rewards
+                e.set_rewards(new_data=test_new_data, at_indices=indices)
+                result = e.get_rewards(indices)
+                for agent_id in ["a0", "a1"]:
+                    check(result[agent_id], expected_data[agent_id])
+
+                # Test set_extra_model_outputs
+                # Note: We test this by directly checking the underlying agent episodes
+                # since get_extra_model_outputs can be complex with indices
+                e.set_extra_model_outputs(
+                    key=SOME_KEY, new_data=test_new_data, at_indices=indices
+                )
+
+                # Verify that the setter worked by checking the individual agent episodes
+                if desc in ["single index", "zero index"]:
+                    for agent_id in ["a0", "a1"]:
+                        actual_idx = e.agent_episodes[agent_id].t_started + indices
+                        if actual_idx < len(
+                            e.agent_episodes[agent_id].extra_model_outputs[SOME_KEY]
+                        ):
+                            check(
+                                e.agent_episodes[agent_id].extra_model_outputs[
+                                    SOME_KEY
+                                ][actual_idx],
+                                expected_data[agent_id],
+                            )
+                elif desc == "negative index":
+                    for agent_id in ["a0", "a1"]:
+                        agent_ep = e.agent_episodes[agent_id]
+                        actual_idx = (
+                            len(agent_ep.extra_model_outputs[SOME_KEY]) + indices
+                        )
+                        if actual_idx >= 0:
+                            check(
+                                agent_ep.extra_model_outputs[SOME_KEY][actual_idx],
+                                expected_data[agent_id],
+                            )
+                elif desc in ["long list of indices", "short list of indices"]:
+                    for agent_id in ["a0", "a1"]:
+                        agent_ep = e.agent_episodes[agent_id]
+                        for i, expected_val in enumerate(expected_data[agent_id]):
+                            actual_idx = agent_ep.t_started + indices[i]
+                            if actual_idx < len(agent_ep.extra_model_outputs[SOME_KEY]):
+                                check(
+                                    agent_ep.extra_model_outputs[SOME_KEY][actual_idx],
+                                    expected_val,
+                                )
+                elif desc in ["long slice", "short slice"]:
+                    for agent_id in ["a0", "a1"]:
+                        agent_ep = e.agent_episodes[agent_id]
+                        slice_indices = list(range(indices.start, indices.stop))
+                        for i, expected_val in enumerate(expected_data[agent_id]):
+                            actual_idx = agent_ep.t_started + slice_indices[i]
+                            if actual_idx < len(agent_ep.extra_model_outputs[SOME_KEY]):
+                                check(
+                                    agent_ep.extra_model_outputs[SOME_KEY][actual_idx],
+                                    expected_val,
+                                )
+
 
 if __name__ == "__main__":
     import pytest
