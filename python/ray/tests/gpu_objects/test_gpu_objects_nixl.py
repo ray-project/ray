@@ -16,6 +16,38 @@ class GPUTestActor:
         assert data.device.type == device
         return data.sum().item()
 
+    def produce(self, tensors):
+        refs = []
+        for t in tensors:
+            refs.append(ray.put(t, _tensor_transport="nixl"))
+        return refs
+
+    def consume_with_nixl(self, refs):
+        tensors = [ray.get(ref) for ref in refs]
+        sum = 0
+        for t in tensors:
+            assert t.device.type == "cuda"
+            sum += t.sum().item()
+        return sum
+
+    def consume_with_object_store(self, refs):
+        tensors = [ray.get(ref, _tensor_transport="object_store") for ref in refs]
+        sum = 0
+        for t in tensors:
+            assert t.device.type == "cuda"
+            sum += t.sum().item()
+        return sum
+
+    def gc(self):
+        tensor = torch.tensor([1, 2, 3]).to("cuda")
+        ref = ray.put(tensor, _tensor_transport="nixl")
+        gpu_manager = ray._private.worker.global_worker.gpu_object_manager
+        assert gpu_manager.gpu_object_store.has_tensor(tensor)
+        del ref
+        gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
+        assert not gpu_manager.gpu_object_store.has_tensor(tensor)
+        return "Success"
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_p2p(ray_start_regular):
@@ -34,12 +66,12 @@ def test_p2p(ray_start_regular):
 
     # Trigger tensor transfer from src to dst actor
     result = dst_actor.sum.remote(ref, "cuda")
-    assert tensor.sum().item() == ray.get(result)
+    assert tensor.sum().item() == ray.get(result, _tensor_transport="object_store")
 
     # Test CPU to CPU transfer
     ref1 = src_actor.echo.remote(tensor1, "cpu")
     result1 = dst_actor.sum.remote(ref1, "cpu")
-    assert tensor1.sum().item() == ray.get(result1)
+    assert tensor1.sum().item() == ray.get(result1, _tensor_transport="object_store")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -51,7 +83,42 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
     # Intra-actor communication for pure GPU tensors
     ref = actor.echo.remote(tensor, "cuda")
     result = actor.sum.remote(ref, "cuda")
-    assert tensor.sum().item() == ray.get(result)
+    assert tensor.sum().item() == ray.get(result, _tensor_transport="object_store")
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_put_and_get_object_with_nixl(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+    tensor1 = torch.tensor([1, 2, 3]).to("cuda")
+    tensor2 = torch.tensor([4, 5, 6, 0]).to("cuda")
+    tensor3 = torch.tensor([7, 8, 9, 0, 0]).to("cuda")
+    tensors = [tensor1, tensor2, tensor3]
+    ref = src_actor.produce.remote(tensors)
+    ref1 = dst_actor.consume_with_nixl.remote(ref)
+    result1 = ray.get(ref1)
+    assert result1 == 45
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_put_and_get_object_with_object_store(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+    tensor1 = torch.tensor([1, 2, 3]).to("cuda")
+    tensor2 = torch.tensor([4, 5, 6, 0]).to("cuda")
+    tensor3 = torch.tensor([7, 8, 9, 0, 0]).to("cuda")
+    tensors = [tensor1, tensor2, tensor3]
+    ref = src_actor.produce.remote(tensors)
+    ref1 = dst_actor.consume_with_object_store.remote(ref)
+    result1 = ray.get(ref1)
+    assert result1 == 45
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_put_gc(ray_start_regular):
+    actor = GPUTestActor.remote()
+    ref = actor.gc.remote()
+    assert ray.get(ref) == "Success"
 
 
 if __name__ == "__main__":

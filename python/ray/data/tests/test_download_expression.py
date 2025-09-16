@@ -154,6 +154,56 @@ class TestDownloadExpressionFunctionality:
                 assert downloaded_image.size == (8, 8)
                 assert downloaded_image.mode == "RGB"
 
+    def test_chained_download_expressions(self, tmp_path):
+        """Test chained download expressions functionality."""
+        # Create sample files with different content
+        sample_data = [
+            b"Content for file 1",
+            b"Content for file 2",
+            b"Content for file 3",
+        ]
+
+        file_paths = []
+        for i, data in enumerate(sample_data):
+            file_path = tmp_path / f"test_file_{i}.txt"
+            file_path.write_bytes(data)
+            file_paths.append(str(file_path))
+
+        # Create dataset with file URIs
+        table = pa.Table.from_arrays(
+            [
+                pa.array([f"local://{path}" for path in file_paths]),
+                pa.array([f"id_{i}" for i in range(len(file_paths))]),
+            ],
+            names=["file_uri", "file_id"],
+        )
+
+        ds = ray.data.from_arrow(table)
+
+        # Chain multiple download expressions from the same URI column
+        ds_with_chained_downloads = (
+            ds.with_column("file_bytes_1", download("file_uri"))
+            .with_column("file_bytes_2", download("file_uri"))
+            .with_column("file_bytes_3", download("file_uri"))
+        )
+
+        # Verify results
+        results = ds_with_chained_downloads.take_all()
+        assert len(results) == len(sample_data)
+
+        for i, result in enumerate(results):
+            # All download columns should have the same content
+            assert "file_bytes_1" in result
+            assert "file_bytes_2" in result
+            assert "file_bytes_3" in result
+            assert result["file_bytes_1"] == sample_data[i]
+            assert result["file_bytes_2"] == sample_data[i]
+            assert result["file_bytes_3"] == sample_data[i]
+
+            # Original columns should be preserved
+            assert result["file_id"] == f"id_{i}"
+            assert result["file_uri"] == f"local://{file_paths[i]}"
+
 
 class TestDownloadExpressionErrors:
     """Test error conditions and edge cases for download expressions."""

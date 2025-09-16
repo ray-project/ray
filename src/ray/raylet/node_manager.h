@@ -115,9 +115,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
-  // If true, core worker enables resource isolation by adding itself into appropriate
-  // cgroup.
-  bool enable_resource_isolation = false;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
