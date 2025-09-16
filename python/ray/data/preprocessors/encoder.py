@@ -286,10 +286,13 @@ class OneHotEncoder(Preprocessor):
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
             one_hot = np.zeros((len(df), num_categories), dtype=np.uint8)
+            # Integer indices for each category in the column
             codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
+            # Filter to only the rows that have a valid category
             valid_rows = codes != -1
             # Dimension should be (num_rows, ) - 1D boolean array
             non_zero_indices = np.nonzero(valid_rows)[0]
+            # Mark the corresponding categories as 1
             one_hot[non_zero_indices, codes[valid_rows].astype(np.uint8)] = 1
             df[output_column] = one_hot.tolist()
 
