@@ -1071,6 +1071,15 @@ class PinObjectIDsIdempotencyTest : public NodeManagerTest,
                                     public ::testing::WithParamInterface<bool> {};
 
 TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
+  // object_exists: determines whether we add an object to the plasma store which is used
+  // for pinning.
+  // object_exists == true: an object is added to the plasma store and PinObjectIDs is
+  // expected to succeed. A true boolean value is inserted at the index of the object
+  // in reply.successes.
+  // object_exists == false: an object is not added to the plasma store. PinObjectIDs will
+  // still succeed and not return an error when trying to pin a non-existent object, but
+  // will instead at the index of the object in reply.successes insert a false
+  // boolean value.
   const bool object_exists = GetParam();
   ObjectID id = ObjectID::FromRandom();
 
@@ -1097,6 +1106,8 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
       &reply2,
       [](Status s, std::function<void()> success, std::function<void()> failure) {});
 
+  // For each invocation of HandlePinObjectIDs, we expect the size of reply.successes and
+  // the boolean values it contains to not change.
   EXPECT_EQ(reply1.successes_size(), 1);
   EXPECT_EQ(reply1.successes(0), object_exists);
   EXPECT_EQ(reply2.successes_size(), 1);
