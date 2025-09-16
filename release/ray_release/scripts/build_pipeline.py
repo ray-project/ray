@@ -10,10 +10,6 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step_for_test_group
-from ray_release.byod.build import (
-    build_anyscale_base_byod_images,
-    build_anyscale_custom_byod_image,
-)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
@@ -122,17 +118,6 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    logger.info("Build anyscale base BYOD images")
-    build_anyscale_base_byod_images(tests)
-    logger.info("Build anyscale custom BYOD images")
-    for test in tests:
-        if test.require_custom_byod_image():
-            build_anyscale_custom_byod_image(
-                test.get_anyscale_byod_image(),
-                test.get_anyscale_base_byod_image(),
-                test.get_byod_post_build_script(),
-                test.get_byod_lock_file(),
-            )
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
