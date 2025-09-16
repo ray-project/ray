@@ -74,7 +74,7 @@ group = create_collective_group([sender, receiver], backend="torch_gloo")
 # store.
 tensor = sender.random_tensor.remote()
 result = receiver.sum.remote(tensor)
-print(ray.get(result))
+print(ray.get(result, _tensor_transport="object_store"))
 # __gloo_full_example_end__
 
 # __gloo_multiple_tensors_example_start__
@@ -100,7 +100,7 @@ group = create_collective_group([sender, receiver], backend="torch_gloo")
 # instead of in Ray's object store.
 tensor_dict = sender.random_tensor_dict.remote()
 result = receiver.sum.remote(tensor_dict)
-print(ray.get(result))
+print(ray.get(result, _tensor_transport="object_store"))
 # __gloo_multiple_tensors_example_end__
 
 # __gloo_intra_actor_start__
@@ -127,10 +127,10 @@ tensor = sender.random_tensor.remote()
 # passed back to the same actor without copying.
 sum1 = sender.sum.remote(tensor)
 sum2 = receiver.sum.remote(tensor)
-assert torch.allclose(*ray.get([sum1, sum2]))
+assert torch.allclose(*ray.get([sum1, sum2], _tensor_transport="object_store"))
 # __gloo_intra_actor_end__
 
 # __gloo_get_start__
-print(ray.get(tensor))
+print(ray.get(tensor, _tensor_transport="object_store"))
 # torch.Tensor(...)
 # __gloo_get_end__
