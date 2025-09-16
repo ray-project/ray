@@ -29,7 +29,7 @@ class NixlBackend:
             # If the actor id is None, it means the current process is a driver.
             import uuid
 
-            actor_id = "RAY-DRIVER-" + str(uuid.uuid4())
+            actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
         self._nixl_agent = nixl_agent(actor_id, agent_config)
 
     @classmethod
