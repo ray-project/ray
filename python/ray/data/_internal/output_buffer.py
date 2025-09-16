@@ -41,11 +41,11 @@ class BlockOutputBuffer:
         ...     yield output.next() # doctest: +SKIP
     """
 
-    def __init__(self, output_block_size_option: OutputBlockSizeOption):
+    def __init__(self, output_block_size_option: Optional[OutputBlockSizeOption]):
         self._output_block_size_option = output_block_size_option
         self._buffer = DelegatingBlockBuilder()
-        self._returned_at_least_one_block = False
         self._finalized = False
+        self._has_yielded_blocks = False
 
     def add(self, item: Any) -> None:
         """Add a single item to this output buffer."""
@@ -69,36 +69,57 @@ class BlockOutputBuffer:
 
     def _exceeded_buffer_row_limit(self) -> bool:
         return (
-            self._output_block_size_option.target_num_rows_per_block is not None
-            and self._buffer.num_rows()
-            > self._output_block_size_option.target_num_rows_per_block
+            self._max_num_rows_per_block() is not None
+            and self._buffer.num_rows() > self._max_num_rows_per_block()
         )
 
     def _exceeded_buffer_size_limit(self) -> bool:
         return (
-            self._output_block_size_option.target_max_block_size is not None
-            and self._buffer.get_estimated_memory_usage()
-            > self._output_block_size_option.target_max_block_size
+            self._max_bytes_per_block() is not None
+            and self._buffer.get_estimated_memory_usage() > self._max_bytes_per_block()
+        )
+
+    def _max_num_rows_per_block(self) -> Optional[int]:
+        return (
+            self._output_block_size_option.target_num_rows_per_block
+            if self._output_block_size_option is not None
+            else None
+        )
+
+    def _max_bytes_per_block(self) -> Optional[int]:
+        return (
+            self._output_block_size_option.target_max_block_size
+            if self._output_block_size_option is not None
+            else None
         )
 
     def has_next(self) -> bool:
         """Returns true when a complete output block is produced."""
+
+        # NOTE: Output buffer should yield immediately in either of 2 cases
+        #   - When it's finalized and buffer is non-empty (or no blocks been emitted)
+        #   - When block-sizing is disabled and buffer is non-empty
+        #
+        # TODO remove emitting empty blocks
         if self._finalized:
-            return not self._returned_at_least_one_block or self._buffer.num_rows() > 0
-        else:
-            return (
-                self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
-            )
+            return not self._has_yielded_blocks or self._buffer.num_rows() > 0
+        elif self._output_block_size_option is None:
+            # NOTE: When block sizing is disabled, buffer won't be producing
+            #       incrementally, until the whole sequence is ingested. This
+            #       is required to align it with semantic of producing 1 block
+            #       from 1 block of the input
+            return False
+
+        return self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
 
     def _exceeded_block_size_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max block size. We only do this if we are
         # more than 50% above the target block size, because this ensures that the last
         # block produced will be at least half the target block size.
         return (
-            self._output_block_size_option.target_max_block_size is not None
+            self._max_bytes_per_block() is not None
             and block.size_bytes()
-            >= MAX_SAFE_BLOCK_SIZE_FACTOR
-            * self._output_block_size_option.target_max_block_size
+            >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._max_bytes_per_block()
         )
 
     def _exceeded_block_row_slice_limit(self, block: BlockAccessor) -> bool:
@@ -106,32 +127,31 @@ class BlockOutputBuffer:
         # are more than 50% above the target rows per block, because this ensures that
         # the last block produced will be at least half the target row count.
         return (
-            self._output_block_size_option.target_num_rows_per_block is not None
+            self._max_num_rows_per_block() is not None
             and block.num_rows()
-            >= MAX_SAFE_ROWS_PER_BLOCK_FACTOR
-            * self._output_block_size_option.target_num_rows_per_block
+            >= MAX_SAFE_ROWS_PER_BLOCK_FACTOR * self._max_num_rows_per_block()
         )
 
     def next(self) -> Block:
         """Returns the next complete output block."""
         assert self.has_next()
 
-        block_to_yield = self._buffer.build()
-        block_remainder = None
-        block = BlockAccessor.for_block(block_to_yield)
+        block = self._buffer.build()
 
+        accessor = BlockAccessor.for_block(block)
+        block_remainder = None
         target_num_rows = None
-        if self._exceeded_block_row_slice_limit(block):
-            target_num_rows = self._output_block_size_option.target_num_rows_per_block
-        elif self._exceeded_block_size_slice_limit(block):
-            num_bytes_per_row = block.size_bytes() // block.num_rows()
+
+        if self._exceeded_block_row_slice_limit(accessor):
+            target_num_rows = self._max_num_rows_per_block()
+        elif self._exceeded_block_size_slice_limit(accessor):
+            num_bytes_per_row = accessor.size_bytes() // accessor.num_rows()
             target_num_rows = max(
                 1,
-                self._output_block_size_option.target_max_block_size
-                // num_bytes_per_row,
+                self._max_bytes_per_block() // num_bytes_per_row,
             )
 
-        if target_num_rows is not None and target_num_rows < block.num_rows():
+        if target_num_rows is not None and target_num_rows < accessor.num_rows():
             # NOTE: We're maintaining following protocol of slicing underlying block
             #       into appropriately sized ones:
             #
@@ -143,12 +163,15 @@ class BlockOutputBuffer:
             #           copied, where N is the total number of bytes in the original
             #           block and M is the number of blocks that will be produced by
             #           this iterator
-            block_to_yield = block.slice(0, target_num_rows, copy=True)
-            block_remainder = block.slice(target_num_rows, block.num_rows(), copy=False)
+            block = accessor.slice(0, target_num_rows, copy=True)
+            block_remainder = accessor.slice(
+                target_num_rows, accessor.num_rows(), copy=False
+            )
 
         self._buffer = DelegatingBlockBuilder()
         if block_remainder is not None:
             self._buffer.add_block(block_remainder)
 
-        self._returned_at_least_one_block = True
-        return block_to_yield
+        self._has_yielded_blocks = True
+
+        return block
