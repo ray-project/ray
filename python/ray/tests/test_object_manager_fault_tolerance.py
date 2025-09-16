@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import get_cluster_memory_usage, wait_for_condition
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -45,6 +46,12 @@ def test_free_objects_idempotent(
     assert ray.get([result_ref_1, result_ref_2]) == ["ok", "ok"]
 
     del big_object_ref
+
+    def get_cluster_memory_usage():
+        state = get_state_from_address()
+        reply = get_memory_info_reply(state)
+        return reply.store_stats.object_store_bytes_used
+
     wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=10)
 
 
