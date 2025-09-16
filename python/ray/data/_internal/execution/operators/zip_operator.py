@@ -44,6 +44,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         Args:
             input_ops: Operators generating input data for this operator to zip.
         """
+        assert len(input_ops) >= 2
         self._input_buffers: List[collections.deque[RefBundle]] = [
             collections.deque() for _ in range(len(input_ops))
         ]
