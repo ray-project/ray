@@ -10,7 +10,7 @@ import ray._private.utils as utils
 import ray.scripts.scripts as scripts
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
-# These tests is intended to run in CI inside a container.
+# These tests are intended to run in CI inside a container.
 # If you want to run this test locally, you will need to create a cgroup that
 # the raylet can manage and delegate to the correct user.
 #
