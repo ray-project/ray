@@ -2711,76 +2711,82 @@ def test_with_column_udf_invalid_return_type_validation(
         assert "pandas.Series" in error_message and "numpy.ndarray" in error_message
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize(
-    "test_case",
+    "expr_factory, expected_columns, alias_name, expected_values",
     [
-        {
-            "expr_factory": lambda: col("id").alias("new_id"),
-            "expected_columns": ["id", "new_id"],
-            "expected_value": 0,  # First row id value
-            "test_name": "simple_column_alias",
-        },
-        {
-            "expr_factory": lambda: (col("id") + 1).alias("id_plus_one"),
-            "expected_columns": ["id", "id_plus_one"],
-            "expected_value": 1,  # 0 + 1
-            "test_name": "arithmetic_expression_alias",
-        },
-        {
-            "expr_factory": lambda: (col("id") * 2 + 5).alias("transformed"),
-            "expected_columns": ["id", "transformed"],
-            "expected_value": 5,  # 0 * 2 + 5
-            "test_name": "complex_expression_alias",
-        },
-        {
-            "expr_factory": lambda: lit(42).alias("constant"),
-            "expected_columns": ["id", "constant"],
-            "expected_value": 42,
-            "test_name": "literal_alias",
-        },
-        {
-            "expr_factory": lambda: (col("id") >= 0).alias("is_non_negative"),
-            "expected_columns": ["id", "is_non_negative"],
-            "expected_value": True,  # 0 >= 0
-            "test_name": "comparison_alias",
-        },
+        (
+            lambda: col("id").alias("new_id"),
+            ["id", "new_id"],
+            "new_id",
+            [0, 1, 2, 3, 4],  # Copy of id column
+        ),
+        (
+            lambda: (col("id") + 1).alias("id_plus_one"),
+            ["id", "id_plus_one"],
+            "id_plus_one",
+            [1, 2, 3, 4, 5],  # id + 1
+        ),
+        (
+            lambda: (col("id") * 2 + 5).alias("transformed"),
+            ["id", "transformed"],
+            "transformed",
+            [5, 7, 9, 11, 13],  # id * 2 + 5
+        ),
+        (
+            lambda: lit(42).alias("constant"),
+            ["id", "constant"],
+            "constant",
+            [42, 42, 42, 42, 42],  # lit(42)
+        ),
+        (
+            lambda: (col("id") >= 0).alias("is_non_negative"),
+            ["id", "is_non_negative"],
+            "is_non_negative",
+            [True, True, True, True, True],  # id >= 0
+        ),
     ],
-    ids=lambda test_case: test_case["test_name"],
+    ids=[
+        "col_alias",
+        "arithmetic_alias",
+        "complex_alias",
+        "literal_alias",
+        "comparison_alias",
+    ],
 )
 def test_with_column_alias_expressions(
     ray_start_regular_shared,
-    test_case,
+    expr_factory,
+    expected_columns,
+    alias_name,
+    expected_values,
 ):
     """Test that alias expressions work correctly with with_column."""
-    expr = test_case["expr_factory"]()
-    expected_columns = test_case["expected_columns"]
-    expected_value = test_case["expected_value"]
+    expr = expr_factory()
 
-    # Use alias to determine column name
-    column_name = expr.alias
+    # Verify the alias name matches what we expect
+    assert expr.alias == alias_name
 
     # Apply the aliased expression
-    ds = ray.data.range(5).with_column(column_name, expr)
+    ds = ray.data.range(5).with_column(alias_name, expr)
 
-    # Verify schema
-    result = ds.take(1)[0]
-    assert set(result.keys()) == set(expected_columns)
+    # Convert to pandas for comprehensive comparison
+    result_df = ds.to_pandas()
 
-    # Verify values
-    assert result["id"] == 0  # First row
-    assert result[column_name] == expected_value
+    # Create expected DataFrame
+    expected_df = pd.DataFrame({"id": [0, 1, 2, 3, 4], alias_name: expected_values})
 
+    # Ensure column order matches expected_columns
+    expected_df = expected_df[expected_columns]
+
+    # Assert the entire DataFrame is equal
+    pd.testing.assert_frame_equal(result_df, expected_df)
     # Verify the alias expression evaluates the same as the non-aliased version
-    # by comparing with a dataset that uses the same expression without alias
-    non_aliased_expr = expr.expr  # Get the wrapped expression
-    ds_non_aliased = ray.data.range(5).with_column(column_name, non_aliased_expr)
+    non_aliased_expr = expr.expr
+    ds_non_aliased = ray.data.range(5).with_column(alias_name, non_aliased_expr)
 
-    result_non_aliased = ds_non_aliased.take(1)[0]
-    assert result[column_name] == result_non_aliased[column_name]
+    non_aliased_df = ds_non_aliased.to_pandas()
+
+    pd.testing.assert_frame_equal(result_df, non_aliased_df)
 
 
 if __name__ == "__main__":

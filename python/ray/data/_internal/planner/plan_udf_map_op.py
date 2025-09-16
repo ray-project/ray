@@ -131,10 +131,21 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
-                    result = eval_expr(expr, result_block)
-                    result_block_accessor = BlockAccessor.for_block(result_block)
-                    result_block = result_block_accessor.upsert_column(name, result)
+                    # Handle AliasExpr: alias takes precedence over name
+                    from ray.data.expressions import AliasExpr
 
+                    if isinstance(expr, AliasExpr):
+                        actual_name = expr.alias
+                        actual_expr = expr.expr
+                    else:
+                        actual_name = name
+                        actual_expr = expr
+
+                    result = eval_expr(actual_expr, result_block)
+                    result_block_accessor = BlockAccessor.for_block(result_block)
+                    result_block = result_block_accessor.upsert_column(
+                        actual_name, result
+                    )
                 block = result_block
 
             # 2. (optional) column projection
