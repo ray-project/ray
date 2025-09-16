@@ -38,6 +38,11 @@ class TestAzureAvailabilityZones(unittest.TestCase):
         result = self.provider._parse_availability_zones("")
         self.assertEqual(result, [])
 
+    def test_parse_availability_zones_auto(self):
+        """Test _parse_availability_zones with 'auto' returns empty list."""
+        result = self.provider._parse_availability_zones("auto")
+        self.assertEqual(result, [])
+
     def test_parse_availability_zones_whitespace_only(self):
         """Test _parse_availability_zones with whitespace-only string returns empty list."""
         result = self.provider._parse_availability_zones("   ")
@@ -236,6 +241,21 @@ class TestAzureAvailabilityZonePrecedence(unittest.TestCase):
         self.assertEqual(zones, [])
         self.assertEqual(source, "node config availability_zone")
 
+    def test_node_auto_overrides_provider_zones(self):
+        """Test that node 'auto' overrides provider zones (auto-selection)."""
+        provider = self._create_mock_provider({"availability_zone": "1,2"})
+        node_config = {
+            "azure_arm_parameters": {
+                "vmSize": "Standard_D2s_v3",
+                "availability_zone": "auto",
+            }
+        }
+
+        zones, source = self._extract_zone_logic(provider, node_config)
+
+        self.assertEqual(zones, [])
+        self.assertEqual(source, "node config availability_zone")
+
     def test_provider_none_disables_zones(self):
         """Test that provider-level 'none' disables zones."""
         provider = self._create_mock_provider({"availability_zone": "none"})
@@ -249,6 +269,16 @@ class TestAzureAvailabilityZonePrecedence(unittest.TestCase):
     def test_provider_empty_string_allows_auto_selection(self):
         """Test that provider-level empty string allows auto-selection."""
         provider = self._create_mock_provider({"availability_zone": ""})
+        node_config = {"azure_arm_parameters": {"vmSize": "Standard_D2s_v3"}}
+
+        zones, source = self._extract_zone_logic(provider, node_config)
+
+        self.assertEqual(zones, [])
+        self.assertEqual(source, "provider availability_zone")
+
+    def test_provider_auto_allows_auto_selection(self):
+        """Test that provider-level 'auto' allows auto-selection."""
+        provider = self._create_mock_provider({"availability_zone": "auto"})
         node_config = {"azure_arm_parameters": {"vmSize": "Standard_D2s_v3"}}
 
         zones, source = self._extract_zone_logic(provider, node_config)

@@ -965,13 +965,13 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** No
         * **Importance:** Low
         * **Type:** String
-        * **Default:** "" (let Azure automatically pick zones)
+        * **Default:** "auto" (let Azure automatically pick zones)
         * **Example values:**
           
           * ``"1,2,3"`` - Use zones 1, 2, and 3
           * ``"1"`` - Use only zone 1
           * ``"none"`` - Explicitly disable zones
-          * ``""`` or omit - Let Azure automatically pick zones
+          * ``"auto"`` or omit - Let Azure automatically pick zones
 
         See the following example Azure cluster config for more details:
 

@@ -36,7 +36,7 @@ provider:
     # availability_zone: "1,2,3"  # Use zones 1, 2, and 3
     # availability_zone: "1"      # Use only zone 1
     # availability_zone: "none"   # Explicitly disable zones
-    availability_zone: ""       # Let Azure automatically pick zones
+    availability_zone: "auto"    # Let Azure automatically pick zones
 
 
 # How Ray will authenticate with newly launched nodes.
@@ -92,7 +92,7 @@ available_node_types:
                 #     maxPrice: -1
                 # Workers: inherit provider availability_zone setting
                 # Options: "1,2,3" for specific zones, "none" to disable zones,
-                # "" (empty) or omit to let Azure pick zones automatically
+                #  or "auto" to let Azure pick zones automatically
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.default

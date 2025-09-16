@@ -199,7 +199,7 @@ class AzureNodeProvider(NodeProvider):
             availability_zone_config: Can be:
                 - String: comma-separated zones like "1,2,3"
                 - "none": explicitly disable zones
-                - "" (empty string): let Azure automatically pick zones
+                - "auto": let Azure automatically pick zones
                 - None: no zones specified (defaults to letting Azure pick)
 
         Returns:
@@ -210,14 +210,20 @@ class AzureNodeProvider(NodeProvider):
 
         # Handle string format (AWS-style comma-separated)
         if isinstance(availability_zone_config, str):
-            # Handle empty string
-            if not availability_zone_config.strip():
-                return []  # Auto - let Azure pick
             # Strip whitespace and split by comma
             zones = [zone.strip() for zone in availability_zone_config.split(",")]
-            # Handle "none" case (case-insensitive)
-            if len(zones) == 1 and zones[0].lower() in ["none", "null"]:
-                return None  # Explicitly disabled
+
+            # Handle special cases (case-insensitive)
+            if len(zones) == 1:
+                zone_lower = zones[0].lower()
+                if zone_lower in ["none", "null"]:
+                    return None  # Explicitly disabled
+                elif zone_lower == "auto":
+                    return []  # Auto - let Azure pick
+
+            # Handle empty string or whitespace-only
+            if not zones or all(not zone for zone in zones):
+                return []  # Auto - let Azure pick
             return zones
 
         # Unsupported format
