@@ -20,7 +20,7 @@ RELEASE_BYOD_DIR = (
 
 
 def build_anyscale_custom_byod_image(
-    image: str, base_image: str, post_build_script: str
+    image: str, base_image: str, post_build_script: str, lock_file: Optional[str]
 ) -> None:
     if _image_exist(image):
         logger.info(f"Image {image} already exists")
@@ -37,6 +37,7 @@ def build_anyscale_custom_byod_image(
             f"BASE_IMAGE={base_image}",
             "--build-arg",
             f"POST_BUILD_SCRIPT={post_build_script}",
+            f"LOCK_FILE={lock_file}",
             "-t",
             image,
             "-f",

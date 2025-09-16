@@ -434,6 +434,12 @@ class Test(dict):
         """
         return self["cluster"]["byod"].get("post_build_script")
 
+    def get_byod_lock_file(self) -> Optional[str]:
+        """
+        Returns the lock file path.
+        """
+        return self["cluster"]["byod"].get("post_build_script")
+
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
         Returns the runtime environment variables for the BYOD cluster.

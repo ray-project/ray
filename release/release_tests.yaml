@@ -4753,6 +4753,7 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      lock_file: entity_recognition_with_llms_py311_cu128.lock # release/ray_release/byod/
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
