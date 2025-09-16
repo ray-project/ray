@@ -149,8 +149,7 @@ class BlockOutputBuffer:
             assert accessor.num_rows() > 0, "Block may not be empty"
             num_bytes_per_row = accessor.size_bytes() / accessor.num_rows()
             target_num_rows = max(
-                1,
-                math.ceil(self._max_bytes_per_block() / num_bytes_per_row)
+                1, math.ceil(self._max_bytes_per_block() / num_bytes_per_row)
             )
 
         if target_num_rows is not None and target_num_rows < accessor.num_rows():
