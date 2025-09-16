@@ -16,14 +16,12 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "out_of_order_actor_submit_queue_test",
+    name = "actor_submit_queue_test",
     size = "small",
-    srcs = ["out_of_order_actor_submit_queue_test.cc"],
+    srcs = ["actor_submit_queue_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:asio",
-        "//src/ray/core_worker/task_submission:out_of_order_actor_submit_queue",
-        "@com_google_googletest//:gtest",
+        "//src/ray/core_worker/task_submission:actor_submit_queue",
         "@com_google_googletest//:gtest_main",
     ],
 )

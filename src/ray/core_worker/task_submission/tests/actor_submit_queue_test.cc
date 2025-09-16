@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
+#include "ray/core_worker/task_submission/actor_submit_queue.h"
 
 #include <thread>
 #include <utility>
@@ -34,8 +34,8 @@ TaskSpecification BuildTaskSpec(uint64_t seq) {
 
 }  // namespace
 
-TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
-  OutofOrderActorSubmitQueue queue;
+TEST(ActorSubmitQueueTest, PassThroughTest) {
+  ActorSubmitQueue queue(false);
   // insert request 0 1 2 3 4
   std::vector<TaskID> task_ids;
   for (uint64_t i = 0; i < 5; i++) {
@@ -101,8 +101,3 @@ TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
