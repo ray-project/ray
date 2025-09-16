@@ -33,14 +33,16 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
+from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_logging.filters import CoreContextFilter
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
     ReplicaID,
+    ReplicaMetricReport,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     ServeComponentType,
@@ -328,12 +330,22 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        self._controller_handle.record_autoscaling_metrics.remote(
+        self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+        replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
-            window_avg=self._metrics_store.window_average(
-                self._replica_id, time.time() - look_back_period
-            ),
-            send_timestamp=time.time(),
+            timestamp=time.time(),
+            aggregated_metrics={
+                RUNNING_REQUESTS_KEY: self._metrics_store.aggregate_avg(
+                    [self._replica_id]
+                )[0]
+                or 0.0
+            },
+            metrics={
+                RUNNING_REQUESTS_KEY: self._metrics_store.data.get(self._replica_id, [])
+            },
+        )
+        self._controller_handle.record_autoscaling_metrics_from_replica.remote(
+            replica_metric_report
         )
 
     def _add_autoscaling_metrics_point(self) -> None:
@@ -413,8 +425,10 @@ class ReplicaBase(ABC):
             ingress=ingress,
         )
 
-        self._port: Optional[int] = None
+        self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._http_port: Optional[int] = None
+        self._grpc_port: Optional[int] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -429,8 +443,10 @@ class ReplicaBase(ABC):
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
-            self._port,
+            self._internal_grpc_port,
             self._docs_path,
+            self._http_port,
+            self._grpc_port,
             current_rank,
         )
 

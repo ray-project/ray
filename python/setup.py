@@ -372,7 +372,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.10.0",
+                "vllm>=0.10.1.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -805,7 +805,7 @@ if __name__ == "__main__":
         exclude_package_data={
             # Empty string means "any package".
             # Therefore, exclude BUILD from every package:
-            "": ["BUILD"],
+            "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
         license="Apache 2.0",

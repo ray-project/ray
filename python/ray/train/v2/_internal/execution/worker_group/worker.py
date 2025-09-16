@@ -30,7 +30,7 @@ from ray.train.v2._internal.execution.context import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.train_fn_utils import (
-    TrainFnUtils,
+    DistributedTrainFnUtils,
     set_train_fn_utils,
 )
 from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
@@ -138,8 +138,14 @@ class RayTrainWorker:
             logger.error(f"Error deserializing the training function: {e}")
             raise
 
+        def train_fn_with_final_checkpoint_flush():
+            train_fn()
+            get_train_context().checkpoint_upload_threadpool.shutdown()
+
         # Create and start the training thread.
-        get_train_context().execution_context.training_thread_runner.run(train_fn)
+        get_train_context().execution_context.training_thread_runner.run(
+            train_fn_with_final_checkpoint_flush
+        )
 
     def get_metadata(self) -> ActorMetadata:
         return ActorMetadata(
@@ -228,7 +234,7 @@ class RayTrainWorker:
         set_train_context(context)
 
         # user facing train fn utils
-        set_train_fn_utils(TrainFnUtils())
+        set_train_fn_utils(DistributedTrainFnUtils())
 
         for callback in self._callbacks:
             callback.after_init_train_context()
