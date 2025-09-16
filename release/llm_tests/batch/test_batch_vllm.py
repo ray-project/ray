@@ -27,9 +27,12 @@ def add_buffer_time_between_tests():
     """Add buffer time after each test to avoid resource conflicts, which cause
     flakiness.
     """
-    yield  # Test runs here
+    # yield  # test runs
+    # time.sleep(10)
+    import gc
 
-    time.sleep(10)
+    gc.collect()
+    time.sleep(15)
 
 
 def test_chat_template_with_vllm():

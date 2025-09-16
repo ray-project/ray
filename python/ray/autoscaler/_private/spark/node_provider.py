@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ray._common.network_utils import build_address
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
@@ -18,7 +19,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 
