@@ -2,12 +2,12 @@
 
 # Ingress
 
-Three examples show how to use ingress to access your Ray cluster:
+Four examples show how to use ingress to access your Ray cluster:
 
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
   * [Manually setting up NGINX Ingress on Kind](kuberay-nginx)
-  * [Application Gateway for Containers (AGC) Gateway API support on AKS](kuberay-aks-agc)
+  * [Azure Application Gateway for Containers Gateway API support on AKS](kuberay-aks-agc)
 
 
 ```{admonition} Warning
@@ -212,7 +212,7 @@ kubectl describe ingress raycluster-ingress-head-ingress
 ```
 
 (kuberay-aks-agc)=
-## Application Gateway for Containers (AGC) Gateway API support on AKS
+## Azure Application Gateway for Containers Gateway API support on AKS
 
 ### Prerequisites
 * Create an AKS cluster. See [Quickstart: Deploy an Azure Kubernetes Service (AKS) cluster using Azure CLI](https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-cli).
