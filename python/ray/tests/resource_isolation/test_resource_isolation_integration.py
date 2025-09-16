@@ -15,13 +15,9 @@ import ray.scripts.scripts as scripts
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 # These tests are intended to run in CI inside a container.
+#
 # If you want to run this test locally, you will need to create a cgroup that
 # the raylet can manage and delegate to the correct user.
-#
-# TODO(#54703): Once implementation is complete, I will add a fixture to this
-# test to check for common errors when running locally (such as cgroup2 not mounted
-# correct). It'll follow the example of
-# src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh
 #
 # Run these commands locally before running the test suite:
 #
