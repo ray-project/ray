@@ -118,7 +118,13 @@ class LoraMirrorConfig(BaseModelExtended):
 
     @property
     def bucket_name(self) -> str:
-        return self._bucket_name_and_path.split("/")[0]
+        bucket_part = self._bucket_name_and_path.split("/")[0]
+
+        # For ABFSS and Azure URIs, extract container name from container@account format
+        if self.bucket_uri.startswith(("abfss://", "azure://")) and "@" in bucket_part:
+            return bucket_part.split("@")[0]
+
+        return bucket_part
 
     @property
     def bucket_path(self) -> str:
