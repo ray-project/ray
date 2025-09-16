@@ -285,10 +285,12 @@ class OneHotEncoder(Preprocessor):
 
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
-            one_hot = np.zeros((len(df), num_categories), dtype=int)
+            one_hot = np.zeros((len(df), num_categories), dtype=np.uint8)
             codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
             valid_rows = codes != -1
-            one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
+            # Dimension should be (num_rows, ) - 1D boolean array
+            non_zero_indices = np.nonzero(valid_rows)[0]
+            one_hot[non_zero_indices, codes[valid_rows].astype(np.uint8)] = 1
             df[output_column] = one_hot.tolist()
 
         return df
