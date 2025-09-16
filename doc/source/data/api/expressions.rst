@@ -38,4 +38,3 @@ instantiate them directly, but you may encounter them when working with expressi
     BinaryExpr
     UnaryExpr
     UDFExpr
-    PredicateExpr
