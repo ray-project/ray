@@ -39,6 +39,7 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
+#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -263,7 +264,10 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   std::unique_ptr<ray::CgroupManager> cgroup_manager;
-  std::function<void(const std::string &)> add_to_cgroup = [](const std::string &) {};
+  AddProcessToCgroupHook add_process_to_cgroup_hook = [](const std::string &) {};
+  AddProcessToCgroupHook add_process_to_application_cgroup_hook =
+      [](const std::string &) {};
+  AddProcessToCgroupHook add_process_to_system_cgroup_hook = [](const std::string &) {};
 
   // TODO(#54703): Link OSS documentation once it's available in the error messages.
   if (enable_resource_isolation) {
@@ -313,11 +317,23 @@ int main(int argc, char *argv[]) {
             s.ToString());
       }
     }
-    add_to_cgroup = [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
-      ray::Status s = cgroup_mgr.AddProcessToApplicationCgroup(pid);
+    add_process_to_application_cgroup_hook =
+        [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
+          ray::Status s = cgroup_mgr.AddProcessToApplicationCgroup(pid);
+          if (!s.ok()) {
+            RAY_LOG(WARNING) << absl::StrFormat(
+                "Failed to move process %s into the application cgroup with error % s.",
+                pid,
+                s.ToString());
+          }
+        };
+
+    add_process_to_system_cgroup_hook = [&cgroup_mgr =
+                                             *cgroup_manager](const std::string &pid) {
+      ray::Status s = cgroup_mgr.AddProcessToSystemCgroup(pid);
       if (!s.ok()) {
         RAY_LOG(WARNING) << absl::StrFormat(
-            "Failed to move process %s into the application cgroup with error % s.",
+            "Failed to move process %s into the system cgroup with error % s.",
             pid,
             s.ToString());
       }
@@ -650,7 +666,7 @@ int main(int argc, char *argv[]) {
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
-        std::move(add_to_cgroup));
+        std::move(add_process_to_application_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
         main_service, /*record_stats=*/true);
@@ -953,7 +969,7 @@ int main(int argc, char *argv[]) {
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,
-        std::move(cgroup_manager));
+        std::move(add_process_to_system_cgroup_hook));
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

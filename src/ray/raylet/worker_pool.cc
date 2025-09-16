@@ -33,6 +33,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
+#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
@@ -102,7 +103,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
                        std::function<absl::Time()> get_time,
-                       std::function<void(const std::string &)> add_to_cgroup)
+                       AddProcessToCgroupHook add_to_cgroup_hook)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -124,7 +125,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       get_time_(std::move(get_time)),
-      add_to_cgroup_(std::move(add_to_cgroup)) {
+      add_to_cgroup_hook_(std::move(add_to_cgroup_hook)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -669,7 +670,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
 
   Process child(
-      argv.data(), io_service_, ec, /*decouple=*/false, env, false, add_to_cgroup_);
+      argv.data(), io_service_, ec, /*decouple=*/false, env, false, add_to_cgroup_hook_);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {

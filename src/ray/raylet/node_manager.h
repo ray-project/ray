@@ -43,6 +43,7 @@
 #include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
+#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -150,7 +151,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      std::unique_ptr<CgroupManagerInterface> cgroup_manager);
+      AddProcessToCgroupHook add_process_to_system_cgroup_hook);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -718,9 +719,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
-  std::function<void(const std::string &)> AddToSystemCgroupCallbackGenerator(
-      const std::string &agent_name);
-
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -890,10 +888,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
-  /// This needs to be declared AFTER the runtime_env_agent_manager_,
-  /// dashboard_agent_manager_, and worker_pool_ because they need a reference
-  /// to this interface. This will be destructed after those objects.
-  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+  /// Used to move the dashboard and runtime_env agents into the system cgroup.
+  AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
 };
 
 }  // namespace ray::raylet

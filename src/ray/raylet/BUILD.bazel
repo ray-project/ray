@@ -6,6 +6,7 @@ ray_cc_library(
     hdrs = ["agent_manager.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":raylet_cgroup_types",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:gcs_cc_proto",
@@ -104,6 +105,7 @@ ray_cc_library(
     hdrs = ["worker_pool.h"],
     visibility = [":__subpackages__"],
     deps = [
+        ":raylet_cgroup_types",
         ":runtime_env_agent_client",
         ":worker",
         "//src/ray/common:constants",
@@ -220,6 +222,7 @@ ray_cc_library(
         ":local_lease_manager",
         ":local_object_manager_interface",
         ":placement_group_resource_manager",
+        ":raylet_cgroup_types",
         ":runtime_env_agent_client",
         ":wait_manager",
         ":worker",
@@ -279,6 +282,7 @@ ray_cc_binary(
     deps = [
         ":local_object_manager",
         ":local_object_manager_interface",
+        ":raylet_cgroup_types",
         ":raylet_lib",
         "//src/ray/common:asio",
         "//src/ray/common:lease",
@@ -306,4 +310,10 @@ ray_cc_binary(
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
     ],
+)
+
+ray_cc_library(
+    name = "raylet_cgroup_types",
+    hdrs = ["raylet_cgroup_types.h"],
+    visibility = ["//visibility:__subpackages__"],
 )

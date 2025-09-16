@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -60,12 +61,11 @@ class AgentManager {
       DelayExecutorFn delay_executor,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       bool start_agent = true /* for test */,
-      std::function<void(const std::string &)> add_to_cgroup = [](const std::string &) {})
+      AddProcessToCgroupHook add_to_cgroup = [](const std::string &) {})
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
         shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),
-        fate_shares_(options_.fate_shares),
-        add_to_cgroup_(std::move(add_to_cgroup)) {
+        fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";
     }
@@ -73,13 +73,13 @@ class AgentManager {
       RAY_LOG(FATAL) << "AgentManager agent_commands must not be empty.";
     }
     if (start_agent) {
-      StartAgent();
+      StartAgent(std::move(add_to_cgroup));
     }
   }
   ~AgentManager();
 
  private:
-  void StartAgent();
+  void StartAgent(AddProcessToCgroupHook add_to_cgroup);
 
  private:
   const Options options_;
@@ -89,7 +89,6 @@ class AgentManager {
   // If true, when the agent dies, raylet kills itself.
   std::atomic<bool> fate_shares_;
   std::unique_ptr<std::thread> monitor_thread_;
-  std::function<void(const std::string &)> add_to_cgroup_;
 };
 
 }  // namespace raylet

@@ -115,7 +115,7 @@ NodeManager::NodeManager(
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    std::unique_ptr<CgroupManagerInterface> cgroup_manager)
+    AddProcessToCgroupHook add_process_to_system_cgroup_hook)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -168,7 +168,7 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())),
-      cgroup_manager_(std::move(cgroup_manager)) {
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -3028,25 +3028,6 @@ void NodeManager::ReportWorkerOOMKillStats() {
   number_workers_killed_ = 0;
 }
 
-std::function<void(const std::string &)> NodeManager::AddToSystemCgroupCallbackGenerator(
-    const std::string &agent) {
-  // TODO(#54703): Remove this once a ProcessIsolationFactory is implemented. Then,
-  // NodeManager will get a noop implementation if resource isolation is not enabled.
-  if (cgroup_manager_.get() == nullptr) {
-    return [](const std::string &) {};
-  }
-  return [&cgroup_manager = *cgroup_manager_, agent_name = agent](const std::string pid) {
-    Status s = cgroup_manager.AddProcessToSystemCgroup(pid);
-    if (!s.ok()) {
-      RAY_LOG(WARNING) << absl::StrFormat(
-          "Failed to move process %s for agent %s with error %s",
-          pid,
-          agent_name,
-          s.ToString());
-    }
-  };
-}
-
 std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
     const NodeID &self_node_id, const NodeManagerConfig &config) {
   auto agent_command_line = ParseCommandLine(config.dashboard_agent_command);
@@ -3086,7 +3067,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
         this->shutdown_raylet_gracefully_(death_info);
       },
       true,
-      AddToSystemCgroupCallbackGenerator(agent_name));
+      add_process_to_system_cgroup_hook_);
 }
 
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
@@ -3123,7 +3104,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
         this->shutdown_raylet_gracefully_(death_info);
       },
       true,
-      AddToSystemCgroupCallbackGenerator(agent_name));
+      add_process_to_system_cgroup_hook_);
 }
 
 }  // namespace ray::raylet

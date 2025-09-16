@@ -38,6 +38,7 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_client/gcs_client.h"
 #include "ray/ipc/client_connection.h"
+#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
 #include "ray/stats/metric.h"
@@ -321,8 +322,7 @@ class WorkerPool : public WorkerPoolInterface {
       std::function<void()> starting_worker_timeout_callback,
       int ray_debugger_external,
       std::function<absl::Time()> get_time,
-      std::function<void(const std::string &)> add_to_cgroup_ = [](const std::string &) {
-      });
+      AddProcessToCgroupHook add_to_cgroup_hook_ = [](const std::string &) {});
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -913,7 +913,7 @@ class WorkerPool : public WorkerPoolInterface {
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
 
-  std::function<void(const std::string &)> add_to_cgroup_;
+  AddProcessToCgroupHook add_to_cgroup_hook_;
 
   /// Ray metrics
   ray::stats::Sum ray_metric_num_workers_started_{
