@@ -29,7 +29,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 _BASE_CGROUP_PATH = "/sys/fs/cgroup"
 #
 # Uncomment the following line.
-_BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
+# _BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
 
 
 def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
