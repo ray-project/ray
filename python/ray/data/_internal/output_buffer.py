@@ -97,10 +97,6 @@ class BlockOutputBuffer:
     def has_next(self) -> bool:
         """Returns true when a complete output block is produced."""
 
-        # NOTE: Output buffer should yield immediately in either of 2 cases
-        #   - When it's finalized and buffer is non-empty (or no blocks been emitted)
-        #   - When block-sizing is disabled and buffer is non-empty
-        #
         # TODO remove emitting empty blocks
         if self._finalized:
             return not self._has_yielded_blocks or self._buffer.num_rows() > 0
