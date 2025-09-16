@@ -84,10 +84,16 @@ def run_validate_function(
     validation_spec: _ValidationSpec, checkpoint: Checkpoint
 ) -> Dict:
     """Run the user-defined validation function."""
-    return validation_spec.validate_function(
+    metrics_dict = validation_spec.validate_function(
         checkpoint,
         validation_spec.validate_config,
     )
+    if not isinstance(metrics_dict, dict):
+        raise ValueError(
+            "The validate function must return a dictionary of metrics. "
+            f"Got {type(metrics_dict)} instead."
+        )
+    return metrics_dict
 
 
 class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback):

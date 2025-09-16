@@ -206,7 +206,7 @@ async def test_checkpoint_validation_management(tmp_path):
     )
 
     def failing_validate_function(checkpoint, config):
-        raise ValueError("Validation failed")
+        return "invalid_return_type"
 
     checkpoint_manager.register_checkpoint(
         training_results[1],
