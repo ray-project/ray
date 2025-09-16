@@ -1216,7 +1216,6 @@ python/ray/data/_internal/numpy_support.py
 --------------------
 python/ray/data/_internal/output_buffer.py
     DOC101: Method `BlockOutputBuffer.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `BlockOutputBuffer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_block_size_option: OutputBlockSizeOption].
 --------------------
 python/ray/data/_internal/plan.py
     DOC101: Method `ExecutionPlan.get_plan_as_string`: Docstring contains fewer arguments than in function signature.
