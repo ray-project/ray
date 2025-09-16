@@ -53,12 +53,19 @@ class GPUTestActor:
 def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
     actor = GPUTestActor.remote()
     tensor = torch.tensor([1, 2, 3]).to("cuda")
-    ref = actor.echo.remote(tensor, "cuda")
-    # Test ray.get with nixl tensor transport
-    assert torch.equal(ray.get(ref, _tensor_transport="nixl"), tensor)
+    ref1 = actor.echo.remote(tensor, "cuda")
+    ref2 = actor.echo.remote(tensor, "cuda")
+    ref3 = actor.echo.remote(tensor, "cuda")
 
-    # Test ray.get with object store tensor transport
-    assert torch.equal(ray.get(ref, _tensor_transport="object_store"), tensor)
+    # Test ray.get with default tensor transport, should use nixl here.
+    # TODO: Verify it's using the correct tensor transport.
+    assert torch.equal(ray.get(ref1), tensor)
+
+    # # Test ray.get with nixl tensor transport
+    assert torch.equal(ray.get(ref2, _tensor_transport="nixl"), tensor)
+
+    # # Test ray.get with object store tensor transport
+    assert torch.equal(ray.get(ref3, _tensor_transport="object_store"), tensor)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
