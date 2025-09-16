@@ -33,8 +33,8 @@ SERVE_LLM_GRAFANA_PANELS = [
     Panel(
         id=2,
         title="vLLM: Time Per Output Token Latency",
-        description="Time per output token latency in milliseconds.",
-        unit="ms",
+        description="Time per output token latency.",
+        unit="s",
         targets=[
             Target(
                 expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
@@ -85,8 +85,8 @@ SERVE_LLM_GRAFANA_PANELS = [
     Panel(
         id=5,
         title="vLLM: Time To First Token Latency",
-        description="P50, P90, P95, and P99 TTFT latency in milliseconds.",
-        unit="ms",
+        description="P50, P90, P95, and P99 TTFT latency.",
+        unit="s",
         targets=[
             Target(
                 expr='(sum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
