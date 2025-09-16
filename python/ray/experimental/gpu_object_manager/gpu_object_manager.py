@@ -189,7 +189,7 @@ class GPUObjectManager:
                     __ray_abort_transport__,
                     ref_info.communicator_meta,
                 )
-            ref_info.src_actor.__ray_call__.options(
+            ref_info.dst_actor.__ray_call__.options(
                 concurrency_group="_ray_system_error"
             ).remote(
                 __ray_abort_transport__,
