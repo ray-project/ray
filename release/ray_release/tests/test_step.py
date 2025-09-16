@@ -18,7 +18,9 @@ def _stub_test(val: dict) -> Test:
     test = Test(
         {
             "name": "test",
-            "cluster": {},
+            "cluster": {
+                "byod": {},
+            },
         }
     )
     test.update(val)
@@ -27,7 +29,8 @@ def _stub_test(val: dict) -> Test:
 
 @patch("ray_release.test.Test.update_from_s3", return_value=None)
 def test_get_step(mock):
-    step = get_step(_stub_test({}), run_id=2)
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        step = get_step(_stub_test({}), run_id=2)
     assert step["label"] == "test (None) (2)"
 
 
@@ -40,7 +43,8 @@ def test_get_step_for_test_group(mock):
         ],
         "group2": [(_stub_test({"name": "test3"}), False)],
     }
-    steps = get_step_for_test_group(grouped_tests)
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        steps = get_step_for_test_group(grouped_tests)
     assert len(steps) == 2
     assert steps[0]["group"] == "group1"
     assert [step["label"] for step in steps[0]["steps"]] == [
