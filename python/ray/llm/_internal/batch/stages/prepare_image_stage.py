@@ -317,7 +317,7 @@ class PrepareImageUDF(StatefulStageUDF):
             messages: List of chat messages.
 
         Returns:
-            List of _ImageType.
+            List of _Image Type.
         """
 
         image_info: List[_ImageType] = []
