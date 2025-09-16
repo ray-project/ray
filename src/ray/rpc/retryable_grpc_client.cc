@@ -87,7 +87,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
                        << (attempt_number > 0
                                ? ExponentialBackoff::GetBackoffMs(
                                      attempt_number - 1,
-                                     server_unavailable_base_timeout_s_ * 1000) /
+                                     server_unavailable_base_timeout_seconds_ * 1000) /
                                      1000.0
                                : 0)
                        << " seconds";
@@ -95,7 +95,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       // Reset the unavailable timeout.
       server_unavailable_timeout_time_ =
           now + absl::Milliseconds(ExponentialBackoff::GetBackoffMs(
-                    attempt_number, server_unavailable_base_timeout_s_ * 1000));
+                    attempt_number, server_unavailable_base_timeout_seconds_ * 1000));
       pending_requests_.begin()->second->SetAttemptNumber(attempt_number + 1);
     }
 
@@ -161,12 +161,12 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   const auto timeout = request->GetTimeoutMs() == -1
                            ? absl::InfiniteFuture()
                            : now + absl::Milliseconds(request->GetTimeoutMs());
+  pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
-    pending_requests_.emplace(timeout, std::move(request));
     if (server_name_ == "GCS") {
       server_unavailable_timeout_time_ =
-          now + absl::Seconds(server_unavailable_base_timeout_s_);
+          now + absl::Seconds(server_unavailable_base_timeout_seconds_);
       SetupCheckTimer();
     } else {
       server_unavailable_timeout_time_ = now;
