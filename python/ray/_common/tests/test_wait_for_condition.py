@@ -1,9 +1,10 @@
 import asyncio
-import time
 import sys
+import time
+
 import pytest
 
-from ray._common.test_utils import wait_for_condition, async_wait_for_condition
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 
 
 class TestWaitForCondition:

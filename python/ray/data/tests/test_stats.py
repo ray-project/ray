@@ -75,6 +75,8 @@ def gen_expected_metrics(
     if is_map:
         metrics = [
             "'average_num_outputs_per_task': N",
+            "'average_num_inputs_per_task': N",
+            "'num_output_blocks_per_task_s': N",
             "'average_bytes_per_output': N",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -136,6 +138,8 @@ def gen_expected_metrics(
     else:
         metrics = [
             "'average_num_outputs_per_task': None",
+            "'average_num_inputs_per_task': None",
+            "'num_output_blocks_per_task_s': None",
             "'average_bytes_per_output': None",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -678,6 +682,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   number=N,\n"
         "   extra_metrics={\n"
         "      average_num_outputs_per_task: N,\n"
+        "      average_num_inputs_per_task: N,\n"
+        "      num_output_blocks_per_task_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -808,6 +814,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   number=N,\n"
         "   extra_metrics={\n"
         "      average_num_outputs_per_task: N,\n"
+        "      average_num_inputs_per_task: N,\n"
+        "      num_output_blocks_per_task_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -893,6 +901,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         number=N,\n"
         "         extra_metrics={\n"
         "            average_num_outputs_per_task: N,\n"
+        "            average_num_inputs_per_task: N,\n"
+        "            num_output_blocks_per_task_s: N,\n"
         "            average_bytes_per_output: N,\n"
         "            obj_store_mem_internal_inqueue: Z,\n"
         "            obj_store_mem_internal_outqueue: Z,\n"

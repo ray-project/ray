@@ -3,7 +3,6 @@ import datetime
 import json
 import logging
 import os
-import requests
 import socket
 import sys
 import traceback
@@ -11,31 +10,25 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
+import requests
+from grpc.aio import ServicerContext
 from opencensus.stats import stats as stats_module
-from prometheus_client.core import REGISTRY
-from prometheus_client.parser import text_string_to_metric_families
 from opentelemetry.proto.collector.metrics.v1 import (
     metrics_service_pb2,
     metrics_service_pb2_grpc,
 )
 from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
-from grpc.aio import ServicerContext
-
+from prometheus_client.core import REGISTRY
+from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.network_utils import parse_address
 from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
-)
-from ray._common.network_utils import parse_address
-from ray._private.utils import get_system_memory
-from ray.dashboard.modules.reporter.gpu_providers import (
-    GpuMetricProvider,
-    GpuUtilizationInfo,
-    TpuUtilizationInfo,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -47,6 +40,7 @@ from ray._private.ray_constants import (
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
+from ray._private.utils import get_system_memory
 from ray._raylet import GCS_PID_KEY, WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
@@ -56,10 +50,15 @@ from ray.dashboard.consts import (
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
-    TPU_TAG_KEYS,
     NODE_TAG_KEYS,
+    TPU_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
+from ray.dashboard.modules.reporter.gpu_providers import (
+    GpuMetricProvider,
+    GpuUtilizationInfo,
+    TpuUtilizationInfo,
+)
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,

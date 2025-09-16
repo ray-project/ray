@@ -176,14 +176,15 @@ INSTANTIATE_TEST_SUITE_P(
     GaugeMetricTest,
     ::testing::Values(
         // Gauge metric without global tags
-        GaugeMetricCase{/*metric_name=*/"metric_gauge_test",
-                        /*record_value=*/42.0,
-                        /*record_tags=*/
-                        {{stats::TagKeyType::Register("Tag1"), "Value1"},
-                         {stats::TagKeyType::Register("Tag2"), "Value1"}},
-                        /*global_tags=*/{},  // no global tags
-                        /*expected_tags=*/{{"Tag1", "Value1"}, {"Tag2", "Value1"}},
-                        /*expected_value=*/42.0},
+        GaugeMetricCase{
+            /*metric_name=*/"metric_gauge_test",
+            /*record_value=*/42.0,
+            /*record_tags=*/
+            {{stats::TagKeyType::Register("Tag1"), "Value1"},
+             {stats::TagKeyType::Register("Tag2"), "Value1"}},
+            /*global_tags=*/{},  // no global tags
+            /*expected_tags=*/{{"Tag1", "Value1"}, {"Tag2", "Value1"}, {"Tag3", ""}},
+            /*expected_value=*/42.0},
         // Gauge metric with a single global tag that is metric-specific
         GaugeMetricCase{/*metric_name=*/"metric_gauge_test",
                         /*record_value=*/52.0,
@@ -195,19 +196,20 @@ INSTANTIATE_TEST_SUITE_P(
                         {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
                         /*expected_value=*/52.0},
         // Gauge metric with a non-metric-specific global tag
-        GaugeMetricCase{/*metric_name=*/"metric_gauge_test",
-                        /*record_value=*/62.0,
-                        /*record_tags=*/
-                        {{stats::TagKeyType::Register("Tag1"), "Value3"},
-                         {stats::TagKeyType::Register("Tag2"), "Value3"}},
-                        /*global_tags=*/
-                        {
-                            {stats::TagKeyType::Register("Tag4"),
-                             "Global"}  // Tag4 not registered in metric definition
-                        },
-                        /*expected_tags=*/
-                        {{"Tag1", "Value3"}, {"Tag2", "Value3"}, {"Tag4", "Global"}},
-                        /*expected_value=*/62.0},
+        GaugeMetricCase{
+            /*metric_name=*/"metric_gauge_test",
+            /*record_value=*/62.0,
+            /*record_tags=*/
+            {{stats::TagKeyType::Register("Tag1"), "Value3"},
+             {stats::TagKeyType::Register("Tag2"), "Value3"}},
+            /*global_tags=*/
+            {
+                {stats::TagKeyType::Register("Tag4"),
+                 "Global"}  // Tag4 not registered in metric definition
+            },
+            /*expected_tags=*/
+            {{"Tag1", "Value3"}, {"Tag2", "Value3"}, {"Tag3", ""}, {"Tag4", "Global"}},
+            /*expected_value=*/62.0},
         // Gauge metric where global tags overwrite record tags
         GaugeMetricCase{/*metric_name=*/"metric_gauge_test",
                         /*record_value=*/72.0,
@@ -230,7 +232,8 @@ INSTANTIATE_TEST_SUITE_P(
                         /*global_tags=*/{},  // no global tags
                         /*expected_tags=*/
                         {{"Tag1", "Value5"},  // unsupported tag dropped
-                         {"Tag2", "Value5"}},
+                         {"Tag2", "Value5"},
+                         {"Tag3", ""}},
                         /*expected_value=*/82.0}));
 
 }  // namespace observability

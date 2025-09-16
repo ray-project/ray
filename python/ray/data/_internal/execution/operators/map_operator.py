@@ -239,7 +239,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 map_transformer,
                 input_op,
                 data_context,
-                target_max_block_size=target_max_block_size,
+                target_max_block_size_override=target_max_block_size,
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
@@ -551,7 +551,7 @@ def _map_task(
     ctx.kwargs.update(kwargs)
     TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
-    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
+    map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.

@@ -11,7 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, TensorStructType

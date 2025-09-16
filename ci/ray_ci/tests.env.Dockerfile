@@ -9,6 +9,7 @@ ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
 ENV CXX=clang++-12
+ENV RAY_DISABLE_EXTRA_CPP=1
 
 RUN mkdir /rayci
 WORKDIR /rayci

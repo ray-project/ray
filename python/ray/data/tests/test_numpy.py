@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
@@ -94,24 +93,12 @@ def test_to_numpy_refs(ray_start_regular_shared):
     )
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
+def test_numpy_roundtrip(ray_start_regular_shared, tmp_path):
     tensor_type = _get_tensor_type()
 
     ds = ray.data.range_tensor(10, override_num_blocks=2)
-    ds.write_numpy(data_path, filesystem=fs, column="data")
-    ds = ray.data.read_numpy(data_path, filesystem=fs)
+    ds.write_numpy(tmp_path, column="data")
+    ds = ray.data.read_numpy(tmp_path)
     assert ds.count() == 10
     assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     assert sorted(ds.take_all(), key=lambda row: row["data"]) == [

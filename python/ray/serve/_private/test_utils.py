@@ -717,6 +717,29 @@ def tlog(s: str, level: str = "INFO"):
     print(f"[{level}] {now} {s}")
 
 
+def check_target_groups_ready(
+    client: ServeControllerClient,
+    app_name: str,
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+):
+    """Wait for target groups to be ready for the given app and protocol.
+
+    Target groups are ready when there are at least one target for the given protocol. And it's
+    possible that target groups are not ready immediately. An example is when the controller
+    is recovering from a crash.
+    """
+    target_groups = ray.get(client._controller.get_target_groups.remote(app_name))
+    target_groups = [
+        target_group
+        for target_group in target_groups
+        if target_group.protocol == protocol
+    ]
+    all_targets = [
+        target for target_group in target_groups for target in target_group.targets
+    ]
+    return len(all_targets) > 0
+
+
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,

@@ -557,8 +557,8 @@ class TrainController:
         return None
 
     async def get_all_reported_checkpoints(
-        self, expected_num_report_calls: int
+        self, current_report_index: int
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            expected_num_report_calls
+            current_report_index
         )

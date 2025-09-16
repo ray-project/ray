@@ -523,6 +523,31 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.num_outputs_of_finished_tasks / self.num_tasks_finished
 
     @metric_property(
+        description="Average number of blocks generated per task.",
+        metrics_group=MetricsGroup.INPUTS,
+    )
+    def average_num_inputs_per_task(self) -> Optional[float]:
+        """Average number of input blocks per task, or None if no task has finished."""
+        if self.num_tasks_finished == 0:
+            return None
+        else:
+            return self.num_task_inputs_processed / self.num_tasks_finished
+
+    @metric_property(
+        description="Average number of output blocks per task per second.",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    def num_output_blocks_per_task_s(self) -> Optional[float]:
+        """Average number of output blocks per task per second.
+
+        If the operator hasn't produced any output yet, this metric returns `None`.
+        """
+        if self.block_generation_time == 0:
+            return None
+        else:
+            return self.num_task_outputs_generated / self.block_generation_time
+
+    @metric_property(
         description="Average size of task output in bytes.",
         metrics_group=MetricsGroup.OUTPUTS,
     )

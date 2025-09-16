@@ -3,7 +3,7 @@ import bisect
 import logging
 import statistics
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import chain
 from typing import (
     Callable,
@@ -16,6 +16,7 @@ from typing import (
     Tuple,
 )
 
+from ray.serve._private.common import TimeStampedValue
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -121,12 +122,6 @@ class MetricsPusher:
 
         self._tasks.clear()
         self._async_tasks.clear()
-
-
-@dataclass(order=True)
-class TimeStampedValue:
-    timestamp: float
-    value: float = field(compare=False)
 
 
 class InMemoryMetricsStore:

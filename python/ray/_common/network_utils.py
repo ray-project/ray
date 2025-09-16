@@ -1,7 +1,6 @@
 from typing import Optional, Tuple, Union
 
-from ray._raylet import build_address as _build_address
-from ray._raylet import parse_address as _parse_address
+from ray._raylet import build_address as _build_address, parse_address as _parse_address
 
 
 def parse_address(address: str) -> Optional[Tuple[str, str]]:

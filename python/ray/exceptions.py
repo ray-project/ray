@@ -19,7 +19,6 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -916,7 +915,7 @@ class UnserializableException(RayError):
     the original exception along with its stack trace that was captured at the
     time of serialization.
 
-    reference for more details: https://docs.ray.io/en/latest/ray-core/objects/serialization.html
+    For more details and how to handle this with custom serializers, :ref:`configuring custom exeception serializers <custom-exception-serializer>`
 
     Args:
         original_stack_trace: The string representation and stack trace of the
@@ -928,7 +927,7 @@ class UnserializableException(RayError):
 
     def __str__(self):
         return (
-            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.\n"
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.\n"
             "Original exception:\n"
             f"{self._original_stack_trace}"
         )

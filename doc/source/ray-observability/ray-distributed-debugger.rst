@@ -199,7 +199,7 @@ When the app throws an exception:
 - The paused task is listed in the Ray Debugger extension.
 - Click the play icon next to the name of the paused task to attach the debugger and start debugging.
 
-.. image:: ./images/post-moretem.gif
+.. image:: ./images/post-mortem.gif
     :align: center
 
 

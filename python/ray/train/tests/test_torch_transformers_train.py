@@ -55,6 +55,7 @@ CONFIGURATIONS = {
         "save_steps": None,
         "logging_steps": None,
         "no_cuda": False,
+        "use_dict_eval_datasets": False,
     },
     "steps_gpu": {
         "evaluation_strategy": "steps",
@@ -64,6 +65,7 @@ CONFIGURATIONS = {
         "save_steps": STEPS_PER_EPOCH * 2,
         "logging_steps": 1,
         "no_cuda": False,
+        "use_dict_eval_datasets": False,
     },
     "steps_cpu": {
         "evaluation_strategy": "steps",
@@ -73,6 +75,7 @@ CONFIGURATIONS = {
         "save_steps": STEPS_PER_EPOCH,
         "logging_steps": 1,
         "no_cuda": True,
+        "use_dict_eval_datasets": False,
     },
 }
 
@@ -81,14 +84,27 @@ def train_func(config):
     # Datasets
     if config["use_ray_data"]:
         train_ds_shard = ray.train.get_dataset_shard("train")
-        eval_ds_shard = ray.train.get_dataset_shard("eval")
-
         train_dataset = train_ds_shard.iter_torch_batches(
             batch_size=BATCH_SIZE_PER_WORKER
         )
-        eval_dataset = eval_ds_shard.iter_torch_batches(
-            batch_size=BATCH_SIZE_PER_WORKER
-        )
+        if config["use_dict_eval_datasets"]:
+            eval_ds_shard_1 = ray.train.get_dataset_shard("eval_1")
+            eval_ds_shard_2 = ray.train.get_dataset_shard("eval_2")
+
+            eval_dataset = {
+                "eval_1": eval_ds_shard_1.iter_torch_batches(
+                    batch_size=BATCH_SIZE_PER_WORKER
+                ),
+                "eval_2": eval_ds_shard_2.iter_torch_batches(
+                    batch_size=BATCH_SIZE_PER_WORKER
+                ),
+            }
+        else:
+            eval_ds_shard = ray.train.get_dataset_shard("eval")
+
+            eval_dataset = eval_ds_shard.iter_torch_batches(
+                batch_size=BATCH_SIZE_PER_WORKER
+            )
     else:
         train_df = pd.read_json(train_data)
         validation_df = pd.read_json(validation_data)
@@ -199,6 +215,48 @@ def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
     assert isinstance(result.checkpoint, Checkpoint)
     assert len(result.best_checkpoints) == num_iterations
     assert "eval_loss" in result.metrics
+
+
+@pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
+def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
+    train_loop_config = CONFIGURATIONS[config_id]
+
+    # Must specify `max_steps` for Iterable Dataset
+    train_loop_config["use_ray_data"] = True
+    train_loop_config["use_dict_eval_datasets"] = True
+    train_loop_config["max_steps"] = MAX_STEPS
+
+    # Calculate the num of Ray training iterations
+    num_iterations = MAX_STEPS // train_loop_config["save_steps"]
+
+    train_df = pd.read_json(train_data)
+    validation_df = pd.read_json(validation_data)
+
+    ray_train_ds = ray.data.from_pandas(train_df)
+    ray_eval_ds_1 = ray.data.from_pandas(validation_df)
+    ray_eval_ds_2 = ray.data.from_pandas(validation_df)
+
+    use_gpu = not train_loop_config["no_cuda"]
+
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config=train_loop_config,
+        scaling_config=ScalingConfig(num_workers=NUM_WORKERS, use_gpu=use_gpu),
+        datasets={
+            "train": ray_train_ds,
+            "eval_1": ray_eval_ds_1,
+            "eval_2": ray_eval_ds_2,
+        },
+    )
+    result = trainer.fit()
+
+    assert result.metrics["step"] == MAX_STEPS
+    assert result.metrics["training_iteration"] == num_iterations
+    assert result.checkpoint
+    assert isinstance(result.checkpoint, Checkpoint)
+    assert len(result.best_checkpoints) == num_iterations
+    assert "eval_eval_1_loss" in result.metrics
+    assert "eval_eval_2_loss" in result.metrics
 
 
 # Tests if Ray Tune works correctly.

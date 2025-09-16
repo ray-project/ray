@@ -301,7 +301,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.
+    expected_output = """Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.
 Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
@@ -328,6 +328,43 @@ test_traceback.NoPickleError"""
         ray.get(f.remote())
 
     assert clean_noqa(expected_output) == scrub_traceback(str(excinfo.value))
+
+
+def test_exception_with_registered_serializer(shutdown_only):
+    class NoPickleError(OSError):
+        def __init__(self, msg):
+            self.msg = msg
+
+        def __str__(self):
+            return f"message: {self.msg}"
+
+    def _serializer(e: NoPickleError):
+        return {"msg": e.msg}
+
+    def _deserializer(state):
+        return NoPickleError(state["msg"] + " deserialized")
+
+    @ray.remote
+    def raise_custom_exception():
+        ray.util.register_serializer(
+            NoPickleError, serializer=_serializer, deserializer=_deserializer
+        )
+        raise NoPickleError("message")
+
+    try:
+        with pytest.raises(NoPickleError) as exc_info:
+            ray.get(raise_custom_exception.remote())
+
+        # Ensure dual-typed exception and message propagation
+        assert isinstance(exc_info.value, RayTaskError)
+        # if custom serializer was not registered, this would be an instance of UnserializableException()
+        assert isinstance(exc_info.value, NoPickleError)
+        assert "message" in str(exc_info.value)
+        # modified message should not be in the exception string, only in the cause
+        assert "deserialized" not in str(exc_info.value)
+        assert "message deserialized" in str(exc_info.value.cause)
+    finally:
+        ray.util.deregister_serializer(NoPickleError)
 
 
 def test_serialization_error_message(shutdown_only):

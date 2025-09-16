@@ -2,23 +2,14 @@ import os
 
 import pyarrow as pa
 import pytest
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
-from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.parametrize(
-    "data_path",
-    [
-        lazy_fixture("local_path"),
-        lazy_fixture("s3_path"),
-    ],
-)
 @pytest.mark.parametrize(
     "batch_size",
     [1, 100],
@@ -27,13 +18,12 @@ from ray.tests.conftest import *  # noqa
     "write_mode",
     ["append", "overwrite"],
 )
-def test_delta_read_basic(data_path, batch_size, write_mode):
+def test_delta_read_basic(tmp_path, batch_size, write_mode):
     import pandas as pd
     from deltalake import write_deltalake
 
     # Parse the data path.
-    setup_data_path = _unwrap_protocol(data_path)
-    path = os.path.join(setup_data_path, "tmp_test_delta")
+    path = os.path.join(tmp_path, "tmp_test_delta")
 
     # Create a sample Delta Lake table
     df = pd.DataFrame(

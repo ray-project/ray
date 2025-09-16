@@ -1,9 +1,9 @@
 """Types conversion between different backends."""
 
-from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, Tuple, TYPE_CHECKING, Optional
+from enum import Enum
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from numpy import int32
 

@@ -14,17 +14,15 @@
 
 #pragma once
 
-#include <boost/algorithm/string.hpp>
 #include <functional>
 #include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/constants.h"
-#include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 

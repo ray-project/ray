@@ -16,6 +16,8 @@
 
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/rpc/raylet/raylet_client_interface.h"
+#include "src/ray/common/id.h"
+#include "src/ray/common/status.h"
 
 namespace ray {
 

@@ -3,24 +3,24 @@ import logging
 import uuid
 from dataclasses import dataclass
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union, Type
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext, utils
+from ray.experimental.channel.accelerator_context import (
+    AcceleratorContext,
+    is_accelerator_context_registered,
+    register_accelerator_context,
+)
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI
-from ray.experimental.channel.accelerator_context import (
-    AcceleratorContext,
-    register_accelerator_context,
-    is_accelerator_context_registered,
-)
 
 if TYPE_CHECKING:
     import torch

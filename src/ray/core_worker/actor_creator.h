@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs_client/accessor.h"
 
 namespace ray {
 namespace core {

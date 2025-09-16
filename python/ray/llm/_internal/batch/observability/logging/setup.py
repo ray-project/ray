@@ -1,7 +1,7 @@
 import logging
 
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter
 
 
 def _configure_stdlib_logging():

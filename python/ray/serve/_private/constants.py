@@ -437,7 +437,7 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
 )
 
 # Used for gc.set_threshold() when proxy GC optimizations are enabled.
-RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 10_000)
+RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 700)
 
 # Interval at which cached metrics will be exported using the Ray metric API.
 # Set to `0` to disable caching entirely.
@@ -496,3 +496,8 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = 1000
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = False
     RAY_SERVE_LOG_TO_STDERR = False
+
+# The maximum allowed RPC latency in milliseconds.
+# This is used to detect and warn about long RPC latencies
+# between the controller and the replicas.
+RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000

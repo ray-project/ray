@@ -251,15 +251,15 @@ class PhysicalOperator(Operator):
         name: str,
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
-        target_max_block_size: Optional[int],
+        target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
 
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
-        self._output_block_size_option = None
-        self.set_target_max_block_size(target_max_block_size)
+        self._output_block_size_option_override = None
+        self.override_target_max_block_size(target_max_block_size_override)
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
@@ -307,15 +307,15 @@ class PhysicalOperator(Operator):
         self._logical_operators = list(logical_ops)
 
     @property
-    def target_max_block_size(self) -> Optional[int]:
+    def target_max_block_size_override(self) -> Optional[int]:
         """
         Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
-        if self._output_block_size_option is None:
+        if self._output_block_size_option_override is None:
             return None
         else:
-            return self._output_block_size_option.target_max_block_size
+            return self._output_block_size_option_override.target_max_block_size
 
     @property
     def actual_target_max_block_size(self) -> Optional[int]:
@@ -325,18 +325,18 @@ class PhysicalOperator(Operator):
             `None` if the target max block size is not set, otherwise the target max block size.
             `None` means the block size is infinite.
         """
-        target_max_block_size = self.target_max_block_size
+        target_max_block_size = self.target_max_block_size_override
         if target_max_block_size is None:
             target_max_block_size = self.data_context.target_max_block_size
         return target_max_block_size
 
-    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
         if target_max_block_size is not None:
-            self._output_block_size_option = OutputBlockSizeOption(
+            self._output_block_size_option_override = OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size
             )
-        elif self._output_block_size_option is not None:
-            self._output_block_size_option = None
+        elif self._output_block_size_option_override is not None:
+            self._output_block_size_option_override = None
 
     def mark_execution_finished(self):
         """Manually mark that this operator has finished execution."""
@@ -401,6 +401,40 @@ class PhysicalOperator(Operator):
             logical_op_id = f"{logical_op}_{i}"
             res[logical_op_id] = logical_op._get_args()
         return res
+
+    # TODO(@balaji): Disambiguate this with `incremental_resource_usage`.
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The amount of logical resources used by each task.
+
+        For regular tasks, these are the resources required to schedule a task. For
+        actor tasks, these are the resources required to schedule an actor divided by
+        the number of actor threads (i.e., `max_concurrency`).
+
+        Returns:
+            The resource requirement per task.
+        """
+        return ExecutionResources.zero()
+
+    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+        """The maximum number of tasks that can be run concurrently.
+
+        Some operators manually configure a maximum concurrency. For example, if you
+        specify `concurrency` in `map_batches`.
+        """
+        return None
+
+    # TODO(@balaji): Disambiguate this with `base_resource_usage`.
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The minimum resource bundle required to schedule a worker.
+
+        For regular tasks, this is the resources required to schedule a task. For actor
+        tasks, this is the resources required to schedule an actor.
+        """
+        return ExecutionResources.zero()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.

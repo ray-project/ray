@@ -15,15 +15,14 @@
 #pragma once
 
 #include <boost/range/adaptor/map.hpp>
-#include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "ray/common/id.h"
+#include "absl/time/time.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_instance_set.h"
@@ -376,7 +375,7 @@ class NodeResourceInstances {
   const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
   const NodeResourceInstanceSet &GetTotalResourceInstances() const;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResourceInstances &other);
+  bool operator==(const NodeResourceInstances &other) const;
   /// Returns human-readable string for these resources.
   [[nodiscard]] std::string DebugString() const;
 };
