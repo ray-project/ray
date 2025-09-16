@@ -10,15 +10,15 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR
 from ray._common.network_utils import parse_address
+from ray._common.test_utils import Semaphore, wait_for_condition
+from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR
 from ray._private.test_utils import (
     get_error_message,
     get_log_batch,
     init_error_pubsub,
     run_string_as_driver_nonblocking,
 )
-from ray._common.test_utils import Semaphore, wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.experimental.internal_kv import _internal_kv_get
 

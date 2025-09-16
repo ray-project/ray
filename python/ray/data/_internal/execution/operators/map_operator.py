@@ -48,13 +48,14 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler, unify_ref_bundles_schema
+from ray.data._internal.util import MemoryProfiler
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
     BlockStats,
+    _take_first_non_empty_schema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -238,7 +239,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 map_transformer,
                 input_op,
                 data_context,
-                target_max_block_size=target_max_block_size,
+                target_max_block_size_override=target_max_block_size,
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
@@ -541,8 +542,6 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
-    from ray.data.block import BlockMetadataWithSchema
-
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -552,7 +551,7 @@ def _map_task(
     ctx.kwargs.update(kwargs)
     TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
-    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
+    map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
@@ -662,14 +661,13 @@ class _BlockRefBundler:
 def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     """Merge N ref bundles into a single bundle of multiple blocks."""
     # Check that at least one bundle is non-null.
-    assert any(bundle is not None for bundle in bundles)
+    bundles = [bundle for bundle in bundles if bundle is not None]
+    assert len(bundles) > 0
     blocks = list(
-        itertools.chain(
-            block for bundle in bundles if bundle is not None for block in bundle.blocks
-        )
+        itertools.chain(block for bundle in bundles for block in bundle.blocks)
     )
-    owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    schema = unify_ref_bundles_schema(bundles)
+    owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+    schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 
