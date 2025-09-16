@@ -2750,6 +2750,13 @@ try:
 except Exception as e:
     logger.debug(f"Integrating ray serve command line tool failed with {e}")
 
+try:
+    from ray.scripts.symmetric_run import symmetric_run
+
+    cli.add_command(symmetric_run, name="symmetric-run")
+except Exception as e:
+    logger.debug(f"Integrating ray symmetric-run command line tool failed with {e}")
+
 
 def main():
     return cli()
