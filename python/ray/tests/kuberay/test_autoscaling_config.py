@@ -246,9 +246,9 @@ def _get_ray_cr_with_labels() -> dict:
     """CR with labels in rayStartParams of head and worker groups."""
     cr = get_basic_ray_cr()
 
-    cr["spec"]["headGroupSpec"]["rayStartParams"][
-        "labels"
-    ] = "ray.io/node-group=head-group"
+    # Pass invalid labels to the head group to test error handling.
+    cr["spec"]["headGroupSpec"]["rayStartParams"]["labels"] = "!!ray.io/node-group=,"
+    # Pass valid labels to each of the worker groups.
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"][
         "labels"
     ] = "ray.io/availability-region=us-central2, ray.io/market-type=spot"
@@ -265,9 +265,9 @@ def _get_autoscaling_config_with_labels() -> dict:
     """Autoscaling config with parsed labels for each group."""
     config = _get_basic_autoscaling_config()
 
-    config["available_node_types"]["headgroup"]["labels"] = {
-        "ray.io/node-group": "head-group"
-    }
+    # Since we passed invalid labels to the head group `rayStartParams`,
+    # we expect an empty dictionary in the autoscaling config.
+    config["available_node_types"]["headgroup"]["labels"] = {}
     config["available_node_types"]["small-group"]["labels"] = {
         "ray.io/availability-region": "us-central2",
         "ray.io/market-type": "spot",

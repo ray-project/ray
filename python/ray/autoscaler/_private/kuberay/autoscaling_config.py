@@ -316,7 +316,7 @@ def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
     except ValueError as e:
         group_name = group_spec.get("groupName", _HEAD_GROUP_NAME)
         logger.error(
-            f"Error parsing `labels` in rayStartParam for group {group_name}: {e}"
+            f"Error parsing `labels`: {labels_str} in rayStartParams for group {group_name}: {e}"
         )
         # Return an empty dict when failed to parse labels.
         return {}
