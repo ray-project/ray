@@ -377,6 +377,12 @@ run a Ray Serve application with `uv run serve run app:main`.
 
 **Best Practices and Tips:**
 
+- If you are running on a Ray Cluster, the Ray and Python versions of your uv environment must be the same as the Ray and Python versions of your cluster. There are multiple ways to achieve this:
+  1. If you are using ephemeral Ray clusters, run the application on a cluster with the right versions.
+  2. If you need to run on a given cluster, consider modifying the versions of your uv environment by updating the `pyproject.toml` file or by using the `--active` flag with `uv run` (i.e., `uv run --active main.py`).
+  If you encounter errors such as version mismatch exceptions, unexpected crashes, or segmentation faults, check that your Ray and Python versions match, and consider using the `--active` flag.
+  Note: Some examples below may not yet reflect this best practice. Please ensure you add the `--active` flag when adapting them.
+
 - Use `uv lock` to generate a lockfile and make sure all your dependencies are frozen, so things won't change in uncontrolled ways if a new version of a package gets released.
 
 - If you have a requirements.txt file, you can use `uv add -r requirement.txt` to add the dependencies to your `pyproject.toml` and then use that with uv run.
