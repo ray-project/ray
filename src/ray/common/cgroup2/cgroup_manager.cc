@@ -291,9 +291,6 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
                                     cpu_weight_constraint_.name_,
                                     std::to_string(application_cgroup_cpu_weight)));
   RegisterRemoveConstraint(application_cgroup_, cpu_weight_constraint_);
-
-  enabled_ = true;
-
   return Status::OK();
 }
 
