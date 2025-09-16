@@ -389,63 +389,6 @@ class UDFExpr(Expr):
         )
 
 
-@DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
-class PredicateExpr(Expr):
-    """Expression that represents a predicate (boolean condition) for filtering.
-
-    This expression type is specifically designed for filtering operations
-    and represents boolean conditions that can be evaluated to determine
-    which rows to include or exclude from a dataset.
-
-    PredicateExpr can contain any boolean expression, including comparisons,
-    logical operations, null checks, and complex nested conditions.
-
-    Args:
-        condition: The boolean expression that defines the predicate
-
-    Example:
-        >>> from ray.data.expressions import col, PredicateExpr
-        >>> # Simple comparison predicate
-        >>> age_filter = PredicateExpr(col("age") > 21)
-        >>>
-        >>> # Complex predicate with logical operations
-        >>> complex_filter = PredicateExpr(
-        ...     (col("age") > 21) & (col("country") == "USA") & col("active").is_not_null()
-        ... )
-    """
-
-    condition: Expr
-    data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
-
-    def structurally_equals(self, other: Any) -> bool:
-        return isinstance(other, PredicateExpr) and self.condition.structurally_equals(
-            other.condition
-        )
-
-    def __and__(self, other: Any) -> "PredicateExpr":
-        """Combine predicates with logical AND."""
-        if isinstance(other, PredicateExpr):
-            other = other.condition
-        elif not isinstance(other, Expr):
-            other = LiteralExpr(other)
-
-        return PredicateExpr(self.condition & other)
-
-    def __or__(self, other: Any) -> "PredicateExpr":
-        """Combine predicates with logical OR."""
-        if isinstance(other, PredicateExpr):
-            other = other.condition
-        elif not isinstance(other, Expr):
-            other = LiteralExpr(other)
-
-        return PredicateExpr(self.condition | other)
-
-    def __invert__(self) -> "PredicateExpr":
-        """Negate the predicate."""
-        return PredicateExpr(~self.condition)
-
-
 def _create_udf_callable(
     fn: Callable[..., BatchColumn], return_dtype: DataType
 ) -> Callable[..., UDFExpr]:
@@ -660,7 +603,6 @@ __all__ = [
     "BinaryExpr",
     "UnaryExpr",
     "UDFExpr",
-    "PredicateExpr",
     "udf",
     "DownloadExpr",
     "col",

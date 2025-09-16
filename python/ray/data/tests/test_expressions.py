@@ -4,7 +4,6 @@ from ray.data.expressions import (
     BinaryExpr,
     Expr,
     Operation,
-    PredicateExpr,
     UnaryExpr,
     col,
     lit,
@@ -134,8 +133,8 @@ class TestBinaryExpressions:
         assert expr.right == values_expr
 
 
-class TestPredicateExpressions:
-    """Test predicate expression functionality."""
+class TestBooleanExpressions:
+    """Test boolean expression functionality."""
 
     @pytest.mark.parametrize(
         "condition",
@@ -147,64 +146,57 @@ class TestPredicateExpressions:
         ],
         ids=["simple_gt", "simple_eq", "is_not_null", "complex_and"],
     )
-    def test_predicate_expr_directly(self, condition):
-        """Test that boolean expressions can be used directly as predicates."""
-        predicate = PredicateExpr(condition)
-        assert isinstance(predicate, PredicateExpr)
-        assert predicate.condition.structurally_equals(condition)
+    def test_boolean_expressions_directly(self, condition):
+        """Test that boolean expressions work directly."""
+        assert isinstance(condition, Expr)
+        # Verify the expression structure based on type
+        if condition.op in [Operation.GT, Operation.EQ]:
+            assert isinstance(condition, BinaryExpr)
+        elif condition.op == Operation.IS_NOT_NULL:
+            assert isinstance(condition, UnaryExpr)
+        elif condition.op == Operation.AND:
+            assert isinstance(condition, BinaryExpr)
 
-    def test_predicate_combination(self):
-        """Test combining predicates with logical operators."""
-        pred1 = PredicateExpr(col("age") > 18)
-        pred2 = PredicateExpr(col("status") == "active")
+    def test_boolean_combination(self):
+        """Test combining boolean expressions with logical operators."""
+        expr1 = col("age") > 18
+        expr2 = col("status") == "active"
 
         # Test AND combination
-        combined_and = pred1 & pred2
-        assert isinstance(combined_and, PredicateExpr)
+        combined_and = expr1 & expr2
+        assert isinstance(combined_and, BinaryExpr)
+        assert combined_and.op == Operation.AND
 
         # Test OR combination
-        combined_or = pred1 | pred2
-        assert isinstance(combined_or, PredicateExpr)
+        combined_or = expr1 | expr2
+        assert isinstance(combined_or, BinaryExpr)
+        assert combined_or.op == Operation.OR
 
         # Test NOT operation
-        negated = ~pred1
-        assert isinstance(negated, PredicateExpr)
+        negated = ~expr1
+        assert isinstance(negated, UnaryExpr)
+        assert negated.op == Operation.NOT
 
-    def test_predicate_structural_equality(self):
-        """Test structural equality for predicates."""
-        pred1 = PredicateExpr(col("age") > 18)
-        pred2 = PredicateExpr(col("age") > 18)
-        pred3 = PredicateExpr(col("age") > 21)
+    def test_boolean_structural_equality(self):
+        """Test structural equality for boolean expressions."""
+        expr1 = col("age") > 18
+        expr2 = col("age") > 18
+        expr3 = col("age") > 21
 
-        assert pred1.structurally_equals(pred2)
-        assert not pred1.structurally_equals(pred3)
+        assert expr1.structurally_equals(expr2)
+        assert not expr1.structurally_equals(expr3)
 
-    def test_boolean_expressions_work_directly(self):
-        """Test that boolean expressions work directly without wrapping."""
-        # Simple boolean expression
-        bool_expr = col("age") > 21
-        assert isinstance(bool_expr, BinaryExpr)
-        assert bool_expr.op == Operation.GT
-
+    def test_complex_boolean_expressions(self):
+        """Test complex boolean expressions work correctly."""
         # Complex boolean expression
         complex_expr = (col("age") >= 21) & (col("country") == "USA")
         assert isinstance(complex_expr, BinaryExpr)
         assert complex_expr.op == Operation.AND
 
-    def test_predicate_expr_provides_different_behavior(self):
-        """Test that PredicateExpr provides different chaining behavior than regular expressions."""
-        # PredicateExpr chaining returns PredicateExpr
-        pred1 = PredicateExpr(col("age") > 21)
-        pred2 = PredicateExpr(col("status") == "active")
-        combined_pred = pred1 & pred2
-        assert isinstance(combined_pred, PredicateExpr)
-
-        # Regular expression chaining returns BinaryExpr
-        expr1 = col("age") > 21
-        expr2 = col("status") == "active"
-        combined_expr = expr1 & expr2
-        assert isinstance(combined_expr, BinaryExpr)
-        assert combined_expr.op == Operation.AND
+        # Even more complex with OR and NOT
+        very_complex = ((col("age") > 21) | (col("status") == "VIP")) & ~col("banned")
+        assert isinstance(very_complex, BinaryExpr)
+        assert very_complex.op == Operation.AND
 
 
 if __name__ == "__main__":

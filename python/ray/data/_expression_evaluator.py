@@ -15,7 +15,6 @@ from ray.data.expressions import (
     Expr,
     LiteralExpr,
     Operation,
-    PredicateExpr,
     UDFExpr,
     UnaryExpr,
 )
@@ -105,9 +104,6 @@ def _eval_expr_recursive(
             )
 
         return result
-
-    if isinstance(expr, PredicateExpr):
-        return _eval_expr_recursive(expr.condition, batch, ops)
 
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
