@@ -357,26 +357,23 @@ message GcsNodeInfo {
 message GcsNodeInfoLight {
   // The ID of node.
   bytes node_id = 1;
+
   // The IP address of the node manager.
   string node_manager_address = 2;
+
   // The port at which the node manager is listening for TCP
   // connections from other node managers.
   int32 node_manager_port = 3;
+
   // The port at which the object manager is listening for TCP
   // connections from other object managers.
   int32 object_manager_port = 4;
+
   // Current state of this node.
   GcsNodeInfo.GcsNodeState state = 5;
-  // The total resources of this node.
-  map<string, double> resources_total = 6;
-  // The instance id of the node if it's running on a cloud provider.
-  string instance_id = 7;
-  // The instance node type of the node if it's running on a cloud provider.
-  string node_type_name = 8;
-  // The instance type name of the node if running on a cloud provider.
-  string instance_type_name = 9;
-  // A snapshot of node state.
-  NodeSnapshot state_snapshot = 10;
+
+  // The death info of this node.
+  NodeDeathInfo death_info = 6;
 }
 
 // Please keep this in sync with the definition of JobInfo in

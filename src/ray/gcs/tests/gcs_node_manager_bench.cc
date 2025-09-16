@@ -22,7 +22,7 @@
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_node_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -30,7 +30,6 @@ namespace gcs {
 class GcsNodeManagerBenchmark {
  public:
   GcsNodeManagerBenchmark() {
-    // Set up dependencies similar to the test
     auto raylet_client = std::make_shared<FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
@@ -41,12 +40,11 @@ class GcsNodeManagerBenchmark {
     io_context_ =
         std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerBench");
 
-    node_manager_ =
-        std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
-                                         gcs_table_storage_.get(),  // nullptr is fine
-                                         io_context_->GetIoService(),
-                                         client_pool_.get(),
-                                         ClusterID::Nil());
+    node_manager_ = std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
+                                                     gcs_table_storage_.get(),
+                                                     io_context_->GetIoService(),
+                                                     client_pool_.get(),
+                                                     ClusterID::Nil());
   }
 
   void SetupNodes(int node_count, int label_size) {
@@ -62,13 +60,13 @@ class GcsNodeManagerBenchmark {
       node->set_node_type_name(absl::StrFormat("node_type_%d", i % 3));
       node->set_instance_type_name(absl::StrFormat("m5.large_%d", i % 5));
 
-      // Add resources (included in Light version)
+      // Add resources
       auto resources = node->mutable_resources_total();
       (*resources)["CPU"] = 8.0;
       (*resources)["memory"] = 32000000000.0;
       (*resources)[absl::StrFormat("node:__internal_head__")] = 1.0;
 
-      // Fields EXCLUDED from Light version (these add to the data size)
+      // Fields EXCLUDED from the light version (these add to the data size)
       node->set_node_name(absl::StrFormat("node_%d", i));
       node->set_raylet_socket_name(
           absl::StrFormat("/tmp/ray/session_latest/sockets/raylet.%d", i));
@@ -82,14 +80,14 @@ class GcsNodeManagerBenchmark {
       node->set_end_time_ms(0);  // Still running
       node->set_is_head_node(i == 0);
 
-      // Add death_info for some nodes (excluded from Light)
+      // Add death_info for some nodes
       if (i % 10 == 0 && i > 0) {
         auto death_info = node->mutable_death_info();
         death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
         death_info->set_reason_message("Simulated node failure for testing");
       }
 
-      // Add varying number of labels based on label_size parameter (excluded from Light)
+      // Add varying number of labels based on label_size parameter
       auto labels = node->mutable_labels();
       for (int j = 0; j < label_size; ++j) {
         std::string key = absl::StrFormat("label_key_%d", j);
@@ -137,7 +135,7 @@ class GcsNodeManagerBenchmark {
               << "total bytes: " << total_bytes / iterations << std::endl;
   }
 
-  void BenchmarkGetAllNodeInfoLight(int iterations) {
+  void BenchmarkGetAllNodeInfoLight(const int iterations) {
     auto start = std::chrono::high_resolution_clock::now();
 
     size_t total_bytes = 0;
@@ -195,6 +193,9 @@ void RunBenchmarks() {
       {1000, 5},   // Large cluster, few labels
       {1000, 20},  // Large cluster, moderate labels
       {5000, 5},   // Very large cluster, few labels
+      {10000, 5},  // Very large cluster, few labels
+      {30000, 5},  // Very large cluster, few labels
+
   };
 
   const int iterations = 100;
@@ -208,11 +209,6 @@ void RunBenchmarks() {
 
     benchmark.BenchmarkGetAllNodeInfo(iterations);
     benchmark.BenchmarkGetAllNodeInfoLight(iterations);
-
-    // Calculate speedup
-    std::cout << "  Comparison: Light uses GcsNodeInfoLight type for type-safe "
-                 "lightweight responses"
-              << std::endl;
   }
 }
 

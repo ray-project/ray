@@ -318,27 +318,15 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
 }
 
 // Utility function to convert GcsNodeInfo to GcsNodeInfoLight
-void ConvertToGcsNodeInfoLight(const rpc::GcsNodeInfo &source,
-                               rpc::GcsNodeInfoLight *destination) {
-  destination->Clear();
-
-  // Copy only the fields that are present in GcsNodeInfoLight
-  destination->set_node_id(source.node_id());
-  destination->set_node_manager_address(source.node_manager_address());
-  destination->set_node_manager_port(source.node_manager_port());
-  destination->set_object_manager_port(source.object_manager_port());
-  destination->set_state(source.state());
-  destination->set_instance_id(source.instance_id());
-  destination->set_node_type_name(source.node_type_name());
-  destination->set_instance_type_name(source.instance_type_name());
-
-  // Copy resources map
-  *destination->mutable_resources_total() = source.resources_total();
-
-  // Copy state snapshot if present
-  if (source.has_state_snapshot()) {
-    *destination->mutable_state_snapshot() = source.state_snapshot();
-  }
+rpc::GcsNodeInfoLight ConvertToGcsNodeInfoLight(const rpc::GcsNodeInfo &source) {
+  rpc::GcsNodeInfoLight destination;
+  destination.set_node_id(source.node_id());
+  destination.set_node_manager_address(source.node_manager_address());
+  destination.set_node_manager_port(source.node_manager_port());
+  destination.set_object_manager_port(source.object_manager_port());
+  destination.set_state(source.state());
+  destination.mutable_death_info()->CopyFrom(source.death_info());
+  return destination;
 }
 
 void GcsNodeManager::HandleGetAllNodeInfoLight(
@@ -378,8 +366,7 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
           request.state_filter() == rpc::GcsNodeInfo::ALIVE) {
         auto iter = alive_nodes_.find(node_id);
         if (iter != alive_nodes_.end()) {
-          auto *node_info = reply->add_node_info_list();
-          ConvertToGcsNodeInfoLight(*iter->second, node_info);
+          *reply->add_node_info_list() = ConvertToGcsNodeInfoLight(*iter->second);
           ++num_added;
         }
       }
@@ -387,8 +374,8 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
           request.state_filter() == rpc::GcsNodeInfo::DEAD) {
         auto iter = dead_nodes_.find(node_id);
         if (iter != dead_nodes_.end()) {
-          auto *node_info = reply->add_node_info_list();
-          ConvertToGcsNodeInfoLight(*iter->second, node_info);
+          // auto *node_info = reply->add_node_info_list();
+          *reply->add_node_info_list() = ConvertToGcsNodeInfoLight(*iter->second);
           ++num_added;
         }
       }
@@ -410,8 +397,9 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
           if (!has_node_selectors || node_ids.contains(node_id) ||
               node_names.contains(node_info_ptr->node_name()) ||
               node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
-            auto *node_info = reply->add_node_info_list();
-            ConvertToGcsNodeInfoLight(*node_info_ptr, node_info);
+            // auto *node_info = reply->add_node_info_list();
+            *reply->add_node_info_list() = ConvertToGcsNodeInfoLight(*node_info_ptr);
+            // ConvertToGcsNodeInfoLight(*node_info_ptr, node_info);
             num_added += 1;
           }
         }
