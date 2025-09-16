@@ -25,16 +25,16 @@ TEST_F(RayDriverJobExecutionEventTest, TestMerge) {
   rpc::JobTableData data;
   data.set_job_id("test_job_id_1");
   auto event1 = std::make_unique<RayDriverJobExecutionEvent>(
-      data, rpc::events::DriverJobExecutionEvent::SUCCESS, "test_session_name_1");
+      data, rpc::events::DriverJobExecutionEvent::CREATED, "test_session_name_1");
   auto event2 = std::make_unique<RayDriverJobExecutionEvent>(
-      data, rpc::events::DriverJobExecutionEvent::FAILURE, "test_session_name_1");
+      data, rpc::events::DriverJobExecutionEvent::FINISHED, "test_session_name_1");
   event1->Merge(std::move(*event2));
   auto serialized_event = std::move(*event1).Serialize();
   ASSERT_EQ(serialized_event.driver_job_execution_event().states_size(), 2);
   ASSERT_EQ(serialized_event.driver_job_execution_event().states(0).state(),
-            rpc::events::DriverJobExecutionEvent::SUCCESS);
+            rpc::events::DriverJobExecutionEvent::CREATED);
   ASSERT_EQ(serialized_event.driver_job_execution_event().states(1).state(),
-            rpc::events::DriverJobExecutionEvent::FAILURE);
+            rpc::events::DriverJobExecutionEvent::FINISHED);
 }
 
 }  // namespace observability
