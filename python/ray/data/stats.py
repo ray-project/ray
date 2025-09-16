@@ -106,11 +106,15 @@ def feature_aggregators_for_dataset(
     vector_columns = []
     all_aggs = []
     columns = columns or schema.names
-    fields_and_types = list(zip(schema.names, schema.types))
 
-    columns_not_in_schema = set(columns) - set(schema.names) if columns else set()
-    if columns_not_in_schema:
-        raise ValueError(f"Columns {columns_not_in_schema} not found in dataset schema")
+    if columns is None:
+        columns = schema.names
+    else:
+        columns_not_in_schema = set(columns) - set(schema.names)
+        if columns_not_in_schema:
+            raise ValueError(
+                f"Columns {columns_not_in_schema} not found in dataset schema"
+            )
 
     dropped_columns = set(schema.names) - set(columns)
     if dropped_columns:
@@ -118,10 +122,11 @@ def feature_aggregators_for_dataset(
             f"Dropping columns {dropped_columns} as they are not in the columns list"
         )
 
-    if columns:
-        fields_and_types = [
-            (name, ftype) for name, ftype in fields_and_types if name in columns
-        ]
+    fields_and_types = [
+        (name, ftype)
+        for name, ftype in zip(schema.names, schema.types)
+        if name in columns
+    ]
 
     for name, ftype in fields_and_types:
         if not isinstance(ftype, pa.DataType):

@@ -116,9 +116,7 @@ class DatasetSummary:
             ]
         if not categorical_df.empty:
             # Reflect new CategoricalSummary fields including top percentage
-            categorical_df = categorical_df[
-                ["feature", "count", "missing_pct", "top", "top_freq", "top_pct"]
-            ]
+            categorical_df = categorical_df[["feature", "count", "missing_pct"]]
 
         if not vector_df.empty:
             vector_df = vector_df[["feature", "count", "missing_pct"]]
@@ -191,8 +189,8 @@ def dataset_summary(
 
     This function analyzes the dataset and produces tailored statistics based on column types:
 
-    **Numerical columns**: count, min, max, std, median, mean, missing percentage, zero percentage
-    **Categorical columns**: count, missing percentage, most frequent value (top), frequency and percentage of top value
+    **Numerical columns**: count, min, max, std, mean, missing percentage, zero percentage
+    **Categorical columns**: count, missing percentage
     **Vector columns**: count, missing percentage
 
     The function automatically detects column types and applies appropriate aggregations using Ray's
