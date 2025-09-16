@@ -1,5 +1,5 @@
 import sys
-from typing import Any, Dict
+from typing import Dict
 
 import pytest
 
@@ -40,7 +40,7 @@ class TestCustomServeMetrics:
                 self.counter += 1
                 return "Hello, world"
 
-            def record_autoscaling_stats(self) -> Dict[str, Any]:
+            def record_autoscaling_stats(self) -> Dict[str, int]:
                 # Increments each time the deployment has been called
                 return {"counter": self.counter}
 
@@ -64,8 +64,7 @@ class TestCustomServeMetrics:
         # The final counter value recorded by the controller should be 3
         assert metrics["counter"][-1][0].value == 3
 
-    @pytest.mark.asyncio
-    async def test_custom_serve_timeout(self, serve_instance):
+    def test_custom_serve_timeout(self, serve_instance):
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": 1,
@@ -84,7 +83,7 @@ class TestCustomServeMetrics:
                 self.counter += 1
                 return "Hello, world"
 
-            async def record_autoscaling_stats(self) -> Dict[str, Any]:
+            def record_autoscaling_stats(self) -> Dict[str, int]:
                 # Block here until it is forced to cancel due to timeout beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
                 while True:
                     pass
@@ -95,6 +94,38 @@ class TestCustomServeMetrics:
         # Call deployment 3 times
         [handle.remote() for _ in range(3)]
         # There should be no counter metric because asyncio timeout would have stopped the method execution
+        metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
+        assert metrics.get("counter", None) is None
+
+    def test_custom_serve_invalid_metric_type(self, serve_instance):
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 10,
+                "metrics_interval_s": 1,
+            }
+        )
+        class DummyInvalidMetric:
+            def __init__(self):
+                self.counter = 0
+
+            async def __call__(self) -> str:
+                self.counter += 1
+                return "Hello, world"
+
+            def record_autoscaling_stats(self) -> Dict[str, str]:
+                # Return an invalid metric dict whose valuse are neither int nor float
+                return {"counter": "not_an_int"}
+
+        app_name = "test_custom_metrics_app"
+        handle = serve.run(DummyInvalidMetric.bind(), name=app_name, route_prefix="/")
+        dep_id = DeploymentID(name="DummyInvalidMetric", app_name=app_name)
+        # Call deployment 3 times
+        [handle.remote() for _ in range(3)]
+        # There should be no counter metric because it failed validation, must be int or float
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
         assert metrics.get("counter", None) is None
 
