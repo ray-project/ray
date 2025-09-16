@@ -125,7 +125,12 @@ def _get_local_inspect_dir(
         if storage_filesystem:
             fs, storage_fs_path = storage_filesystem, storage_path
         else:
-            fs, storage_fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
+            # Handle ABFSS URIs specially since PyArrow doesn't natively support them
+            if storage_path.startswith("abfss://"):
+                from ray.train.v2._internal.execution.storage import _create_abfss_filesystem
+                fs, storage_fs_path = _create_abfss_filesystem(storage_path)
+            else:
+                fs, storage_fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
         _download_from_fs_path(
             fs=fs, fs_path=storage_fs_path, local_path=str(local_inspect_dir)
         )
