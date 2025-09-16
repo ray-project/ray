@@ -55,6 +55,7 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
 
 def build_sglang_engine_processor(
     config: SGLangEngineProcessorConfig,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
     telemetry_agent: Optional[TelemetryAgent] = None,
@@ -62,6 +63,7 @@ def build_sglang_engine_processor(
     """Construct a Processor and configure stages.
     Args:
         config: The configuration for the processor.
+        chat_template_kwargs: The optional kwargs to pass to apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.
@@ -82,6 +84,7 @@ def build_sglang_engine_processor(
                 fn_constructor_kwargs=dict(
                     model=config.model_source,
                     chat_template=config.chat_template,
+                    chat_template_kwargs=chat_template_kwargs,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,

@@ -118,6 +118,9 @@ ray_cc_library(
             "src/mock/ray/common/ray_syncer/ray_syncer.h",
         ],
     ),
+    deps = [
+        "//src/ray/observability:fake_ray_event_recorder",
+    ],
 )
 
 ray_cc_library(
