@@ -148,3 +148,8 @@ class NixlTensorTransport(TensorTransportManager):
         raise NotImplementedError(
             "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
         )
+
+    @staticmethod
+    def abort_transport(communicator_metadata: NixlCommunicatorMetadata):
+        g = get_group_handle(communicator_metadata.communicator_name)
+        g.abort()

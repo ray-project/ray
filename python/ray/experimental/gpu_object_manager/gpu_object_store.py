@@ -116,6 +116,13 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     return gpu_object
 
 
+def __ray_abort_transport__(self, communicator_meta: CommunicatorMetadata):
+    """Helper function that can run on an actor doing a send or recv to abort the transport."""
+    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
+    tensor_transport_manager = get_tensor_transport_manager(backend)
+    tensor_transport_manager.abort_transport(communicator_meta)
+
+
 @dataclass
 class _GPUObject:
     # A list of tensors representing the GPU object.

@@ -176,3 +176,9 @@ class CollectiveTensorTransport(TensorTransportManager):
                 communicator_metadata.dst_rank,
                 communicator_metadata.communicator_name,
             )
+
+    @staticmethod
+    def abort_transport(communicator_metadata: CollectiveCommunicatorMetadata):
+        import ray.util.collective as collective
+
+        collective.abort(communicator_metadata.communicator_name)

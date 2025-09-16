@@ -926,7 +926,7 @@ def test_send_actor_dies(ray_start_regular):
     actors = [ErrorActor.remote() for _ in range(2)]
     create_collective_group(actors, backend="torch_gloo")
 
-    # Do a transfer with the sender's background thread blocked,
+    # Try a transfer with the sender's background thread blocked,
     # so the send doesn't happen before the actor is killed
     gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
     actors[0].block_background_thread.remote()

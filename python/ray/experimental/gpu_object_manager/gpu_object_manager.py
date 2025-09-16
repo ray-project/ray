@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 import warnings
@@ -14,7 +15,9 @@ if TYPE_CHECKING:
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
     )
-    from ray.util.collective.types import TensorTransportMetadata
+    from ray.util.collective.types import CommunicatorMetadata, TensorTransportMetadata
+
+logger = logging.getLogger(__name__)
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, tensor metadata, and other information that needs to be recorded.
@@ -38,9 +41,9 @@ class GPUObjectMeta(NamedTuple):
 class TransportRefsInfo(NamedTuple):
     src_actor: "ray.actor.ActorHandle"
     dst_actor: "ray.actor.ActorHandle"
-    send_ref: ObjectRef
+    send_ref: Optional[ObjectRef]
     recv_ref: ObjectRef
-    collective_group_name: Optional[str]
+    communicator_meta: "CommunicatorMetadata"
     backend: str
     timeout: float
 
@@ -103,15 +106,20 @@ class GPUObjectManager:
         return self._gpu_object_store
 
     def _monitor_failures(self):
+        """
+        Monitor the refs from send and recv tasks and abort the transfers
+        if they error out or timeout to prevent hanging.
+        """
         not_done = []
         done = []
         ref_info_map = {}
         while True:
             with self._unmonitored_transport_refs_info_lock:
                 for ref_info in self._unmonitored_transport_refs_info:
-                    not_done.append(ref_info.send_ref)
+                    if ref_info.send_ref:
+                        not_done.append(ref_info.send_ref)
+                        ref_info_map[ref_info.send_ref.hex()] = ref_info
                     not_done.append(ref_info.recv_ref)
-                    ref_info_map[ref_info.send_ref.hex()] = ref_info
                     ref_info_map[ref_info.recv_ref.hex()] = ref_info
                 self._unmonitored_transport_refs_info = []
 
@@ -136,27 +144,69 @@ class GPUObjectManager:
     def _abort_transport(
         self, failed_ref: ObjectRef, ref_info_map: Dict[str, TransportRefsInfo]
     ):
-        from ray.experimental.collective import destroy_collective_group
-        from ray.util.collective.types import Backend
+        """
+        Clean up the ref_info_map, abort the transport based on the backend,
+        and destroy any associated collective group.
 
-        if failed_ref.hex() not in ref_info_map:
+        NOTE: Kills the associated actors to abort torch_gloo transfers.
+        """
+        from ray.experimental.collective import destroy_collective_group
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_abort_transport__,
+        )
+        from ray.util.collective.types import Backend, CollectiveCommunicatorMetadata
+
+        ref_info = ref_info_map.pop(failed_ref.hex(), None)
+        if ref_info is None:
             return
-        ref_info = ref_info_map.pop(failed_ref.hex())
+
+        if ref_info.send_ref:
+            ref_info_map.pop(ref_info.send_ref.hex(), None)
+        ref_info_map.pop(ref_info.recv_ref.hex(), None)
+
         if ref_info.backend == Backend.TORCH_GLOO:
+            # Don't have a way to abort a torch_gloo transfer right now
+            logger.error(
+                "Killing actors due to a hanging/failed torch_gloo transfer. "
+                "Src actor: %s, Dst actor: %s",
+                ref_info.src_actor,
+                ref_info.dst_actor,
+            )
             ray.kill(ref_info.src_actor)
             ray.kill(ref_info.dst_actor)
-        elif ref_info.backend == Backend.NCCL:
-            # TODO(dayshah)
-            pass
-        elif ref_info.backend == Backend.NIXL:
-            # TODO(dayshah)
-            pass
+        elif ref_info.backend == Backend.NCCL or ref_info.backend == Backend.NIXL:
+            logger.error(
+                "Aborting tensor transfers on actors due to a hanging/failed transfer. "
+                "Src actor: %s, Dst actor: %s",
+                ref_info.src_actor,
+                ref_info.dst_actor,
+            )
+            if ref_info.send_ref:
+                # Only need to abort recv side if communication is one-sided
+                ref_info.src_actor.__ray_call__.options(
+                    concurrency_group="_ray_system_error"
+                ).remote(
+                    __ray_abort_transport__,
+                    ref_info.communicator_meta,
+                )
+            ref_info.src_actor.__ray_call__.options(
+                concurrency_group="_ray_system_error"
+            ).remote(
+                __ray_abort_transport__,
+                ref_info.communicator_meta,
+            )
 
-        if ref_info.collective_group_name:
+        if isinstance(ref_info.communicator_meta, CollectiveCommunicatorMetadata):
             try:
-                destroy_collective_group(ref_info.collective_group_name)
+                destroy_collective_group(
+                    ref_info.communicator_meta.collective_group_name
+                )
+                logger.error(
+                    "Destroyed collective group %s due to a hanging/failed transfer",
+                    ref_info.communicator_meta.collective_group_name,
+                )
             except ValueError:
-                # Already destroyed collective group
+                # Collective group was already destroyed
                 pass
 
     def is_managed_object(self, obj_id: str) -> bool:
@@ -404,13 +454,6 @@ class GPUObjectManager:
                 communicator_meta,
             )
 
-            from ray.util.collective.types import CollectiveCommunicatorMetadata
-
-            collective_group_name = (
-                communicator_meta.communicator_name
-                if isinstance(communicator_meta, CollectiveCommunicatorMetadata)
-                else None
-            )
             with self._unmonitored_transport_refs_info_lock:
                 self._unmonitored_transport_refs_info.append(
                     TransportRefsInfo(
@@ -418,7 +461,7 @@ class GPUObjectManager:
                         dst_actor=dst_actor,
                         send_ref=send_ref,
                         recv_ref=recv_ref,
-                        collective_group_name=collective_group_name,
+                        communicator_meta=communicator_meta,
                         backend=gpu_object_meta.tensor_transport_backend,
                         timeout=time.time() + ray_constants.FETCH_FAIL_TIMEOUT_SECONDS,
                     )

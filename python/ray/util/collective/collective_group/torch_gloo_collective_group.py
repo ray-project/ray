@@ -173,3 +173,6 @@ class TorchGLOOGroup(BaseGroup):
     def recv(self, tensor: List["torch.Tensor"], recv_options: RecvOptions) -> None:
         tensor = self._check_tensor_input(tensor)
         dist.recv(tensor, src=recv_options.src_rank)
+
+    def abort(self):
+        raise NotImplementedError("TorchGLOO does not support abort.")

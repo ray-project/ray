@@ -205,7 +205,7 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     group = manager.remove_remote_communicator(name)
     if group is not None:
         destroy_tasks = [
-            actor.__ray_call__.options(concurrency_group="_ray_system_error").remote(
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 _do_destroy_collective_group, name
             )
             for actor in group.actors
