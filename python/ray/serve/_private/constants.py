@@ -438,7 +438,7 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
 )
 
 # Used for gc.set_threshold() when proxy GC optimizations are enabled.
-RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 10_000)
+RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 700)
 
 # Interval at which cached metrics will be exported using the Ray metric API.
 # Set to `0` to disable caching entirely.
