@@ -1,5 +1,6 @@
 import difflib
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
@@ -189,12 +190,15 @@ class DependencySetManager:
         nodes = dependency_nodes | {depset_name}
         self.build_graph = self.build_graph.subgraph(nodes).copy()
 
+    def check_build_node_exists(self, node_name: str):
+        if node_name not in self.build_graph.nodes:
+            raise KeyError(f"Dependency set/hook {node_name} not found")
+
     def execute(self, single_depset_name: Optional[str] = None):
         if single_depset_name:
-            # check if the depset exists
-            _get_depset(self.config.depsets, single_depset_name)
+            # # check if the depset/hook exists
+            self.check_build_node_exists(single_depset_name)
             self.subgraph_dependency_nodes(single_depset_name)
-
         for node in topological_sort(self.build_graph):
             node_type = self.build_graph.nodes[node]["node_type"]
             if node_type == "pre_hook":
@@ -214,15 +218,22 @@ class DependencySetManager:
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
         if status.returncode != 0:
-            raise RuntimeError(f"Failed to execute command: {cmd}")
-        return status.stdout
+            raise RuntimeError(
+                status.returncode, f"Failed to execute command: {cmd}: {status.stderr}"
+            )
 
     def execute_hook(self, hook: str, node_type: str):
-        status_code = subprocess.run(hook, cwd=self.workspace.dir)
-        if status_code != 0:
-            raise RuntimeError(f"Failed to execute {node_type}: {hook}")
-        click.echo(f"Executed {node_type} {hook}")
-        return status_code
+        status = subprocess.run(
+            shlex.split(hook), cwd=self.workspace.dir, capture_output=True, text=True
+        )
+        if status.returncode != 0:
+            raise RuntimeError(
+                status.returncode,
+                f"Failed to execute {node_type} {hook} with error: {status.stderr}",
+            )
+        else:
+            click.echo(f"{status.stdout}")
+            click.echo(f"Executed {node_type} {hook} successfully")
 
     def execute_depset(self, depset: Depset):
         if depset.operation == "compile":
