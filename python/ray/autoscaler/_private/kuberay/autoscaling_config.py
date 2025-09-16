@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ray._private.label_utils import parse_node_labels_string
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -15,7 +16,6 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.kuberay import node_provider, utils
 from ray.autoscaler._private.util import validate_config
-from ray._private.label_utils import parse_node_labels_string
 
 logger = logging.getLogger(__name__)
 
