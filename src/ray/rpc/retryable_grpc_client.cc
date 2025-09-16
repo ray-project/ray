@@ -87,7 +87,8 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
                        << (attempt_number > 0
                                ? ExponentialBackoff::GetBackoffMs(
                                      attempt_number - 1,
-                                     server_unavailable_base_timeout_seconds_ * 1000) /
+                                     server_unavailable_base_timeout_seconds_ * 1000,
+                                     60 * 1000) /
                                      1000.0
                                : 0)
                        << " seconds";
@@ -95,7 +96,9 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       // Reset the unavailable timeout.
       server_unavailable_timeout_time_ =
           now + absl::Milliseconds(ExponentialBackoff::GetBackoffMs(
-                    attempt_number, server_unavailable_base_timeout_seconds_ * 1000));
+                    attempt_number,
+                    server_unavailable_base_timeout_seconds_ * 1000,
+                    60 * 1000));
       pending_requests_.begin()->second->SetAttemptNumber(attempt_number + 1);
     }
 
