@@ -2727,7 +2727,7 @@ def test_with_column_udf_invalid_return_type_validation(
                 ],
                 "expr_factory": lambda: col("name") + "_X",
                 "column_name": "name_with_suffix",
-                "expected": ["Alice_X", "Bob_X"],
+                "expected": ["Alice_X", "Bob_X", "Charlie_X"],
             },
             id="string_col_plus_python_literal_rhs",
         ),
@@ -2740,7 +2740,7 @@ def test_with_column_udf_invalid_return_type_validation(
                 ],
                 "expr_factory": lambda: "_X" + col("name"),
                 "column_name": "name_with_prefix",
-                "expected": ["_XAlice", "_XBob"],
+                "expected": ["_XAlice", "_XBob", "_XCharlie"],
             },
             id="python_literal_lhs_plus_string_col",
         ),
@@ -2794,9 +2794,8 @@ def test_with_column_string_concat_combinations(
     column_name = scenario["column_name"]
 
     ds2 = ds.with_column(column_name, expr)
-    out = ds2.take(2)
-    assert out[0][column_name] == scenario["expected"][0]
-    assert out[1][column_name] == scenario["expected"][1]
+    out = ds2.to_pandas()
+    assert out[column_name].tolist() == scenario["expected"]
 
 
 @pytest.mark.skipif(
