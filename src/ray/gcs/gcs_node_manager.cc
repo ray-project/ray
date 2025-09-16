@@ -22,8 +22,6 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "google/protobuf/field_mask.pb.h"
-#include "google/protobuf/util/field_mask_util.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
@@ -374,7 +372,6 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
           request.state_filter() == rpc::GcsNodeInfo::DEAD) {
         auto iter = dead_nodes_.find(node_id);
         if (iter != dead_nodes_.end()) {
-          // auto *node_info = reply->add_node_info_list();
           *reply->add_node_info_list() = ConvertToGcsNodeInfoLight(*iter->second);
           ++num_added;
         }
@@ -397,9 +394,7 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
           if (!has_node_selectors || node_ids.contains(node_id) ||
               node_names.contains(node_info_ptr->node_name()) ||
               node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
-            // auto *node_info = reply->add_node_info_list();
             *reply->add_node_info_list() = ConvertToGcsNodeInfoLight(*node_info_ptr);
-            // ConvertToGcsNodeInfoLight(*node_info_ptr, node_info);
             num_added += 1;
           }
         }
