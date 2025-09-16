@@ -225,6 +225,11 @@ class AutoscalingConfig(BaseModel):
     downscale_delay_s: NonNegativeFloat = Field(
         default=600.0, description="How long to wait before scaling down replicas."
     )
+    #Need to set for 1->0 transition
+    downscale_to_zero_delay_s: Optional[NonNegativeFloat] = Field(
+        default=None,
+        description="How long to wait before scaling down replicas from 1 to 0."
+    )
     upscale_delay_s: NonNegativeFloat = Field(
         default=30.0, description="How long to wait before scaling up replicas."
     )

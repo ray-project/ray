@@ -125,6 +125,12 @@ aggregated ongoing requests metrics. For example, if your application
 initializes slowly, you can increase `downscale_delay_s` to make the downscaling
 happen more infrequently and avoid reinitialization when the application needs
 to upscale again in the future.
+* **downscale_to_zero_delay_s [Optional]**: This defines how long Serve waits before   
+scaling from 1 replica to 0 replicas. This parameter enables two-stage downscaling   
+behavior where deployments must first scale down to 1 replica (using `downscale_delay_s`),   
+then wait an additional `downscale_to_zero_delay_s` period before scaling to zero.   
+If not specified, the final 1→0 transition uses the same `downscale_delay_s` value.   
+This feature is useful for scenarios where you want conservative scale-to-zero behavior.
 
 * **upscale_smoothing_factor [default_value=1.0] (DEPRECATED)**: This parameter
 is renamed to `upscaling_factor`. `upscale_smoothing_factor` will be removed in

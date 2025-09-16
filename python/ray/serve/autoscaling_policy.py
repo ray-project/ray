@@ -144,16 +144,26 @@ def replica_queue_length_autoscaling_policy(
     elif desired_num_replicas < curr_target_num_replicas:
         # If the previous decision was to scale up (the counter was
         # positive), reset it to zero before decrementing.
+        
         if decision_counter > 0:
             decision_counter = 0
         decision_counter -= 1
-
-        # Only actually scale the replicas if we've made this decision for
-        # 'scale_down_consecutive_periods' in a row.
-        if decision_counter < -int(config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S):
+        # Check whether the scaling is from 1->0
+        is_scaling_to_zero = (curr_target_num_replicas == 1)
+        #Determine the delay to use
+        if is_scaling_to_zero:
+            #Check if the downscale_to_zero_delay_s is set
+            if config.downscale_to_zero_delay_s is not None:
+                delay_s = config.downscale_to_zero_delay_s
+            else:
+                delay_s = config.downscale_delay_s
+        else:
+            delay_s = config.downscale_delay_s
+            #The desired_num_replicas>0 for downscaling cases other than 1->0
+            desired_num_replicas = max(1, desired_num_replicas)
+        if decision_counter < -int(delay_s / CONTROL_LOOP_INTERVAL_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
-
     # Do nothing.
     else:
         decision_counter = 0
