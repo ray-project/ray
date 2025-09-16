@@ -206,11 +206,20 @@ class DependencySetManager:
         return status.stdout
 
     def execute_pre_hook(self, pre_hook: str):
-        status_code = subprocess.call(shlex.split(pre_hook), cwd=self.workspace.dir)
-        if status_code != 0:
-            raise RuntimeError(f"Failed to execute pre-hook: {pre_hook}")
-        click.echo(f"Executed pre-hook: {pre_hook}")
-        return status_code
+        status = subprocess.run(
+            shlex.split(pre_hook),
+            cwd=self.workspace.dir,
+            capture_output=True,
+            text=True,
+        )
+        if status.returncode != 0:
+            raise RuntimeError(
+                status.returncode,
+                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
+            )
+        else:
+            click.echo(f"{status.stdout}")
+            click.echo(f"Executed pre_hook {pre_hook} successfully")
 
     def execute_depset(self, depset: Depset):
         if depset.operation == "compile":
