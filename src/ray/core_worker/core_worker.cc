@@ -223,38 +223,40 @@ void TaskCounter::RecordMetrics() {
   counter_.FlushOnChangeCallbacks();
   if (IsActor()) {
     float running = 0.0;
-    float in_get = 0.0;
-    float in_wait = 0.0;
     float idle = 0.0;
-    if (running_in_wait_counter_.Total() > 0) {
-      in_wait = 1.0;
-    } else if (running_in_get_counter_.Total() > 0) {
-      in_get = 1.0;
-    } else if (num_tasks_running_ > 0) {
+    if (num_tasks_running_ > 0) {
       running = 1.0;
     } else {
       idle = 1.0;
     }
+    int running_in_wait = running_in_wait_counter_.Total();
+    int running_in_get = running_in_get_counter_.Total();
+    int executing = num_tasks_running_ - (running_in_wait + running_in_get);
     ray::stats::STATS_actors.Record(idle,
                                     {{"State", "IDLE"},
                                      {"Name", actor_name_},
                                      {"Source", "executor"},
                                      {"JobId", job_id_}});
     ray::stats::STATS_actors.Record(running,
-                                    {{"State", "RUNNING_TASK"},
+                                    {{"State", "RUNNING_TASKS"},
                                      {"Name", actor_name_},
                                      {"Source", "executor"},
                                      {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(in_get,
-                                    {{"State", "RUNNING_IN_RAY_GET"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(in_wait,
-                                    {{"State", "RUNNING_IN_RAY_WAIT"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
+    ray::stats::STATS_actor_tasks.Record(running_in_wait,
+                                         {{"State", "RUNNING_IN_RAY_WAIT"},
+                                          {"Name", actor_name_},
+                                          {"Source", "executor"},
+                                          {"JobId", job_id_}});
+    ray::stats::STATS_actor_tasks.Record(running_in_get,
+                                         {{"State", "RUNNING_IN_RAY_GET"},
+                                          {"Name", actor_name_},
+                                          {"Source", "executor"},
+                                          {"JobId", job_id_}});
+    ray::stats::STATS_actor_tasks.Record(executing,
+                                         {{"State", "EXECUTING"},
+                                          {"Name", actor_name_},
+                                          {"Source", "executor"},
+                                          {"JobId", job_id_}});
   }
 }
 

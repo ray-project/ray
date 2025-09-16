@@ -43,7 +43,9 @@ namespace ray::stats {
 /// we use the "Source" required label.
 DEFINE_stats(
     actors,
-    "Current number of actors currently in a particular state.",
+    "An actor can be in one of two states: RUNNING_TASKS if it is running any tasks, or "
+    "IDLE "
+    "if no tasks are running.",
     // State: the actor state, which is from rpc::ActorTableData::ActorState,
     // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
     // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
@@ -53,6 +55,14 @@ DEFINE_stats(
     ("State", "Name", "Source", "JobId"),
     (),
     ray::stats::GAUGE);
+
+DEFINE_stats(
+    actor_tasks,
+    "The number of tasks in an actor in one of RUNNING_TASK, RUNNING_IN_RAY_GET, "
+    "RUNNING_IN_RAY_WAIT states.",
+    ("State", "Name", "Source", "JobId"),
+    (),
+    ray::stats::COUNT);
 
 /// Job related stats.
 DEFINE_stats(running_jobs,
