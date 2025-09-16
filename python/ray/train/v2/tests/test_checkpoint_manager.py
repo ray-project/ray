@@ -26,7 +26,7 @@ def ray_start_4_cpus():
 
 
 def _create_dummy_training_results(
-    num_results: int, storage_context: StorageContext, create_checkpoint: bool = False
+    num_results: int, storage_context: StorageContext
 ) -> List[_TrainingResult]:
     training_results = []
     for i in range(num_results):
@@ -193,7 +193,7 @@ async def test_checkpoint_validation_management(tmp_path):
         checkpoint_config=checkpoint_config,
     )
     training_results = _create_dummy_training_results(
-        num_results=4, storage_context=storage_context, create_checkpoint=True
+        num_results=4, storage_context=storage_context
     )
 
     # Register passing, failing, and timing out checkpoints
