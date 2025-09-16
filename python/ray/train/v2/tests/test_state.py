@@ -366,6 +366,27 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
     }
 
 
+def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
+    monkeypatch,
+):
+    def get_actor(actor_id: str, timeout: float):
+        raise ray.util.state.exception.ServerUnavailable
+
+    monkeypatch.setattr("ray.train.v2._internal.state.util.get_actor", get_actor)
+    actor = TrainStateActor(enable_state_actor_reconciliation=True)
+    actor._runs = OrderedDict(
+        {
+            "run_id": create_mock_train_run(
+                status=RunStatus.RUNNING,
+                controller_actor_id="controller_actor_id",
+                id="run_id",
+            ),
+        }
+    )
+    assert actor._abort_live_runs_with_dead_controllers(None) == "run_id"
+    assert actor._runs["run_id"].status == RunStatus.RUNNING
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
