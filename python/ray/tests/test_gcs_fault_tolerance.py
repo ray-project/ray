@@ -57,10 +57,6 @@ def cluster_kill_gcs_wait(cluster):
     wait_for_pid_to_exit(gcs_server_pid, 300)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    indirect=True,
-)
 def test_gcs_server_restart(ray_start_regular_with_external_redis):
     actor1 = Increase.remote()
     result = ray.get(actor1.method.remote(1))
@@ -83,10 +79,6 @@ def test_gcs_server_restart(ray_start_regular_with_external_redis):
     assert result == 9
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    indirect=True,
-)
 @pytest.mark.skip(
     reason="GCS pubsub may lose messages after GCS restarts. Need to "
     "implement re-fetching state in GCS client.",
@@ -210,10 +202,6 @@ def test_node_failure_detector_when_gcs_server_restart(
     wait_for_condition(condition, timeout=10)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    indirect=True,
-)
 def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
     # stat an actor
     @ray.remote
@@ -241,10 +229,6 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
         ray.get(actor.ready.remote())
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    indirect=True,
-)
 def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redis):
     actor = Increase.options(name="abc").remote()
     result = ray.get(actor.method.remote(1))
@@ -272,10 +256,6 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
         ray.get_actor("abc")
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    indirect=True,
-)
 def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
     # This test is to make sure resubscription in raylet is working.
     # When subscription failed, raylet will not get worker failure error
@@ -328,10 +308,6 @@ def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_
     wait_for_pid_to_exit(blocking_child_pid, 5)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    indirect=True,
-)
 def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_redis):
     # This test is to ensure core worker will resubscribe to GCS after GCS
     # restarts.
@@ -361,10 +337,6 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     ray.get(r, timeout=5)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    indirect=True,
-)
 def test_detached_actor_restarts(ray_start_regular_with_external_redis):
     # Detached actors are owned by GCS. This test is to ensure detached actors
     # can restart even GCS restarts.

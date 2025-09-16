@@ -733,7 +733,6 @@ void CoreWorker::SubscribeToNodeChanges() {
             << "Node failure. All objects pinned on that node will be lost if object "
                "reconstruction is not enabled.";
         reference_counter->ResetObjectsOnRemovedNode(node_id);
-        raylet_client_pool->Disconnect(node_id);
       }
       auto cluster_size_based_rate_limiter =
           dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(rate_limiter.get());

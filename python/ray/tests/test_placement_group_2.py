@@ -698,10 +698,6 @@ ray.shutdown()
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis",
-    indirect=True,
-)
 def test_create_placement_group_after_gcs_server_restart(
     ray_start_cluster_head_with_external_redis,
 ):
@@ -735,10 +731,6 @@ def test_create_placement_group_after_gcs_server_restart(
     assert table["state"] == "PENDING"
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis",
-    indirect=True,
-)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
     ray_start_cluster_head_with_external_redis,
 ):
@@ -760,10 +752,6 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis",
-    indirect=True,
-)
 def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
     ray_start_cluster_head_with_external_redis,
 ):
