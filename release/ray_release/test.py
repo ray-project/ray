@@ -438,7 +438,7 @@ class Test(dict):
         """
         Returns the lock file path.
         """
-        return self["cluster"]["byod"].get("post_build_script")
+        return self["cluster"]["byod"].get("lock_file", None)
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """

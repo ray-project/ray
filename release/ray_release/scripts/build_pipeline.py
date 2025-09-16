@@ -131,6 +131,7 @@ def main(
                 test.get_anyscale_byod_image(),
                 test.get_anyscale_base_byod_image(),
                 test.get_byod_post_build_script(),
+                test.get_byod_lock_file(),
             )
     grouped_tests = group_tests(filtered_tests)
 
