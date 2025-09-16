@@ -10,9 +10,14 @@ import ray
 import ray.scripts.scripts as scripts
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
-# These tests is intended to run in CI inside a container.
+# These tests are intended to run in CI inside a container.
 # If you want to run this test locally, you will need to create a cgroup that
 # the raylet can manage and delegate to the correct user.
+#
+# TODO(#54703): Once implementation is complete, I will add a fixture to this
+# test to check for common errors when running locally (such as cgroup2 not mounted
+# correct). It'll follow the example of
+# src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh
 #
 # Run these commands locally before running the test suite:
 #  sudo mkdir -p /sys/fs/cgroup/resource_isolation_test
@@ -142,7 +147,6 @@ def test_ray_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
             object_store_memory,
         ],
     )
-
     assert result.exit_code == 0
     resource_isolation_config.add_object_store_memory(object_store_memory)
     assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
