@@ -393,6 +393,20 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_stats",
+    size = "small",
+    srcs = ["tests/test_dataset_stats.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_groupby_e2e",
     size = "enormous",
     srcs = ["tests/test_groupby_e2e.py"],
