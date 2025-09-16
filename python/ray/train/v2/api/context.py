@@ -210,3 +210,38 @@ class TrainContext:
         without notice between minor versions.
         """
         return get_internal_train_context().get_storage()
+
+    def get_xla_mesh(self):
+        """Get the XLA SPMD mesh for this worker.
+        
+        This function returns the mesh that was automatically created
+        during the XLA backend initialization. The mesh is configured
+        based on the available TPU devices and process topology.
+        
+        For a 4x4 TPU slice with 4 workers (4 hosts, each with 4 TPU chips):
+        - The mesh will have shape (4, 4) with axes ("data", "model")
+        - This represents 4-way data parallelism and 4-way model parallelism
+        
+        Returns:
+            The XLA SPMD mesh if XLA backend is being used, None otherwise.
+            
+        Example:
+            .. testcode::
+                :skipif: True
+                
+                def train_loop_per_worker(config):
+                    # Get the XLA mesh for SPMD operations
+                    mesh = train.get_context().get_xla_mesh()
+                    if mesh is not None:
+                        # Use the mesh for sharding operations
+                        import torch_xla.distributed.spmd as xs
+                        
+                        # Shard your model across the mesh
+                        model = xs.mark_sharding(model, mesh, xs.Shard(0))
+                        
+                        # Use the mesh for data parallelism
+                        with xs.Mesh(mesh.devices, mesh.shape, mesh.axis_names):
+                            # Your training code here
+                            pass
+        """
+        return get_internal_train_context().get_xla_mesh()

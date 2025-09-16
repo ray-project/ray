@@ -22,6 +22,13 @@ from ray.train.torch.train_loop_utils import (
     prepare_model,
     prepare_optimizer,
 )
+
+# Import XLA utilities
+try:
+    from ray.train.torch.xla import get_xla_mesh, is_xla_backend
+    _XLA_UTILS_AVAILABLE = True
+except ImportError:
+    _XLA_UTILS_AVAILABLE = False
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
@@ -51,6 +58,10 @@ __all__ = [
     "TorchPredictor",
     "TorchDetectionPredictor",
 ]
+
+# Add XLA utilities to __all__ if available
+if _XLA_UTILS_AVAILABLE:
+    __all__.extend(["get_xla_mesh", "is_xla_backend"])
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.

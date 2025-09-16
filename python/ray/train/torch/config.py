@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, Dict
 
 import torch
 import torch.distributed as dist
@@ -37,7 +37,7 @@ class TorchConfigContextManager:
                     logger.info(f"XLA device already configured: {device}")
             except Exception:
                 # If get_device fails, continue without setting device
-                pass
+                pass  
 
     def __exit__(self, type, value, traceback):
         # Propagate exceptions if any
@@ -71,6 +71,7 @@ class TorchConfig(BackendConfig):
     backend: Optional[str] = None
     init_method: str = "env"
     timeout_s: int = 1800
+    xla_spmd_config: Optional[Dict] = None
 
     @property
     def backend_cls(self):
@@ -135,32 +136,32 @@ def _setup_torch_process_group(
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
-    elif backend == "xla":
-        # For XLA backend, use the XLA init method
-        import torch_xla.distributed.xla_backend
-        dist.init_process_group(
-            backend="xla",
-            init_method="xla://",  # Use XLA's native init method
-            rank=world_rank,
-            world_size=world_size,
-            timeout=timedelta(seconds=timeout_s),
-        )
+    # elif backend == "xla":
+        # # For XLA backend, use the XLA init method
+        # import torch_xla.distributed.xla_backend
+        # dist.init_process_group(
+        #     backend="xla",
+        #     init_method="xla://",  # Use XLA's native init method
+        #     rank=world_rank,
+        #     world_size=world_size,
+        #     timeout=timedelta(seconds=timeout_s),
+        # )
 
-        # Sanity logs
-        try:
-            import torch_xla.runtime as xr
-            logger.info(
-                f">>> [XLA PG] dist rank/size=({dist.get_rank()}/{dist.get_world_size()}), "
-                f"xr world_size={xr.world_size()}, "
-                f"global_device_count={xr.global_device_count()}, "
-                f"local_device_count={xr.local_device_count()}, "
-                f"process_index={xr.process_index()}, "
-                f"global_ordinal={xr.global_ordinal()}"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to log XLA runtime info: {e}")
+        # # Sanity logs
+        # try:
+        #     import torch_xla.runtime as xr
+        #     logger.info(
+        #         f">>> [XLA PG] dist rank/size=({dist.get_rank()}/{dist.get_world_size()}), "
+        #         f"xr world_size={xr.world_size()}, "
+        #         f"global_device_count={xr.global_device_count()}, "
+        #         f"local_device_count={xr.local_device_count()}, "
+        #         f"process_index={xr.process_index()}, "
+        #         f"global_ordinal={xr.global_ordinal()}"
+        #     )
+        # except Exception as e:
+        #     logger.warning(f"Failed to log XLA runtime info: {e}")
 
-        return
+        # return
 
 
 
@@ -209,7 +210,6 @@ class _TorchBackend(Backend):
         if not dist.is_available():
             raise RuntimeError("Distributed torch is not available.")
 
-        # --- FIX STARTS HERE: Create separate logic paths for XLA vs. other backends ---
 
         if backend_config.backend == "xla":
             # XLA BACKEND INITIALIZATION PATH
@@ -222,55 +222,62 @@ class _TorchBackend(Backend):
             coordinator = f"{master_addr}:{pjrt_port}"
 
             # 2. Define the function to set ONLY the necessary PJRT env vars.
-            def _set_pjrt_envs(coord):
+            def _xla_worker_bootstrap(coord):
                 context = ray.train.get_context()
                 os.environ["PJRT_DEVICE"] = "TPU"
-                os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
-                os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
-                os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
-                os.environ['TPU_VISIBLE_CHIPS'] = "0"
-                os.environ['TPU_PROCESS_BOUNDS']="1,1,1"
+                # os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
+                # os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
+                # os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
+                # os.environ['TPU_VISIBLE_CHIPS'] = "0"
+                # os.environ['TPU_PROCESS_BOUNDS']="1,1,1"
                 logger.info(
                     f"PJRT envs set for worker {context.get_world_rank()}: "
                     f"COORD={coord}, PROCS={context.get_world_size()}, INDEX={context.get_world_rank()}"
                 )
 
-            # 3. Execute the setup function on all workers.
-            worker_group.execute(_set_pjrt_envs, coord=coordinator)
-
-            def _pjrt_init_from_ray_locals():
-                # IMPORTANT: do not import torch_xla *anywhere* earlier on the worker.
-                from ray.train import get_context
-                ctx = get_context()
-
-                # Initialize PJRT using local rank/world size (per host).
-                from torch_xla._internal import pjrt
+                # 2) Enable SPMD & import SPMD APIs.
                 import torch_xla.runtime as xr
+                xr.use_spmd()  # SPMD must be enabled process-wide.
 
-                pjrt.initialize_multiprocess(
-                    ctx.get_local_rank(),        # local_rank on this host
-                    ctx.get_local_world_size()   # local_world_size (#procs on this host)
-                )
-                # Establish world size / ordinal (same thing torchrun pathway does).
-                xr._init_world_size_ordinal()
+                import numpy as np
+                import torch_xla.distributed.spmd as xs
+                import torch_xla.core.xla_model as xm
 
-            worker_group.execute(_pjrt_init_from_ray_locals)
+                # 3) Build/infer mesh on the worker.
+                num = xr.global_runtime_device_count()
+                procs = max(1, xr.process_count())
+                local = max(1, xr.addressable_runtime_device_count())
+                if procs * local == num:
+                    shape, axes = (procs, local), ("data", "model")
+                else:
+                    shape, axes = (num,), ("data",)   # fallback: 1D data mesh
+                mesh = xs.Mesh(np.arange(num), shape, axes)
+                
+                # Store the mesh in the train context so it can be accessed by users
+                context = ray.train.get_context()
+                context.set_xla_mesh(mesh)
+                
+                logger.info(f"XLA mesh created: shape={shape}, axes={axes}, devices={num}")
 
-            # 4. Call the process group setup, which will use the PJRT variables.
-            # We pass an empty URL because the 'xla' backend ignores it and uses env vars.
-            setup_futures = [
-                worker_group.execute_single_async(
-                    i,
-                    _setup_torch_process_group,
-                    backend="xla",
-                    world_rank=i,
-                    world_size=len(worker_group),
-                    init_method="xla://",  # Use the specific XLA init method
-                    timeout_s=backend_config.timeout_s,
-                )
-                for i in range(len(worker_group))
-            ]
-            ray.get(setup_futures)
+
+            # 3. Execute the setup function on all workers.
+            worker_group.execute(_xla_worker_bootstrap, coord=coordinator)
+
+            # # 4. Call the process group setup, which will use the PJRT variables.
+            # # We pass an empty URL because the 'xla' backend ignores it and uses env vars.
+            # setup_futures = [
+            #     worker_group.execute_single_async(
+            #         i,
+            #         _setup_torch_process_group,
+            #         backend="xla",
+            #         world_rank=i,
+            #         world_size=len(worker_group),
+            #         init_method="xla://", 
+            #         timeout_s=backend_config.timeout_s,
+            #     )
+            #     for i in range(len(worker_group))
+            # ]
+            # ray.get(setup_futures)
 
         else:
             # Set the appropriate training backend.

@@ -98,6 +98,7 @@ class TrainContext:
     storage_context: StorageContext
     dataset_shard_provider: "DatasetShardProvider"
     checkpoint: Optional[Checkpoint] = None
+    _xla_mesh: Optional[Any] = None
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
@@ -155,6 +156,22 @@ class TrainContext:
 
     def get_context_callbacks(self) -> List["TrainContextCallback"]:
         return self.execution_context.train_context_callbacks
+
+    def set_xla_mesh(self, mesh: Any) -> None:
+        """Set the XLA SPMD mesh for this worker.
+        
+        Args:
+            mesh: The XLA SPMD mesh to store.
+        """
+        self._xla_mesh = mesh
+
+    def get_xla_mesh(self) -> Optional[Any]:
+        """Get the XLA SPMD mesh for this worker.
+        
+        Returns:
+            The XLA SPMD mesh if available, None otherwise.
+        """
+        return self._xla_mesh
 
     def _sync_checkpoint_dir_name_across_ranks(
         self, checkpoint_dir_name: Optional[str] = None
