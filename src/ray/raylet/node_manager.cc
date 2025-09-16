@@ -31,7 +31,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
-#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
