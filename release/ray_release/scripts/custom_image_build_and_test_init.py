@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ray_release.buildkite.filter import filter_tests
+from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.config import (
     read_and_validate_release_test_collection,
