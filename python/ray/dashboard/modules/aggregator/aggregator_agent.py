@@ -206,7 +206,7 @@ class AggregatorAgent(
         await asyncio.gather(
             self._http_endpoint_publisher.run_forever(),
         )
-        
+
         self._executor.shutdown()
 
     @staticmethod
