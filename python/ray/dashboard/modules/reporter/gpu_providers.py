@@ -109,6 +109,8 @@ class NvidiaGpuProvider(GpuProvider):
     def __init__(self):
         super().__init__()
         self._pynvml = None
+        # Maintain per-GPU sampling timestamps when using process utilization API
+        self._gpu_process_last_sample_ts: Dict[int, int] = {}
 
     def get_provider_name(self) -> GpuProviderType:
         return GpuProviderType.NVIDIA
@@ -314,10 +316,13 @@ class NvidiaGpuProvider(GpuProvider):
             processes_pids = {}
             try:
                 # Try to use the newer API first (available in driver version 550+)
-                ts_ms = int(time.time() * 1000)
+                current_ts_ms = int(time.time() * 1000)
+                last_ts_ms = self._gpu_process_last_sample_ts.get(gpu_index, 0)
                 nv_processes = self._pynvml.nvmlDeviceGetProcessesUtilizationInfo(
-                    gpu_handle, ts_ms
+                    gpu_handle, last_ts_ms
                 )
+
+                self._gpu_process_last_sample_ts[gpu_index] = current_ts_ms
 
                 for nv_process in nv_processes:
                     processes_pids[int(nv_process.pid)] = ProcessGPUInfo(
