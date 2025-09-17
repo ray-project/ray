@@ -419,7 +419,6 @@ class ParquetDatasource(Datasource):
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
 
-    @property
     def supports_projection_pushdown(self) -> bool:
         return True
 
