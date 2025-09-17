@@ -183,7 +183,7 @@ def _trigger_test_run(
             test.get_anyscale_byod_image(),
             test.get_anyscale_base_byod_image(),
             test.get_byod_post_build_script(),
-            test.get_byod_lock_file(),
+            test.get_byod_python_depset(),
         )
     for run in range(run_per_commit):
         step = get_step(
