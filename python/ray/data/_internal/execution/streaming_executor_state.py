@@ -306,9 +306,6 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
-        for next_op in self.op.output_dependencies:
-            next_op.metrics.num_external_inqueue_blocks = self.output_queue.num_blocks
-            next_op.metrics.num_external_inqueue_bytes = self.output_queue.memory_usage
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -349,11 +346,17 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
+        total_inqueue_bytes = 0
+        total_inqueue_blocks = 0
         for i, inqueue in enumerate(self.input_queues):
             ref = inqueue.pop()
             if ref is not None:
+                total_inqueue_bytes += inqueue.memory_usage
+                total_inqueue_blocks += inqueue.num_blocks
                 self.op.add_input(ref, input_index=i)
-                return
+                
+        self.op.metrics.num_external_inqueue_blocks = total_inqueue_blocks
+        self.op.metrics.num_external_inqueue_bytes = total_inqueue_bytes
 
         assert False, "Nothing to dispatch"
 
