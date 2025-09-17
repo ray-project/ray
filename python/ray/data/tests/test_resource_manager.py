@@ -266,7 +266,7 @@ class TestResourceManager:
             if op != o1:
                 assert (
                     resource_manager._mem_op_internal[op]
-                    == mock_pending_task_outputs[op] + mock_internal_outqueue[op]
+                    == mock_pending_task_outputs[op]
                 )
                 assert (
                     resource_manager._mem_op_outputs[op]
