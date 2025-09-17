@@ -47,9 +47,9 @@ def shard_tests(
     return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
 
 
-def docker_login(docker_ecr: str) -> None:
+def ecr_docker_login(docker_ecr: str) -> None:
     """
-    Login to docker with AWS credentials
+    Login to ECR with AWS credentials
     """
     token = boto3.client("ecr", region_name="us-west-2").get_authorization_token()
     user, password = (
