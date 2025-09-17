@@ -70,7 +70,7 @@ def test_build_anyscale_custom_byod_image() -> None:
             test.get_anyscale_byod_image(),
             test.get_anyscale_base_byod_image(),
             test.get_byod_post_build_script(),
-            test.get_byod_lock_file(),
+            test.get_byod_python_depset(),
         )
         assert "docker build --build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
         "amazonaws.com/anyscale/ray:a1b2c3d4-py37 -t 029272617770.dkr.ecr.us-west-2."

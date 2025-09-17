@@ -108,7 +108,7 @@
 				"post_build_script": {
 					"type": "string"
 				},
-				"lock_file": {
+				"python_depset": {
 					"type": "string"
 				},
 				"pip": {
