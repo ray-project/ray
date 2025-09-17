@@ -601,7 +601,41 @@ def test_parquet_read_partitioned_explicit(
     ]
 
 
-def test_proper_projection_for_partitioned_datasets(temp_dir):
+def test_projection_pushdown_non_partitioned(temp_dir):
+    ds = ray.data.read_parquet("example://iris.parquet").materialize()
+
+    # Write out non-partitioned dataset
+    path = f"{temp_dir}/non_partitioned_iris"
+    ds.write_parquet(path)
+
+    # Test projection from read_parquet
+    ds = ray.data.read_parquet(path, columns=["variety"])
+
+    schema = ds.schema()
+
+    assert ["variety"] == schema.base_schema.names
+    assert ds.count() == 150
+
+    # Test projection from read_parquet
+    ds = ray.data.read_parquet(path).select_columns("variety")
+
+    assert ds._plan.explain().strip() == (
+        "-------- Logical Plan --------\n"
+        "Project\n"
+        "+- ReadParquet\n"
+        "-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]"
+    )
+
+    # TODO fix schema projection
+    # schema = ds.schema()
+    # assert ["variety"] == schema.base_schema.names
+
+    assert ds.count() == 150
+
+
+def test_projection_pushdown_partitioned(temp_dir):
     ds = ray.data.read_parquet("example://iris.parquet").materialize()
 
     partitioned_ds_path = f"{temp_dir}/partitioned_iris"
