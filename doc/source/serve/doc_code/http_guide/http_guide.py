@@ -90,3 +90,28 @@ serve.run(FastAPIWrapper.bind(), route_prefix="/")
 resp = requests.get("http://localhost:8000/")
 assert resp.json() == "Hello from the root!"
 # __end_byo_fastapi__
+
+
+# __begin_fastapi_factory_pattern__
+from fastapi import FastAPI
+from ray import serve
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+def fastapi_factory():
+    app = FastAPI()
+
+    # This would fail with the object-based approach due to serialization
+    FastAPIInstrumentor.instrument_app(app)
+
+    @app.get("/")
+    def root():
+        return {"message": "Instrumented endpoint"}
+
+    return app
+
+# Using default ingress deployment class
+deployment = serve.deployment(serve.ingress(fastapi_factory)())
+serve.run(deployment.bind())
+resp = requests.get("http://localhost:8000/")
+assert resp.json() == {"message": "Instrumented endpoint"}
+# __end_fastapi_factory_pattern__

@@ -110,6 +110,16 @@ Query the deployment using the `websockets` package (`pip install websockets`):
 :language: python
 ```
 
+### FastAPI factory pattern
+
+Ray Serve's object-based pattern, shown previously, requires FastAPI objects to be serializable via cloudpickle, which prevents the use of some standard libraries like `FastAPIInstrumentor` due to their reliance on non-serializable components such as thread locks. The factory pattern create the object of FastAPI directly on each replica, avoiding the need for FastAPI object serialization.
+
+```{literalinclude} doc_code/http_guide/http_guide.py
+:start-after: __begin_fastapi_factory_pattern__
+:end-before: __end_fastapi_factory_pattern__
+:language: python
+```
+
 (serve-http-streaming-response)=
 ## Streaming Responses
 
