@@ -664,8 +664,7 @@ class CoreWorkerPubsubWorkerObjectEvictionChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
 
-TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
-       HandlePubsubCommandBatchIdempotency) {
+TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatchRetries) {
   // should_free_object: determines whether the object is freed from plasma. This is used
   // to trigger AddObjectOutOfScopeOrFreedCallback in HandlePubsubCommandBatch which
   // stores the unpin_object callback that publishes the message to the
@@ -768,7 +767,7 @@ class CoreWorkerPubsubWorkerRefRemovedChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
 
-TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdempotency) {
+TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetries) {
   // should_remove_ref: determines whether the object ref is removed from the reference
   // counter. This is used to trigger RemoveLocalReference in HandlePubsubCommandBatch
   // which flips the publish_ref_removed flag to true. Once the ref is removed via
@@ -861,7 +860,7 @@ INSTANTIATE_TEST_SUITE_P(WorkerRefRemovedChannel,
                          CoreWorkerPubsubWorkerRefRemovedChannelTest,
                          ::testing::Values(true, false));
 
-TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
+TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
   // Unlike the other pubsub channel tests, this test starts off with a LongPollingRequest
   // to test what happens when a HandlePubsubCommandBatch encounters an open long poll
   // connection
