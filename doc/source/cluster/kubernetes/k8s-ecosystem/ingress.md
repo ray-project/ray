@@ -215,15 +215,15 @@ kubectl describe ingress raycluster-ingress-head-ingress
 ## Azure Application Gateway for Containers Gateway API support on AKS
 
 ### Prerequisites
-* Create an AKS cluster. See [Quickstart: Deploy an Azure Kubernetes Service (AKS) cluster using Azure CLI](https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-cli).
+* Create an AKS cluster. See [Quickstart: Deploy an Azure Kubernetes Service (AKS) cluster using Azure CLI](https://learn.microsoft.com/azure/aks/learn/quick-kubernetes-deploy-cli).
 
-* Deploy Deploy Application Gateway for Containers ALB Controller [Quickstart: Deploy Application Gateway for Containers ALB Controller](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/quickstart-deploy-application-gateway-for-containers-alb-controller?tabs=install-helm-windows).
+* Deploy Application Gateway for Containers ALB Controller [Quickstart: Deploy Application Gateway for Containers ALB Controller](https://learn.microsoft.com/azure/application-gateway/for-containers/quickstart-deploy-application-gateway-for-containers-alb-controller?tabs=install-helm-windows).
 
-* Deploy Application Gateway for Containers [Quickstart: Create Application Gateway for Containers managed by ALB Controller](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/quickstart-create-application-gateway-for-containers-managed-by-alb-controller?tabs=new-subnet-aks-vnet) 
+* Deploy Application Gateway for Containers [Quickstart: Create Application Gateway for Containers managed by ALB Controller](https://learn.microsoft.com/azure/application-gateway/for-containers/quickstart-create-application-gateway-for-containers-managed-by-alb-controller?tabs=new-subnet-aks-vnet) 
 
-* (Optional) Read [What is Application Gateway for Containers](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/overview).
+* (Optional) Read [What is Application Gateway for Containers](aka.ms/agc).
 
-* (Optional) Read [Secure you web applications with Azure Web Application Firewall on Application Gateway for Containers](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/web-application-firewall)
+* (Optional) Read [Secure your web applications with Azure Web Application Firewall on Application Gateway for Containers](aka.ms/agc/waf)
 
 ### Instructions
 ```sh
@@ -373,7 +373,7 @@ kubectl describe httproutes ray-cluster-http-route
 #       Name:   ray-cluster-gateway
 # Events:       <none>
 
-# Step 5: Check Ray Dashboard by by visiting the FQDN assigned to your gateway object in your browser
+# Step 5: Check Ray Dashboard by visiting the FQDN assigned to your gateway object in your browser
 #        FQDN can be obtained by the command:
 #        kubectl get gateway ray-cluster-gateway -o jsonpath='{.status.addresses[0].value}'       
 
@@ -381,7 +381,7 @@ kubectl describe httproutes ray-cluster-http-route
 kubectl delete gateway ray-cluster-gateway
 kubectl delete httproutes ray-cluster-http-route
 
-# Step 6: Delete Application Gateway for containers
+# Step 7: Delete Application Gateway for containers
 kubectl delete applicationloadbalancer alb-test -n alb-test-infra
 kubectl delete ns alb-test-infra
 ```
