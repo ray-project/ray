@@ -33,7 +33,7 @@ message TaskDefinitionEvent {
   FunctionDescriptor task_func = 5;
   string task_name = 6;
   map<string, double> required_resources = 7;
-  RuntimeEnvInfo runtime_env_info = 8; // TODO: Remove this once runtime_env_info is fully deprecated.
+  RuntimeEnvInfo runtime_env_info = 8 [deprecated = true];
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.

@@ -31,7 +31,7 @@ message ActorTaskDefinitionEvent {
   FunctionDescriptor actor_func = 4;
   string actor_task_name = 5;
   map<string, double> required_resources = 6;
-  RuntimeEnvInfo runtime_env_info = 7; // TODO: Remove this once runtime_env_info is fully deprecated.
+  RuntimeEnvInfo runtime_env_info = 7 [deprecated = true];
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.
