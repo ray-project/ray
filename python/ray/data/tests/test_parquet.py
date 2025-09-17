@@ -612,7 +612,7 @@ def test_projection_pushdown_non_partitioned(temp_dir):
     assert ["variety"] == schema.base_schema.names
     assert ds.count() == 150
 
-    # Test projection from read_parquet
+    # Test projection pushed down into read op
     ds = ray.data.read_parquet(path).select_columns("variety")
 
     assert ds._plan.explain().strip() == (
@@ -624,11 +624,20 @@ def test_projection_pushdown_non_partitioned(temp_dir):
         "+- InputDataBuffer[Input]"
     )
 
-    # TODO fix schema projection
-    # schema = ds.schema()
-    # assert ["variety"] == schema.base_schema.names
+    # Assert schema being appropriately projected
+    schema = ds.schema()
+    assert ["variety"] == schema.base_schema.names
 
     assert ds.count() == 150
+
+    # Assert empty projection is reading no data
+    ds = ray.data.read_parquet(path).select_columns([])
+
+    summary = ds.materialize()._plan.stats().to_summary()
+
+    assert summary.base_name == "ReadParquet->SplitBlocks(24)"
+    assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
+
 
 
 def test_projection_pushdown_partitioned(temp_dir):
