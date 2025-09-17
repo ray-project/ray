@@ -307,8 +307,8 @@ class OpState:
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
         for next_op in self.op.output_dependencies:
-            next_op.metrics.num_external_inqueue_blocks -= len(ref.blocks)
-            next_op.metrics.num_external_inqueue_bytes -= ref.size_bytes()
+            next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
+            next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -353,12 +353,8 @@ class OpState:
             ref = inqueue.pop()
             if ref is not None:
                 self.op.add_input(ref, input_index=i)
-                self.op.metrics.num_external_inqueue_bytes = sum(
-                    inq.memory_usage for inq in self.input_queues
-                )
-                self.op.metrics.num_external_inqueue_blocks = sum(
-                    inq.num_blocks for inq in self.input_queues
-                )
+                self.op.metrics.num_external_inqueue_bytes -= ref.size_bytes()
+                self.op.metrics.num_external_inqueue_blocks -= len(ref.blocks)
                 return
 
         assert False, "Nothing to dispatch"
