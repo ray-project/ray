@@ -11,6 +11,7 @@ dyn-req-batch
 inplace-updates
 dev-workflow
 grpc-guide
+fastapi-factory-pattern
 managing-java-deployments
 deploy-vm
 multi-app-container
@@ -28,6 +29,7 @@ Use these advanced guides for more options and configurations:
 - [In-Place Updates for Serve](serve-inplace-updates)
 - [Development Workflow](serve-dev-workflow)
 - [gRPC Support](serve-set-up-grpc-service)
+- [FastAPI Factory Pattern](serve-fastapi-factory-pattern)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)
