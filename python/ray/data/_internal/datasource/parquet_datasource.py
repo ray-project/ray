@@ -876,13 +876,17 @@ def _derive_schema(
         target_schema = read_schema
     else:
         file_schema_fields = list(file_schema)
-        partition_schema_fields = list(partition_schema) if partition_schema is not None else []
+        partition_schema_fields = (
+            list(partition_schema) if partition_schema is not None else []
+        )
 
         # Otherwise, fallback to file + partitioning schema by default
         target_schema = pa.schema(
             fields=(
-                file_schema_fields + [
-                    f for f in partition_schema_fields
+                file_schema_fields
+                + [
+                    f
+                    for f in partition_schema_fields
                     # Ignore fields from partition schema overlapping with
                     # file's schema
                     if file_schema.get_field_index(f.name) == -1
