@@ -37,6 +37,48 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
+    def test_distributed_env_runner(self):
+        """Tests, whether SingleAgentEnvRunner can be distributed."""
+
+        remote_class = ray.remote(num_cpus=1, num_gpus=0)(SingleAgentEnvRunner)
+
+        # Test with both parallelized sub-envs and w/o.
+        async_vectorization_mode = [False, True]
+
+        for async_ in async_vectorization_mode:
+
+            for env_spec in ["tune-registered", "CartPole-v1", SimpleCorridor]:
+                config = (
+                    AlgorithmConfig().environment(env_spec)
+                    # Vectorize x5 and by default, rollout 10 timesteps per individual
+                    # env.
+                    .env_runners(
+                        num_env_runners=5,
+                        num_envs_per_env_runner=5,
+                        rollout_fragment_length=10,
+                        remote_worker_envs=async_,
+                    )
+                )
+                array = [
+                    remote_class.remote(config=config)
+                    for _ in range(config.num_env_runners)
+                ]
+                # Sample in parallel.
+                results = [a.sample.remote(random_actions=True) for a in array]
+                results = ray.get(results)
+                # Loop over individual EnvRunner Actor's results and inspect each.
+                for episodes in results:
+                    # Assert length of all fragments is  `rollout_fragment_length`.
+                    self.assertIn(
+                        sum(len(e) for e in episodes),
+                        [
+                            config.num_envs_per_env_runner
+                            * config.rollout_fragment_length
+                            + i
+                            for i in range(config.num_envs_per_env_runner)
+                        ],
+                    )
+
     def test_sample(self):
         config = (
             AlgorithmConfig()
@@ -81,72 +123,6 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             # 2 (num_env_per_worker) * 64 (rollout_fragment_length).
             sum_ = sum(map(len, episodes))
             self.assertTrue(sum_ in [128, 129])
-
-    def test_async_vector_env(self):
-        """Tests, whether SingleAgentEnvRunner can run with vector envs."""
-
-        for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
-            config = (
-                AlgorithmConfig()
-                .environment(env)
-                .env_runners(
-                    num_envs_per_env_runner=5,
-                    rollout_fragment_length=10,
-                )
-            )
-
-            env_runner = SingleAgentEnvRunner(config=config)
-
-            # Sample with the async-vectorized env.
-            episodes = env_runner.sample(random_actions=True)
-            # Assert length of all fragments is  `rollout_fragment_length`.
-            self.assertEqual(
-                sum(len(e) for e in episodes),
-                config.num_envs_per_env_runner * config.rollout_fragment_length,
-            )
-            env_runner.stop()
-
-    def test_distributed_env_runner(self):
-        """Tests, whether SingleAgentEnvRunner can be distributed."""
-
-        remote_class = ray.remote(num_cpus=1, num_gpus=0)(SingleAgentEnvRunner)
-
-        # Test with both parallelized sub-envs and w/o.
-        async_vectorization_mode = [False, True]
-
-        for async_ in async_vectorization_mode:
-
-            for env_spec in ["tune-registered", "CartPole-v1", SimpleCorridor]:
-                config = (
-                    AlgorithmConfig().environment(env_spec)
-                    # Vectorize x5 and by default, rollout 10 timesteps per individual
-                    # env.
-                    .env_runners(
-                        num_env_runners=5,
-                        num_envs_per_env_runner=5,
-                        rollout_fragment_length=10,
-                        remote_worker_envs=async_,
-                    )
-                )
-                array = [
-                    remote_class.remote(config=config)
-                    for _ in range(config.num_env_runners)
-                ]
-                # Sample in parallel.
-                results = [a.sample.remote(random_actions=True) for a in array]
-                results = ray.get(results)
-                # Loop over individual EnvRunner Actor's results and inspect each.
-                for episodes in results:
-                    # Assert length of all fragments is  `rollout_fragment_length`.
-                    self.assertIn(
-                        sum(len(e) for e in episodes),
-                        [
-                            config.num_envs_per_env_runner
-                            * config.rollout_fragment_length
-                            + i
-                            for i in range(config.num_envs_per_env_runner)
-                        ],
-                    )
 
     @patch(target="ray.rllib.env.env_runner.logger")
     def test_step_failed_reset_required(self, mock_logger):
@@ -195,6 +171,29 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         env_runner._try_env_step(actions=[None])
 
         assert mock_logger.exception.call_count == 1
+
+    def test_vector_env(self):
+        """Tests, whether SingleAgentEnvRunner can run various vectorized envs."""
+
+        for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
+            config = (
+                AlgorithmConfig()
+                .environment(env)
+                .env_runners(
+                    num_envs_per_env_runner=5,
+                    rollout_fragment_length=64,
+                )
+            )
+
+            env_runner = SingleAgentEnvRunner(config=config)
+
+            # Sample with the async-vectorized env.
+            episodes = env_runner.sample(random_actions=True)
+            self.assertEqual(
+                sum(len(e) for e in episodes),
+                config.num_envs_per_env_runner * config.rollout_fragment_length,
+            )
+            env_runner.stop()
 
 
 if __name__ == "__main__":
