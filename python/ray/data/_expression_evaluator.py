@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -41,12 +41,12 @@ def _is_pa_string_like(x: Any) -> bool:
     if isinstance(x, (pa.Array, pa.ChunkedArray)):
         t = x.type
         if pa.types.is_dictionary(t):
-            return _is_pa_string_type(t.value_type)
+            t = t.value_type
         return _is_pa_string_type(t)
     return isinstance(x, str)
 
 
-def _pa_decode_dict_string_array(x: Any) -> Any:
+def _pa_decode_dict_string_array(x: Union[pa.Array, pa.ChunkedArray]) -> Any:
     """Convert Arrow dictionary-encoded string arrays to regular string arrays.
 
     Dictionary encoding stores strings as indices into a dictionary of unique values.
@@ -62,19 +62,18 @@ def _pa_decode_dict_string_array(x: Any) -> Any:
     Returns:
         The converted string array.
     """
-    if (
-        isinstance(x, (pa.Array, pa.ChunkedArray))
-        and pa.types.is_dictionary(x.type)
-        and _is_pa_string_type(x.type.value_type)
-    ):
+    if pa.types.is_dictionary(x.type) and _is_pa_string_type(x.type.value_type):
         return pc.cast(x, pa.string())
     return x
 
 
 def _to_pa_string_input(x: Any) -> Any:
-    x = _pa_decode_dict_string_array(x)
     if isinstance(x, str):
         return pa.scalar(x)
+    elif _is_pa_string_like(x) and isinstance(x, (pa.Array, pa.ChunkedArray)):
+        x = _pa_decode_dict_string_array(x)
+    else:
+        raise
     return x
 
 
