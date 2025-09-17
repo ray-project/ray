@@ -1551,6 +1551,7 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
             "upscale_delay_s": 0,
             "policy": policy,
             "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -1572,11 +1573,13 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
     wait_for_condition(check_num_replicas_eq, name="A", target=2)
     print("Scaled up to 2 replicas.")
 
-    ray.get(signal.send.remote(clear=True))
+    ray.get(signal.send.remote())
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+    ray.get(signal.send.remote(clear=True))
     [handle.remote() for _ in range(70)]
     wait_for_condition(check_num_replicas_eq, name="A", target=3)
-    ray.get(signal.send.remote(clear=True))
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
 if __name__ == "__main__":
