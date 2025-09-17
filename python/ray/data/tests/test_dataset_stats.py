@@ -404,6 +404,365 @@ class TestIndividualAggregatorFunctions:
         assert MissingValuePercentage in agg_types
 
 
+class TestDatasetSummary:
+    """Test suite for Dataset.summary() method."""
+
+    def test_summary_basic_functionality(self):
+        """Test basic summary functionality with mixed column types."""
+        import pandas as pd
+
+        data = [
+            {"age": 25, "name": "Alice", "scores": [1, 2, 3]},
+            {"age": 30, "name": "Bob", "scores": [4, 5, 6]},
+            {"age": 35, "name": None, "scores": None},
+        ]
+
+        ds = ray.data.from_items(data)
+        actual_df = ds.summary()
+
+        # Build expected DataFrame
+        expected_data = {
+            ("numerical", "age"): {
+                "count": 3.0,
+                "mean": 30.0,
+                "min": 25.0,
+                "max": 35.0,
+                "std": 4.08248290463863,
+                "missing_pct": 0.0,
+                "zero_pct": 0.0,
+            },
+            ("categorical", "name"): {
+                "count": 3.0,
+                "mean": float("nan"),
+                "min": float("nan"),
+                "max": float("nan"),
+                "std": float("nan"),
+                "missing_pct": 33.333333,
+                "zero_pct": float("nan"),
+            },
+            ("vector", "scores"): {
+                "count": 3.0,
+                "mean": float("nan"),
+                "min": float("nan"),
+                "max": float("nan"),
+                "std": float("nan"),
+                "missing_pct": 33.333333,
+                "zero_pct": float("nan"),
+            },
+        }
+
+        expected_df = pd.DataFrame(expected_data)
+        expected_df.columns = pd.MultiIndex.from_tuples(
+            expected_df.columns, names=["agg", "column"]
+        )
+        expected_df = expected_df.reindex(
+            ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
+        )
+
+        pd.testing.assert_frame_equal(
+            actual_df, expected_df, check_exact=False, rtol=1e-5
+        )
+
+    @pytest.mark.parametrize(
+        "column_types,data,expected_data",
+        [
+            pytest.param(
+                "numerical",
+                [{"x": 1, "y": 2.0}, {"x": 3, "y": 4.0}],
+                {
+                    ("numerical", "x"): {
+                        "count": 2.0,
+                        "mean": 2.0,
+                        "min": 1.0,
+                        "max": 3.0,
+                        "std": 1.0,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    },
+                    ("numerical", "y"): {
+                        "count": 2.0,
+                        "mean": 3.0,
+                        "min": 2.0,
+                        "max": 4.0,
+                        "std": 1.0,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    },
+                },
+                id="numerical_only",
+            ),
+            pytest.param(
+                "categorical",
+                [{"city": "NYC", "country": "USA"}, {"city": "LA", "country": "USA"}],
+                {
+                    ("categorical", "city"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                    ("categorical", "country"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                id="categorical_only",
+            ),
+            pytest.param(
+                "vector",
+                [{"tags": ["a"], "nums": [1.0]}, {"tags": ["b"], "nums": [2.0]}],
+                {
+                    ("vector", "tags"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                    ("vector", "nums"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                id="vector_only",
+            ),
+        ],
+    )
+    def test_summary_different_column_types(self, column_types, data, expected_data):
+        """Test summary with different combinations of column types."""
+        import pandas as pd
+
+        ds = ray.data.from_items(data)
+        actual_df = ds.summary()
+
+        expected_df = pd.DataFrame(expected_data)
+        expected_df.columns = pd.MultiIndex.from_tuples(
+            expected_df.columns, names=["agg", "column"]
+        )
+        expected_df = expected_df.reindex(
+            ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
+        )
+
+        pd.testing.assert_frame_equal(
+            actual_df, expected_df, check_exact=False, rtol=1e-5
+        )
+
+    @pytest.mark.parametrize(
+        "missing_data_scenario,data,expected_data",
+        [
+            pytest.param(
+                "no_missing",
+                [{"value": 10}, {"value": 20}, {"value": 30}],
+                {
+                    ("numerical", "value"): {
+                        "count": 3.0,
+                        "mean": 20.0,
+                        "min": 10.0,
+                        "max": 30.0,
+                        "std": 8.16496580927726,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    }
+                },
+                id="no_missing_values",
+            ),
+            pytest.param(
+                "some_missing",
+                [{"value": 10}, {"value": None}, {"value": 30}],
+                {
+                    ("numerical", "value"): {
+                        "count": 3.0,
+                        "mean": 20.0,
+                        "min": 10.0,
+                        "max": 30.0,
+                        "std": 10.0,
+                        "missing_pct": 33.333333,
+                        "zero_pct": 0.0,
+                    }
+                },
+                id="some_missing_values",
+            ),
+        ],
+    )
+    def test_summary_missing_value_handling(
+        self, missing_data_scenario, data, expected_data
+    ):
+        """Test summary handles missing values correctly."""
+        import pandas as pd
+
+        ds = ray.data.from_items(data)
+        actual_df = ds.summary()
+
+        expected_df = pd.DataFrame(expected_data)
+        expected_df.columns = pd.MultiIndex.from_tuples(
+            expected_df.columns, names=["agg", "column"]
+        )
+        expected_df = expected_df.reindex(
+            ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
+        )
+        pd.testing.assert_frame_equal(
+            actual_df, expected_df, check_exact=False, rtol=1e-5
+        )
+
+    def test_summary_column_filtering(self):
+        """Test that column filtering works correctly."""
+        import pandas as pd
+
+        data = [
+            {"age": 25, "salary": 50000, "name": "Alice", "scores": [1, 2]},
+            {"age": 30, "salary": 60000, "name": "Bob", "scores": [3, 4]},
+        ]
+
+        ds = ray.data.from_items(data)
+        actual_df = ds.summary(columns=["age", "name"])
+
+        expected_data = {
+            ("numerical", "age"): {
+                "count": 2.0,
+                "mean": 27.5,
+                "min": 25.0,
+                "max": 30.0,
+                "std": 2.5,
+                "missing_pct": 0.0,
+                "zero_pct": 0.0,
+            },
+            ("categorical", "name"): {
+                "count": 2.0,
+                "mean": float("nan"),
+                "min": float("nan"),
+                "max": float("nan"),
+                "std": float("nan"),
+                "missing_pct": 0.0,
+                "zero_pct": float("nan"),
+            },
+        }
+
+        expected_df = pd.DataFrame(expected_data)
+        expected_df.columns = pd.MultiIndex.from_tuples(
+            expected_df.columns, names=["agg", "column"]
+        )
+        expected_df = expected_df.reindex(
+            ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
+        )
+
+        pd.testing.assert_frame_equal(
+            actual_df, expected_df, check_exact=False, rtol=1e-5
+        )
+
+    def test_summary_empty_dataset(self):
+        """Test summary on empty dataset raises ValueError."""
+
+        ds = ray.data.from_items([])
+
+        with pytest.raises(
+            ValueError,
+            match="Dataset must have a schema to determine numerical columns",
+        ):
+            ds.summary()
+
+    def test_summary_edge_cases_with_zeros(self):
+        """Test summary with edge cases like zeros."""
+        import pandas as pd
+
+        data = [
+            {"value": 0, "text": "test1"},
+            {"value": 0, "text": "test2"},
+            {"value": 100, "text": None},
+        ]
+
+        ds = ray.data.from_items(data)
+        actual_df = ds.summary()
+
+        expected_data = {
+            ("numerical", "value"): {
+                "count": 3.0,
+                "mean": 33.333333,
+                "min": 0.0,
+                "max": 100.0,
+                "std": 47.140452079103168,
+                "missing_pct": 0.0,
+                "zero_pct": 66.666667,
+            },
+            ("categorical", "text"): {
+                "count": 3.0,
+                "mean": float("nan"),
+                "min": float("nan"),
+                "max": float("nan"),
+                "std": float("nan"),
+                "missing_pct": 33.333333,
+                "zero_pct": float("nan"),
+            },
+        }
+
+        expected_df = pd.DataFrame(expected_data)
+        expected_df.columns = pd.MultiIndex.from_tuples(
+            expected_df.columns, names=["agg", "column"]
+        )
+        expected_df = expected_df.reindex(
+            ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
+        )
+
+        pd.testing.assert_frame_equal(
+            actual_df, expected_df, check_exact=False, rtol=1e-5
+        )
+
+    def test_summary_single_row(self):
+        """Test summary with single row dataset."""
+        import pandas as pd
+
+        data = [{"value": 42, "text": "hello"}]
+        ds = ray.data.from_items(data)
+        actual_df = ds.summary()
+
+        expected_data = {
+            ("numerical", "value"): {
+                "count": 1.0,
+                "mean": 42.0,
+                "min": 42.0,
+                "max": 42.0,
+                "std": 0.0,
+                "missing_pct": 0.0,
+                "zero_pct": 0.0,
+            },
+            ("categorical", "text"): {
+                "count": 1.0,
+                "mean": float("nan"),
+                "min": float("nan"),
+                "max": float("nan"),
+                "std": float("nan"),
+                "missing_pct": 0.0,
+                "zero_pct": float("nan"),
+            },
+        }
+
+        expected_df = pd.DataFrame(expected_data)
+        expected_df.columns = pd.MultiIndex.from_tuples(
+            expected_df.columns, names=["agg", "column"]
+        )
+        expected_df = expected_df.reindex(
+            ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
+        )
+
+        pd.testing.assert_frame_equal(
+            actual_df, expected_df, check_exact=False, rtol=1e-5
+        )
+
+
 if __name__ == "__main__":
     import sys
 
