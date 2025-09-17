@@ -339,9 +339,7 @@ class TestReplicaQueueLengthPolicy:
             target_ongoing_requests=1,
             upscale_delay_s=30.0,
             downscale_delay_s=600.0,
-            downscale_to_zero_delay_s=downscale_to_zero_delay_s
-            if downscale_to_zero_delay_s
-            else None,
+            downscale_to_zero_delay_s=downscale_to_zero_delay_s,
         )
 
         upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
@@ -402,7 +400,7 @@ class TestReplicaQueueLengthPolicy:
         ctx.target_num_replicas = 2
 
         # We should scale down only after enough consecutive scale-down decisions.
-        # #Downscaling to zero follows current_num_replicas->1->0
+        # Downscaling to zero follows current_num_replicas->1->0
         for i in range(downscale_wait_periods):
             new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 2, i
@@ -477,14 +475,14 @@ class TestReplicaQueueLengthPolicy:
             new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 2, i
 
-        # First set of scaling down is to 1
+        # First scale down to 1 replica
         new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 1
 
         ctx.current_num_replicas = 1
         ctx.target_num_replicas = 1
 
-        # Scale down from 1->0, but not enough to trigger a scale down
+        # Scale down to 0, but not enough to trigger a complete scale down to zero.
         for i in range(int(downscale_to_zero_wait_periods / 2)):
             new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
             assert new_num_replicas == 1, i

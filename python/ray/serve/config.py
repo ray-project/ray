@@ -223,12 +223,12 @@ class AutoscalingConfig(BaseModel):
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
     downscale_delay_s: NonNegativeFloat = Field(
-        default=600.0, description="How long to wait before scaling down replicas."
+        default=600.0, description="How long to wait before scaling down replicas to 1."
     )
-    # Need to set for 1->0 transition
+    # Optionally set for 1->0 transition
     downscale_to_zero_delay_s: Optional[NonNegativeFloat] = Field(
         default=None,
-        description="How long to wait before scaling down replicas from 1 to 0.",
+        description="How long to wait before scaling down replicas from 1 to 0. If not set, the value of `downscale_delay_s` will be used.",
     )
     upscale_delay_s: NonNegativeFloat = Field(
         default=30.0, description="How long to wait before scaling up replicas."
