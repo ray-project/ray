@@ -87,10 +87,9 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
             config = (
-                AlgorithmConfig().environment(env)
-                # Vectorize x5 and by default, rollout 64 timesteps per individual env.
+                AlgorithmConfig()
+                .environment(env)
                 .env_runners(
-                    num_env_runners=0,
                     num_envs_per_env_runner=5,
                     rollout_fragment_length=10,
 
