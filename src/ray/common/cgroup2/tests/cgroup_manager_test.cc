@@ -283,4 +283,85 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   ASSERT_EQ((*deleted_cgroups)[4].second, node_cgroup_path);
 }
 
+TEST(CgroupManagerTest, AddProcessToSystemCgroupFailsIfInvalidProcess) {
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace("/sys/fs/cgroup",
+                   FakeCgroup{"/sys/fs/cgroup", {5}, {}, {"cpu", "memory"}, {}});
+  FakeCgroup base_cgroup{"/sys/fs/cgroup"};
+
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+  driver->add_process_to_cgroup_s_ = Status::InvalidArgument("");
+
+  auto cgroup_manager_s = CgroupManager::Create(
+      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
+
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
+  Status s = cgroup_manager->AddProcessToSystemCgroup("-1");
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST(CgroupManagerTest, AddProcessToSystemCgroupIsFatalIfSystemCgroupDoesNotExist) {
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace("/sys/fs/cgroup",
+                   FakeCgroup{"/sys/fs/cgroup", {5}, {}, {"cpu", "memory"}, {}});
+  FakeCgroup base_cgroup{"/sys/fs/cgroup"};
+
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+  driver->add_process_to_cgroup_s_ = Status::NotFound("");
+
+  auto cgroup_manager_s = CgroupManager::Create(
+      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
+
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
+
+  EXPECT_DEATH((void)cgroup_manager->AddProcessToSystemCgroup("-1"),
+               "Failed to move.*not found");
+}
+
+TEST(CgroupManagerTest,
+     AddProcessToSystemCgroupIsFatalIfProcessDoesNotHavePermissionsForSystemCgroup) {
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace("/sys/fs/cgroup",
+                   FakeCgroup{"/sys/fs/cgroup", {5}, {}, {"cpu", "memory"}, {}});
+  FakeCgroup base_cgroup{"/sys/fs/cgroup"};
+
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+  driver->add_process_to_cgroup_s_ = Status::PermissionDenied("");
+
+  auto cgroup_manager_s = CgroupManager::Create(
+      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
+
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
+
+  EXPECT_DEATH((void)cgroup_manager->AddProcessToSystemCgroup("-1"),
+               "Failed to move.*permissions");
+}
+
+TEST(
+    CgroupManagerTest,
+    AddProcessToSystemCgroupSucceedsIfSystemCgroupExistsWithCorrectPermissionsAndValidProcess) {
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace("/sys/fs/cgroup",
+                   FakeCgroup{"/sys/fs/cgroup", {5}, {}, {"cpu", "memory"}, {}});
+  FakeCgroup base_cgroup{"/sys/fs/cgroup"};
+
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+
+  auto cgroup_manager_s = CgroupManager::Create(
+      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
+
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
+
+  Status s = cgroup_manager->AddProcessToSystemCgroup("5");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+}
+
 }  // namespace ray
