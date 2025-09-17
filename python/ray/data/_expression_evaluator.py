@@ -20,7 +20,7 @@ from ray.data.expressions import (
 )
 
 
-def _arrow_is_in(left: Any, right: Any) -> Any:
+def _pa_is_in(left: Any, right: Any) -> Any:
     if not isinstance(right, (pa.Array, pa.ChunkedArray)):
         right = pa.array(right.as_py() if isinstance(right, pa.Scalar) else right)
     return pc.is_in(left, right)
@@ -64,8 +64,8 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.NOT: pc.invert,
     Operation.IS_NULL: pc.is_null,
     Operation.IS_NOT_NULL: pc.is_valid,
-    Operation.IN: _arrow_is_in,
-    Operation.NOT_IN: lambda left, right: pc.invert(_arrow_is_in(left, right)),
+    Operation.IN: _pa_is_in,
+    Operation.NOT_IN: lambda left, right: pc.invert(_pa_is_in(left, right)),
 }
 
 
