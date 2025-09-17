@@ -40,7 +40,7 @@ _DOCKER_ENV = [
     "BUILDKITE_PIPELINE_ID",
     "BUILDKITE_PULL_REQUEST",
 ]
-_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
+_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
 
 
 class Container(abc.ABC):
@@ -82,6 +82,8 @@ class Container(abc.ABC):
         """
         Get docker image for a particular commit
         """
+        if _RAYCI_BUILD_ID == "":
+            return f"{_DOCKER_ECR_REPO}:{self.docker_tag}"
         return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
 
     @abc.abstractmethod
