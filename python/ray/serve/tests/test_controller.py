@@ -355,7 +355,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
             return False
 
     # Wait up to ~60s for the snapshot to appear.
-    wait_for_condition(_scan_for_snapshot, timeout=60)
+    wait_for_condition(_scan_for_snapshot, timeout=15)
 
     payloads = found["payloads"]
     assert isinstance(payloads, list) and len(payloads) == 2
