@@ -602,11 +602,7 @@ def test_parquet_read_partitioned_explicit(
 
 
 def test_projection_pushdown_non_partitioned(temp_dir):
-    ds = ray.data.read_parquet("example://iris.parquet").materialize()
-
-    # Write out non-partitioned dataset
-    path = f"{temp_dir}/non_partitioned_iris"
-    ds.write_parquet(path)
+    path = "example://iris.parquet"
 
     # Test projection from read_parquet
     ds = ray.data.read_parquet(path, columns=["variety"])
