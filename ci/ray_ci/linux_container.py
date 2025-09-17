@@ -49,11 +49,12 @@ class LinuxContainer(Container):
             f"BUILD_TYPE={build_type or ''}",
             "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
-            "--build-arg",
-            f"RAY_DISABLE_EXTRA_CPP={'1' if build_type == 'java' else '0'}",
         ]
         if mask:
             build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]
+        if build_type == "java":
+            # There's Java multi-language worker tests.
+            build_cmd += ["--build-arg", "RAY_DISABLE_EXTRA_CPP=0"]
         build_cmd += [
             "-f",
             "/ray/ci/ray_ci/tests.env.Dockerfile",
