@@ -726,7 +726,7 @@ class TestCli(unittest.TestCase):
             assert output_text == output_text_valid
 
     @patch("sys.stdout", new_callable=io.StringIO)
-    def test_execute_pre_hook_with_space_in_flag(self, mock_stdout):
+    def test_execute_pre_hook(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
