@@ -14,6 +14,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -323,9 +324,16 @@ class AutoscalingState:
         aggregated_metrics = merge_timeseries_dicts(*metrics_timeseries_dicts)
         running_requests_timeseries = aggregated_metrics.get(RUNNING_REQUESTS_KEY, [])
         if running_requests_timeseries:
-            # Use time-weighted average over
 
-            avg_running = time_weighted_average(running_requests_timeseries)
+            # assume that the last recorded metric is valid for buffer_length seconds
+            last_window_s = min(
+                self._config.metrics_interval_s,
+                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
+            )
+            # Use time-weighted average over
+            avg_running = time_weighted_average(
+                running_requests_timeseries, last_window_s=last_window_s
+            )
             return avg_running if avg_running is not None else 0.0
 
         return 0.0

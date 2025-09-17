@@ -311,6 +311,7 @@ def time_weighted_average(
     step_series: List[TimeStampedValue],
     window_start: Optional[float] = None,
     window_end: Optional[float] = None,
+    last_window_s: float = 1.0,
 ) -> Optional[float]:
     """
     Compute time-weighted average of a step function over a time interval.
@@ -320,7 +321,7 @@ def time_weighted_average(
             Values are right-continuous (constant until next change).
         window_start: Start of averaging window (inclusive). If None, uses the start of the series.
         window_end: End of averaging window (exclusive). If None, uses the end of the series.
-
+        last_window_s: when window_end is None, uses the last_window_s to compute the end of the window.
     Returns:
         Time-weighted average over the interval, or None if no data overlaps.
     """
@@ -332,7 +333,7 @@ def time_weighted_average(
         window_start = step_series[0].timestamp
     if window_end is None:
         # Use timestamp after the last point to include the final segment
-        window_end = step_series[-1].timestamp + 1.0
+        window_end = step_series[-1].timestamp + last_window_s
 
     if window_end <= window_start:
         return None

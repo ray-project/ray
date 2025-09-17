@@ -381,6 +381,44 @@ class TestInstantaneousMerge:
         # Single point with 1.0s duration (from 2.0 to 3.0)
         assert result == 10.0
 
+    def test_time_weighted_average_custom_last_window_s(self):
+        """Test time_weighted_average with custom last_window_s parameter."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+            TimeStampedValue(3.0, 15.0),
+        ]
+
+        # Test with last_window_s=2.0 (double the default)
+        result_2s = time_weighted_average(series, None, None, last_window_s=2.0)
+        # Should use from t=1.0 to t=3.0+2.0=5.0
+        # 1.0s at value 5 (from 1.0 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 2.0s at value 15 (from 3.0 to 5.0)
+        expected_2s = (5.0 * 1.0 + 10.0 * 1.0 + 15.0 * 2.0) / 4.0
+        assert abs(result_2s - expected_2s) < 1e-10
+
+        # Test with last_window_s=0.5 (half the default)
+        result_0_5s = time_weighted_average(series, None, None, last_window_s=0.5)
+        # Should use from t=1.0 to t=3.0+0.5=3.5
+        # 1.0s at value 5 (from 1.0 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 0.5s at value 15 (from 3.0 to 3.5)
+        expected_0_5s = (5.0 * 1.0 + 10.0 * 1.0 + 15.0 * 0.5) / 2.5
+        assert abs(result_0_5s - expected_0_5s) < 1e-10
+
+        # Test with window_start specified but window_end None - should still use last_window_s
+        result_with_start = time_weighted_average(series, 1.5, None, last_window_s=3.0)
+        # Should use from t=1.5 to t=3.0+3.0=6.0
+        # 0.5s at value 5 (from 1.5 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 3.0s at value 15 (from 3.0 to 6.0)
+        expected_with_start = (5.0 * 0.5 + 10.0 * 1.0 + 15.0 * 3.0) / 4.5
+        assert abs(result_with_start - expected_with_start) < 1e-10
+
+        # Test that last_window_s is ignored when window_end is explicitly provided
+        result_explicit_end = time_weighted_average(
+            series, None, 4.0, last_window_s=10.0
+        )
+        # Should use from t=1.0 to t=4.0 (ignoring last_window_s=10.0)
+        # 1.0s at value 5 (from 1.0 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 1.0s at value 15 (from 3.0 to 4.0)
+        expected_explicit_end = (5.0 * 1.0 + 10.0 * 1.0 + 15.0 * 1.0) / 3.0
+        assert abs(result_explicit_end - expected_explicit_end) < 1e-10
+
     def test_merge_timeseries_dicts_instantaneous_basic(self):
         """Test merge_timeseries_dicts basic functionality with instantaneous approach."""
         s1 = InMemoryMetricsStore()
