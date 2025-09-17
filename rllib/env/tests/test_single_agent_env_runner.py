@@ -93,7 +93,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                     num_env_runners=0,
                     num_envs_per_env_runner=5,
                     rollout_fragment_length=10,
-                    remote_worker_envs=True,
+
                 )
             )
 
