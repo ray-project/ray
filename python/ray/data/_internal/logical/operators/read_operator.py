@@ -1,7 +1,10 @@
+import abc
 import functools
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List
 
-from ray.data._internal.logical.interfaces import SourceOperator
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.logical.interfaces import SourceOperator, \
+    LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.block import (
     BlockMetadata,
@@ -10,7 +13,20 @@ from ray.data.block import (
 from ray.data.datasource.datasource import Datasource, Reader
 
 
-class Read(AbstractMap, SourceOperator):
+class LogicalOperatorProjectionPushdownMixin(LogicalOperator):
+    """Mixin for reading operators supporting projection pushdown"""
+
+    def supports_projection_pushdown(self) -> bool:
+        return False
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        return None
+
+    def apply_projection(self, columns: Optional[List[str]]) -> LogicalOperator:
+        return self
+
+
+class Read(AbstractMap, SourceOperator, LogicalOperatorProjectionPushdownMixin):
     """Logical operator for read."""
 
     def __init__(
@@ -110,6 +126,18 @@ class Read(AbstractMap, SourceOperator):
         if schemas:
             schema = unify_schemas_with_validation(schemas)
         return BlockMetadataWithSchema(metadata=meta, schema=schema)
+
+    def supports_projection_pushdown(self) -> bool:
+        return self._datasource.supports_projection_pushdown()
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        return self._datasource.get_current_projection()
+
+    def apply_projection(self, columns: List[str]):
+        clone = copy.copy(self)
+        clone._datasource = self._datasource.apply_projection(columns)
+
+        return clone
 
     def can_modify_num_rows(self) -> bool:
         # NOTE: Returns true, since most of the readers expands its input
