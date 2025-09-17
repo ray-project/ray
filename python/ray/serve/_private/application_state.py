@@ -1129,7 +1129,7 @@ class ApplicationStateManager:
                 if self.get_app_source(name) is source
             }
 
-    def list_app_names(self):
+    def list_app_names(self) -> List[str]:
         """Return app names without instantiating status objects."""
         return self._application_states.keys()
 
