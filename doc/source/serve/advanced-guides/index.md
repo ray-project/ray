@@ -11,7 +11,6 @@ dyn-req-batch
 inplace-updates
 dev-workflow
 grpc-guide
-fastapi-factory-pattern
 managing-java-deployments
 deploy-vm
 multi-app-container
