@@ -95,7 +95,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                 return;
               }
               auto raylet_client = this->raylet_client_pool_.GetByID(node_id);
-              RAY_CHECK(raylet_client);
+              if (!raylet_client) {
+                // Worker cleanup due to node death is taken care of in the
+                // GCSHealthCheckManager
+                return;
+              }
               // Worker could still be dead even if node is alive.
               raylet_client->IsLocalWorkerDead(
                   worker_id,
@@ -344,7 +348,11 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
     this->io_context_provider_.GetDefaultIOContext().post(
-        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
+        [this, node_id] {
+          raylet_client_pool_.Disconnect(node_id);
+          worker_client_pool_.Disconnect(node_id);
+          return gcs_node_manager_->OnNodeFailure(node_id, nullptr);
+        },
         "GcsServer.NodeDeathCallback");
   };
 

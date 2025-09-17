@@ -130,9 +130,10 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
   auto raylet_client = raylet_client_pool_->GetByID(lease_entry.node_id);
-  RAY_CHECK(raylet_client);
-  raylet_client->ReturnWorkerLease(
-      addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
+  if (raylet_client) {
+    raylet_client->ReturnWorkerLease(
+        addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
+  }
   worker_to_lease_entry_.erase(addr);
 }
 
@@ -572,8 +573,12 @@ void NormalTaskSubmitter::PushNormalTask(
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             auto raylet_client = raylet_client_pool_->GetByID(cur_lease_entry.node_id);
-            RAY_CHECK(raylet_client);
-            raylet_client->GetWorkerFailureCause(cur_lease_entry.lease_id, callback);
+            if (!raylet_client) {
+              callback(Status::Disconnected("Node %s Dead", cur_lease_entry.node_id),
+                       rpc::GetWorkerFailureCauseReply{});
+            } else {
+              raylet_client->GetWorkerFailureCause(cur_lease_entry.lease_id, callback);
+            }
           }
           OnWorkerIdle(addr,
                        scheduling_key,

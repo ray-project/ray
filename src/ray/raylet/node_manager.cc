@@ -808,6 +808,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
 
+  raylet_client_pool_.Disconnect(node_id);
+  core_worker_client_pool_.Disconnect(node_id);
+
   // Clean up workers that were owned by processes that were on the failed
   // node.
   for (const auto &[_, worker] : leased_workers_) {
