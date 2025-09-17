@@ -967,7 +967,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   ASSERT_TRUE(ray_events_tuple.task_profile_event.has_value())
       << "TaskProfileEvent should populate in RayEventsTuple";
 
-  const auto &ray_event = task_profile_event.value();
+  const auto &ray_event = ray_events_tuple.task_profile_event.value();
 
   // Verify base fields
   EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::CORE_WORKER);
