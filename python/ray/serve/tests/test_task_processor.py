@@ -475,6 +475,80 @@ class TestTaskConsumerWithRayServe:
 
         serve.delete("app_v1")
 
+    def test_multiple_task_consumers_in_single_app(
+        self, temp_queue_directory, serve_instance, create_processor_config
+    ):
+        """Test that multiple task consumers can coexist in a single Ray Serve application."""
+        orchestrator_config = create_processor_config()
+        orchestrator_config.queue_name = "orchestrator_queue"
+
+        worker_config = create_processor_config()
+        worker_config.queue_name = "worker_queue"
+
+        @serve.deployment(name="worker-deployment")
+        @task_consumer(task_processor_config=worker_config)
+        class WorkerTaskConsumer:
+            def __init__(self):
+                self.task_count = 0
+
+            @task_handler(name="process_data")
+            def process_data(self, payload):
+                self.task_count += 1
+                return f"Worker processed: {payload}"
+
+            def get_worker_task_count(self):
+                return self.task_count
+
+        @serve.deployment(name="orchestrator-deployment")
+        @task_consumer(task_processor_config=orchestrator_config)
+        class OrchestratorTaskConsumer:
+            def __init__(self, worker_deployment):
+                self.worker_deployment = worker_deployment
+                self.message_received = []
+
+            @task_handler(name="orchestrate_task")
+            def orchestrate_task(self, payload):
+                task_id_ref = send_request_to_queue.remote(
+                    worker_config, payload, task_name="process_data"
+                )
+                self.message_received.append(payload)
+
+                return f"Orchestrated complex task: {(ray.get(task_id_ref))}"
+
+            async def get_worker_task_count(self):
+                return await self.worker_deployment.get_worker_task_count.remote()
+
+            def get_message_received(self):
+                return self.message_received
+
+        worker_deployment = WorkerTaskConsumer.bind()
+        orchestrator_deployment = OrchestratorTaskConsumer.bind(worker_deployment)
+
+        handle = serve.run(orchestrator_deployment, name="multi_consumer_app")
+
+        num_tasks_to_send = 3
+        data_sent_to_orchestrator = []
+        for i in range(num_tasks_to_send):
+            data_id = f"data_{i}"
+            send_request_to_queue.remote(
+                orchestrator_config, data_id, task_name="orchestrate_task"
+            )
+            data_sent_to_orchestrator.append(data_id)
+
+        # Wait for tasks to be processed properly
+        def check_data_processed_properly():
+            worker_count = handle.get_worker_task_count.remote().result()
+            data_received_by_orchestrator = (
+                handle.get_message_received.remote().result()
+            )
+
+            return worker_count == num_tasks_to_send and sorted(
+                data_received_by_orchestrator
+            ) == sorted(data_sent_to_orchestrator)
+
+        wait_for_condition(check_data_processed_properly, timeout=300)
+        serve.delete("multi_consumer_app")
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithDLQsConfiguration:
