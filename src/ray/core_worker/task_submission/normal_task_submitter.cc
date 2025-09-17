@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/util/time.h"
@@ -574,7 +575,8 @@ void NormalTaskSubmitter::PushNormalTask(
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             auto raylet_client = raylet_client_pool_->GetByID(cur_lease_entry.node_id);
             if (!raylet_client) {
-              callback(Status::Disconnected("Node %s Dead", cur_lease_entry.node_id),
+              callback(Status::Disconnected(absl::StrFormat(
+                           "Node %s dead", cur_lease_entry.node_id.Hex())),
                        rpc::GetWorkerFailureCauseReply{});
             } else {
               raylet_client->GetWorkerFailureCause(cur_lease_entry.lease_id, callback);
