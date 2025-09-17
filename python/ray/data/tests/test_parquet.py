@@ -657,6 +657,18 @@ def test_projection_pushdown_partitioned(temp_dir):
     assert ds.count() == partitioned_ds.count()
 
 
+def test_projection_pushdown_on_count(temp_dir):
+    path = "example://iris.parquet"
+
+    # Test reading full dataset
+    #ds = ray.data.read_parquet(path).materialize()
+
+    # Test projection from read_parquet
+    num_rows = ray.data.read_parquet(path).count()
+
+    assert num_rows == 150
+
+
 def test_parquet_read_with_udf(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
