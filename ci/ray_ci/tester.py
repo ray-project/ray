@@ -226,7 +226,8 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
     ci_init()
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    if not _DOCKER_ECR_REPO.startswith("localhost:"):
+        docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
