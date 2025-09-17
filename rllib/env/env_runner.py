@@ -236,12 +236,12 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         except Exception as e:
             self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
 
-            # @OldAPI param
+            # @OldAPIStack (config.restart_failed_sub_environments)
             if self.config.restart_failed_sub_environments:
                 if not isinstance(e, StepFailedRecreateEnvError):
                     logger.exception(
                         "Stepping the env resulted in an error! The original error "
-                        f"is: {e.args[0]}"
+                        f"is: {e}"
                     )
                 # Recreate the env.
                 self.make_env()
