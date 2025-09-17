@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from enum import Enum
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pyarrow as pa
 
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+class ColumnType(Enum):
+    """Enumeration of supported column types for statistical analysis."""
+
+    NUMERICAL = "numerical"
+    CATEGORICAL = "categorical"
+    VECTOR = "vector"
 
 
 def numerical_aggregators(column: str) -> List[AggregateFnV2]:
@@ -91,6 +100,15 @@ class FeatureAggregators:
     str_columns: List[str]
     vector_columns: List[str]
     aggregators: List[AggregateFnV2]
+
+    @property
+    def columns_by_type(self) -> Dict[ColumnType, List[str]]:
+        """Get columns organized by ColumnType enum for easier iteration."""
+        return {
+            ColumnType.NUMERICAL: self.numerical_columns,
+            ColumnType.CATEGORICAL: self.str_columns,
+            ColumnType.VECTOR: self.vector_columns,
+        }
 
 
 def feature_aggregators_for_dataset(
@@ -165,3 +183,31 @@ def feature_aggregators_for_dataset(
         vector_columns=vector_columns,
         aggregators=all_aggs,
     )
+
+
+def get_stat_names_for_column_type(column_type: ColumnType) -> List[str]:
+    """Extract stat names from aggregators for a given column type.
+
+    Args:
+        column_type: A ColumnType enum value
+
+    Returns:
+        List of stat names (e.g., ["count", "mean", "min", ...])
+    """
+    # Map column types to their aggregator functions
+    aggregator_map = {
+        ColumnType.NUMERICAL: numerical_aggregators,
+        ColumnType.CATEGORICAL: categorical_aggregators,
+        ColumnType.VECTOR: vector_aggregators,
+    }
+
+    sample_aggs = aggregator_map[column_type]("dummy_col")
+
+    # Extract the stat name from aggregator names like "count(dummy_col)" -> "count"
+    stat_names = []
+    for agg in sample_aggs:
+        agg_name = agg.name
+        # Remove "(dummy_col)" to get just the stat name
+        stat_name = agg_name.replace("(dummy_col)", "")
+        stat_names.append(stat_name)
+    return stat_names
