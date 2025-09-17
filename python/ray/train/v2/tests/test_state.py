@@ -1,5 +1,6 @@
+import time
 from collections import OrderedDict
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -366,25 +367,35 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
     }
 
 
+@patch("ray.train.v2._internal.state.util.get_actor", autospec=True)
 def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
-    monkeypatch,
+    mock_get_actor,
 ):
-    def get_actor(actor_id: str, timeout: float):
-        raise ray.util.state.exception.ServerUnavailable
-
-    monkeypatch.setattr("ray.train.v2._internal.state.util.get_actor", get_actor)
-    actor = TrainStateActor(enable_state_actor_reconciliation=True)
-    actor._runs = OrderedDict(
-        {
-            "run_id": create_mock_train_run(
-                status=RunStatus.RUNNING,
-                controller_actor_id="controller_actor_id",
-                id="run_id",
-            ),
-        }
+    mock_get_actor.side_effect = ray.util.state.exception.ServerUnavailable
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        reconciliation_interval_s=0,
     )
-    assert actor._abort_live_runs_with_dead_controllers(None) == "run_id"
-    assert actor._runs["run_id"].status == RunStatus.RUNNING
+    actor.create_or_update_train_run(
+        create_mock_train_run(
+            status=RunStatus.RUNNING,
+            controller_actor_id="controller_actor_id",
+            id="run_id",
+        )
+    )
+
+    # Still RUNNING after ServerUnavailable
+    while mock_get_actor.call_count == 0:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.RUNNING
+
+    # ABORTED after detecting dead controller
+    mock_get_actor.side_effect = lambda actor_id, timeout: create_mock_actor_state(
+        state="DEAD"
+    )
+    while actor.get_train_runs()["run_id"].status != RunStatus.ABORTED:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.ABORTED
 
 
 def test_train_state_manager_run_lifecycle(ray_start_regular):

@@ -104,9 +104,9 @@ class TrainStateActor:
                         update_train_run_aborted(run, False)
                         self.create_or_update_train_run(run)
                         aborted_run_ids.append(run.id)
-                except ray.util.state.exception.ServerUnavailable:
+                except ray.util.state.exception.RayStateApiException:
                     logger.exception(
-                        "Server unavailable when checking if actor is alive. "
+                        "State API unavailable when checking if actor is alive. "
                         "Will check again on next poll."
                     )
                 num_polled_runs += 1
