@@ -77,5 +77,13 @@ def test_parse_pre_hooks():
         assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh"]
 
 
+def test_import():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_config(path=Path(tmpdir) / "test-2.depsets.yaml")
+        assert config.depsets[0].name == "expand_imported_depset__py311_cpu"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

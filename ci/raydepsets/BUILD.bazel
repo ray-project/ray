@@ -43,6 +43,7 @@ py_test(
         "tests/test_data/requirements_compiled_test_update.txt",
         "tests/test_data/requirements_test.txt",
         "tests/test_data/test.depsets.yaml",
+        "tests/test_data/test-2.depsets.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
@@ -70,6 +71,7 @@ py_test(
     srcs = ["tests/test_workspace.py"],
     data = [
         "tests/test_data/test.depsets.yaml",
+        "tests/test_data/test-2.depsets.yaml",
     ],
     tags = [
         "ci_unit",

@@ -60,6 +60,7 @@ def _dict_to_depset(depset: dict) -> Depset:
 class Config:
     depsets: List[Depset] = field(default_factory=list)
     build_arg_sets: Dict[str, BuildArgSet] = field(default_factory=dict)
+    imports: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
@@ -79,6 +80,31 @@ class Config:
             else:
                 depsets.append(_dict_to_depset(depset))
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
+
+    @staticmethod
+    def check_imports(data: dict, dir: str) -> dict:
+        imports = data.get("imports", [])
+        if len(imports) == 0:
+            return data
+        for import_path in imports:
+            with open(os.path.join(dir, import_path), "r") as f:
+                import_data = yaml.safe_load(f)
+                data = Config.merge_configs(data, import_data)
+        return data
+
+    @staticmethod
+    def merge_configs(config_1: dict, config_2: dict) -> dict:
+        final_config = config_1.copy()
+        for k, v in config_2.items():
+            if (
+                k in final_config
+                and isinstance(final_config[k], dict)
+                and isinstance(v, dict)
+            ):
+                final_config[k] = Config.merge_configs(final_config[k], v)
+            else:
+                final_config[k] = v
+        return final_config
 
     @staticmethod
     def parse_build_arg_sets(build_arg_sets: Dict[str, dict]) -> Dict[str, BuildArgSet]:
@@ -101,4 +127,5 @@ class Workspace:
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
             data = yaml.safe_load(f)
+            data = Config.check_imports(data, self.dir)
             return Config.from_dict(data)
