@@ -1258,6 +1258,17 @@ platformdirs==3.11.0 \
     # via
     #   -c python/requirements_compiled.txt
     #   virtualenv
+polars==1.32.3 \
+    --hash=sha256:57c500dc1b5cba49b0589034478db031815f3d57a20cb830b05ecee1a9ba56b1 \
+    --hash=sha256:a2e3f87c60f54eefe67b1bebd3105918d84df0fd6d59cc6b870c2f16d2d26ca1 \
+    --hash=sha256:c7c472ea1d50a5104079cb64e34f78f85774bcc69b875ba8daf21233f4c70d42 \
+    --hash=sha256:c8f5d2f43b80b68e39bfaa2948ce632563633466576f12e74e8560d6481f5851 \
+    --hash=sha256:c9a9b9668ef310e5a77a7e7daa9c753874779c8da52e93f654bfd7953eb4b60b \
+    --hash=sha256:db56a7cb4898e173d62634e182f74bdff744c62be5470e0fe20df8d10f659af7 \
+    --hash=sha256:fd87275f0cc795e72a2030b58293198cfa748d4b009cf52218e27db5397ed07f
+    # via
+    #   -c python/requirements_compiled.txt
+    #   ray
 prometheus-client==0.19.0 \
     --hash=sha256:4585b0d1223148c27a225b10dbec5ae9bc4c81a99a3fa80774fa6209935324e1 \
     --hash=sha256:c88b1e6ecf6b41cd8fb5731c7ae919bf66df6ec6fafa555cd6c0e16ca169ae92
