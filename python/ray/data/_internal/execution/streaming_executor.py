@@ -258,10 +258,8 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            # Reset scheduling loop duration + other gauges.
-            self._resource_manager.reset_stats()
-            self.update_metrics(0)
-
+            # Reset the scheduling loop duration gauge.
+            self._sched_loop_duration_s.set(0, tags={"dataset": self._dataset_id})
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
             # Close the progress bars from top to bottom to avoid them jumping
@@ -376,7 +374,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 if math.isinf(budget.object_store_memory)
                 else budget.object_store_memory
             )
-            print(f"Budget: {cpu_budget} {gpu_budget} {memory_budget} {object_store_memory_budget}")
             self._cpu_budget_gauge.set(cpu_budget, tags=tags)
             self._gpu_budget_gauge.set(gpu_budget, tags=tags)
             self._memory_budget_gauge.set(memory_budget, tags=tags)
@@ -393,7 +390,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 if math.isinf(max_bytes_to_read):
                     # Convert inf to -1 to represent unlimited bytes to read
                     max_bytes_to_read = -1
-                print(f"MaxBytesToRead: {max_bytes_to_read}")
                 self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
 
     def get_stats(self):
