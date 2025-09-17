@@ -392,7 +392,7 @@ class AutoscalingState:
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             scaling_status=scaling_status,
-            policy_name=getattr(ctx.config.policy, "name", None),
+            policy_name=ctx.config.policy.name,
             look_back_period_s=look_back_period_s,
             queued_requests=float(queued_requests),
             total_requests=float(ctx.total_num_requests),
