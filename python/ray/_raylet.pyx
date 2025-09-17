@@ -2211,6 +2211,7 @@ cdef execute_task_with_cancellation_handler(
     # in case executing the main task throws an exception.
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
+    print("runnning", file=sys.stderr)
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
@@ -2311,9 +2312,9 @@ cdef execute_task_with_cancellation_handler(
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
             if omp_num_threads_overriden:
                 # Reset the OMP_NUM_THREADS environ if it was set.
-                print("pop omp start")
+                print("pop omp start", file=sys.stderr)
                 os.environ.pop("OMP_NUM_THREADS", None)
-                print("pop omp end")
+                print("pop omp end", file=sys.stderr)
 
 
     if execution_info.max_calls != 0:
