@@ -50,6 +50,7 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":cgroup_driver_interface",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
     ],
