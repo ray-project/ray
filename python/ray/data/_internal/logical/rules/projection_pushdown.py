@@ -1,3 +1,4 @@
+import copy
 import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
@@ -130,9 +131,11 @@ class ProjectionPushdown(Rule):
             f"(projection columns = {new_spec.cols}, remap = {new_spec.cols_remap})"
         )
 
-        pqd: ParquetDatasource = read_op._datasource
+        # Make a sahllow copy of the `Read` and `ParquetDatasource` to avoid
+        # modifying in-place
+        read_op = copy.copy(read_op)
+        pqd: ParquetDatasource = copy.copy(read_op._datasource)
 
-        # TODO(DATA-843) avoid modifying in-place
         pqd._data_columns = new_spec.cols
 
         return read_op
