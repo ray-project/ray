@@ -113,26 +113,11 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
         )
-        self._ray_actor_task_remote_args = {}
-        actor_task_errors = self.data_context.actor_task_retry_on_errors
-        if actor_task_errors:
-            self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
-        _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
-
-        if (
-            "_generator_backpressure_num_objects"
-            not in self._ray_actor_task_remote_args
-            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
-        ):
-            # The `_generator_backpressure_num_objects` parameter should be
-            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
-            # 2 objects for each block: the block and the block metadata.
-            self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
-                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
-            )
+        self._ray_actor_task_remote_args = self.get_ray_actor_task_remote_args()
 
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
+        self._ray_remote_args = self.get_ray_remote_static_args()
         self._ray_remote_args = self._apply_default_remote_args(
             self._ray_remote_args, self.data_context
         )
@@ -177,6 +162,34 @@ class ActorPoolMapOperator(MapOperator):
         # Locality metrics
         self._locality_hits = 0
         self._locality_misses = 0
+
+    def get_ray_remote_static_args(self) -> Dict[str, Any]:
+        return {
+            **(self._ray_remote_args_static_only or {}),
+            **(self._ray_remote_args or {}),
+        }
+
+    def get_ray_actor_task_remote_args(self) -> Dict[str, Any]:
+
+        ray_actor_task_remote_args = {}
+
+        actor_task_errors = self.data_context.actor_task_retry_on_errors
+        if actor_task_errors:
+            ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        _add_system_error_to_retry_exceptions(ray_actor_task_remote_args)
+
+        if (
+            "_generator_backpressure_num_objects" not in ray_actor_task_remote_args
+            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
+        ):
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
+                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
+            )
+
+        return ray_actor_task_remote_args
 
     @staticmethod
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
@@ -334,23 +347,22 @@ class ActorPoolMapOperator(MapOperator):
             else:
                 self._locality_misses += 1
 
-    def _refresh_actor_cls(self):
+    def _refresh_actor_cls(self) -> Dict[str, Any]:
         """When `self._ray_remote_args_fn` is specified, this method should
         be called prior to initializing the new worker in order to get new
         remote args passed to the worker. It updates `self.cls` with the same
         `_MapWorker` class, but with the new remote args from
         `self._ray_remote_args_fn`."""
         assert self._ray_remote_args_fn, "_ray_remote_args_fn must be provided"
-        remote_args = self._ray_remote_args.copy()
         new_remote_args = self._ray_remote_args_fn()
 
         # Override args from user-defined remote args function.
-        new_and_overriden_remote_args = {}
-        for k, v in new_remote_args.items():
-            remote_args[k] = v
-            new_and_overriden_remote_args[k] = v
+        remote_args = {
+            **self._ray_remote_args,
+            **new_remote_args,
+        }
         self._actor_cls = ray.remote(**remote_args)(self._map_worker_cls)
-        return new_and_overriden_remote_args
+        return new_remote_args
 
     def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
