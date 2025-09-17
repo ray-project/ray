@@ -6,6 +6,7 @@ from gymnasium.spaces import Box, Discrete
 
 logger = logging.getLogger("ray.rllib")
 
+
 class SimpleCorridor(gym.Env):
     """Example of a custom env in which you have to walk down a corridor.
 
