@@ -70,15 +70,13 @@ def _create_empty_table(schema: "pyarrow.Schema"):
 
     arrays = []
 
-    for i, (n, t) in enumerate(zip(schema.names, schema.types)):
+    for i, (name, t) in enumerate(zip(schema.names, schema.types)):
         if (
             get_pyarrow_version() < MIN_PYARROW_VERSION_COERCE_EXTENSION_TYPES
         ) and _is_pa_extension_type(t):
             t = t.storage_type
-            schema = schema.set(i, pa.field(n, t))
+            schema = schema.set(i, pa.field(name, t))
         arrays.append(pa.array([], type=t))
-
-    # arrays = [pa.array([], type=t) for t in schema.types]
 
     return pa.table(arrays, schema=schema)
 
