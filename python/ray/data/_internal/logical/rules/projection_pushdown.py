@@ -9,7 +9,7 @@ from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.expressions import Expr
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
