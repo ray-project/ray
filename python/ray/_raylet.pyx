@@ -245,8 +245,7 @@ import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
-from ray._private.dynamic_object_ref_generator import DynamicObjectRefGenerator
-from ray._private.object_ref_generator import ObjectRefGenerator
+from ray._private.object_ref_generator import ObjectRefGenerator, DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.gc_collect_manager import PythonGCThread
