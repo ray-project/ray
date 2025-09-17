@@ -1360,16 +1360,19 @@ class ActorClass(Generic[T]):
         to :obj:`ray.remote`.
 
         Args:
+            **actor_options: The options to override.
+
+        Actor Options:
             num_cpus: The quantity of CPU cores to reserve
                 for this task or for the lifetime of the actor.
             num_gpus: The quantity of GPUs to reserve
                 for this task or for the lifetime of the actor.
-            resources (Dict[str, float]): The quantity of various custom resources
+            resources: The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
-            label_selector (Dict[str, str]): If specified, requires that the actor run
+            label_selector: If specified, requires that the actor run
                 on a node which meets the specified label conditions (equals, in, not in, etc.).
-            fallback_strategy (List[Dict[str, str]]): If specified, expresses soft constraints
+            fallback_strategy: If specified, expresses soft constraints
                 through a list of label selectors to fall back on when scheduling on a node.
                 The label selectors are evaluated in order during scheduling. The first satisfied
                 label selector is used.
@@ -1423,7 +1426,7 @@ class ActorClass(Generic[T]):
                 share with its creator and will be deleted once its refcount
                 drops to zero, or "detached", which means the actor will live
                 as a global object independent of the creator.
-            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+            runtime_env: Specifies the runtime environment for
                 this actor or task and its children. See
                 :ref:`runtime-environments` for detailed documentation.
             scheduling_strategy: Strategy about how to
