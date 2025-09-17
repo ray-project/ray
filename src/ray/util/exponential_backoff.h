@@ -50,9 +50,16 @@ class ExponentialBackoff {
   ///
   /// @param max_backoff_ms the maximum backoff value
   /// @return the delay in ms based on the formula
-  static uint64_t GetBackoffMs(uint64_t attempt,
-                               uint64_t base_ms,
-                               uint64_t max_backoff_ms = kDefaultMaxBackoffMs);
+  static uint64_t GetBackoffMilliseconds(uint64_t attempt,
+                                         uint64_t base_ms,
+                                         uint64_t max_backoff_ms = kDefaultMaxBackoffMs,
+                                         uint8_t exponential_factor = 2);
+
+  /// Same as GetBackoffMilliseconds, but with seconds.
+  static uint64_t GetBackoffSeconds(uint64_t attempt,
+                                    uint64_t base_s,
+                                    uint64_t max_backoff_s = kDefaultMaxBackoffMs / 1000,
+                                    uint8_t exponential_factor = 2);
 
   uint64_t Next() {
     auto ret = curr_value_;

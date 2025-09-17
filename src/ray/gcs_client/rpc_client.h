@@ -212,7 +212,10 @@ class GcsRpcClient {
                          << "The program will terminate.";
           std::_Exit(EXIT_FAILURE);
         },
-        /*server_name=*/"GCS");
+        /*server_name=*/"GCS",
+        /*call_first_unavailable_timeout_callback_immediately=*/false,
+        /*exponential_factor=*/2,
+        /*max_backoff_seconds=*/60);
   }
 
   template <typename Service,

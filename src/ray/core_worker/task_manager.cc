@@ -1225,7 +1225,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
     int32_t delay_ms = task_failed_due_to_oom
-                           ? ExponentialBackoff::GetBackoffMs(
+                           ? ExponentialBackoff::GetBackoffMilliseconds(
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
