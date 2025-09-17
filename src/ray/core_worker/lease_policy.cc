@@ -30,6 +30,17 @@ std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForLease(
     return std::make_pair(fallback_rpc_address_, false);
   }
 
+  // Node Affinity specified through label selectors has higher
+  // priority than locality aware scheduling.
+  if (auto node_id_values = GetHardNodeAffinityValues(spec.GetLabelSelector())) {
+    for (const auto &node_id_hex : *node_id_values) {
+      if (auto addr = node_addr_factory_(NodeID::FromHex(node_id_hex))) {
+        return std::make_pair(addr.value(), false);
+      }
+    }
+    return std::make_pair(fallback_rpc_address_, false);
+  }
+
   if (spec.IsNodeAffinitySchedulingStrategy()) {
     // The explicit node affinity scheduling strategy
     // has higher priority than locality aware scheduling.

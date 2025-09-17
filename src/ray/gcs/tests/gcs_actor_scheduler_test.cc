@@ -31,6 +31,7 @@
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -92,11 +93,14 @@ class GcsActorSchedulerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(gcs_publisher_.get(),
-                                                              gcs_table_storage_.get(),
-                                                              io_context_->GetIoService(),
-                                                              raylet_client_pool_.get(),
-                                                              ClusterID::Nil());
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        gcs_publisher_.get(),
+        gcs_table_storage_.get(),
+        io_context_->GetIoService(),
+        raylet_client_pool_.get(),
+        ClusterID::Nil(),
+        /*ray_event_recorder=*/fake_ray_event_recorder_,
+        /*session_name=*/"");
     gcs_actor_table_ = std::make_shared<FakeGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
@@ -206,6 +210,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<FakeCoreWorkerClient> worker_client_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  observability::FakeRayEventRecorder fake_ray_event_recorder_;
   std::unique_ptr<raylet::LocalLeaseManagerInterface> local_lease_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<ClusterLeaseManager> cluster_lease_manager_;
