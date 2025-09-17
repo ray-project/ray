@@ -7,7 +7,7 @@ import pyarrow.compute as pc
 import pytest
 
 import ray
-from ray.anyscale.data._internal.logical.rules.projection_pushdown import (
+from ray.data._internal.logical.rules.projection_pushdown import (
     ProjectionPushdown,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
