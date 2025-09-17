@@ -1,9 +1,11 @@
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 import runfiles
@@ -722,6 +724,17 @@ class TestCli(unittest.TestCase):
             output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_execute_pre_hook_with_space_in_flag(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_pre_hook("pre-hook-test.sh test")
+            stdout = mock_stdout.getvalue()
+            print(f"stdout: {stdout}")
+            assert "Pre-hook test\n" in stdout
+            assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
 
 
 if __name__ == "__main__":
