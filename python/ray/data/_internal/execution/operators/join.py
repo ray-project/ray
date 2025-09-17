@@ -2,6 +2,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.transform_pyarrow import _is_column_extension_type
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
@@ -300,19 +301,29 @@ def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
         False if the type can be present.
     """
     import pyarrow as pa
+    from packaging.version import parse as parse_version
+
+    pyarrow_version = get_pyarrow_version()
+    is_v12 = pyarrow_version >= parse_version("12.0.0")
+    is_v16 = pyarrow_version >= parse_version("16.0.0")
 
     return (
         pa.types.is_map(type)
         or pa.types.is_union(type)
         or pa.types.is_list(type)
-        or pa.types.is_binary_view(type)
         or pa.types.is_struct(type)
         or pa.types.is_null(type)
         or pa.types.is_large_list(type)
         or pa.types.is_fixed_size_list(type)
-        or pa.types.is_run_end_encoded(type)
-        or pa.types.is_string_view(type)
-        or pa.types.is_list_view(type)
+        or (is_v12 and pa.types.is_run_end_encoded(type))
+        or (
+            is_v16
+            and (
+                pa.types.is_binary_view(type)
+                or pa.types.is_string_view(type)
+                or pa.types.is_list_view(type)
+            )
+        )
     )
 
 
