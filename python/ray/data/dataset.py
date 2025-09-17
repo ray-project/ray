@@ -1093,9 +1093,6 @@ class Dataset:
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
 
-        if not cols:
-            raise ValueError("select_columns requires at least one column to select.")
-
         if len(cols) != len(set(cols)):
             raise ValueError(
                 "select_columns expected unique column names, "
