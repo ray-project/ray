@@ -38,7 +38,7 @@ class DependencyTestCase:
     description: str
 
 
-class TestProjectionPushdownTopoSort:
+class TestPorjectionFusion:
     """Test topological sorting in projection pushdown fusion."""
 
     @pytest.fixture(autouse=True)
