@@ -601,7 +601,7 @@ def test_parquet_read_partitioned_explicit(
     ]
 
 
-def test_projection_pushdown_non_partitioned(temp_dir):
+def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir):
     path = "example://iris.parquet"
 
     # Test projection from read_parquet
@@ -639,7 +639,7 @@ def test_projection_pushdown_non_partitioned(temp_dir):
     assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
 
 
-def test_projection_pushdown_partitioned(temp_dir):
+def test_projection_pushdown_partitioned(ray_start_regular_shared, temp_dir):
     ds = ray.data.read_parquet("example://iris.parquet").materialize()
 
     partitioned_ds_path = f"{temp_dir}/partitioned_iris"
@@ -665,7 +665,7 @@ def test_projection_pushdown_partitioned(temp_dir):
     assert ds.count() == partitioned_ds.count()
 
 
-def test_projection_pushdown_on_count(temp_dir):
+def test_projection_pushdown_on_count(ray_start_regular_shared, temp_dir):
     path = "example://iris.parquet"
 
     # Test reading full dataset
