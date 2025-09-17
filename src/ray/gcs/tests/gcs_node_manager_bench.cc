@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <chrono>
-#include <iostream>
+#include <benchmark/benchmark.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,9 +27,9 @@
 namespace ray {
 namespace gcs {
 
-class GcsNodeManagerBenchmark {
+class GcsNodeManagerBenchmarkFixture : public benchmark::Fixture {
  public:
-  GcsNodeManagerBenchmark() {
+  void SetUp(benchmark::State &state) override {
     auto raylet_client = std::make_shared<FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
@@ -45,8 +45,20 @@ class GcsNodeManagerBenchmark {
                                                      io_context_->GetIoService(),
                                                      client_pool_.get(),
                                                      ClusterID::Nil());
+    int node_count = state.range(0);
+    int label_size = state.range(1);
+    SetupNodes(node_count, label_size);
   }
 
+  void TearDown(benchmark::State &state) override {
+    // Cleanup
+    node_manager_.reset();
+    io_context_.reset();
+    gcs_publisher_.reset();
+    client_pool_.reset();
+  }
+
+ protected:
   void SetupNodes(int node_count, int label_size) {
     for (int i = 0; i < node_count; ++i) {
       auto node = std::make_shared<rpc::GcsNodeInfo>();
@@ -100,78 +112,6 @@ class GcsNodeManagerBenchmark {
     }
   }
 
-  void BenchmarkGetAllNodeInfo(int iterations) {
-    auto start = std::chrono::high_resolution_clock::now();
-
-    size_t total_bytes = 0;
-    for (int i = 0; i < iterations; ++i) {
-      rpc::GetAllNodeInfoRequest request;
-      rpc::GetAllNodeInfoReply reply;
-
-      bool callback_called = false;
-      auto send_reply_callback = [&callback_called](Status status,
-                                                    std::function<void()>,
-                                                    std::function<void()>) {
-        callback_called = true;
-      };
-
-      node_manager_->HandleGetAllNodeInfo(request, &reply, send_reply_callback);
-
-      if (!callback_called) {
-        std::cerr << "Error: Callback not called" << std::endl;
-        return;
-      }
-
-      // Calculate response size
-      for (const auto &node : reply.node_info_list()) {
-        total_bytes += node.ByteSizeLong();
-      }
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    std::cout << "  HandleGetAllNodeInfo: " << duration.count() / iterations << " us/op, "
-              << "total bytes: " << total_bytes / iterations << std::endl;
-  }
-
-  void BenchmarkGetAllNodeInfoLight(const int iterations) {
-    auto start = std::chrono::high_resolution_clock::now();
-
-    size_t total_bytes = 0;
-    for (int i = 0; i < iterations; ++i) {
-      rpc::GetAllNodeInfoLightRequest request;
-      rpc::GetAllNodeInfoLightReply reply;
-
-      bool callback_called = false;
-      auto send_reply_callback = [&callback_called](Status status,
-                                                    std::function<void()>,
-                                                    std::function<void()>) {
-        callback_called = true;
-      };
-
-      node_manager_->HandleGetAllNodeInfoLight(request, &reply, send_reply_callback);
-
-      if (!callback_called) {
-        std::cerr << "Error: Callback not called" << std::endl;
-        return;
-      }
-
-      // Calculate response size
-      for (const auto &node : reply.node_info_list()) {
-        total_bytes += node.ByteSizeLong();
-      }
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    std::cout << "  HandleGetAllNodeInfoLight: " << duration.count() / iterations
-              << " us/op, "
-              << "total bytes: " << total_bytes / iterations << std::endl;
-  }
-
- private:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -179,45 +119,113 @@ class GcsNodeManagerBenchmark {
   std::unique_ptr<GcsNodeManager> node_manager_;
 };
 
-void RunBenchmarks() {
-  std::vector<std::pair<int, int>> test_configs = {
-      // node_count, label_count
-      {10, 0},     // Small cluster, no labels
-      {10, 5},     // Small cluster, few labels
-      {10, 20},    // Small cluster, moderate labels
-      {10, 50},    // Small cluster, many labels
-      {100, 0},    // Medium cluster, no labels
-      {100, 5},    // Medium cluster, few labels
-      {100, 20},   // Medium cluster, moderate labels
-      {100, 50},   // Medium cluster, many labels
-      {1000, 5},   // Large cluster, few labels
-      {1000, 20},  // Large cluster, moderate labels
-      {5000, 5},   // Very large cluster, few labels
-      {10000, 5},  // Very large cluster, few labels
-      {30000, 5},  // Very large cluster, few labels
+BENCHMARK_DEFINE_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeInfo)
+(benchmark::State &state) {
+  size_t total_bytes = 0;
 
-  };
+  for (auto _ : state) {
+    rpc::GetAllNodeInfoRequest request;
+    rpc::GetAllNodeInfoReply reply;
 
-  const int iterations = 100;
+    bool callback_called = false;
+    auto send_reply_callback =
+        [&callback_called](Status status, std::function<void()>, std::function<void()>) {
+          callback_called = true;
+        };
 
-  for (const auto &[node_count, label_size] : test_configs) {
-    std::cout << "\n=== Benchmark: " << node_count << " nodes, " << label_size
-              << " labels per node ===" << std::endl;
+    node_manager_->HandleGetAllNodeInfo(request, &reply, send_reply_callback);
 
-    GcsNodeManagerBenchmark benchmark;
-    benchmark.SetupNodes(node_count, label_size);
+    if (!callback_called) {
+      state.SkipWithError("Callback not called");
+      return;
+    }
 
-    benchmark.BenchmarkGetAllNodeInfo(iterations);
-    benchmark.BenchmarkGetAllNodeInfoLight(iterations);
+    // Calculate response size for reporting
+    benchmark::DoNotOptimize(reply);
+    for (const auto &node : reply.node_info_list()) {
+      total_bytes += node.ByteSizeLong();
+    }
   }
+
+  // Report metrics
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(total_bytes);
+  state.SetLabel(absl::StrFormat("nodes=%d,labels=%d",
+                                 static_cast<int>(state.range(0)),
+                                 static_cast<int>(state.range(1))));
 }
+
+BENCHMARK_DEFINE_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeInfoLight)
+(benchmark::State &state) {
+  size_t total_bytes = 0;
+
+  for (auto _ : state) {
+    rpc::GetAllNodeInfoLightRequest request;
+    rpc::GetAllNodeInfoLightReply reply;
+
+    bool callback_called = false;
+    auto send_reply_callback =
+        [&callback_called](Status status, std::function<void()>, std::function<void()>) {
+          callback_called = true;
+        };
+
+    node_manager_->HandleGetAllNodeInfoLight(request, &reply, send_reply_callback);
+
+    if (!callback_called) {
+      state.SkipWithError("Callback not called");
+      return;
+    }
+
+    // Calculate response size for reporting
+    benchmark::DoNotOptimize(reply);
+    for (const auto &node : reply.node_info_list()) {
+      total_bytes += node.ByteSizeLong();
+    }
+  }
+
+  // Report metrics
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(total_bytes);
+  state.SetLabel(absl::StrFormat("nodes=%d,labels=%d",
+                                 static_cast<int>(state.range(0)),
+                                 static_cast<int>(state.range(1))));
+}
+
+// Register benchmarks with various configurations
+// Args: {node_count, label_count}
+BENCHMARK_REGISTER_F(GcsNodeManagerBenchmarkFixture, BM_HandleGetAllNodeInfo)
+    ->Args({10, 0})     // Small cluster, no labels
+    ->Args({10, 5})     // Small cluster, few labels
+    ->Args({10, 20})    // Small cluster, moderate labels
+    ->Args({10, 50})    // Small cluster, many labels
+    ->Args({100, 0})    // Medium cluster, no labels
+    ->Args({100, 5})    // Medium cluster, few labels
+    ->Args({100, 20})   // Medium cluster, moderate labels
+    ->Args({100, 50})   // Medium cluster, many labels
+    ->Args({1000, 5})   // Large cluster, few labels
+    ->Args({1000, 20})  // Large cluster, moderate labels
+    ->Args({5000, 5})   // Very large cluster, few labels
+    ->Args({10000, 5})  // Huge cluster, few labels
+    ->Args({30000, 5})  // Massive cluster, few labels
+    ->Unit(benchmark::kMicrosecond);
+
+BENCHMARK_REGISTER_F(GcsNodeManagerBenchmarkFixture, BM_HandleGetAllNodeInfoLight)
+    ->Args({10, 0})     // Small cluster, no labels
+    ->Args({10, 5})     // Small cluster, few labels
+    ->Args({10, 20})    // Small cluster, moderate labels
+    ->Args({10, 50})    // Small cluster, many labels
+    ->Args({100, 0})    // Medium cluster, no labels
+    ->Args({100, 5})    // Medium cluster, few labels
+    ->Args({100, 20})   // Medium cluster, moderate labels
+    ->Args({100, 50})   // Medium cluster, many labels
+    ->Args({1000, 5})   // Large cluster, few labels
+    ->Args({1000, 20})  // Large cluster, moderate labels
+    ->Args({5000, 5})   // Very large cluster, few labels
+    ->Args({10000, 5})  // Huge cluster, few labels
+    ->Args({30000, 5})  // Massive cluster, few labels
+    ->Unit(benchmark::kMicrosecond);
 
 }  // namespace gcs
 }  // namespace ray
 
-int main(int argc, char **argv) {
-  std::cout << "GcsNodeManager Benchmark\n";
-  std::cout << "========================\n";
-  ray::gcs::RunBenchmarks();
-  return 0;
-}
+BENCHMARK_MAIN();
