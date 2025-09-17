@@ -934,6 +934,9 @@ class RequestRouter(ABC):
                     if replicas:
                         yield replicas
 
+                if pending_request is None:
+                    continue
+
                 # We have a slight unintended behavior when enabled locality routing
                 # for both node and AZ. The intention is to try same node first,
                 # then try same AZ if node fails, then try everything else until a
