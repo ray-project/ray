@@ -346,17 +346,13 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
-        total_inqueue_bytes = 0
-        total_inqueue_blocks = 0
         for i, inqueue in enumerate(self.input_queues):
             ref = inqueue.pop()
             if ref is not None:
-                total_inqueue_bytes += inqueue.memory_usage
-                total_inqueue_blocks += inqueue.num_blocks
+                self.op.metrics.num_external_inqueue_blocks = inqueue.memory_usage
+                self.op.metrics.num_external_inqueue_bytes = inqueue.num_blocks
                 self.op.add_input(ref, input_index=i)
-                
-        self.op.metrics.num_external_inqueue_blocks = total_inqueue_blocks
-        self.op.metrics.num_external_inqueue_bytes = total_inqueue_bytes
+                return
 
         assert False, "Nothing to dispatch"
 
