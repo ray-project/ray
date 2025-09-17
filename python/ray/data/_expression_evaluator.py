@@ -37,7 +37,7 @@ def _is_pa_string_type(t: pa.DataType) -> bool:
     return pa.types.is_string(t) or pa.types.is_large_string(t)
 
 
-def _is_string_like(x: Any) -> bool:
+def _is_pa_string_like(x: Any) -> bool:
     if isinstance(x, (pa.Array, pa.ChunkedArray)):
         t = x.type
         if pa.types.is_dictionary(t):
@@ -80,7 +80,7 @@ def _to_pa_string_input(x: Any) -> Any:
 
 def _pa_add_or_concat(left: Any, right: Any) -> Any:
     # If either side is string-like, perform string concatenation.
-    if _is_string_like(left) or _is_string_like(right):
+    if _is_pa_string_like(left) or _is_pa_string_like(right):
         left_input = _to_pa_string_input(left)
         right_input = _to_pa_string_input(right)
         return pc.binary_join_element_wise(left_input, right_input, "")
