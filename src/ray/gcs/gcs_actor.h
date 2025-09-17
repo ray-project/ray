@@ -22,6 +22,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/export_actor_data.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -41,10 +42,14 @@ class GcsActor {
   explicit GcsActor(
       rpc::ActorTableData actor_table_data,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
-          counter)
+          counter,
+      observability::RayEventRecorderInterface *recorder,
+      const std::string &session_name)
       : actor_table_data_(std::move(actor_table_data)),
         counter_(std::move(counter)),
-        export_event_write_enabled_(IsExportAPIEnabledActor()) {
+        export_event_write_enabled_(IsExportAPIEnabledActor()),
+        ray_event_recorder_(recorder),
+        session_name_(session_name) {
     RefreshMetrics();
   }
 
@@ -58,11 +63,15 @@ class GcsActor {
       rpc::ActorTableData actor_table_data,
       rpc::TaskSpec task_spec,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
-          counter)
+          counter,
+      observability::RayEventRecorderInterface *recorder,
+      const std::string &session_name)
       : actor_table_data_(std::move(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
-        export_event_write_enabled_(IsExportAPIEnabledActor()) {
+        export_event_write_enabled_(IsExportAPIEnabledActor()),
+        ray_event_recorder_(recorder),
+        session_name_(session_name) {
     lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
@@ -77,10 +86,14 @@ class GcsActor {
       rpc::TaskSpec task_spec,
       std::string ray_namespace,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
-          counter)
+          counter,
+      observability::RayEventRecorderInterface *recorder,
+      const std::string &session_name)
       : task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
-        export_event_write_enabled_(IsExportAPIEnabledActor()) {
+        export_event_write_enabled_(IsExportAPIEnabledActor()),
+        ray_event_recorder_(recorder),
+        session_name_(session_name) {
     RAY_CHECK(task_spec_->type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec_->actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -271,6 +284,9 @@ class GcsActor {
   /// If true, actor events are exported for Export API
   bool export_event_write_enabled_ = false;
   std::unique_ptr<LeaseSpecification> lease_spec_;
+  /// Event recorder and session name for Ray events (optional)
+  observability::RayEventRecorderInterface *ray_event_recorder_ = nullptr;
+  std::string session_name_;
 };
 
 using RestartActorForLineageReconstructionCallback =
