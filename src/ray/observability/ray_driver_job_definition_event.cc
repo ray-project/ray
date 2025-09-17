@@ -32,7 +32,8 @@ RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData
   data_.mutable_config()->mutable_metadata()->insert(data.config().metadata().begin(),
                                                      data.config().metadata().end());
 
-  data_.set_serialized_runtime_env(data.config().runtime_env_info().serialized_runtime_env());
+  data_.set_serialized_runtime_env(
+      data.config().runtime_env_info().serialized_runtime_env());
 
   auto runtime_env_uris = runtime_env_info->mutable_uris();
   runtime_env_uris->set_working_dir_uri(
