@@ -326,10 +326,11 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
         candidate_paths
     ), f"No controller log candidates found; checked base {base_logs_dir}"
 
-    found = {"payload": None}
+    found = {"payloads": []}
 
     def _scan_for_snapshot() -> bool:
         try:
+            collected = []
             for path in candidate_paths:
                 if not os.path.exists(path):
                     continue
@@ -342,10 +343,13 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
                                 payload_obj = json.loads(payload_str)
                                 if payload_obj.get("deployment") != DEPLOY_NAME:
                                     continue
-                                found["payload"] = payload_obj
-                                return True
+                                collected.append(payload_obj)
                             except Exception:
                                 pass
+            # Keep only in-order snapshots for this test
+            if len(collected) == 2:
+                found["payloads"] = collected[:2]
+                return True
             return False
         except Exception:
             return False
@@ -353,11 +357,13 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     # Wait up to ~60s for the snapshot to appear.
     wait_for_condition(_scan_for_snapshot, timeout=60)
 
-    payload = found["payload"]
-    assert isinstance(payload, dict)
+    payloads = found["payloads"]
+    assert isinstance(payloads, list) and len(payloads) == 2
 
-    # Basic shape checks.
-    for key in [
+    first, second = payloads[0], payloads[1]
+
+    # Basic shape checks for both snapshots
+    required_keys = [
         "timestamp_s",
         "app",
         "deployment",
@@ -369,20 +375,42 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
         "metrics_health",
         "decisions",
         "policy_name",
-    ]:
-        assert key in payload, f"missing key: {key}"
+        "look_back_period_s",
+    ]
+    for p in (first, second):
+        assert isinstance(p, dict)
+        for key in required_keys:
+            assert key in p, f"missing key: {key}"
 
-    # Field-specific assertions.
-    assert payload["app"] == SERVE_DEFAULT_APP_NAME
-    assert payload["deployment"] == DEPLOY_NAME
-    assert isinstance(payload["current_replicas"], int)
-    assert isinstance(payload["target_replicas"], int)
-    assert isinstance(payload["min_replicas"], int)
-    assert isinstance(payload["max_replicas"], int)
-    assert isinstance(payload["metrics"], dict)
-    assert "total_requests" in payload["metrics"]
-    assert isinstance(payload["decisions"], list)
-    assert len(payload["decisions"]) >= 1
+    # Field-specific assertions
+    for p in (first, second):
+        assert p["app"] == SERVE_DEFAULT_APP_NAME
+        assert p["deployment"] == DEPLOY_NAME
+        assert p["min_replicas"] == autoscaling_config["min_replicas"]  # 1
+        assert p["max_replicas"] == autoscaling_config["max_replicas"]  # 2
+        assert isinstance(p["metrics"], dict)
+        assert p["metrics"].get("queued_requests") == 0.0
+        assert p["metrics"].get("total_requests") == 0.0
+        assert p["policy_name"] == (
+            "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        )
+
+    # First snapshot: 0 -> 1, scaling up, metrics initially unavailable
+    assert first["current_replicas"] == 0
+    assert first["target_replicas"] == 1
+    assert first["scaling_status"] == "scaling up"
+    assert "METRICS_UNAVAILABLE" in first.get("errors", [])
+
+    # Second snapshot: 1 -> 1, stable
+    assert second["current_replicas"] == 1
+    assert second["target_replicas"] == 1
+    assert second["scaling_status"] == "stable"
+    assert second.get("errors", []) == []
+
+    # Decisions must reflect the two-step sequence: 0->1 then 1->1
+    assert isinstance(second["decisions"], list)
+    pairs = [(d.get("from"), d.get("to")) for d in second["decisions"]]
+    assert pairs == [(0, 1), (1, 1)]
 
 
 if __name__ == "__main__":
