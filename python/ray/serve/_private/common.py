@@ -768,16 +768,16 @@ class AutoscalingStatus(str, Enum):
 @dataclass
 class DecisionRecord:
     timestamp_s: str
-    prev_num_replicas: int
     curr_num_replicas: int
+    target_num_replicas: int
     reason: str
     policy_name: Optional[str] = None
 
     def to_log_dict(self) -> Dict[str, Any]:
         return {
             "timestamp_s": self.timestamp_s,
-            "from": self.prev_num_replicas,
-            "to": self.curr_num_replicas,
+            "current_num_replicas": self.curr_num_replicas,
+            "target_num_replicas": self.target_num_replicas,
             "reason": self.reason,
         }
 

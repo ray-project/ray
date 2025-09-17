@@ -278,8 +278,8 @@ class AutoscalingState:
         self._decision_history.append(
             DecisionRecord(
                 timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                prev_num_replicas=ctx.current_num_replicas,
-                curr_num_replicas=decision_num_replicas,
+                curr_num_replicas=ctx.current_num_replicas,
+                target_num_replicas=decision_num_replicas,
                 reason=f"current={ctx.current_num_replicas}, target={decision_num_replicas}",
                 policy_name=getattr(ctx.config.policy, "name", None),
             )

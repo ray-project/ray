@@ -409,7 +409,10 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 
     # Decisions must reflect the two-step sequence: 0->1 then 1->1
     assert isinstance(second["decisions"], list)
-    pairs = [(d.get("from"), d.get("to")) for d in second["decisions"]]
+    pairs = [
+        (d.get("current_num_replicas"), d.get("target_num_replicas"))
+        for d in second["decisions"]
+    ]
     assert pairs == [(0, 1), (1, 1)]
 
 
