@@ -434,11 +434,11 @@ class Test(dict):
         """
         return self["cluster"]["byod"].get("post_build_script")
 
-    def get_byod_lock_file(self) -> Optional[str]:
+    def get_byod_python_depset(self) -> Optional[str]:
         """
         Returns the lock file path.
         """
-        return self["cluster"]["byod"].get("lock_file", None)
+        return self["cluster"]["byod"].get("python_depset", None)
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
