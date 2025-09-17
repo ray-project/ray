@@ -3,8 +3,7 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
 
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule, LogicalOperatorSupportsProjectionPushdown
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.expressions import Expr
@@ -40,11 +39,11 @@ class ProjectionPushdown(Rule):
     def _pushdown_project(cls, op: LogicalOperator) -> LogicalOperator:
         if isinstance(op, Project):
             # Push-down projections into read op
-            if cls._is_projectable_read(op):
+            if cls._supports_projection_pushdown(op):
                 project_op: Project = op
-                read_op: Read = op.input_dependency
+                target_op: LogicalOperatorSupportsProjectionPushdown = op.input_dependency
 
-                return cls._try_combine(read_op, project_op)
+                return cls._try_combine(target_op, project_op)
 
             # Otherwise, fuse projections into a single op
             elif isinstance(op.input_dependency, Project):
@@ -56,11 +55,10 @@ class ProjectionPushdown(Rule):
         return op
 
     @classmethod
-    def _is_projectable_read(cls, op: Project) -> bool:
+    def _supports_projection_pushdown(cls, op: Project) -> bool:
         # NOTE: Currently only projecting into Parquet is supported
-        return isinstance(op.input_dependency, Read) and isinstance(
-            op.input_dependency._datasource, ParquetDatasource
-        )
+        input_op = op.input_dependency
+        return isinstance(input_op, LogicalOperatorSupportsProjectionPushdown) and input_op.supports_projection_pushdown()
 
     @staticmethod
     def _fuse(inner_op: Project, outer_op: Project) -> Project:
@@ -112,18 +110,21 @@ class ProjectionPushdown(Rule):
             )
 
     @staticmethod
-    def _try_combine(read_op: Read, project_op: Project) -> LogicalOperator:
+    def _try_combine(
+        target_op: LogicalOperatorSupportsProjectionPushdown,
+        project_op: Project,
+    ) -> LogicalOperator:
         # For now, don't push down expressions into `Read` operators
         # Only handle traditional column projections
         if project_op.exprs:
             # Cannot push expressions into `Read`, return unchanged
             return project_op
 
-        read_op_spec = _get_projection_spec(read_op)
+        target_op_spec = _get_projection_spec(target_op)
         project_op_spec = _get_projection_spec(project_op)
 
         new_spec = _combine_projection_specs(
-            prev_spec=read_op_spec, new_spec=project_op_spec
+            prev_spec=target_op_spec, new_spec=project_op_spec
         )
 
         logger.debug(
@@ -131,14 +132,7 @@ class ProjectionPushdown(Rule):
             f"(projection columns = {new_spec.cols}, remap = {new_spec.cols_remap})"
         )
 
-        # Make a sahllow copy of the `Read` and `ParquetDatasource` to avoid
-        # modifying in-place
-        read_op = copy.copy(read_op)
-        pqd: ParquetDatasource = copy.copy(read_op._datasource)
-
-        pqd._data_columns = new_spec.cols
-
-        return read_op
+        return target_op.apply_projection(new_spec.cols)
 
 
 def _combine_expressions(
@@ -179,12 +173,10 @@ def _get_projection_spec(op: Union[Project, Read]) -> _ProjectSpec:
             exprs=op.exprs,
         )
     elif isinstance(op, Read):
-        assert isinstance(op._datasource, ParquetDatasource)
-
-        pqd: ParquetDatasource = op._datasource
+        assert op.supports_projection_pushdown()
 
         return _ProjectSpec(
-            cols=pqd._data_columns,
+            cols=op.get_current_projection(),
             cols_remap=None,
             exprs=None,
         )
