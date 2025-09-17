@@ -179,8 +179,6 @@ def test_ray_installation() -> None:
             "BUILD_TYPE=debug",
             "--build-arg",
             "BUILDKITE_CACHE_READONLY=",
-            "--build-arg",
-            "RAY_DISABLE_EXTRA_CPP=0",
             "-f",
             "/ray/ci/ray_ci/tests.env.Dockerfile",
             "/ray",
