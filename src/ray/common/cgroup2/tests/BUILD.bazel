@@ -48,6 +48,9 @@ ray_cc_test(
 ray_cc_test(
     name = "noop_cgroup_test",
     srcs = ["noop_cgroup_test.cc"],
+    tags = [
+        "team:core",
+    ],
     deps = [
         "//src/ray/common/cgroup2:noop_cgroup_targets",
         "@com_google_googletest//:gtest_main",
