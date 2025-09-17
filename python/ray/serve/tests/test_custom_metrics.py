@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from typing import Dict
 
@@ -83,10 +84,9 @@ class TestCustomServeMetrics:
                 self.counter += 1
                 return "Hello, world"
 
-            def record_autoscaling_stats(self) -> Dict[str, int]:
+            async def record_autoscaling_stats(self) -> Dict[str, int]:
                 # Block here until it is forced to cancel due to timeout beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
-                while True:
-                    pass
+                await asyncio.sleep(1000)
 
         app_name = "test_custom_metrics_app"
         handle = serve.run(DummyMetricTimeout.bind(), name=app_name, route_prefix="/")
