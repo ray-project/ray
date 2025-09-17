@@ -48,6 +48,23 @@ def _create_test_manager(
     )
 
 
+def _invoke_build(tmpdir: str, config_path: str, name: Optional[str] = None):
+    uv_cache_dir = Path(tmpdir) / "uv_cache"
+    cmd = [
+        config_path,
+        "--workspace-dir",
+        tmpdir,
+        "--uv-cache-dir",
+        uv_cache_dir.as_posix(),
+    ]
+    if name:
+        cmd.extend(["--name", name])
+    return CliRunner().invoke(
+        build,
+        cmd,
+    )
+
+
 def _overwrite_config_file(tmpdir: str, depset: Depset):
     with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
         f.write(
@@ -722,6 +739,16 @@ class TestCli(unittest.TestCase):
             output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
+
+    def test_expand_op_from_imported_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            result = _invoke_build(tmpdir, "test-2.depsets.yaml")
+            assert result.exit_code == 0
+            assert (
+                "Dependency set expand_imported_depset__py311_cpu compiled successfully"
+                in result.output
+            )
 
 
 if __name__ == "__main__":

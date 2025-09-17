@@ -82,7 +82,11 @@ def test_import():
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(path=Path(tmpdir) / "test-2.depsets.yaml")
-        assert config.depsets[0].name == "expand_imported_depset__py311_cpu"
+        assert config.depsets[0].name == "ray_base_test_depset"
+        print(config.depsets)
+        assert "expand_imported_depset__py312_cpu" in [
+            depset.name for depset in config.depsets
+        ]
 
 
 if __name__ == "__main__":
