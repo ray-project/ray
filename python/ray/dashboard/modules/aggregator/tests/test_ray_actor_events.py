@@ -32,11 +32,6 @@ def wait_for_dashboard_agent_available(cluster):
     wait_for_condition(lambda: get_dashboard_agent_address() is not None)
 
 
-class A:
-    def ping(self):
-        return "pong"
-
-
 def test_ray_actor_events(ray_start_cluster, httpserver):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -49,6 +44,12 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
         },
     )
     cluster.wait_for_nodes()
+    all_nodes_ids = [node.node_id for node in cluster.list_all_nodes()]
+
+    class A:
+        def ping(self):
+            return "pong"
+
     ray.init(address=cluster.address)
     wait_for_dashboard_agent_available(cluster)
 
@@ -64,15 +65,24 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     # We expect batched events containing definition then lifecycle
     assert len(req_json) >= 2
     # Verify event types and IDs exist
-    assert base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex() != ""
-    assert base64.b64decode(req_json[1]["actorLifecycleEvent"]["actorId"]).hex() != ""
-    assert req_json[1]["actorLifecycleEvent"]["stateTransitions"][0]["state"] in [
-        "DEPENDENCIES_UNREADY",
-        "PENDING_CREATION",
-        "ALIVE",
-        "RESTARTING",
-        "DEAD",
-    ]
+    assert base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex() == a._actor_id.hex()
+    # Verify ActorId and state for ActorLifecycleEvents
+    has_alive_state = False
+    for actorLifeCycleEvent in req_json[1:]:
+        assert base64.b64decode(actorLifeCycleEvent["actorLifecycleEvent"]["actorId"]).hex() == a._actor_id.hex()
+        for stateTransition in actorLifeCycleEvent["actorLifecycleEvent"]["stateTransitions"]:
+            assert stateTransition["state"] in [
+                "DEPENDENCIES_UNREADY",
+                "PENDING_CREATION",
+                "ALIVE",
+                "RESTARTING",
+                "DEAD",
+            ]
+            if stateTransition["state"] == "ALIVE":
+                has_alive_state = True
+                assert base64.b64decode(stateTransition["nodeId"]).hex() in all_nodes_ids
+                assert base64.b64decode(stateTransition["workerId"]).hex() != ""
+    assert has_alive_state
 
 
 if __name__ == "__main__":
