@@ -40,7 +40,6 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.dashboard.modules.aggregator.constants import publisher_tag_key
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )

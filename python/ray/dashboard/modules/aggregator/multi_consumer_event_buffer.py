@@ -12,7 +12,7 @@ from ray.core.generated import (
     events_base_event_pb2,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
-from ray.dashboard.modules.aggregator.constants import aggregator_agent_metric_prefix
+from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 
 
 @dataclass
@@ -56,7 +56,7 @@ class MultiConsumerEventBuffer:
         self._consumer_tag_key = consumer_tag_key
         self._metric_recorder = OpenTelemetryMetricRecorder()
         self.evicted_events_metric_name = (
-            f"{aggregator_agent_metric_prefix}_queue_dropped_events"
+            f"{AGGREGATOR_AGENT_METRIC_PREFIX}_queue_dropped_events"
         )
         self._metric_recorder.register_counter_metric(
             self.evicted_events_metric_name,
