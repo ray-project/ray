@@ -97,6 +97,7 @@ from fastapi import FastAPI
 from ray import serve
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
+
 def fastapi_factory():
     app = FastAPI()
 
@@ -108,6 +109,7 @@ def fastapi_factory():
         return {"message": "Instrumented endpoint"}
 
     return app
+
 
 # Using default ingress deployment class
 deployment = serve.deployment(serve.ingress(fastapi_factory)())
