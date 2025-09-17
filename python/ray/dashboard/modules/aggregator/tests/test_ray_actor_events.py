@@ -66,11 +66,14 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     # Verify event types and IDs exist
     assert base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex() != ""
     assert base64.b64decode(req_json[1]["actorLifecycleEvent"]["actorId"]).hex() != ""
-    assert (
-        req_json[1]["actorLifecycleEvent"]["stateTransitions"][0]["state"]
-        in ["DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "RESTARTING", "DEAD"]
-    )
+    assert req_json[1]["actorLifecycleEvent"]["stateTransitions"][0]["state"] in [
+        "DEPENDENCIES_UNREADY",
+        "PENDING_CREATION",
+        "ALIVE",
+        "RESTARTING",
+        "DEAD",
+    ]
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__])) 
+    sys.exit(pytest.main(["-v", __file__]))

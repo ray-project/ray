@@ -175,8 +175,7 @@ class GcsActorManagerTest : public ::testing::Test {
         [](const ActorID &actor_id) {},
         *worker_client_pool_,
         /*ray_event_recorder=*/fake_ray_event_recorder_,
-        /*session_name=*/""
-      );
+        /*session_name=*/"");
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -286,7 +285,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
 "enable_ray_event": true,
 "enable_export_api_write": true
 })");
-  // Use the member variable fake_ray_event_recorder_ that's already connected to GcsActorManager
+  // Use the member variable fake_ray_event_recorder_ that's already connected to
+  // GcsActorManager
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   rpc::CreateActorRequest create_actor_request;

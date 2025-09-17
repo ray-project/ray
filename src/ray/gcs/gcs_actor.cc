@@ -17,9 +17,9 @@
 #include <memory>
 #include <string>
 
-#include "ray/util/logging.h"
 #include "ray/observability/ray_actor_definition_event.h"
 #include "ray/observability/ray_actor_lifecycle_event.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
@@ -96,30 +96,38 @@ void GcsActor::WriteActorExportEvent() const {
   // If ray event is enabled and recorder present, emit actor events to the aggregator.
   if (RayConfig::instance().enable_ray_event() && ray_event_recorder_ != nullptr) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    // Emit definition event only when the actor is first registered (DEPENDENCIES_UNREADY)
+    // Emit definition event only when the actor is first registered
+    // (DEPENDENCIES_UNREADY)
     if (actor_table_data_.state() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
       events.push_back(std::make_unique<observability::RayActorDefinitionEvent>(
           actor_table_data_, session_name_));
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY, "",
+          actor_table_data_,
+          rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
+          "",
           session_name_));
     } else if (actor_table_data_.state() == rpc::ActorTableData::PENDING_CREATION) {
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, rpc::events::ActorLifecycleEvent::PENDING_CREATION, "",
+          actor_table_data_,
+          rpc::events::ActorLifecycleEvent::PENDING_CREATION,
+          "",
           session_name_));
     } else if (actor_table_data_.state() == rpc::ActorTableData::ALIVE) {
       const std::string worker_id = actor_table_data_.address().worker_id();
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, rpc::events::ActorLifecycleEvent::ALIVE, worker_id,
+          actor_table_data_,
+          rpc::events::ActorLifecycleEvent::ALIVE,
+          worker_id,
           session_name_));
     } else if (actor_table_data_.state() == rpc::ActorTableData::RESTARTING) {
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, rpc::events::ActorLifecycleEvent::RESTARTING, "",
+          actor_table_data_,
+          rpc::events::ActorLifecycleEvent::RESTARTING,
+          "",
           session_name_));
     } else if (actor_table_data_.state() == rpc::ActorTableData::DEAD) {
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, rpc::events::ActorLifecycleEvent::DEAD, "",
-          session_name_));
+          actor_table_data_, rpc::events::ActorLifecycleEvent::DEAD, "", session_name_));
     }
     if (!events.empty()) {
       ray_event_recorder_->AddEvents(std::move(events));
