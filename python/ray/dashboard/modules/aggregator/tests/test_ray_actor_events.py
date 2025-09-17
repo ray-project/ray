@@ -65,12 +65,22 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     # We expect batched events containing definition then lifecycle
     assert len(req_json) >= 2
     # Verify event types and IDs exist
-    assert base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex() == a._actor_id.hex()
+    assert (
+        base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex()
+        == a._actor_id.hex()
+    )
     # Verify ActorId and state for ActorLifecycleEvents
     has_alive_state = False
     for actorLifeCycleEvent in req_json[1:]:
-        assert base64.b64decode(actorLifeCycleEvent["actorLifecycleEvent"]["actorId"]).hex() == a._actor_id.hex()
-        for stateTransition in actorLifeCycleEvent["actorLifecycleEvent"]["stateTransitions"]:
+        assert (
+            base64.b64decode(
+                actorLifeCycleEvent["actorLifecycleEvent"]["actorId"]
+            ).hex()
+            == a._actor_id.hex()
+        )
+        for stateTransition in actorLifeCycleEvent["actorLifecycleEvent"][
+            "stateTransitions"
+        ]:
             assert stateTransition["state"] in [
                 "DEPENDENCIES_UNREADY",
                 "PENDING_CREATION",
@@ -80,7 +90,9 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
             ]
             if stateTransition["state"] == "ALIVE":
                 has_alive_state = True
-                assert base64.b64decode(stateTransition["nodeId"]).hex() in all_nodes_ids
+                assert (
+                    base64.b64decode(stateTransition["nodeId"]).hex() in all_nodes_ids
+                )
                 assert base64.b64decode(stateTransition["workerId"]).hex() != ""
     assert has_alive_state
 
