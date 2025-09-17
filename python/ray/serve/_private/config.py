@@ -190,7 +190,7 @@ class DeploymentConfig(BaseModel):
 
     max_constructor_retry_count: PositiveInt = Field(
         default=DEFAULT_CONSTRUCTOR_RETRY_COUNT,
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
 
     # Contains the names of deployment options manually set by the user
