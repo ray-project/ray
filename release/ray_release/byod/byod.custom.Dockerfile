@@ -6,9 +6,5 @@ FROM "$BASE_IMAGE"
 
 ARG POST_BUILD_SCRIPT
 
-ARG LOCK_FILE=dummy.lock
-
-COPY "$LOCK_FILE" /home/ray/lock_file.lock
-
 COPY "$POST_BUILD_SCRIPT" /tmp/post_build_script.sh
 RUN /tmp/post_build_script.sh

@@ -19,28 +19,6 @@ def test_custom_byod_build(mock_build_anyscale_custom_byod_image):
             "test-base-image",
             "--post-build-script",
             "test_post_build_script.sh",
-            "--lock-file",
-            "lock_file.lock",
-        ],
-    )
-    assert result.exit_code == 0
-
-
-@patch("ray_release.scripts.custom_byod_build.build_anyscale_custom_byod_image")
-def test_custom_byod_build_missing_optional_field(
-    mock_build_anyscale_custom_byod_image,
-):
-    mock_build_anyscale_custom_byod_image.return_value = None
-    runner = CliRunner()
-    result = runner.invoke(
-        main,
-        [
-            "--image-name",
-            "test-image",
-            "--base-image",
-            "test-base-image",
-            "--post-build-script",
-            "test_post_build_script.sh",
         ],
     )
     assert result.exit_code == 0
