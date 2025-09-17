@@ -11,12 +11,14 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
 )
+from ray_release.buildkite.step import get_step_for_test_group
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
 from ray_release.logger import logger
 from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
 
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
 
 @click.command(
