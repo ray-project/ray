@@ -3,8 +3,7 @@ import functools
 from typing import Any, Dict, Optional, Union, List
 
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.logical.interfaces import SourceOperator, \
-    LogicalOperator
+from ray.data._internal.logical.interfaces import SourceOperator, SupportsProjectionPushdown
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.block import (
     BlockMetadata,
@@ -13,20 +12,7 @@ from ray.data.block import (
 from ray.data.datasource.datasource import Datasource, Reader
 
 
-class LogicalOperatorProjectionPushdownMixin(LogicalOperator):
-    """Mixin for reading operators supporting projection pushdown"""
-
-    def supports_projection_pushdown(self) -> bool:
-        return False
-
-    def get_current_projection(self) -> Optional[List[str]]:
-        return None
-
-    def apply_projection(self, columns: Optional[List[str]]) -> LogicalOperator:
-        return self
-
-
-class Read(AbstractMap, SourceOperator, LogicalOperatorProjectionPushdownMixin):
+class Read(AbstractMap, SourceOperator, SupportsProjectionPushdown):
     """Logical operator for read."""
 
     def __init__(
