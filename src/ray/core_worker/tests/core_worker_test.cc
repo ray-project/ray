@@ -666,6 +666,14 @@ class CoreWorkerPubsubWorkerObjectEvictionChannelTest
 
 TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
        HandlePubsubCommandBatchIdempotency) {
+  // should_free_object: determines whether the object is freed from plasma. This is used
+  // to trigger AddObjectOutOfScopeOrFreedCallback in HandlePubsubCommandBatch which
+  // stores the unpin_object callback that publishes the message to the
+  // WORKER_OBJECT_EVICTION channel
+  // should_free_object == true: the object is freed from plasma and we expect the message
+  // to the WORKER_OBJECT_EVICTION channel to be published.
+  // should_free_object == false: the object is not freed and we expect the message to the
+  // WORKER_OBJECT_EVICTION channel to not be published.
   bool should_free_object = GetParam();
 
   auto subscriber_id = NodeID::FromRandom();
@@ -688,6 +696,8 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
 
   rpc::PubsubCommandBatchReply command_reply1;
   rpc::PubsubCommandBatchReply command_reply2;
+  // Each call to HandlePubsubCommandBatch causes the reference counter to store the
+  // unpin_object callback that publishes the WORKER_OBJECT_EVICTION message
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
       &command_reply1,
@@ -702,6 +712,8 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
       });
 
   if (should_free_object) {
+    // Triggers the unpin_object callbacks that publish the message to the
+    // WORKER_OBJECT_EVICTION channel
     reference_counter_->FreePlasmaObjects({object_id});
   }
 
@@ -712,6 +724,13 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
 
   rpc::PubsubLongPollingReply reply;
 
+  // should_free_object == true: Each call to HandlePubsubCommandBatch adds an
+  // unpin_object callback that is triggered via FreePlasmaObjects which publishes the
+  // message to the WORKER_OBJECT_EVICTION channel, hence we have 1 publish per callback
+  // so 2 in total. The long poll connection is closed
+  // should_free_object == false: Since FreePlasmaObjects is not called, the unpin_object
+  // callbacks are not triggered and we have 0 publishes. NOTE: The long poll connection
+  // is not closed when should_free_object == false since there was no publish.
   core_worker_->HandlePubsubLongPolling(
       request,
       &reply,
@@ -719,8 +738,6 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
         ASSERT_TRUE(s.ok());
       });
 
-  // Each call to HandlePubsubCommandBatch immediately publishes a message since the
-  // object is already freed
   int expected_messages = should_free_object ? 2 : 0;
   EXPECT_EQ(reply.pub_messages_size(), expected_messages);
 
@@ -733,6 +750,11 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
   }
 
   if (!should_free_object) {
+    // Since the long poll connection is not closed, we need to flush it. Otherwise this
+    // can trigger undefined behavior since unlike in prod where grpc arena allocates the
+    // reply, here we allocate the reply on the stack. Hence the normal order of
+    // destruction is: reply goes out of scope -> publisher is destructed -> flushes the
+    // reply which access freed memory
     current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
     object_info_publisher_->CheckDeadSubscribers();
   }
@@ -747,6 +769,14 @@ class CoreWorkerPubsubWorkerRefRemovedChannelTest
       public ::testing::WithParamInterface<bool> {};
 
 TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdempotency) {
+  // should_remove_ref: determines whether the object ref is removed from the reference
+  // counter. This is used to trigger RemoveLocalReference in HandlePubsubCommandBatch
+  // which flips the publish_ref_removed flag to true. Once the ref is removed via
+  // RemoveLocalReference, the message to the WORKER_REF_REMOVED channel is published
+  // should_remove_ref == true: the object ref is removed from the reference counter and
+  // we expect the message to the WORKER_REF_REMOVED channel to be published.
+  // should_remove_ref == false: the object ref is not removed from the reference counter
+  // and we expect the message to the WORKER_REF_REMOVED channel to not be published.
   bool should_remove_ref = GetParam();
 
   auto subscriber_id = NodeID::FromRandom();
@@ -776,6 +806,9 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdem
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  // NOTE: unlike in the worker object eviction channel test, the second call to
+  // HandlePubsubComandBatch does not store a unique callback and just turns on
+  // publish_ref_removed which is already true
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
       &command_reply2,
@@ -784,6 +817,8 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdem
       });
 
   if (should_remove_ref) {
+    // This will check the publish_ref_removed flag and publish one
+    // message to the WORKER_REF_REMOVED channel
     reference_counter_->RemoveLocalReference(object_id, nullptr);
   }
 
@@ -794,6 +829,10 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdem
 
   rpc::PubsubLongPollingReply reply;
 
+  // should_remove_ref == true: each call to HandlePubsubCommandBatch modifies the
+  // publish_ref_removed flag and RemoveLocalReference triggers one single publish
+  // should_remove_ref == false: since RemoveLocalReference is not called, the ref remains
+  // in scope and no publish is triggered
   core_worker_->HandlePubsubLongPolling(
       request,
       &reply,
@@ -801,8 +840,6 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdem
         ASSERT_TRUE(s.ok());
       });
 
-  // The second call to HandlePubsubComandBatch overwrites the callback stored so we only
-  // get one message
   int expected_messages = should_remove_ref ? 1 : 0;
   EXPECT_EQ(reply.pub_messages_size(), expected_messages);
 
@@ -814,6 +851,7 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdem
     EXPECT_EQ(msg1.worker_ref_removed_message().borrowed_refs_size(), 0);
   }
   if (!should_remove_ref) {
+    // See the above comment in the worker object eviction channel test
     current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
     object_info_publisher_->CheckDeadSubscribers();
   }
@@ -824,6 +862,9 @@ INSTANTIATE_TEST_SUITE_P(WorkerRefRemovedChannel,
                          ::testing::Values(true, false));
 
 TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
+  // Unlike the other pubsub channel tests, this test starts off with a LongPollingRequest
+  // to test what happens when a HandlePubsubCommandBatch encounters an open long poll
+  // connection
   auto subscriber_id = NodeID::FromRandom();
   auto object_id = ObjectID::FromRandom();
   auto node_id = NodeID::FromRandom();
@@ -833,6 +874,8 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(
       object_id, {}, owner_address, "", object_size, false, true);
+  // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
+  // bumps the sequence id by 1
   reference_counter_->AddObjectLocation(object_id, node_id);
 
   rpc::PubsubLongPollingRequest request;
@@ -858,6 +901,9 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
   real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
   real_sub_message->set_object_id(object_id.Binary());
 
+  // The first call to HandlePubsubCommandBatch publishes the object location. The
+  // publisher stores the first snapshot in the mailbox, sends it to the subscriber, and
+  // closes the long poll connection.
   rpc::PubsubCommandBatchReply command_reply1;
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
@@ -866,6 +912,8 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
         ASSERT_TRUE(status.ok());
       });
 
+  // The second call to HandlePubsubCommandBatch publishes the object location. The
+  // publisher stores the second snapshot in the mailbox.
   rpc::PubsubCommandBatchReply command_reply2;
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
@@ -874,6 +922,10 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
         ASSERT_TRUE(status.ok());
       });
 
+  // Since the max_processed_sequence_id is 0, the publisher sends the second AND first
+  // snapshot of the object location. The first snapshot is not erased until it gets a
+  // long poll request with a max_processed_sequence_id greater or equal to the first
+  // snapshot's sequence id.
   rpc::PubsubLongPollingReply long_polling_reply2;
   core_worker_->HandlePubsubLongPolling(
       request,
@@ -882,8 +934,6 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
         ASSERT_TRUE(s.ok());
       });
 
-  // Each call to HandlePubsubCommandBatch immediately publishes a message containing the
-  // object locations
   EXPECT_EQ(long_polling_reply1.pub_messages_size(), 1);
   EXPECT_EQ(long_polling_reply2.pub_messages_size(), 2);
 
