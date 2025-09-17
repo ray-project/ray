@@ -871,14 +871,19 @@ def _derive_schema(
     if read_schema is not None:
         target_schema = read_schema
     else:
-        print(
-            f">>> [DBG] _derive_schema: {[type(f) for f in list(file_schema)]=}, {list(partition_schema)=}"
-        )
+        file_schema_fields = list(file_schema)
+        partition_schema_fields = list(partition_schema) if partition_schema is not None else []
 
         # Otherwise, fallback to file + partitioning schema by default
         target_schema = pa.schema(
-            fields=list(file_schema)
-            + (list(partition_schema) if partition_schema is not None else []),
+            fields=(
+                file_schema_fields + [
+                    f for f in partition_schema_fields
+                    # Ignore fields from partition schema overlapping with
+                    # file's schema
+                    if file_schema.get_field_index(f.name) == -1
+                ]
+            ),
             metadata=file_schema.metadata,
         )
 
