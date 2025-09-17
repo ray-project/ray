@@ -323,6 +323,10 @@ class ParquetDatasource(Datasource):
                     break
 
     def estimate_inmemory_data_size(self) -> int:
+        # In case of empty projections no data will be read
+        if self._data_columns == []:
+            return 0
+
         return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
