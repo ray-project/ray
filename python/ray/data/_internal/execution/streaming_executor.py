@@ -258,8 +258,10 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            # Reset the scheduling loop duration gauge.
-            self._sched_loop_duration_s.set(0, tags={"dataset": self._dataset_id})
+            # Reset scheduling loop duration + other gauges.
+            self._resource_manager.reset_stats()
+            self.update_metrics(0)
+
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
             # Close the progress bars from top to bottom to avoid them jumping

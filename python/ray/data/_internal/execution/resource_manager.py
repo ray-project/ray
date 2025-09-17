@@ -330,6 +330,19 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
+    def reset_stats(self):
+        """Zero out the budgets, max_bytes_to_read, and other metrics
+        when the streaming executor shutsdown. This is for zeroing out
+        metrics for grafana."""
+        if self._op_resource_allocator is None:
+            return
+        ora = self._op_resource_allocator
+        assert isinstance(ora, ReservationOpResourceAllocator)
+        for op in ora._op_budgets:
+            ora._op_budgets[op] = ExecutionResources.zero()
+        for op in ora._output_budgets:
+            ora._output_budgets[op] = 0.0
+
 
 class OpResourceAllocator(ABC):
     """An interface for dynamic operator resource allocation.
