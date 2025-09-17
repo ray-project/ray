@@ -1139,7 +1139,7 @@ class ApplicationStateManager:
             return {}
         return self._application_states[name].list_deployment_details()
 
-    def update(self):
+    def update(self) -> bool:
         """
         Update each application state.
         Returns:
