@@ -423,4 +423,35 @@ StatusOr<std::unordered_set<std::string>> SysFsCgroupDriver::ReadControllerFile(
   return StatusOr<std::unordered_set<std::string>>(controllers);
 }
 
+Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
+                                             const std::string &process) {
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup));
+  std::filesystem::path cgroup_procs_file_path =
+      cgroup / std::filesystem::path(kCgroupProcsFilename);
+
+  int fd = open(cgroup_procs_file_path.c_str(), O_RDWR);
+
+  if (fd == -1) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Failed to write pid %s to cgroup.procs for cgroup %s with error %s",
+        process,
+        cgroup,
+        strerror(errno)));
+  }
+
+  ssize_t bytes_written = write(fd, process.c_str(), process.size());
+
+  if (bytes_written != static_cast<ssize_t>(process.size())) {
+    close(fd);
+    return Status::InvalidArgument(absl::StrFormat(
+        "Failed to write pid %s to cgroup.procs for cgroup %s with error %s",
+        process,
+        cgroup,
+        strerror(errno)));
+  }
+
+  close(fd);
+  return Status::OK();
+}
+
 }  // namespace ray

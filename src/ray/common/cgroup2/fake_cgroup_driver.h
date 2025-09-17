@@ -126,6 +126,7 @@ class FakeCgroupDriver : public CgroupDriverInterface {
   Status add_constraint_s_ = Status::OK();
   Status available_controllers_s_ = Status::OK();
   Status enabled_controllers_s_ = Status::OK();
+  Status add_process_to_cgroup_s_ = Status::OK();
 
   // These have no side-effects.
   Status CheckCgroupv2Enabled() override { return check_cgroup_enabled_s_; }
@@ -221,6 +222,10 @@ class FakeCgroupDriver : public CgroupDriverInterface {
       return enabled_controllers_s_;
     }
     return (*cgroups_)[cgroup].enabled_controllers_;
+  }
+
+  Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid) override {
+    return add_process_to_cgroup_s_;
   }
 };
 
