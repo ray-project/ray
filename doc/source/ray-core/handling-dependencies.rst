@@ -379,8 +379,8 @@ run a Ray Serve application with `uv run serve run app:main`.
 
 - If you are running on a Ray Cluster, the Ray and Python versions of your uv environment must be the same as the Ray and Python versions of your cluster or you will get a version mismatch exception. There are multiple ways to solve this:
 
-   1. If you are using ephemeral Ray clusters, run the application on a cluster with the right versions.
-   2. If you need to run on a cluster with a different versions, consider modifying the versions of your uv environment by updating the `pyproject.toml` file or by using the `--active` flag with `uv run` (i.e., `uv run --active main.py`).
+  1. If you are using ephemeral Ray clusters, run the application on a cluster with the right versions.
+  2. If you need to run on a cluster with a different versions, consider modifying the versions of your uv environment by updating the `pyproject.toml` file or by using the `--active` flag with `uv run` (i.e., `uv run --active main.py`).
 
 - Use `uv lock` to generate a lockfile and make sure all your dependencies are frozen, so things won't change in uncontrolled ways if a new version of a package gets released.
 
