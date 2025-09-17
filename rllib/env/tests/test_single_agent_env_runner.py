@@ -181,7 +181,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 .environment(env)
                 .env_runners(
                     num_envs_per_env_runner=5,
-                    rollout_fragment_length=64,
+                    rollout_fragment_length=10,
                 )
             )
 
