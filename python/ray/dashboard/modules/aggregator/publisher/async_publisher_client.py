@@ -145,8 +145,14 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
 class AsyncGCSPublisherClient(PublisherClientInterface):
     """Client for publishing ray event batches to GCS."""
 
-    def __init__(self, gcs_stub, timeout: float = PUBLISHER_TIMEOUT_SECONDS) -> None:
-        self._gcs_stub = gcs_stub
+    def __init__(
+        self,
+        async_gcs_ray_event_export_service_stub,
+        timeout: float = PUBLISHER_TIMEOUT_SECONDS,
+    ) -> None:
+        self._async_gcs_ray_event_export_service_stub = (
+            async_gcs_ray_event_export_service_stub
+        )
         self._timeout = timeout
 
     async def publish(
@@ -157,10 +163,11 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
         ],
     ) -> PublishStats:
         events, task_events_metadata = events_batch
-        if not events and (
-            not task_events_metadata
-            or len(task_events_metadata.dropped_task_attempts) == 0
-        ):
+
+        has_task_events_metadata = (
+            task_events_metadata and task_events_metadata.dropped_task_attempts
+        )
+        if not events and not has_task_events_metadata:
             # Nothing to publish -> success but nothing published
             return PublishStats(
                 is_publish_successful=True,
@@ -172,7 +179,9 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
             request = events_event_aggregator_service_pb2.AddEventsRequest(
                 events_data=events_data
             )
-            response = await self._gcs_stub.AddEvents(request, timeout=self._timeout)
+            response = await self._async_gcs_ray_event_export_service_stub.AddEvents(
+                request, timeout=self._timeout
+            )
             if response.status.code != 0:
                 logger.error(f"GCS AddEvents failed: {response.status.message}")
                 return PublishStats(

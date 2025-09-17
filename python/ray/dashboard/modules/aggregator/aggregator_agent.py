@@ -153,15 +153,15 @@ class AggregatorAgent(
             logger.info("Publishing events to GCS is enabled")
             self._event_processing_enabled = True
             self._async_gcs_channel = create_gcs_channel(self.gcs_address, aio=True)
-            self._async_gcs_event_stub = (
+            _async_gcs_ray_event_export_service_stub = (
                 gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
-                    self._async_gcs_channel
+                    self._async_gcs_channel,
                 )
             )
             self._gcs_publisher = RayEventPublisher(
                 name="gcs_publisher",
                 publish_client=AsyncGCSPublisherClient(
-                    gcs_stub=self._async_gcs_event_stub
+                    _async_gcs_ray_event_export_service_stub=_async_gcs_ray_event_export_service_stub
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,

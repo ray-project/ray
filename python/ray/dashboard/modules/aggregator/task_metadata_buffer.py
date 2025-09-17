@@ -5,10 +5,14 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray.core.generated import events_event_aggregator_service_pb2
+from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 
 
 class TaskMetadataBuffer:
-    """Asyncio-safe buffer for accumulating task event metadata and batching it into a bounded queue."""
+    """Asyncio-safe buffer for accumulating task event metadata and batching it into a bounded queue.
+
+    This buffer is used to construct TaskEventsMetadata protobuf messages (defined in events_event_aggregator_service.proto).
+    """
 
     def __init__(
         self,
@@ -27,10 +31,7 @@ class TaskMetadataBuffer:
 
         self._common_metric_tags = common_metric_tags or {}
         self._metric_recorder = OpenTelemetryMetricRecorder()
-        _metric_prefix = "event_aggregator_agent"
-        self._dropped_metadata_count_metric_name = (
-            f"{_metric_prefix}_task_metadata_buffer_dropped_attempts_total"
-        )
+        self._dropped_metadata_count_metric_name = f"{AGGREGATOR_AGENT_METRIC_PREFIX}_task_metadata_buffer_dropped_attempts_total"
         self._metric_recorder.register_counter_metric(
             self._dropped_metadata_count_metric_name,
             "Total number of dropped task attempt metadata entries which were dropped due to buffer being full",

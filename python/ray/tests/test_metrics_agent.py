@@ -40,6 +40,7 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.modules.aggregator.constants import PUBLISHER_TAG_KEY
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
@@ -558,7 +559,7 @@ def test_metrics_export_event_aggregator_agent(
                 m
                 for m in metric_samples
                 if m.name == descriptor
-                and m.labels[publisher_tag_key] == publisher_name
+                and m.labels[PUBLISHER_TAG_KEY] == publisher_name
             ]
             if not samples:
                 return False
@@ -629,7 +630,7 @@ def test_metrics_export_event_aggregator_agent(
         timeout=30,
         retry_interval_ms=1000,
     )
-    print("--------------------------------")
+
     expected_gcs_publisher_metrics_values = {
         "ray_aggregator_agent_published_events_total": 2.0,
         "ray_aggregator_agent_queue_dropped_events_total": 1.0,
