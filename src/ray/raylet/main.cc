@@ -295,9 +295,10 @@ int main(int argc, char *argv[]) {
 
   SetThreadName("raylet");
   // IO Service for node manager.
-  instrumented_io_context main_service{/*emit_metrics=*/true,
-                                       /*running_on_single_thread=*/true,
-                                       "raylet_main_io_context"};
+  instrumented_io_context main_service{
+      /*emit_metrics=*/true,
+      /*running_on_single_thread=*/RayConfig::instance().emit_main_service_metrics(),
+      "raylet_main_io_context"};
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
