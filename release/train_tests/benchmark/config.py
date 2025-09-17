@@ -41,7 +41,7 @@ class RecsysConfig(TaskConfig):
 class RayDataConfig(DataLoaderConfig):
     # NOTE: Optional[int] doesn't play well with argparse.
     local_buffer_shuffle_size: int = -1
-    enable_operator_progress_bars: bool = False
+    enable_operator_progress_bars: bool = True
     ray_data_prefetch_batches: int = 4
     ray_data_override_num_blocks: int = -1
     locality_with_output: bool = False
