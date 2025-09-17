@@ -136,32 +136,33 @@ def _setup_torch_process_group(
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
-    # elif backend == "xla":
-        # # For XLA backend, use the XLA init method
-        # import torch_xla.distributed.xla_backend
-        # dist.init_process_group(
-        #     backend="xla",
-        #     init_method="xla://",  # Use XLA's native init method
-        #     rank=world_rank,
-        #     world_size=world_size,
-        #     timeout=timedelta(seconds=timeout_s),
-        # )
+    elif backend == "xla":
+        # For XLA backend, use the XLA init method
+        import torch_xla.distributed.xla_backend
+        import torch_xla
+        import torch_xla.runtime as xr
+        dist.init_process_group(
+            backend="xla",
+            # init_method="xla://",  # Use XLA's native init method
+            rank=world_rank,
+            world_size=world_size,
+            timeout=timedelta(seconds=timeout_s),
+        )
 
-        # # Sanity logs
-        # try:
-        #     import torch_xla.runtime as xr
-        #     logger.info(
-        #         f">>> [XLA PG] dist rank/size=({dist.get_rank()}/{dist.get_world_size()}), "
-        #         f"xr world_size={xr.world_size()}, "
-        #         f"global_device_count={xr.global_device_count()}, "
-        #         f"local_device_count={xr.local_device_count()}, "
-        #         f"process_index={xr.process_index()}, "
-        #         f"global_ordinal={xr.global_ordinal()}"
-        #     )
-        # except Exception as e:
-        #     logger.warning(f"Failed to log XLA runtime info: {e}")
+        # Sanity logs
+        try:
+            logger.info(
+                f">>> [XLA PG] dist rank/size=({dist.get_rank()}/{dist.get_world_size()}), "
+                f"xr world_size={xr.world_size()}, "
+                f"global_device_count={xr.global_device_count()}, "
+                f"local_device_count={xr.local_device_count()}, "
+                f"process_index={xr.process_index()}, "
+                f"new_rank, global_ordinal={xr.global_ordinal()}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log XLA runtime info: {e}")
 
-        # return
+        return
 
 
 
@@ -206,10 +207,6 @@ def _set_torch_distributed_env_vars():
 class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
 
-    def jls_extract_def(self):
-        # Use a different port for clarity
-        return 
-
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         if not dist.is_available():
             raise RuntimeError("Distributed torch is not available.")
@@ -240,7 +237,7 @@ class _TorchBackend(Backend):
                         worker_group.execute_single_async(
                             i,
                             _setup_torch_process_group,
-                            backend="gloo",
+                            backend="xla",
                             world_rank=i,
                             world_size=len(worker_group),
                             init_method=url,
@@ -303,7 +300,7 @@ class _TorchBackend(Backend):
 
 
             # 3. Execute the setup function on all workers.
-            worker_group.execute(_xla_worker_bootstrap, coord=coordinator)
+            # worker_group.execute(_xla_worker_bootstrap, coord=coordinator)
 
         else:
             # Set the appropriate training backend.
