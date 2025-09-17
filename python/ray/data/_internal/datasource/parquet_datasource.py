@@ -250,18 +250,6 @@ class ParquetDatasource(Datasource):
         #       it to a list
         pq_ds = get_parquet_dataset(list(paths), filesystem, dataset_kwargs)
 
-        # `read_schema` is the schema object that will be used to perform
-        # read operations.
-        # It should be None, unless user has specified the schema or columns.
-        # We don't use the inferred schema for read, because we infer the schema based
-        # on the first file. Thus, files with different schemas will end up producing
-        # blocks with wrong schema.
-        # See https://github.com/ray-project/ray/issues/47960 for more context.
-        read_schema = schema
-        inferred_schema = _infer_schema(
-            pq_ds, schema, columns, partitioning, _block_udf
-        )
-
         # Users can pass both data columns and partition columns in the 'columns'
         # argument. To prevent PyArrow from complaining about missing columns, we
         # separate the partition columns from the data columns. When we read the
@@ -288,8 +276,9 @@ class ParquetDatasource(Datasource):
         self._to_batches_kwargs = to_batch_kwargs
         self._data_columns = data_columns
         self._partition_columns = partition_columns
-        self._read_schema = read_schema
-        self._inferred_schema = inferred_schema
+        self._read_schema = schema
+        self._file_schema = pq_ds.schema
+        self._partition_schema = _get_partition_columns_schema(partitioning, self._pq_paths)
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
@@ -353,6 +342,15 @@ class ParquetDatasource(Datasource):
                 self._pq_paths,
             )
 
+        # Derive expected target schema of the blocks being read
+        target_schema = _derive_schema(
+            self._read_schema,
+            file_schema=self._file_schema,
+            partition_schema=self._partition_schema,
+            projected_columns=self.get_current_projection(),
+            _block_udf=self._block_udf,
+        )
+
         read_tasks = []
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
@@ -402,7 +400,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                     ),
                     meta,
-                    schema=self._inferred_schema,
+                    schema=target_schema,
                 )
             )
 
@@ -810,10 +808,9 @@ def _add_partitions_to_table(
     return table
 
 
-def _add_partition_fields_to_schema(
+def _get_partition_columns_schema(
     partitioning: Partitioning,
-    schema: "pyarrow.Schema",
-    parquet_dataset: "pyarrow.dataset.Dataset",
+    file_paths: List[str],
 ) -> "pyarrow.Schema":
     """Return a new schema with partition fields added.
 
@@ -821,17 +818,19 @@ def _add_partition_fields_to_schema(
     """
     import pyarrow as pa
 
-    # If the dataset is empty, we can't infer the partitioning.
-    if len(parquet_dataset.fragments) == 0:
-        return schema
+    # If the dataset is empty, we can't infer the partitioning
+    if len(file_paths) == 0:
+        return pa.schema([])
+    # If the dataset isn't partitioned, there's no partition schema
+    elif partitioning is None:
+        return pa.schema([])
 
-    # If the dataset isn't partitioned, we don't need to add any fields.
-    if partitioning is None:
-        return schema
+    first_path = file_paths[0]
 
-    first_path = parquet_dataset.fragments[0].path
-    parse = PathPartitionParser(partitioning)
-    partitions = parse(first_path)
+    fields = []
+
+    parser = PathPartitionParser(partitioning)
+    partitions = parser(first_path)
     for field_name in partitions:
         if field_name in partitioning.field_types:
             field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
@@ -840,9 +839,9 @@ def _add_partition_fields_to_schema(
         if field_name not in schema.names:
             # Without this check, we would add the same partition field multiple times,
             # which silently fails when asking for `pa.field()`.
-            schema = schema.append(pa.field(field_name, field_type))
+            fields.append(pa.field(field_name, field_type))
 
-    return schema
+    return pa.schema(fields)
 
 
 def emit_file_extensions_future_warning(future_file_extensions: List[str]):
@@ -855,36 +854,45 @@ def emit_file_extensions_future_warning(future_file_extensions: List[str]):
     )
 
 
-def _infer_schema(
-    parquet_dataset: "pq.ParquetDataset",
-    schema: "pyarrow.Schema",
-    columns: Optional[List[str]],
-    partitioning,
+def _derive_schema(
+    read_schema: Optional["pyarrow.Schema"],
+    *,
+    file_schema: "pyarrow.Schema",
+    partition_schema: Optional["pyarrow.Schema"],
+    projected_columns: Optional[List[str]],
     _block_udf,
 ) -> "pyarrow.Schema":
-    """Infer the schema of read data using the user-specified parameters."""
+    """Derives target schema for read operation"""
+
     import pyarrow as pa
 
-    inferred_schema = schema
+    # Use target read schema if provided
+    if read_schema is not None:
+        target_schema = read_schema
+    else:
+        print(f">>> [DBG] _derive_schema: {[type(f) for f in list(file_schema)]=}, {list(partition_schema)=}")
 
-    if schema is None:
-        inferred_schema = parquet_dataset.schema
-        inferred_schema = _add_partition_fields_to_schema(
-            partitioning, inferred_schema, parquet_dataset
+        # Otherwise, fallback to file + partitioning schema by default
+        target_schema = pa.schema(
+            fields=list(file_schema) + (
+                list(partition_schema) if partition_schema is not None else []
+            ),
+            metadata=file_schema.metadata,
         )
 
-    if columns is not None:
-        inferred_schema = pa.schema(
-            [inferred_schema.field(column) for column in columns],
-            inferred_schema.metadata,
+    # Project schema if necessary
+    if projected_columns is not None:
+        target_schema = pa.schema(
+            [target_schema.field(column) for column in projected_columns],
+            target_schema.metadata,
         )
 
     if _block_udf is not None:
         # Try to infer dataset schema by passing dummy table through UDF.
-        dummy_table = inferred_schema.empty_table()
+        dummy_table = target_schema.empty_table()
         try:
-            inferred_schema = _block_udf(dummy_table).schema.with_metadata(
-                inferred_schema.metadata
+            target_schema = _block_udf(dummy_table).schema.with_metadata(
+                target_schema.metadata
             )
         except Exception:
             logger.debug(
@@ -893,8 +901,9 @@ def _infer_schema(
                 exc_info=True,
             )
 
-    check_for_legacy_tensor_type(inferred_schema)
-    return inferred_schema
+    check_for_legacy_tensor_type(target_schema)
+
+    return target_schema
 
 
 def _infer_data_and_partition_columns(
