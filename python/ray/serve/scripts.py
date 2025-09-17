@@ -869,7 +869,7 @@ def build(
         default_flow_style=False,
         sort_keys=False,
         width=80,  # Set width to avoid folding long lines
-        indent=2   # Use 2-space indentation for more compact configuration
+        indent=2,  # Use 2-space indentation for more compact configuration
     )
     cli_logger.info(
         "The auto-generated application names default to `app1`, `app2`, ... etc. "
