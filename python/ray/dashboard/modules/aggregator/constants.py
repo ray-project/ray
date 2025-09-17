@@ -1,2 +1,2 @@
-aggregator_agent_metric_prefix = "aggregator_agent"
-publisher_tag_key = "publisher"
+AGGREGATOR_AGENT_METRIC_PREFIX = "aggregator_agent"
+PUBLISHER_TAG_KEY = "publisher"

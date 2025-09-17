@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Optional
 
 from ray.dashboard.modules.aggregator.constants import (
-    publisher_tag_key,
+    PUBLISHER_TAG_KEY,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
@@ -78,7 +78,7 @@ class RayEventPublisher(RayEventPublisherInterface):
         """
         self._name = name
         self._common_metric_tags = dict(common_metric_tags or {})
-        self._common_metric_tags[publisher_tag_key] = name
+        self._common_metric_tags[PUBLISHER_TAG_KEY] = name
         self._max_retries = int(max_retries)
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)

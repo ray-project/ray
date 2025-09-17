@@ -39,7 +39,7 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.dashboard.modules.aggregator.constants import publisher_tag_key
+from ray.dashboard.modules.aggregator.constants import PUBLISHER_TAG_KEY
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
@@ -549,7 +549,7 @@ def test_metrics_export_event_aggregator_agent(
                 return False
             if (
                 samples[0].value != expected_value
-                or samples[0].labels[publisher_tag_key] != publisher_name
+                or samples[0].labels[PUBLISHER_TAG_KEY] != publisher_name
             ):
                 return False
         return True

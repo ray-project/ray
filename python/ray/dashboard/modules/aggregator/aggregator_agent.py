@@ -15,8 +15,8 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2_grpc,
 )
 from ray.dashboard.modules.aggregator.constants import (
-    aggregator_agent_metric_prefix,
-    publisher_tag_key,
+    AGGREGATOR_AGENT_METRIC_PREFIX,
+    PUBLISHER_TAG_KEY,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
@@ -98,7 +98,7 @@ class AggregatorAgent(
             max_size=MAX_EVENT_BUFFER_SIZE,
             max_batch_size=MAX_EVENT_SEND_BATCH_SIZE,
             common_metric_tags=self._common_tags,
-            consumer_tag_key=publisher_tag_key,
+            consumer_tag_key=PUBLISHER_TAG_KEY,
         )
         self._executor = ThreadPoolExecutor(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
@@ -143,7 +143,7 @@ class AggregatorAgent(
 
         # Register counter metrics
         self._events_received_metric_name = (
-            f"{aggregator_agent_metric_prefix}_events_received_total"
+            f"{AGGREGATOR_AGENT_METRIC_PREFIX}_events_received_total"
         )
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_received_metric_name,
@@ -151,7 +151,7 @@ class AggregatorAgent(
         )
 
         self._events_failed_to_add_metric_name = (
-            f"{aggregator_agent_metric_prefix}_events_buffer_add_failures_total"
+            f"{AGGREGATOR_AGENT_METRIC_PREFIX}_events_buffer_add_failures_total"
         )
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_failed_to_add_metric_name,
