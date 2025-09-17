@@ -201,7 +201,11 @@ Status PlasmaObjectHeader::ReadAcquire(
   while (version < version_to_read || !is_sealed) {
     if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
                              check_signal_interval) {
-      RAY_RETURN_NOT_OK(check_signals());
+      const ::ray::Status &_s = check_signals();
+      if (!_s.ok()) {
+        RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+        return _s;
+      }
       last_signal_check_time = std::chrono::steady_clock::now();
     }
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
