@@ -88,7 +88,7 @@ class LogicalOperator(Operator):
         return True
 
 
-class SupportsProjectionPushdown(LogicalOperator):
+class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
     """Mixin for reading operators supporting projection pushdown"""
 
     def supports_projection_pushdown(self) -> bool:
