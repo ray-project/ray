@@ -39,9 +39,12 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
     def test_sample(self):
         config = (
-            AlgorithmConfig().environment("CartPole-v1")
-            # Vectorize x2 and by default, rollout 64 timesteps per individual env.
-            .env_runners(num_envs_per_env_runner=2, rollout_fragment_length=64)
+            AlgorithmConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                num_envs_per_env_runner=2,
+                rollout_fragment_length=64,
+            )
         )
         env_runner = SingleAgentEnvRunner(config=config)
 
@@ -53,7 +56,8 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             ),
         )
 
-        # Sample 10 episodes (5 per env) 100 times.
+        # Sample 10 episodes (5 per env, because num_envs_per_env_runner=2)
+        # Repeat 100 times
         for _ in range(100):
             episodes = env_runner.sample(num_episodes=10, random_actions=True)
             check(len(episodes), 10)
@@ -61,14 +65,16 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             # being returned.
             self.assertTrue(all(e.is_done for e in episodes))
 
-        # Sample 10 timesteps (5 per env) 100 times.
+        # Sample 10 timesteps (5 per env)
+        # Repeat 100 times
         for _ in range(100):
             episodes = env_runner.sample(num_timesteps=10, random_actions=True)
             # Check the sum of lengths of all episodes returned.
             sum_ = sum(map(len, episodes))
             self.assertTrue(sum_ in [10, 11])
 
-        # Sample (by default setting: rollout_fragment_length=64) 10 times.
+        # Sample rollout_fragment_length=64, 100 times
+        # Repeat 100 times
         for _ in range(100):
             episodes = env_runner.sample(random_actions=True)
             # Check, whether the sum of lengths of all episodes returned is 128
@@ -144,11 +150,11 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                         ],
                     )
 
-    @patch("ray.rllib.env.env_runner.logger")
+    @patch(target="ray.rllib.env.env_runner.logger")
     def test_step_failed_reset_required(self, mock_logger):
         """Tests, whether SingleAgentEnvRunner can handle StepFailedResetRequired."""
-        # Define an env that raises StepFailedResetRequired
 
+        # Define an env that raises StepFailedResetRequired
         class ErrorRaisingEnv(gym.Env):
             def __init__(self, config=None):
                 # As per gymnasium standard, provide observation and action spaces in your
