@@ -122,7 +122,10 @@ class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdow
 
     def apply_projection(self, columns: List[str]):
         clone = copy.copy(self)
-        clone._datasource = self._datasource.apply_projection(columns)
+
+        projected_datasource = self._datasource.apply_projection(columns)
+        clone._datasource = projected_datasource
+        clone._datasource_or_legacy_reader = projected_datasource
 
         return clone
 
