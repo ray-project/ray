@@ -750,8 +750,8 @@ py_binary(
 )
 
 py_binary(
-    name = "custom_byod_build_init",
-    srcs = ["ray_release/scripts/custom_byod_build_init.py"],
+    name = "custom_image_build_and_test_init",
+    srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
     data = [
         "release_data_tests.yaml",
         "release_tests.yaml",

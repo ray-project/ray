@@ -62,6 +62,12 @@ _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=str,
     help="Test filters by prefix/regex.",
 )
+@click.option(
+    "--run-per-test",
+    default=1,
+    type=int,
+    help=("The number of time we run test on the same commit"),
+)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
@@ -69,6 +75,7 @@ def main(
     global_config: str = "oss_config.yaml",
     frequency: str = None,
     test_filters: str = None,
+    run_per_test: int = 1,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -107,12 +114,71 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
+
+    # Generate custom image build steps
     create_custom_build_yaml(
         os.path.join(
             _bazel_workspace_dir, ".buildkite/release/custom_byod_build.rayci.yml"
         ),
         tests,
     )
+
+    # Generate test job steps
+    grouped_tests = group_tests(filtered_tests)
+
+    group_str = ""
+    for group, tests in grouped_tests.items():
+        group_str += f"\n{group}:\n"
+        for test, smoke in tests:
+            group_str += f"  {test['name']}"
+            if smoke:
+                group_str += " [smoke test]"
+            group_str += "\n"
+    logger.info(f"Tests to run:\n{group_str}")
+
+    no_concurrency_limit = settings["no_concurrency_limit"]
+    if no_concurrency_limit:
+        logger.warning("Concurrency is not limited for this run!")
+
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        env["REPORT_TO_RAY_TEST_DB"] = "1"
+
+    # Pipe through RAYCI_BUILD_ID from the forge step.
+    # TODO(khluu): convert the steps to rayci steps and stop passing through
+    # RAYCI_BUILD_ID.
+    build_id = os.environ.get("RAYCI_BUILD_ID")
+    if build_id:
+        env["RAYCI_BUILD_ID"] = build_id
+
+    steps = get_step_for_test_group(
+        grouped_tests,
+        minimum_run_per_test=run_per_test,
+        test_collection_file=test_collection_file,
+        env=env,
+        priority=priority.value,
+        global_config=global_config,
+        is_concurrency_limit=not no_concurrency_limit,
+    )
+
+    if "BUILDKITE" in os.environ:
+        if os.path.exists(PIPELINE_ARTIFACT_PATH):
+            shutil.rmtree(PIPELINE_ARTIFACT_PATH)
+
+        os.makedirs(PIPELINE_ARTIFACT_PATH, exist_ok=True, mode=0o755)
+
+        with open(os.path.join(PIPELINE_ARTIFACT_PATH, "pipeline.json"), "wt") as fp:
+            json.dump(steps, fp)
+        with open(
+            os.path.join(_bazel_workspace_dir, ".buildkite/release/release_tests.json"),
+            "wt",
+        ) as fp:
+            json.dump(steps, fp)
+
+        settings["frequency"] = settings["frequency"].value
+        settings["priority"] = settings["priority"].value
+        with open(os.path.join(PIPELINE_ARTIFACT_PATH, "settings.json"), "wt") as fp:
+            json.dump(settings, fp)
+
 
 
 if __name__ == "__main__":
