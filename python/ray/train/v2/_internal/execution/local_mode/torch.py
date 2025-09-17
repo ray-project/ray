@@ -16,7 +16,7 @@ from ray.train.v2._internal.execution.train_fn_utils import (
 logger = logging.getLogger(__name__)
 
 
-def is_torch_dist_env_set() -> bool:
+def has_torchrun_env() -> bool:
     """Return True if this process has torch.distributed env vars set.
 
     For torch.distributed.init_process_group with init_method="env://", these variables are required:
@@ -43,19 +43,22 @@ def is_torch_dist_env_set() -> bool:
 class LocalTorchController(LocalController):
     def _set_train_fn_utils(self) -> None:
         world_size = 1
-        world_rank = 0
-        if is_torch_dist_env_set():
+        global_rank = 0
+        local_rank = 0
+        nproc_per_node = 1
+        node_rank = 0
+        if has_torchrun_env():
             assert not dist.is_initialized(), "torch.distributed is already initialized"
             torch.distributed.init_process_group(
                 backend="nccl" if torch.cuda.is_available() else "gloo"
             )
             world_size = torch.distributed.get_world_size()
-            world_rank = torch.distributed.get_rank()
+            global_rank = torch.distributed.get_rank()
+            local_rank = int(os.environ["LOCAL_RANK"])
             if torch.cuda.is_available():
-                torch.cuda.set_device(world_rank)
-            assert os.environ["LOCAL_WORLD_SIZE"] == str(
-                world_size
-            ), "Local mode only supports 1 node, LOCAL_WORLD_SIZE should be equal to WORLD_SIZE."
+                torch.cuda.set_device(local_rank)
+            nproc_per_node = int(os.environ.get("LOCAL_WORLD_SIZE"))
+            node_rank = global_rank // nproc_per_node
 
         if world_size != 1:
             assert (
@@ -65,7 +68,10 @@ class LocalTorchController(LocalController):
             LocalTrainFnUtils(
                 experiment_name=self.experiment_name,
                 world_size=world_size,
-                world_rank=world_rank,
+                world_rank=global_rank,
+                local_rank=local_rank,
+                local_world_size=nproc_per_node,
+                node_rank=node_rank,
                 dataset_shards=self.datasets,
             )
         )
