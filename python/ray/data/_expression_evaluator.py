@@ -33,7 +33,7 @@ _PANDAS_EXPR_OPS_MAP = {
 }
 
 
-def _is_arrow_string_type(t: pa.DataType) -> bool:
+def _is_pa_string_type(t: pa.DataType) -> bool:
     return pa.types.is_string(t) or pa.types.is_large_string(t)
 
 
@@ -41,12 +41,12 @@ def _is_string_like(x: Any) -> bool:
     if isinstance(x, (pa.Array, pa.ChunkedArray)):
         t = x.type
         if pa.types.is_dictionary(t):
-            return _is_arrow_string_type(t.value_type)
-        return _is_arrow_string_type(t)
+            return _is_pa_string_type(t.value_type)
+        return _is_pa_string_type(t)
     return isinstance(x, str)
 
 
-def _decode_dict_string_array(x: Any) -> Any:
+def _pa_decode_dict_string_array(x: Any) -> Any:
     """Convert Arrow dictionary-encoded string arrays to regular string arrays.
 
     Dictionary encoding stores strings as indices into a dictionary of unique values.
@@ -57,36 +57,38 @@ def _decode_dict_string_array(x: Any) -> Any:
         #   -- dictionary: ["a", "b"]
         #   -- indices: [0, 1]
         # Output: regular string array ["a", "b"]
+    Args:
+        x: The input array to convert.
+    Returns:
+        The converted string array.
     """
     if (
         isinstance(x, (pa.Array, pa.ChunkedArray))
         and pa.types.is_dictionary(x.type)
-        and _is_arrow_string_type(x.type.value_type)
+        and _is_pa_string_type(x.type.value_type)
     ):
-        if hasattr(x, "dictionary_decode"):
-            return x.dictionary_decode()
         return pc.cast(x, pa.string())
     return x
 
 
-def _to_arrow_string_input(x: Any) -> Any:
-    x = _decode_dict_string_array(x)
+def _to_pa_string_input(x: Any) -> Any:
+    x = _pa_decode_dict_string_array(x)
     if isinstance(x, str):
         return pa.scalar(x)
     return x
 
 
-def _arrow_add(left: Any, right: Any) -> Any:
+def _pa_add_or_concat(left: Any, right: Any) -> Any:
     # If either side is string-like, perform string concatenation.
     if _is_string_like(left) or _is_string_like(right):
-        left_input = _to_arrow_string_input(left)
-        right_input = _to_arrow_string_input(right)
+        left_input = _to_pa_string_input(left)
+        right_input = _to_pa_string_input(right)
         return pc.binary_join_element_wise(left_input, right_input, "")
     return pc.add(left, right)
 
 
 _ARROW_EXPR_OPS_MAP = {
-    Operation.ADD: _arrow_add,
+    Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: pc.divide,
