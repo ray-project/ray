@@ -364,7 +364,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 
     # Basic shape checks for both snapshots
     required_keys = [
-        "timestamp_s",
+        "timestamp_str",
         "app",
         "deployment",
         "current_replicas",

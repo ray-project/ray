@@ -767,7 +767,7 @@ class AutoscalingStatus(str, Enum):
 
 @dataclass
 class DecisionRecord:
-    timestamp_s: str
+    timestamp_str: str
     curr_num_replicas: int
     target_num_replicas: int
     reason: str
@@ -775,7 +775,7 @@ class DecisionRecord:
 
     def to_log_dict(self) -> Dict[str, Any]:
         return {
-            "timestamp_s": self.timestamp_s,
+            "timestamp_str": self.timestamp_str,
             "current_num_replicas": self.curr_num_replicas,
             "target_num_replicas": self.target_num_replicas,
             "reason": self.reason,
@@ -784,7 +784,7 @@ class DecisionRecord:
 
 @dataclass(frozen=True)
 class DeploymentSnapshot:
-    timestamp_s: str
+    timestamp_str: str
     app: str
     deployment: str
     current_replicas: int
@@ -816,7 +816,7 @@ class DeploymentSnapshot:
 
     def to_log_dict(self) -> Dict[str, object]:
         return {
-            "timestamp_s": self.timestamp_s,
+            "timestamp_str": self.timestamp_str,
             "app": self.app,
             "deployment": self.deployment,
             "current_replicas": self.current_replicas,

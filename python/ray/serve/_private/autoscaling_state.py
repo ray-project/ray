@@ -91,6 +91,7 @@ class AutoscalingState:
         self._decision_history: Deque[DecisionRecord] = deque(
             maxlen=AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX
         )
+        self._latest_metrics_timestamp: Optional[float] = None
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -179,6 +180,7 @@ class AutoscalingState:
             or send_timestamp > self._replica_requests[replica_id].timestamp
         ):
             self._replica_requests[replica_id] = replica_metric_report
+            self._latest_metrics_timestamp = send_timestamp
 
     def record_request_metrics_for_handle(
         self,
@@ -194,6 +196,7 @@ class AutoscalingState:
             or send_timestamp > self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = handle_metric_report
+            self._latest_metrics_timestamp = send_timestamp
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
@@ -277,7 +280,7 @@ class AutoscalingState:
 
         self._decision_history.append(
             DecisionRecord(
-                timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 curr_num_replicas=ctx.current_num_replicas,
                 target_num_replicas=decision_num_replicas,
                 reason=f"current={ctx.current_num_replicas}, target={decision_num_replicas}",
@@ -350,10 +353,10 @@ class AutoscalingState:
         else:
             queued_requests = 0.0
 
-        timestamps = [r.timestamp for r in self._replica_requests.values()]
-        timestamps.extend(h.timestamp for h in self._handle_requests.values())
-        if timestamps:
-            time_since_last_collected_metrics_s = time.time() - max(timestamps)
+        if self._latest_metrics_timestamp is not None:
+            time_since_last_collected_metrics_s = (
+                time.time() - self._latest_metrics_timestamp
+            )
         else:
             time_since_last_collected_metrics_s = None
 
@@ -381,7 +384,7 @@ class AutoscalingState:
             errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
 
         return DeploymentSnapshot(
-            timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             app=self._deployment_id.app_name,
             deployment=self._deployment_id.name,
             current_replicas=current_replicas,
