@@ -8,6 +8,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+from ray._private.retry import retry
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train._internal import session
@@ -215,6 +216,7 @@ class TrainContext:
             )
         )
 
+    @retry(description="upload checkpoint", max_attempts=3)
     def _upload_checkpoint(
         self,
         checkpoint_dir_name: str,
@@ -334,10 +336,10 @@ class TrainContext:
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:
                 training_result = self._upload_checkpoint(
-                    checkpoint_dir_name,
-                    metrics,
-                    checkpoint,
-                    delete_local_checkpoint_after_upload,
+                    checkpoint_dir_name=checkpoint_dir_name,
+                    metrics=metrics,
+                    checkpoint=checkpoint,
+                    delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
                 )
                 self._wait_then_report(training_result, report_call_index)
 
@@ -357,10 +359,10 @@ class TrainContext:
                 ) -> None:
                     try:
                         training_result = self._upload_checkpoint(
-                            checkpoint_dir_name,
-                            metrics,
-                            checkpoint,
-                            delete_local_checkpoint_after_upload,
+                            checkpoint_dir_name=checkpoint_dir_name,
+                            metrics=metrics,
+                            checkpoint=checkpoint,
+                            delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
                         )
                         self._wait_then_report(training_result, report_call_index)
                     except Exception as e:

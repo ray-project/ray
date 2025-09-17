@@ -1251,9 +1251,6 @@ python/ray/data/_internal/util.py
     DOC402: Function `make_async_gen` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `make_async_gen` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
     DOC103: Method `RetryingPyFileSystemHandler.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [retryable_errors: List[str]]. Arguments in the docstring but not in the function signature: [context: ].
-    DOC104: Function `call_with_retry`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Function `call_with_retry`: Argument names match, but type hints in these args do not match: f, description, match, max_attempts, max_backoff_s
-    DOC201: Function `call_with_retry` does not have a return section in docstring
     DOC104: Function `iterate_with_retry`: Arguments are the same in the docstring and the function signature, but are in a different order.
     DOC105: Function `iterate_with_retry`: Argument names match, but type hints in these args do not match: iterable_factory, description, match, max_attempts, max_backoff_s
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
