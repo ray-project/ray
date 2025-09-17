@@ -1,9 +1,13 @@
-import copy
 import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
 
-from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule, LogicalOperatorSupportsProjectionPushdown
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsProjectionPushdown,
+    LogicalPlan,
+    Rule,
+)
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.expressions import Expr

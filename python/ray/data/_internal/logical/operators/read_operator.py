@@ -1,10 +1,11 @@
-import abc
 import copy
 import functools
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, List, Optional, Union
 
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.logical.interfaces import SourceOperator, LogicalOperatorSupportsProjectionPushdown
+from ray.data._internal.logical.interfaces import (
+    LogicalOperatorSupportsProjectionPushdown,
+    SourceOperator,
+)
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.block import (
     BlockMetadata,

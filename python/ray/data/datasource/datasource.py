@@ -1,4 +1,3 @@
-import copy
 from typing import Callable, Iterable, List, Optional
 
 import numpy as np

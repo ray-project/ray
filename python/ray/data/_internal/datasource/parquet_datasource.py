@@ -1,5 +1,5 @@
-import logging
 import copy
+import logging
 import math
 import os
 import warnings
@@ -56,7 +56,6 @@ from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
-    from pyarrow import parquet as pq
     from pyarrow.dataset import ParquetFileFragment
 
 
