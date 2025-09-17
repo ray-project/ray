@@ -236,7 +236,9 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: weekly
+  # Failing since Aug 2024
+  # https://github.com/ray-project/ray/issues/46687
+  frequency: manual
   team: ml
 
   cluster:
@@ -252,7 +254,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -557,7 +559,9 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: nightly
+  # Jailed with
+  # https://github.com/ray-project/ray/issues/56282
+  frequency: manual
   team: ml
 
   stable: false
@@ -620,7 +624,9 @@
 
   stable: false
 
-  frequency: nightly
+  # Failing since Aug 2025.
+  # https://github.com/ray-project/ray/issues/52562
+  frequency: manual
 
   team: data
   cluster:
@@ -4094,7 +4100,9 @@
 
   stable: false
 
-  frequency: nightly
+  # Failing since Oct 2024.
+  # https://github.com/ray-project/ray/issues/36190
+  frequency: manual
   team: serve
   cluster:
     byod: {}
@@ -4598,7 +4606,7 @@
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
-  frequency: nightly
+  frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
   python: "3.11"
   group: llm-serve
   team: llm
@@ -4643,7 +4651,7 @@
       pytest -sv test_batch_vllm.py
 
 - name: llm_batch_sglang_llama
-  frequency: manual # TODO(ray-llm): fix this test and re-enable it.
+  frequency: nightly
   python: "3.11"
   group: llm-batch
   team: llm
@@ -4666,6 +4674,7 @@
   python: "3.11"  # necessary for the llm-cu128 image
   working_dir: nightly_tests
   team: data
+  group: data-tests
 
   cluster:
     byod:
@@ -4688,6 +4697,7 @@
   python: "3.11"
   working_dir: nightly_tests
   team: data
+  group: data-tests
 
   cluster:
     byod:

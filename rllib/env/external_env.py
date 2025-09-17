@@ -13,7 +13,7 @@ from ray.rllib.utils.typing import (
     EnvType,
     MultiEnvDict,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor

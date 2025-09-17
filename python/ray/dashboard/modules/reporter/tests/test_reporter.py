@@ -9,15 +9,15 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 from google.protobuf import text_format
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
-from ray._common.network_utils import build_address
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
@@ -269,11 +269,8 @@ def test_prometheus_physical_stats_record(
                 break
         return str(raylet_proc.process.pid) == str(raylet_pid)
 
-    wait_for_condition(
-        lambda: test_case_stats_exist() and test_case_ip_correct(),
-        timeout=30,
-        retry_interval_ms=1000,
-    )
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+    wait_for_condition(test_case_ip_correct, timeout=30, retry_interval_ms=1000)
 
 
 @pytest.mark.skipif(

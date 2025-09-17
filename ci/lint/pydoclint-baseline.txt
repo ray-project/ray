@@ -166,6 +166,10 @@ python/ray/_private/runtime_env/setup_hook.py
 python/ray/_private/runtime_env/utils.py
     DOC103: Function `check_output_cmd`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ]. Arguments in the docstring but not in the function signature: [kwargs: ].
 --------------------
+python/ray/_private/serialization.py
+    DOC106: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
+    DOC107: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
+--------------------
 python/ray/_private/services.py
     DOC201: Function `_build_python_executable_command_memory_profileable` does not have a return section in docstring
     DOC101: Function `get_ray_address_from_environment`: Docstring contains fewer arguments than in function signature.
@@ -1098,8 +1102,6 @@ python/ray/data/_internal/execution/interfaces/task_context.py
 python/ray/data/_internal/execution/operators/base_physical_operator.py
     DOC101: Method `OneToOneOperator.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `OneToOneOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext].
-    DOC101: Method `AllToAllOperator.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AllToAllOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext, target_max_block_size: Optional[int]].
     DOC103: Method `NAryOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*input_ops: LogicalOperator, data_context: DataContext]. Arguments in the docstring but not in the function signature: [input_op: , name: ].
 --------------------
 python/ray/data/_internal/execution/operators/hash_shuffle.py
@@ -1218,7 +1220,7 @@ python/ray/data/_internal/numpy_support.py
 --------------------
 python/ray/data/_internal/output_buffer.py
     DOC101: Method `BlockOutputBuffer.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `BlockOutputBuffer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_block_size_option: OutputBlockSizeOption].
+    DOC103: Method `BlockOutputBuffer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_block_size_option: Optional[OutputBlockSizeOption]].
 --------------------
 python/ray/data/_internal/plan.py
     DOC101: Method `ExecutionPlan.get_plan_as_string`: Docstring contains fewer arguments than in function signature.
@@ -1331,10 +1333,6 @@ python/ray/data/datasource/file_meta_provider.py
 python/ray/data/datasource/filename_provider.py
     DOC201: Method `FilenameProvider.get_filename_for_block` does not have a return section in docstring
     DOC201: Method `FilenameProvider.get_filename_for_row` does not have a return section in docstring
---------------------
-python/ray/data/datasource/parquet_meta_provider.py
-    DOC101: Method `ParquetMetadataProvider.prefetch_file_metadata`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ParquetMetadataProvider.prefetch_file_metadata`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**ray_remote_args: ].
 --------------------
 python/ray/data/datasource/path_util.py
     DOC201: Function `_has_file_extension` does not have a return section in docstring
@@ -1483,10 +1481,6 @@ python/ray/llm/_internal/batch/processor/base.py
     DOC103: Method `Processor.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [stages: List[StatefulStage]].
     DOC101: Method `ProcessorBuilder.build`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `ProcessorBuilder.build`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ].
---------------------
-python/ray/llm/_internal/batch/processor/vllm_engine_proc.py
-    DOC101: Function `build_vllm_engine_processor`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `build_vllm_engine_processor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [telemetry_agent: Optional[TelemetryAgent]].
 --------------------
 python/ray/llm/_internal/batch/stages/base.py
     DOC405: Method `StatefulStageUDF.__call__` has both "return" and "yield" statements. Please use Generator[YieldType, SendType, ReturnType] as the return type annotation, and put your yield type in YieldType and return type in ReturnType. More details in https://jsh9.github.io/pydoclint/notes_generator_vs_iterator.html

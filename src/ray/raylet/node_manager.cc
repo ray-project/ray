@@ -31,6 +31,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
@@ -113,7 +114,8 @@ NodeManager::NodeManager(
     plasma::PlasmaClientInterface &store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+    std::unique_ptr<CgroupManagerInterface> cgroup_manager)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -165,7 +167,8 @@ NodeManager::NodeManager(
           RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
-          CreateMemoryUsageRefreshCallback())) {
+          CreateMemoryUsageRefreshCallback())),
+      cgroup_manager_(std::move(cgroup_manager)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -1627,6 +1630,21 @@ void NodeManager::HandleReportWorkerBacklog(
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
+  auto lease_id = LeaseID::FromBinary(request.lease_spec().lease_id());
+  // If the lease is already granted, this is a retry and forward the address of the
+  // already leased worker to use.
+  if (leased_workers_.contains(lease_id)) {
+    const auto &worker = leased_workers_[lease_id];
+    RAY_LOG(DEBUG) << "Lease " << lease_id
+                   << " is already granted with worker: " << worker->WorkerId();
+    reply->set_worker_pid(worker->GetProcess().GetId());
+    reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
+    reply->mutable_worker_address()->set_port(worker->Port());
+    reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+    reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   RayLease lease{std::move(*request.mutable_lease_spec())};
   const auto caller_worker =
       WorkerID::FromBinary(lease.GetLeaseSpecification().CallerAddress().worker_id());
@@ -1671,7 +1689,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
             RAY_LOG(DEBUG).WithField(actor_id)
                 << "Reject leasing as the raylet has no enough resources. "
                    "normal_task_resources = "
-                << normal_task_resources.DebugString() << ", local_resoruce_view = "
+                << normal_task_resources.DebugString() << ", local_resource_view = "
                 << cluster_resource_scheduler_.GetClusterResourceManager()
                        .GetNodeResourceViewString(
                            scheduling::NodeID(self_node_id_.Binary()));
@@ -2052,9 +2070,9 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
   bool canceled = cluster_lease_manager_.CancelLease(lease_id);
-  // The task cancellation failed if we did not have the task queued, since
-  // this means that we may not have received the task request yet. It is
-  // successful if we did have the task queued, since we have now replied to
+  // The lease cancellation failed if we did not have the lease queued, since
+  // this means that we may not have received the lease request yet. It is
+  // successful if we did have the lease queued, since we have now replied to
   // the client that requested the lease.
   reply->set_success(canceled);
   send_reply_callback(Status::OK(), nullptr, nullptr);

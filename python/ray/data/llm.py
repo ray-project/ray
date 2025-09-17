@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
@@ -28,6 +28,11 @@ class ProcessorConfig(_ProcessorConfig):
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, Ray uses either a fixed pool of ``n``
+            workers or an autoscaling pool from ``1`` to ``n`` workers, depending on
+            the processor and stage.
     """
 
     pass
@@ -41,7 +46,9 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
         batch_size: The batch size to send to the HTTP request.
         url: The URL to send the HTTP request to.
         headers: The headers to send with the HTTP request.
-        concurrency: The number of concurrent requests to send.
+        concurrency: The number of concurrent requests to send. Default to 1.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``,
+            autoscaling strategy is used (``1 <= m <= n``).
 
     Examples:
         .. testcode::
@@ -116,6 +123,10 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
+            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
 
     Examples:
 
@@ -177,7 +188,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 
     Args:
         model_source: The model source to use for the SGLang engine.
-        batch_size: The batch size to send to the vLLM engine. Large batch sizes are
+        batch_size: The batch size to send to the SGLang engine. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
@@ -197,12 +208,16 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
         apply_chat_template: Whether to apply chat template.
         chat_template: The chat template to use. This is usually not needed if the
             model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
-            If not, vLLM will tokenize the prompt in the engine.
+        tokenize: Whether to tokenize the input before passing it to the SGLang engine.
+            If not, SGLang will tokenize the prompt in the engine.
         detokenize: Whether to detokenize the output.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
+            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
 
     Examples:
         .. testcode::
@@ -351,6 +366,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 @PublicAPI(stability="alpha")
 def build_llm_processor(
     config: ProcessorConfig,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
 ) -> Processor:
@@ -358,6 +374,7 @@ def build_llm_processor(
 
     Args:
         config: The processor config.
+        chat_template_kwargs: The optional kwargs to pass apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -367,6 +384,7 @@ def build_llm_processor(
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
             you can use the `**row` syntax to return all the original columns.
+
 
     Returns:
         The built processor.
@@ -417,6 +435,7 @@ def build_llm_processor(
 
     return ProcessorBuilder.build(
         config,
+        chat_template_kwargs=chat_template_kwargs,
         preprocess=preprocess,
         postprocess=postprocess,
     )

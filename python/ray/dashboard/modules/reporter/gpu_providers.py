@@ -9,7 +9,9 @@ import enum
 import logging
 import subprocess
 import time
-from typing import Dict, List, Optional, Union, TypedDict
+from typing import Dict, List, Optional, TypedDict, Union
+
+from ray._private.ray_constants import RAY_METRIC_ENABLE_GPU_NVSMI
 
 logger = logging.getLogger(__name__)
 
