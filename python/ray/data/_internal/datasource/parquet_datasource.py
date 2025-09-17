@@ -418,6 +418,23 @@ class ParquetDatasource(Datasource):
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
 
+    @property
+    def supports_projection_pushdown(self) -> bool:
+        return True
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        # NOTE: In case there's no projection both file and partition columns
+        #       will be none
+        if self._data_columns is None and self._partition_columns is None:
+            return None
+
+        return (self._data_columns or []) + (self._partition_columns or [])
+
+    def apply_projection(self, columns: List[str]) -> "ParquetDatasource":
+        clone = copy.copy(self)
+        clone._data_columns = columns
+        return clone
+
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
 

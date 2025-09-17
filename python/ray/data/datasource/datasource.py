@@ -1,3 +1,4 @@
+import copy
 from typing import Callable, Iterable, List, Optional
 
 import numpy as np
@@ -7,8 +8,24 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
+class _DatasourceProjectionPushdownMixin:
+    """Mixin for reading operators supporting projection pushdown"""
+
+    def supports_projection_pushdown(self) -> bool:
+        """Returns ``True`` in case ``Datasource`` supports projection operation
+        being pushed down into the reading layer"""
+        return False
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        """Retrurns current projection"""
+        return None
+
+    def apply_projection(self, columns: List[str]) -> "Datasource":
+        return self
+
+
 @PublicAPI
-class Datasource:
+class Datasource(_DatasourceProjectionPushdownMixin):
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
