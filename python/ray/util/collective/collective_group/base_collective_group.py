@@ -83,7 +83,3 @@ class BaseGroup(metaclass=ABCMeta):
     @abstractmethod
     def recv(self, tensor, recv_options: RecvOptions):
         raise NotImplementedError()
-
-    @abstractmethod
-    def abort(self):
-        raise NotImplementedError()

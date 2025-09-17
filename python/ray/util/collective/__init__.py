@@ -1,5 +1,4 @@
 from ray.util.collective.collective import (
-    abort,
     allgather,
     allgather_multigpu,
     allreduce,
@@ -51,5 +50,4 @@ __all__ = [
     "recv",
     "recv_multigpu",
     "get_group_handle",
-    "abort",
 ]

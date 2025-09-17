@@ -1,4 +1,3 @@
-import threading
 import time
 from typing import TYPE_CHECKING, List, Tuple
 
@@ -27,7 +26,6 @@ class NixlBackend:
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         self._nixl_agent = nixl_agent(actor_id, agent_config)
-        self._stop_event = threading.Event()
 
     @classmethod
     def backend(cls):
@@ -75,9 +73,6 @@ class NixlBackend:
         # Since current nixl does not provide a better way, we need to check the state of
         # the transfer continuously.
         while True:
-            if self._stop_event.is_set():
-                self._stop_event.clear()
-                break
             state = nixl_agent.check_xfer_state(xfer_handle)
             if state == "ERR":
                 raise RuntimeError("NIXL transfer got to Error state.")
@@ -107,6 +102,3 @@ class NixlBackend:
             nixl_agent.get_serialized_descs(xfer_descs),
             nixl_agent.get_agent_metadata(),
         )
-
-    def abort(self):
-        self._stop_event.set()

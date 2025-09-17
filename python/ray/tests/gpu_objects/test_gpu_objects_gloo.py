@@ -58,6 +58,29 @@ class GPUTestActor:
         raise Exception(error_message)
 
 
+@ray.remote
+class ErrorActor:
+    @ray.method(tensor_transport="gloo")
+    def send(self, tensor):
+        return tensor
+
+    def recv(self, tensor):
+        return tensor
+
+    def clear_gpu_object_store(self):
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
+
+        with gpu_object_store._lock:
+            assert len(gpu_object_store._gpu_object_store) > 0
+            gpu_object_store._gpu_object_store.clear()
+
+    @ray.method(concurrency_group="_ray_system")
+    def block_background_thread(self):
+        time.sleep(100)
+
+
 @pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     """
@@ -883,29 +906,6 @@ def test_transfer_from_not_actor_creator(ray_start_regular):
     assert ray.get(actor[2].do_transfer.remote(actor[0], actor[1])) == pytest.approx(
         torch.tensor([1, 2, 3])
     )
-
-
-@ray.remote
-class ErrorActor:
-    def clear_gpu_object_store(self):
-        gpu_object_store = (
-            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
-        )
-
-        with gpu_object_store._lock:
-            assert len(gpu_object_store._gpu_object_store) > 0
-            gpu_object_store._gpu_object_store.clear()
-
-    @ray.method(tensor_transport="gloo")
-    def send(self, tensor):
-        return tensor
-
-    def recv(self, tensor):
-        return tensor
-
-    @ray.method(concurrency_group="_ray_system")
-    def block_background_thread(self):
-        time.sleep(100)
 
 
 def test_send_fails(ray_start_regular):

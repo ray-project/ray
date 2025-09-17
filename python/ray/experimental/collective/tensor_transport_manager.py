@@ -126,13 +126,3 @@ class TensorTransportManager(ABC):
             tensors: The tensors to send.
             communicator_metadata: The communicator metadata for the send/recv operation.
         """
-
-    @staticmethod
-    @abstractmethod
-    def abort_transport(communicator_metadata: CommunicatorMetadata):
-        """
-        Try to abort an ongoing transport.
-
-        Args:
-            communicator_metadata: The communicator metadata for the send/recv operation.
-        """

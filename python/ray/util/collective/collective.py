@@ -602,19 +602,6 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     g.send([tensor], opts)
 
 
-def abort(group_name: str = "default"):
-    """Abort the transport.
-
-    Args:
-        group_name: the name of the collective group.
-    """
-    try:
-        g = get_group_handle(group_name)
-        g.abort()
-    except ValueError:
-        pass
-
-
 def send_multigpu(
     tensor,
     dst_rank: int,

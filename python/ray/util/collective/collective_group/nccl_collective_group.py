@@ -391,11 +391,6 @@ class NCCLGroup(BaseGroup):
             tensors, p2p_fn, recv_options.src_rank, recv_options.src_gpu_index
         )
 
-    def abort(self):
-        """Abort all p2p transports on this process."""
-        for comm in self._dev_comm_map.values():
-            comm.abort()
-
     def _get_nccl_collective_communicator(self, comm_key, device_list):
         """Create or retrieve an NCCL communicator from cache.
 
