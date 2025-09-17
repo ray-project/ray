@@ -2610,6 +2610,7 @@ def read_snowflake(
     sql: str,
     connection_parameters: Dict[str, Any],
     *,
+    parallelism: int = -1,
     shard_keys: Optional[list[str]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2641,6 +2642,7 @@ def read_snowflake(
         connection_parameters: Keyword arguments to pass to
             ``snowflake.connector.connect``. To view supported parameters, read
             https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         shard_keys: The keys to shard the data by.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2674,6 +2676,7 @@ def read_snowflake(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
