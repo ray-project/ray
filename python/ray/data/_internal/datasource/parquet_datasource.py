@@ -425,12 +425,12 @@ class ParquetDatasource(Datasource):
 
 
 def read_fragments(
-    block_udf,
-    to_batches_kwargs,
-    default_read_batch_size_rows,
-    data_columns,
-    partition_columns,
-    schema,
+    block_udf: Callable[[Block], Optional[Block]],
+    to_batches_kwargs: Dict[str, Any],
+    default_read_batch_size_rows: Optional[int],
+    data_columns: Optional[List[str]],
+    partition_columns: Optional[List[str]],
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
     include_paths: bool,
     partitioning: Partitioning,
@@ -685,7 +685,7 @@ def _fetch_file_infos(
     schema: Optional["pyarrow.Schema"],
     local_scheduling: Optional[bool],
 ) -> List[Optional[_ParquetFileInfo]]:
-    fetc_file_info = cached_remote_fn(_fetch_parquet_file_info)
+    fetch_file_info = cached_remote_fn(_fetch_parquet_file_info)
     futures = []
 
     for fragment in sampled_fragments:
@@ -693,7 +693,7 @@ def _fetch_file_infos(
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
         # same machine to cause OOM issue, as sampling can be memory-intensive.
         futures.append(
-            fetc_file_info.options(
+            fetch_file_info.options(
                 scheduling_strategy=local_scheduling
                 or DataContext.get_current().scheduling_strategy,
                 # Retry in case of transient errors during sampling.
