@@ -292,12 +292,11 @@ int main(int argc, char *argv[]) {
   ray::raylet::NodeManagerConfig node_manager_config;
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
-
   SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service{
-      /*emit_metrics=*/true,
-      /*running_on_single_thread=*/RayConfig::instance().emit_main_service_metrics(),
+      /*emit_metrics=*/RayConfig::instance().emit_main_service_metrics(),
+      /*running_on_single_thread=*/true,
       "raylet_main_io_context"};
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
