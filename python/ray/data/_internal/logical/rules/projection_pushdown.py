@@ -129,7 +129,8 @@ class ProjectionPushdown(Rule):
 
         logger.debug(
             f"Pushing projection down into read operation "
-            f"(projection columns = {new_spec.cols}, remap = {new_spec.cols_remap})"
+            f"projection columns = {new_spec.cols} (before: {target_op_spec.cols}), "
+            f"remap = {new_spec.cols_remap} (before: {target_op_spec.cols_remap})"
         )
 
         return target_op.apply_projection(new_spec.cols)

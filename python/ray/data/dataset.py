@@ -3406,7 +3406,7 @@ class Dataset:
 
         plan = self._plan.copy()
 
-        # NOTE: Project the dataset to avoid the need to carrying actual
+        # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
         count_op = Count(Project(self._logical_plan.dag, cols=[]))
         logical_plan = LogicalPlan(count_op, self.context)
