@@ -3,9 +3,13 @@ import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.transform_pyarrow import _is_column_extension_type
+from ray.air.util.transform_pyarrow import _is_pa_extension_type
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
+    MIN_PYARROW_VERSION_VIEW_TYPES,
+)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -253,7 +257,7 @@ def _split_unsupported_columns(table: "pa.Table") -> Tuple["pa.Table", "pa.Table
         column: "pa.ChunkedArray" = table.column(idx)
 
         col_type = column.type
-        if _is_column_extension_type(column):
+        if _is_pa_extension_type(column.type):
             col_type = column.type.storage_type
 
         if _is_pa_join_not_supported(col_type):
@@ -301,11 +305,10 @@ def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
         False if the type can be present.
     """
     import pyarrow as pa
-    from packaging.version import parse as parse_version
 
     pyarrow_version = get_pyarrow_version()
-    is_v12 = pyarrow_version >= parse_version("12.0.0")
-    is_v16 = pyarrow_version >= parse_version("16.0.0")
+    is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
+    is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
 
     return (
         pa.types.is_map(type)
