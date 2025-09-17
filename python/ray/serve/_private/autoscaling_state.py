@@ -284,7 +284,7 @@ class AutoscalingState:
                 curr_num_replicas=ctx.current_num_replicas,
                 target_num_replicas=decision_num_replicas,
                 reason=f"current={ctx.current_num_replicas}, target={decision_num_replicas}",
-                policy_name=getattr(ctx.config.policy, "name", None),
+                policy_name=ctx.config.policy.name,
             )
         )
 
@@ -369,7 +369,7 @@ class AutoscalingState:
 
         scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
 
-        look_back_period_s = getattr(self._config, "look_back_period_s", None)
+        look_back_period_s = self._config.look_back_period_s
         metrics_health = DeploymentSnapshot.format_metrics_health_text(
             time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
             look_back_period_s=look_back_period_s,
