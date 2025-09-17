@@ -277,7 +277,9 @@ class ParquetDatasource(Datasource):
         self._partition_columns = partition_columns
         self._read_schema = schema
         self._file_schema = pq_ds.schema
-        self._partition_schema = _get_partition_columns_schema(partitioning, self._pq_paths)
+        self._partition_schema = _get_partition_columns_schema(
+            partitioning, self._pq_paths
+        )
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
@@ -869,13 +871,14 @@ def _derive_schema(
     if read_schema is not None:
         target_schema = read_schema
     else:
-        print(f">>> [DBG] _derive_schema: {[type(f) for f in list(file_schema)]=}, {list(partition_schema)=}")
+        print(
+            f">>> [DBG] _derive_schema: {[type(f) for f in list(file_schema)]=}, {list(partition_schema)=}"
+        )
 
         # Otherwise, fallback to file + partitioning schema by default
         target_schema = pa.schema(
-            fields=list(file_schema) + (
-                list(partition_schema) if partition_schema is not None else []
-            ),
+            fields=list(file_schema)
+            + (list(partition_schema) if partition_schema is not None else []),
             metadata=file_schema.metadata,
         )
 

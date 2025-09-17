@@ -45,7 +45,9 @@ class ProjectionPushdown(Rule):
             # Push-down projections into read op
             if cls._supports_projection_pushdown(op):
                 project_op: Project = op
-                target_op: LogicalOperatorSupportsProjectionPushdown = op.input_dependency
+                target_op: LogicalOperatorSupportsProjectionPushdown = (
+                    op.input_dependency
+                )
 
                 return cls._try_combine(target_op, project_op)
 
@@ -62,7 +64,10 @@ class ProjectionPushdown(Rule):
     def _supports_projection_pushdown(cls, op: Project) -> bool:
         # NOTE: Currently only projecting into Parquet is supported
         input_op = op.input_dependency
-        return isinstance(input_op, LogicalOperatorSupportsProjectionPushdown) and input_op.supports_projection_pushdown()
+        return (
+            isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
+            and input_op.supports_projection_pushdown()
+        )
 
     @staticmethod
     def _fuse(inner_op: Project, outer_op: Project) -> Project:

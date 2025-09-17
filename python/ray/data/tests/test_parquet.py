@@ -639,7 +639,6 @@ def test_projection_pushdown_non_partitioned(temp_dir):
     assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
 
 
-
 def test_projection_pushdown_partitioned(temp_dir):
     ds = ray.data.read_parquet("example://iris.parquet").materialize()
 
@@ -670,7 +669,7 @@ def test_projection_pushdown_on_count(temp_dir):
     path = "example://iris.parquet"
 
     # Test reading full dataset
-    #ds = ray.data.read_parquet(path).materialize()
+    # ds = ray.data.read_parquet(path).materialize()
 
     # Test projection from read_parquet
     num_rows = ray.data.read_parquet(path).count()
