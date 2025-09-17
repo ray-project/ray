@@ -53,6 +53,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
+    PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
@@ -151,10 +152,6 @@ class ReplicaMetricsManager:
         - Autoscaling statistics are periodically pushed to the controller.
         - Queue length metrics are periodically recorded as user-facing gauges.
     """
-
-    PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
-    RECORD_METRICS_TASK_NAME = "record_metrics"
-    SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
 
     def __init__(
         self,
@@ -284,7 +281,7 @@ class ReplicaMetricsManager:
 
             # Push autoscaling metrics to the controller periodically.
             self._metrics_pusher.register_or_update_task(
-                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+                PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                 self._push_autoscaling_metrics,
                 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
             )

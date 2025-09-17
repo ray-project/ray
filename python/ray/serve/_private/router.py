@@ -38,11 +38,13 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RECORD_METRICS_TASK_NAME,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -72,9 +74,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 class RouterMetricsManager:
     """Manages metrics for the router."""
-
-    PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
-    RECORD_METRICS_TASK_NAME = "record_metrics"
 
     def __init__(
         self,
@@ -269,21 +268,14 @@ class RouterMetricsManager:
                 # Record number of queued + ongoing requests at regular
                 # intervals into the in-memory metrics store
                 self.metrics_pusher.register_or_update_task(
-                    self.RECORD_METRICS_TASK_NAME,
+                    RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
                     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                 )
-                # Push metrics to the controller periodically.
-                shared = SharedHandleMetricsPusher.get_or_create(
-                    self._controller_handle
-                )
-                shared.register(self)
-            else:
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
-                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
-                )
+
+            # Push metrics to the controller periodically.
+            shared = SharedHandleMetricsPusher.get_or_create(self._controller_handle)
+            shared.register(self)
 
         else:
             if self.metrics_pusher:
@@ -455,7 +447,7 @@ class SharedHandleMetricsPusher:
         self._metrics_pusher.start()
 
         self._metrics_pusher.register_or_update_task(
-            "push_metrics_to_controller",
+            PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
             self.push_metrics,
             RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
         )

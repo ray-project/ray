@@ -299,6 +299,10 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
 )
 
+PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
+RECORD_METRICS_TASK_NAME = "record_metrics"
+SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
+
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
@@ -373,6 +377,10 @@ DEFAULT_AUTOSCALING_POLICY_NAME = (
 # metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
     "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
+)
+
+RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
+    "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
 
 # Feature flag to always run a proxy on the head node even if it has no replicas.

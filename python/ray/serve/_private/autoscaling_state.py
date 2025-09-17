@@ -13,6 +13,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -189,7 +190,10 @@ class AutoscalingState:
         # to account for some jitter in the metric push timing.
         # If it's been 2.5x the interval since the last update, then we can
         # be pretty confident that we've missed two updates in a row.
-        timeout_s = 2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        timeout_s = max(
+            2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+            RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+        )
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
             # actors that have died
