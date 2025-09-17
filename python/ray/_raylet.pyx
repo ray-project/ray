@@ -2211,12 +2211,14 @@ cdef execute_task_with_cancellation_handler(
     # in case executing the main task throws an exception.
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
-    print("runnning", file=sys.stderr)
+    print("runnning 1", file=sys.stderr)
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        print("runnning 2", file=sys.stderr)
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
+        print("runnning 3", file=sys.stderr)
 
         # Record the actor class via :actor_name: magic token in the log.
         #
@@ -2229,12 +2231,14 @@ cdef execute_task_with_cancellation_handler(
         # Flush to both .out and .err
         print(actor_magic_token, end="")
         print(actor_magic_token, file=sys.stderr, end="")
+        print("runnning 4", file=sys.stderr)
 
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
             core_worker.initialize_eventloops_for_actor_concurrency_group(
                 c_defined_concurrency_groups)
 
+    print("runnning 5", file=sys.stderr)
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
         execution_info = manager.get_execution_info(
@@ -2253,6 +2257,7 @@ cdef execute_task_with_cancellation_handler(
         with current_task_id_lock:
             current_task_id = task_id
 
+        print("runnning 6", file=sys.stderr)
         execute_task(caller_address,
                      task_type,
                      name,
@@ -2274,6 +2279,7 @@ cdef execute_task_with_cancellation_handler(
                      should_retry_exceptions,
                      generator_backpressure_num_objects,
                      c_tensor_transport)
+        print("runnning 7", file=sys.stderr)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -2303,6 +2309,7 @@ cdef execute_task_with_cancellation_handler(
                 # cancel tasks to fail.
                 NULL)
     finally:
+        print("runnning 9", file=sys.stderr)
         with current_task_id_lock:
             current_task_id = None
 
