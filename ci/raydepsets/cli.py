@@ -214,7 +214,6 @@ class DependencySetManager:
         )
         if status.returncode != 0:
             raise RuntimeError(
-                status.returncode,
                 f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
             )
         else:
