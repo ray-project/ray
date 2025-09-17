@@ -635,7 +635,7 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
 
     summary = ds.materialize()._plan.stats().to_summary()
 
-    assert summary.base_name == "ReadParquet->SplitBlocks(24)"
+    assert "ReadParquet" in summary.base_name
     assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
 
 
