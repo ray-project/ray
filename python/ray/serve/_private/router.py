@@ -464,7 +464,7 @@ class SharedHandleMetricsPusher:
         logger.debug("Gathering handle metrics reports...")
         reports = [m._get_metrics_report() for m in self._router_metrics_managers]
         logger.debug("Pushing handle metrics to controller...")
-        self._controller_handler.bulk_record_handle_metrics.remote(reports)
+        self._controller_handler.record_autoscaling_metrics_from_handles.remote(reports)
 
 
 class Router(ABC):
