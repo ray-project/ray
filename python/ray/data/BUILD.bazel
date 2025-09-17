@@ -1585,3 +1585,31 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_custom_agg",
+    size = "small",
+    srcs = ["tests/test_custom_agg.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_stats",
+    size = "small",
+    srcs = ["tests/test_dataset_stats.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
