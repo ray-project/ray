@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -37,7 +37,7 @@ class TorchConfigContextManager:
                     logger.info(f"XLA device already configured: {device}")
             except Exception:
                 # If get_device fails, continue without setting device
-                pass  
+                pass
 
     def __exit__(self, type, value, traceback):
         # Propagate exceptions if any
@@ -138,14 +138,12 @@ def _setup_torch_process_group(
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
         # For XLA backend, use the XLA init method
-        import torch_xla.distributed.xla_backend
-        import torch_xla
         import torch_xla.runtime as xr
         dist.init_process_group(
             backend="xla",
-            # init_method="xla://",  # Use XLA's native init method
-            rank=world_rank,
-            world_size=world_size,
+            init_method="xla://",  # Use XLA's native init method
+            # rank=world_rank,
+            # world_size=world_size,
             timeout=timedelta(seconds=timeout_s),
         )
 
@@ -219,17 +217,73 @@ class _TorchBackend(Backend):
 
             # 1. Get a coordinator address from Ray's rank 0 worker.
             master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
-            pjrt_port = master_port + 123 
+            pjrt_port = master_port + 123
             coordinator = f"{master_addr}:{pjrt_port}"
             if backend_config.init_method == "env":
                 print(">>> setting master addr port env vars")
                 def set_env_vars(addr, port):
+                    context = ray.train.get_context()
                     os.environ["MASTER_ADDR"] = addr
                     os.environ["MASTER_PORT"] = str(port)
 
+                    os.environ["PJRT_DEVICE"] = "CUDA"
+                    os.environ["XLA_DISABLE_FUNCTIONALIZATION"] = "1"
+
+                    # This address allows all workers to coordinate.
+                    pjrt_port = port + 123
+                    coordinator_address = f"{master_addr}:{pjrt_port}"
+                    os.environ["PJRT_COORDINATOR_ADDRESS"] = coordinator_address
+                    # Set the world size and rank for the current process.
+                    os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
+                    os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
+
+                    # verbose logs:
+                    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"          # verbose TF/XLA logs
+                    os.environ["GRPC_VERBOSITY"] = "INFO"
+                    # Fine-grained C++ module logging:
+                    os.environ["TF_CPP_VMODULE"] = (
+                        "pjrt_client=1,stream_executor_pjrt_client=1,"
+                        "pjrt_distributed_client=1,pjrt_distributed=1,"
+                        "coordination_service_agent=1"
+                    )
+                    # Optional extra:
+                    os.environ["PJRT_CLIENT_VERBOSE_LOGS"] = "1"
+
+                    # from aws neuron xla pr:
+                    os.environ["LOCAL_RANK"] = str(context.get_local_rank())
+                    os.environ["RANK"] = str(context.get_world_rank())
+                    os.environ["LOCAL_WORLD_SIZE"] = str(context.get_local_world_size())
+                    os.environ["WORLD_SIZE"] = str(context.get_world_size())
+                    os.environ["GROUP_RANK"] = str(context.get_node_rank())
+                    os.environ["GROUP_WORLD_SIZE"] = str(
+                        context.get_world_size() / context.get_local_world_size()
+                    )
+                    os.environ["ROLE_RANK"] = str(context.get_world_rank())
+                    os.environ["ROLE_WORLD_RANK"] = str(context.get_world_rank())
+                    os.environ["ROLE_WORLD_SIZE"] = str(context.get_world_size())
+
+                    # EFA and XLA setup
+                    # https://github.com/aws/libfabric/blob/master/prov/efa/src/rxr/rxr_init.c
+                    # https://github.com/aws-neuron/aws-neuron-samples/blob/master/torch-neuronx/training/dp_bert_hf_pretrain/run_dp_bert_large_hf_pretrain_bf16_s128.sh # noqa
+                    os.environ["FI_PROVIDER"] = "efa"
+                    os.environ["FI_EFA_USE_DEVICE_RDMA"] = "1"
+                    os.environ["FI_EFA_FORK_SAFE"] = "1"
+                    os.environ["XLA_TRANSFER_SEED_ASYNC"] = "1"
+                    os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
+
+                    logger.info(
+                        f">>> PJRT envs set for worker {context.get_world_rank()}: "
+                        # f"COORD={os.environ['PJRT_COORDINATOR_ADDRESS']}, "
+                        # f"PROCS={os.environ['PJRT_NUM_PROCESSES']}, "
+                        # f"INDEX={os.environ['PJRT_PROCESS_INDEX']}"
+                    )
+
                 worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
-                
-                print(">>> set up a gloo backend pg.")
+
+                print(">>> set up torch distributed env vars")
+                worker_group.execute(_set_torch_distributed_env_vars)
+
+                print(">>> set up a xla backend pg.")
                 url = "env://"
                 setup_futures = []
                 for i in range(len(worker_group)):
@@ -245,10 +299,9 @@ class _TorchBackend(Backend):
                         )
                     )
                 ray.get(setup_futures)
-                
-                print(">>> set up torch distributed env vars")
-                worker_group.execute(_set_torch_distributed_env_vars)
-    
+
+
+
             # 2. Define the function to set ONLY the necessary PJRT env vars.
             def _xla_worker_bootstrap(coord):
                 context = ray.train.get_context()
@@ -270,7 +323,6 @@ class _TorchBackend(Backend):
 
                 import numpy as np
                 import torch_xla.distributed.spmd as xs
-                import torch_xla.core.xla_model as xm
 
                 # 3) Build/infer mesh on the worker.
                 num = xr.global_runtime_device_count()
@@ -286,11 +338,13 @@ class _TorchBackend(Backend):
                     f"PJRT envs set for worker {context.get_world_rank()}: "
                     f"COORD={coord}, PROCS={context.get_world_size()}, INDEX={context.get_world_rank()}, global runtime device = {xr.global_runtime_device_count()}"
                 )
-                
+
                 # Store the mesh in the train context so it can be accessed by users
                 # Use V2 context if available, otherwise fall back to V1
                 try:
-                    from ray.train.v2._internal.execution.context import get_train_context
+                    from ray.train.v2._internal.execution.context import (
+                        get_train_context,
+                    )
                     context = get_train_context()
                     context.set_xla_mesh(mesh)
                 except (ImportError, RuntimeError):
