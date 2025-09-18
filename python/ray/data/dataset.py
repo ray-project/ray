@@ -95,6 +95,7 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _validate_rows_per_file_args,
     get_compute_strategy,
+    merge_resources_to_ray_remote_args,
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
@@ -403,14 +404,12 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        if num_cpus is not None:
-            ray_remote_args["num_cpus"] = num_cpus
-
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
-
-        if memory is not None:
-            ray_remote_args["memory"] = memory
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
 
         plan = self._plan.copy()
         map_op = MapRows(
@@ -1365,14 +1364,12 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        if num_cpus is not None:
-            ray_remote_args["num_cpus"] = num_cpus
-
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
-
-        if memory is not None:
-            ray_remote_args["memory"] = memory
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
 
         plan = self._plan.copy()
         op = FlatMap(
@@ -1400,6 +1397,9 @@ class Dataset:
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -1441,6 +1441,11 @@ class Dataset:
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             compute: This argument is deprecated. Use ``concurrency`` argument.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The semantics of this argument depend on the type of ``fn``:
 
                 * If ``fn`` is a function and ``concurrency`` isn't set (default), the
@@ -1515,6 +1520,12 @@ class Dataset:
                     f"{type(fn).__name__} instead."
                 )
 
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
         plan = self._plan.copy()
         op = Filter(
             input_op=self._logical_plan.dag,
