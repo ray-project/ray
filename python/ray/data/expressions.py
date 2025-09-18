@@ -4,11 +4,15 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Type, TypeVar, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+T = TypeVar("T")
+UDFCallable = Callable[..., "UDFExpr"]
+Decorated = Union[UDFCallable, Type[T]]
 
 
 @DeveloperAPI(stability="alpha")
@@ -501,7 +505,9 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
     """
 
-    def decorator(func_or_class):
+    def decorator(
+        func_or_class: Union[Callable[..., BatchColumn], Type[T]]
+    ) -> Decorated:
         # Check if this is a callable class (has __call__ method defined)
         if isinstance(func_or_class, type) and callable(func_or_class):
             # This is a callable class - create a wrapper class
