@@ -80,7 +80,8 @@ class Batcher(BatcherInterface):
         Args:
             block: Block to add to the block buffer.
         """
-        if BlockAccessor.for_block(block).num_rows() > 0:
+
+        if BlockAccessor.for_block(block).num_rows() >= 0:
             self._buffer.append(block)
             self._buffer_size += BlockAccessor.for_block(block).num_rows()
 
@@ -96,7 +97,7 @@ class Batcher(BatcherInterface):
 
     def has_any(self) -> bool:
         """Whether this Batcher has any data."""
-        return self._buffer_size > 0
+        return self._buffer_size > 0 or len(self._buffer) > 0
 
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
