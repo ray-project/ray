@@ -3701,6 +3701,7 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_enable_open_telemetry=1
     cluster_compute: distributed.yaml
 
   run:
