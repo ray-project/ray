@@ -3,8 +3,8 @@ import posixpath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
+from ray._common.retry import call_with_retry
 from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
-from ray._private.retry import call_with_retry
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME

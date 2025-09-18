@@ -32,8 +32,8 @@ import pyarrow
 from packaging.version import parse as parse_version
 
 import ray
+from ray._common.retry import call_with_retry
 from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.retry import call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 import psutil

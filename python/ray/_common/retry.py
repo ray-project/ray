@@ -7,6 +7,16 @@ from typing import Any, Callable, List, Optional
 logger = logging.getLogger(__name__)
 
 
+COMMON_RETRYABLE_TOKENS = (
+    "SLOW_DOWN",
+    "THROTTLING",
+    "REQUEST_TIMEOUT",
+    "INTERNAL_ERROR",
+    "SERVICE_UNAVAILABLE",
+    "NETWORK_CONNECTION",
+)
+
+
 def call_with_retry(
     f: Callable,
     description: str,
@@ -32,6 +42,7 @@ def call_with_retry(
     Returns:
         The result of the function.
     """
+    # TODO: consider inverse match and matching exception type
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
     for i in range(max_attempts):
@@ -40,16 +51,21 @@ def call_with_retry(
         except Exception as e:
             is_retryable = match is None or any(pattern in str(e) for pattern in match)
             if is_retryable and i + 1 < max_attempts:
-                # Retry with binary expoential backoff with random jitter.
+                # Retry with binary exponential backoff with random jitter.
                 backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:
-                logger.debug(
-                    f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
-                )
+                if is_retryable:
+                    logger.debug(
+                        f"Failed to {description} after {max_attempts} attempts. Raising."
+                    )
+                else:
+                    logger.debug(
+                        f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
+                    )
                 raise e from None
 
 
@@ -59,7 +75,7 @@ def retry(
     max_attempts: int = 10,
     max_backoff_s: int = 32,
 ) -> Callable:
-    """call_with_retry decorator."""
+    """Decorator-based version of call_with_retry."""
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)

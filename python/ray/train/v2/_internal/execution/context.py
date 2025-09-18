@@ -8,7 +8,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
-from ray._private.retry import retry
+from ray._common.retry import COMMON_RETRYABLE_TOKENS, retry
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train._internal import session
@@ -216,7 +216,9 @@ class TrainContext:
             )
         )
 
-    @retry(description="upload checkpoint", max_attempts=3)
+    @retry(
+        description="upload checkpoint", max_attempts=3, match=COMMON_RETRYABLE_TOKENS
+    )
     def _upload_checkpoint(
         self,
         checkpoint_dir_name: str,
@@ -366,8 +368,11 @@ class TrainContext:
                         )
                         self._wait_then_report(training_result, report_call_index)
                     except Exception as e:
+                        # TODO: env var to disable eager raising
                         logger.exception(
-                            "Async checkpoint upload failed - shutting down workers"
+                            "Checkpoint upload failed in the background thread. Raising eagerly "
+                            "to avoid training in a corrupted state with more potential progress "
+                            "lost due to checkpointing failures."
                         )
                         self.execution_context.training_thread_runner.get_exception_queue().put(
                             construct_user_exception_with_traceback(e)
