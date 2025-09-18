@@ -216,9 +216,8 @@ class DependencySetManager:
             raise RuntimeError(
                 f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
             )
-        else:
-            click.echo(f"{status.stdout}")
-            click.echo(f"Executed pre_hook {pre_hook} successfully")
+        click.echo(f"{status.stdout}")
+        click.echo(f"Executed pre_hook {pre_hook} successfully")
 
     def execute_depset(self, depset: Depset):
         if depset.operation == "compile":

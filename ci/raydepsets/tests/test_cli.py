@@ -732,7 +732,6 @@ class TestCli(unittest.TestCase):
             manager = _create_test_manager(tmpdir)
             manager.execute_pre_hook("pre-hook-test.sh test")
             stdout = mock_stdout.getvalue()
-            print(f"stdout: {stdout}")
             assert "Pre-hook test\n" in stdout
             assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
 
