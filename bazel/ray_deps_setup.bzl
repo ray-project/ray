@@ -129,7 +129,7 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_spdlog",
         build_file = "@io_ray//bazel:spdlog.BUILD",
-        urls = ["https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.zip"],
+        url = "https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.zip",
         sha256 = "b74274c32c8be5dba70b7006c1d41b7d3e5ff0dff8390c8b6390c1189424e094",
         # spdlog rotation filename format conflict with ray, update the format.
         patches = [
