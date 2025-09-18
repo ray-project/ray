@@ -157,6 +157,7 @@ def main(
 
     # If the build is manually triggered and there are more than 5 tests
     # Ask user to confirm before launching the tests.
+    block_step = None
     if test_filters and len(tests) >= 5:
         block_step = generate_block_step(len(tests))
 
@@ -168,7 +169,7 @@ def main(
         priority=priority.value,
         global_config=global_config,
         is_concurrency_limit=not no_concurrency_limit,
-        block_step=block_step["key"] if block_step else None,
+        block_step_key=block_step["key"] if block_step else None,
     )
     steps = [block_step] + steps if block_step else steps
 

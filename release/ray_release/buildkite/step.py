@@ -74,7 +74,7 @@ def get_step_for_test_group(
     priority: int = 0,
     global_config: Optional[str] = None,
     is_concurrency_limit: bool = True,
-    block_step: Optional[str] = None,
+    block_step_key: Optional[str] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -93,7 +93,7 @@ def get_step_for_test_group(
                     env=env,
                     priority_val=priority,
                     global_config=global_config,
-                    block_step=block_step,
+                    block_step_key=block_step_key,
                 )
 
                 if not is_concurrency_limit:
@@ -117,7 +117,7 @@ def get_step(
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
-    block_step: Optional[str] = None,
+    block_step_key: Optional[str] = None,
 ):
     env = env or {}
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
@@ -203,13 +203,13 @@ def get_step(
     else:
         step["depends_on"] = get_prerequisite_step(image)
 
-    if block_step:
+    if block_step_key:
         if not step["depends_on"]:
-            step["depends_on"] = block_step
+            step["depends_on"] = block_step_key
         else:
             # If there's an existing depends_on, combine it with block_step
             if isinstance(step["depends_on"], str):
-                step["depends_on"].append(block_step)
+                step["depends_on"].append(block_step_key)
     return step
 
 
