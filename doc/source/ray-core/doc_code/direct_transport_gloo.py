@@ -131,15 +131,11 @@ sum2 = receiver.sum.remote(tensor)
 assert torch.allclose(*ray.get([sum1, sum2]))
 # __gloo_intra_actor_end__
 
-# Correct example of ray.get().
 # __gloo_get_start__
-print(ray.get(tensor, _tensor_transport="object_store"))
-# torch.Tensor(...)
-# __gloo_get_end__
 
 # Wrong example of ray.get(). Since the tensor transport in the @ray.method decorator is Gloo,
-# ray.get() will try to use Gloo to fetch the tensor, which is not supported.
-# In this case, users must specify the correct tensor transport explicitly in ray.get().
+# ray.get() will try to use Gloo to fetch the tensor, which is not supported
+# because the caller is not part of the collective group.
 with pytest.raises(ValueError) as e:
     ray.get(tensor)
 
@@ -147,3 +143,8 @@ assert (
     "Currently ray.get() only supports OBJECT_STORE and NIXL tensor transport, got TensorTransportEnum.GLOO, please specify the correct tensor transport in ray.get()"
     in str(e.value)
 )
+
+# Correct example of ray.get(), explicitly setting the tensor transport to use the Ray object store.
+print(ray.get(tensor, _tensor_transport="object_store"))
+# torch.Tensor(...)
+# __gloo_get_end__
