@@ -46,7 +46,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
-      REQUIREMENTS_FILE: "ray_ml_base_extra_testdeps_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "requirements_llm_byod_{{matrix.python}}.txt"
     depends_on:
       - ray-llmbaseextra
 
