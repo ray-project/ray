@@ -86,3 +86,16 @@ class LogicalOperator(Operator):
         objects aren't available on the deserialized machine.
         """
         return True
+
+
+class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
+    """Mixin for reading operators supporting projection pushdown"""
+
+    def supports_projection_pushdown(self) -> bool:
+        return False
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        return None
+
+    def apply_projection(self, columns: Optional[List[str]]) -> LogicalOperator:
+        return self
