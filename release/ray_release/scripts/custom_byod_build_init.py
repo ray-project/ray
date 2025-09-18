@@ -16,6 +16,8 @@ from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
 from ray_release.logger import logger
 from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
 
+_bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
 
 @click.command(
     help="Create a rayci yaml file for building custom BYOD images based on tests."
@@ -105,7 +107,12 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    create_custom_build_yaml(".buildkite/release/custom_byod_build.rayci.yml", tests)
+    create_custom_build_yaml(
+        os.path.join(
+            _bazel_workspace_dir, ".buildkite/release/custom_byod_build.rayci.yml"
+        ),
+        tests,
+    )
 
 
 if __name__ == "__main__":

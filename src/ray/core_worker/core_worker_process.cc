@@ -33,7 +33,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/ipc/raylet_ipc_client.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/rpc/raylet/raylet_client.h"
