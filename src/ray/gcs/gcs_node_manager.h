@@ -197,6 +197,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const;
 
+  void PublishNodeInfoToPubsub(const NodeID &node_id,
+                               const rpc::GcsNodeInfo &node_info) const;
+
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {
     return IsExportAPIEnabledSourceType(

@@ -166,15 +166,14 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   auto inner_publisher = std::make_unique<pubsub::Publisher>(
       /*channels=*/
-      std::vector<rpc::ChannelType>{
-          rpc::ChannelType::GCS_ACTOR_CHANNEL,
-          rpc::ChannelType::GCS_JOB_CHANNEL,
-          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-          rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-          rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-      },
+      std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                                    rpc::ChannelType::GCS_JOB_CHANNEL,
+                                    rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+                                    rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                    rpc::ChannelType::RAY_LOG_CHANNEL,
+                                    rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
+                                    rpc::ChannelType::GCS_NODE_INFO_CHANNEL_LIGHT},
       /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),

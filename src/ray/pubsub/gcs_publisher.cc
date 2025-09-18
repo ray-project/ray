@@ -44,6 +44,14 @@ void GcsPublisher::PublishNodeInfo(const NodeID &id, rpc::GcsNodeInfo message) {
   publisher_->Publish(std::move(msg));
 }
 
+void GcsPublisher::PublishNodeInfoLight(const NodeID &id, rpc::GcsNodeInfoLight message) {
+  rpc::PubMessage msg;
+  msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL_LIGHT);
+  msg.set_key_id(id.Binary());
+  *msg.mutable_node_info_light_message() = std::move(message);
+  publisher_->Publish(std::move(msg));
+}
+
 void GcsPublisher::PublishWorkerFailure(const WorkerID &id,
                                         rpc::WorkerDeltaData message) {
   rpc::PubMessage msg;

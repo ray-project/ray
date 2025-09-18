@@ -95,7 +95,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
     AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
     WriteNodeExportEvent(node_info_copy);
-    gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_copy));
+    PublishNodeInfoToPubsub(node_id, node_info_copy);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   if (node_info.is_head_node()) {
@@ -164,7 +164,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
   auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
-    gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta);
+    PublishNodeInfoToPubsub(node_id, *node_info_delta);
     WriteNodeExportEvent(*node);
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
@@ -583,7 +583,7 @@ void GcsNodeManager::OnNodeFailure(
       if (node_table_updated_callback != nullptr) {
         node_table_updated_callback();
       }
-      gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_delta));
+      PublishNodeInfoToPubsub(node_id, node_info_delta);
     };
     gcs_table_storage_->NodeTable().Put(
         node_id, *node, {std::move(on_done), io_context_});
@@ -629,6 +629,12 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
   auto node_id = NodeID::FromBinary(node->node_id());
   dead_nodes_.emplace(node_id, node);
   sorted_dead_node_list_.emplace_back(node_id, node->end_time_ms());
+}
+
+void GcsNodeManager::PublishNodeInfoToPubsub(const NodeID &node_id,
+                                             const rpc::GcsNodeInfo &node_info) const {
+  gcs_publisher_->PublishNodeInfo(node_id, node_info);
+  gcs_publisher_->PublishNodeInfoLight(node_id, ConvertToGcsNodeInfoLight(node_info));
 }
 
 std::string GcsNodeManager::DebugString() const {
