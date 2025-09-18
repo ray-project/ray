@@ -24,7 +24,6 @@ except ImportError:
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES = parse_version("12.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
-MIN_PYARROW_VERSION_COERCE_EXTENSION_TYPES = parse_version("10.0.0")
 
 
 # pyarrow.Table.slice is slow when the table has many chunks
@@ -66,17 +65,7 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
 def _create_empty_table(schema: "pyarrow.Schema"):
     import pyarrow as pa
 
-    from ray.air.util.transform_pyarrow import _is_pa_extension_type
-
-    arrays = []
-
-    for i, (name, t) in enumerate(zip(schema.names, schema.types)):
-        if (
-            get_pyarrow_version() < MIN_PYARROW_VERSION_COERCE_EXTENSION_TYPES
-        ) and _is_pa_extension_type(t):
-            t = t.storage_type
-            schema = schema.set(i, pa.field(name, t))
-        arrays.append(pa.array([], type=t))
+    arrays = [pa.array([], type=t) for t in schema.types]
 
     return pa.table(arrays, schema=schema)
 

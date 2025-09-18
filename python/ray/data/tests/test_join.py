@@ -4,8 +4,10 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import DataContext, Dataset
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.join import JoinOperator
@@ -621,6 +623,12 @@ def _assert_scalar_values(result_by_id, expected_values):
             assert result_by_id[row_id][column] == expected_value
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("10.0.0"),
+    reason="""Joins use empty arrays with type coercion. This pyarrow
+    version does not support type coercion of extension types, which
+    are needed for tensors.""",
+)
 @pytest.mark.parametrize(
     "join_type",
     [
