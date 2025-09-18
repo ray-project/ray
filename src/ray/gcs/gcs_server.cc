@@ -349,11 +349,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
     this->io_context_provider_.GetDefaultIOContext().post(
-        [this, node_id] {
-          raylet_client_pool_.Disconnect(node_id);
-          worker_client_pool_.Disconnect(node_id);
-          return gcs_node_manager_->OnNodeFailure(node_id, nullptr);
-        },
+        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
         "GcsServer.NodeDeathCallback");
   };
 
