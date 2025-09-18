@@ -25,7 +25,8 @@ steps:
     tags: java
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-only
+      # Java tests need the C++ API for multi-langauge worker tests.
+      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-type with-cpp --build-only
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
         "./java/test.sh"

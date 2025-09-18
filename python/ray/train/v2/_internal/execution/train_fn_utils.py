@@ -166,9 +166,19 @@ class LocalTrainFnUtils(TrainFnUtils):
         self,
         experiment_name: str,
         dataset_shards: Optional[Dict[str, DataIterator]] = None,
+        world_size: int = 1,
+        world_rank: int = 0,
+        local_rank: int = 0,
+        local_world_size: int = 1,
+        node_rank: int = 0,
     ):
         self._context = LocalTrainContext(
             experiment_name=experiment_name,
+            world_size=world_size,
+            world_rank=world_rank,
+            local_rank=local_rank,
+            local_world_size=local_world_size,
+            node_rank=node_rank,
         )
         self._dataset_shards = dataset_shards
         self._last_metrics = None

@@ -18,14 +18,21 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_resource_manager.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 
 namespace ray {
 namespace gcs {
 
 static instrumented_io_context __mock_io_context_;
 static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
-static GcsNodeManager __mock_gcs_node_manager_(
-    nullptr, nullptr, __mock_io_context_, nullptr, ClusterID::Nil());
+static observability::FakeRayEventRecorder __mock_ray_event_recorder_;
+static GcsNodeManager __mock_gcs_node_manager_(nullptr,
+                                               nullptr,
+                                               __mock_io_context_,
+                                               nullptr,
+                                               ClusterID::Nil(),
+                                               __mock_ray_event_recorder_,
+                                               "");
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:
