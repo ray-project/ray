@@ -10,6 +10,7 @@ import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray.util.accelerators import tpu
 from ray.tests.conftest import _ray_start_cluster
+from ray.util.accelerators import tpu as util_tpu
 
 
 @patch("glob.glob")
@@ -360,7 +361,9 @@ def test_num_tpu_chips(mock_glob):
 def test_is_valid_tpu_accelerator_topology(test_case):
     """Test valid TPU accelerator topologies."""
     accelerator_type, accelerator_topology, expected_result = test_case
-    actual_result = TPUAcceleratorManager.is_valid_tpu_accelerator_topology(accelerator_type, accelerator_topology)
+    actual_result = TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+        accelerator_type, accelerator_topology
+    )
 
     assert actual_result == expected_result
 
@@ -426,7 +429,21 @@ def ray_tpu_cluster(monkeypatch):
         monkeypatch.setenv("TPU_WORKER_ID", "0")
         monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-8")
         monkeypatch.setenv("TPU_TOPOLOGY", "2x2x1")
+        monkeypatch.setenv("TPU_TOPOLOGY", "2x2x1")
 
+        cluster.add_node(
+            num_cpus=2,
+            resources={"TPU": 4, "TPU-v4-8-head": 1},
+        )
+        monkeypatch.setenv("TPU_WORKER_ID", "1")
+        cluster.add_node(
+            num_cpus=2,
+            resources={"TPU": 4},
+        )
+
+        # second slice
+        monkeypatch.setenv("TPU_NAME", "test-slice2-0")
+        monkeypatch.setenv("TPU_WORKER_ID", "0")
         cluster.add_node(
             num_cpus=2,
             resources={"TPU": 4, "TPU-v4-8-head": 1},
@@ -471,12 +488,13 @@ def test_reserve_tpu_slice(ray_tpu_cluster):
     """Tests that a TPU slice can be successfully reserved."""
     tpu_slice_name = "test-slice-0"
     reserved_name = tpu.reserve_tpu_slice(topology="2x2x1", accelerator_type="TPU-V4")
+    reserved_name = tpu.reserve_tpu_slice(topology="2x2x1", accelerator_type="TPU-V4")
     assert reserved_name == tpu_slice_name
 
 
 def test_slice_placement_group(ray_tpu_cluster):
     """Test that whole single TPU slice can be successfully reserved."""
-    slice_placement_group = tpu.slice_placement_group(
+    slice_placement_group = util_tpu.slice_placement_group(
         topology="2x2x1",
         accelerator_version="v4",
     )
@@ -488,14 +506,17 @@ def test_slice_placement_group(ray_tpu_cluster):
 
 def test_multislice_placement_group(ray_tpu_cluster):
     """Test that multiple whole TPU slices can be successfully reserved"""
-    multislice_placement_group = tpu.multi_slice_placement_group(
+    multislice_placement_group = util_tpu.multi_slice_placement_group(
         topology="2x2x1",
         accelerator_version="v4",
         num_slices=2,
     )
     assert multislice_placement_group.placement_group.bundle_count == 2
     assert multislice_placement_group.num_workers == 2
-    assert multislice_placement_group.placement_group.bundle_specs == [{"TPU": 4}, {"TPU": 4}]
+    assert multislice_placement_group.placement_group.bundle_specs == [
+        {"TPU": 4},
+        {"TPU": 4},
+    ]
 
 
 if __name__ == "__main__":
