@@ -13,7 +13,7 @@ from ci.ray_ci.builder_container import (
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import PLATFORMS_RAY
 from ci.ray_ci.ray_docker_container import RayDockerContainer
-from ci.ray_ci.utils import ci_init, docker_login, logger
+from ci.ray_ci.utils import ci_init, ecr_docker_login, logger
 from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 
 
@@ -84,7 +84,7 @@ def main(
     """
     Build a wheel or jar artifact
     """
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    ecr_docker_login(_DOCKER_ECR_REPO.split("/")[0])
     ci_init()
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
