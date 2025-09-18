@@ -868,26 +868,21 @@ class AlgorithmConfig(_Config):
         return state
 
     @classmethod
-    def from_state(cls, state: Dict[str, Any]) -> Self:
+    def from_state(cls, state: Dict[str, Any]) -> Union[Self, Any]:
         """Returns an instance constructed from the state.
 
         Args:
-            cls: An `AlgorithmConfig` class.
             state: A dictionary containing the state of an `AlgorithmConfig`.
                 See `AlgorithmConfig.get_state` for creating a state.
+                The constructed class will be of  ``state["class"]``.
 
         Returns:
             An `AlgorithmConfig` instance with attributes from the `state`.
         """
 
+        # As ctor could be any other class add Any to the return type to indicate this.
         ctor = state["class"]
         config = ctor()
-        if not issubclass(ctor, cls):
-            logger.warning(  # Warn that type-hints might not align
-                f"Constructing a AlgorithmConfig of type {cls} in from_state with "
-                f"different class type {type(config)}.",
-                stacklevel=2,
-            )
 
         config.__dict__.update(state)
 
