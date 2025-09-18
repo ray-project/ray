@@ -2715,6 +2715,106 @@ def test_with_column_udf_invalid_return_type_validation(
     reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
+    "scenario",
+    [
+        pytest.param(
+            {
+                "data": [
+                    {"name": "Alice"},
+                    {"name": "Bob"},
+                    {"name": "Charlie"},
+                ],
+                "expr_factory": lambda: col("name") + "_X",
+                "column_name": "name_with_suffix",
+                "expected": ["Alice_X", "Bob_X", "Charlie_X"],
+            },
+            id="string_col_plus_python_literal_rhs",
+        ),
+        pytest.param(
+            {
+                "data": [
+                    {"name": "Alice"},
+                    {"name": "Bob"},
+                    {"name": "Charlie"},
+                ],
+                "expr_factory": lambda: "_X" + col("name"),
+                "column_name": "name_with_prefix",
+                "expected": ["_XAlice", "_XBob", "_XCharlie"],
+            },
+            id="python_literal_lhs_plus_string_col",
+        ),
+        pytest.param(
+            {
+                "data": [
+                    {"first": "John", "last": "Doe"},
+                    {"first": "Jane", "last": "Smith"},
+                ],
+                "expr_factory": lambda: col("first") + col("last"),
+                "column_name": "full_name",
+                "expected": ["JohnDoe", "JaneSmith"],
+            },
+            id="string_col_plus_string_col",
+        ),
+        pytest.param(
+            {
+                "arrow_table": pa.table(
+                    {"name": pa.array(["Alice", "Bob"]).dictionary_encode()}
+                ),
+                "expr_factory": lambda: col("name") + "_X",
+                "column_name": "name_with_suffix",
+                "expected": ["Alice_X", "Bob_X"],
+            },
+            id="dict_encoded_string_col_plus_literal_rhs",
+        ),
+        pytest.param(
+            {
+                "data": [
+                    {"name": "Alice"},
+                    {"name": "Bob"},
+                ],
+                "expr_factory": lambda: col("name") + lit("_X"),
+                "column_name": "name_with_suffix",
+                "expected": ["Alice_X", "Bob_X"],
+            },
+            id="string_col_plus_lit_literal_rhs",
+        ),
+    ],
+)
+def test_with_column_string_concat_combinations(
+    ray_start_regular_shared,
+    scenario,
+):
+    if "arrow_table" in scenario:
+        ds = ray.data.from_arrow(scenario["arrow_table"])
+    else:
+        ds = ray.data.from_items(scenario["data"])
+
+    expr = scenario["expr_factory"]()
+    column_name = scenario["column_name"]
+
+    ds2 = ds.with_column(column_name, expr)
+    out = ds2.to_pandas()
+    assert out[column_name].tolist() == scenario["expected"]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_string_concat_type_mismatch_raises(
+    ray_start_regular_shared,
+):
+    # int + string should raise a user-facing error
+    ds = ray.data.range(3)
+    with pytest.raises((RayTaskError, UserCodeException)):
+        ds.with_column("bad", col("id") + "_X").materialize()
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
     "expression, expected_column_data, test_description",
     [
         # Floor division operations
