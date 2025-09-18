@@ -207,9 +207,7 @@ def get_step(
         if not step["depends_on"]:
             step["depends_on"] = block_step_key
         else:
-            # If there's an existing depends_on, combine it with block_step
-            if isinstance(step["depends_on"], str):
-                step["depends_on"].append(block_step_key)
+            step["depends_on"] = [step["depends_on"], block_step_key]
     return step
 
 
