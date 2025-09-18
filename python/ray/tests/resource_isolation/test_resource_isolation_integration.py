@@ -1,6 +1,5 @@
 import os
 import platform
-import random
 import sys
 from pathlib import Path
 from typing import Set
@@ -31,7 +30,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 _ROOT_CGROUP = Path("/sys/fs/cgroup")
 #
 # To run locally, uncomment the following line.
-_ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
+# _ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
 
 # The integration tests assume that the _ROOT_CGROUP exists and that
 # the process has read and write access.
@@ -260,11 +259,8 @@ def ray_shutdown():
 
 
 def generate_node_id():
-    """Returns a random 56 character string.
-    TODO(#54703): This might have to be exposed properly through cython. Needs
-    to be cleaned up before closing the issue.
-    """
-    return f"{random.getrandbits(56 * 4):056x}"
+    """Returns a random node id."""
+    return ray.NodeID.from_random().hex()
 
 
 def assert_cgroup_hierarchy_exists_for_node(
