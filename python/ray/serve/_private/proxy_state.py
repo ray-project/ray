@@ -236,11 +236,7 @@ class ActorProxyWrapper(ProxyWrapper):
             return None
 
         try:
-            # NOTE: Since `check_health` method is responding with nothing, sole
-            #       purpose of fetching the result is to extract any potential
-            #       exceptions
-            self._health_check_future.result()
-            return True
+            return self._health_check_future.result()
         except TimeoutError:
             logger.warning(
                 f"Didn't receive health check response for proxy"
