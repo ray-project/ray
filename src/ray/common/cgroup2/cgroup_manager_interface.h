@@ -45,7 +45,27 @@ class CgroupManagerInterface {
   // TODO(#54703): These will be implemented in a later PR to move processes
   // into a cgroup.
   // virtual Status AddProcessToApplicationCgroup(int) = 0;
-  // virtual Status AddProcessToSystemCgroup(int) = 0;
+
+  /**
+    Moves the process into the system leaf cgroup (@see kLeafCgroupName).
+
+    To move the pid, the process must have read, write, and execute permissions for the
+      1) the cgroup the pid is currently in i.e. the source cgroup.
+      2) the system leaf cgroup i.e. the destination cgroup.
+      3) the lowest common ancestor of the source and destination cgroups.
+
+    TODO(#54703): There currently is not a good way to signal to the caller that
+    the method can cause a FATAL error. Revisit this once we've settled on a pattern.
+
+    NOTE: If the process does not have adequate cgroup permissions or the system leaf
+    cgroup does not exist, this will fail a RAY_CHECK.
+
+    @param pid of the process to move into the system leaf cgroup.
+
+    @return Status::OK if pid moved successfully.
+    @return Status::NotFound if the system cgroup does not exist.
+  */
+  virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
 
   /**
     Cleans up the cgroup hierarchy, disables all controllers and removes all

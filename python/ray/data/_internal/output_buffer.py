@@ -149,18 +149,7 @@ class BlockOutputBuffer:
             )
 
         if target_num_rows is not None and target_num_rows < accessor.num_rows():
-            # NOTE: We're maintaining following protocol of slicing underlying block
-            #       into appropriately sized ones:
-            #
-            #         - (Finalized) Target blocks sliced from the original one
-            #           and are *copied* to avoid referencing original blocks
-            #         - Temporary remainder of the block should *NOT* be copied
-            #           such as to avoid repeatedly copying the remainder bytes
-            #           of the block, resulting in O(M * N) total bytes being
-            #           copied, where N is the total number of bytes in the original
-            #           block and M is the number of blocks that will be produced by
-            #           this iterator
-            block = accessor.slice(0, target_num_rows, copy=True)
+            block = accessor.slice(0, target_num_rows, copy=False)
             block_remainder = accessor.slice(
                 target_num_rows, accessor.num_rows(), copy=False
             )

@@ -71,13 +71,19 @@ class FakePlasmaClient : public PlasmaClientInterface {
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::vector<plasma::ObjectBuffer> *object_buffers) override {
+    object_buffers->reserve(object_ids.size());
     for (const auto &id : object_ids) {
-      auto &buffers = objects_in_plasma_[id];
-      plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
-                                          buffers.first.data(), buffers.first.size()),
-                                      std::make_shared<SharedMemoryBuffer>(
-                                          buffers.second.data(), buffers.second.size())};
-      object_buffers->emplace_back(shm_buffer);
+      if (objects_in_plasma_.contains(id)) {
+        auto &buffers = objects_in_plasma_[id];
+        plasma::ObjectBuffer shm_buffer{
+            std::make_shared<SharedMemoryBuffer>(buffers.first.data(),
+                                                 buffers.first.size()),
+            std::make_shared<SharedMemoryBuffer>(buffers.second.data(),
+                                                 buffers.second.size())};
+        object_buffers->emplace_back(shm_buffer);
+      } else {
+        object_buffers->emplace_back(plasma::ObjectBuffer{});
+      }
     }
     return Status::OK();
   }

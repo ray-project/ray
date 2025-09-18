@@ -26,6 +26,7 @@
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/cgroup2/scoped_cgroup_operation.h"
 #include "ray/common/status_or.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -290,5 +291,23 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   RegisterRemoveConstraint(application_cgroup_, cpu_weight_constraint_);
 
   return Status::OK();
+}
+
+Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
+  Status s = cgroup_driver_->AddProcessToCgroup(system_leaf_cgroup_, pid);
+  // TODO(#54703): Add link to OSS documentation once available.
+  RAY_CHECK(!s.IsNotFound()) << "Failed to move process " << pid << " into system cgroup "
+                             << system_leaf_cgroup_
+                             << "because the cgroup was not found. "
+                                "If resource isolation is enabled, Ray's cgroup "
+                                "hierarchy must not be modified "
+                                "while Ray is running.";
+  RAY_CHECK(!s.IsPermissionDenied())
+      << "Failed to move process " << pid << " into system cgroup " << system_leaf_cgroup_
+      << " because Ray does not have read, write, and execute "
+         "permissions for the cgroup. If resource isolation is enabled, Ray's cgroup "
+         "hierarchy must not be modified while Ray is running.";
+
+  return s;
 }
 }  // namespace ray

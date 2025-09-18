@@ -338,12 +338,13 @@ void RayletClient::PinObjectIDs(
     pins_in_flight_--;
     callback(status, std::move(reply));
   };
-  INVOKE_RPC_CALL(NodeManagerService,
-                  PinObjectIDs,
-                  request,
-                  rpc_callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            PinObjectIDs,
+                            request,
+                            rpc_callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::ShutdownRaylet(

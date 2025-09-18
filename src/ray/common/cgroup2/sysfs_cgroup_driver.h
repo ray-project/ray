@@ -255,6 +255,29 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
                        const std::string &constraint,
                        const std::string &constraint_value) override;
 
+  /**
+    Attempts to write pid to the cgroup.procs file of the specified cgroup.
+
+    To write a pid to a cgroup.procs file, the process must have read, write, and execute
+    to the source, destination, and lowest-common ancestor of source and destination
+    cgroups.
+
+    For more details, see the documentation:
+    - @see https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation-containment
+    - @see https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files
+
+    @param cgroup to move the process into.
+    @param pid pid of the process that will be moved.
+
+    @return Status::OK if the process was moved successfully into the cgroup.
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions for the cgroup.
+    @return Status::InvalidArgument if the pid is invalid, does not exist, or any other
+    error.
+   */
+  Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid) override;
+
  private:
   /**
     @param controller_file_path the absolute path of the controller file to read which is

@@ -9,7 +9,7 @@ from ray_release.test import Test
 
 from ci.ray_ci.utils import (
     chunk_into_n,
-    docker_login,
+    ecr_docker_login,
     filter_tests,
     get_flaky_test_names,
 )
@@ -22,7 +22,7 @@ def test_chunk_into_n() -> None:
 
 
 @mock.patch("boto3.client")
-def test_docker_login(mock_client) -> None:
+def test_ecr_docker_login(mock_client) -> None:
     def _mock_subprocess_run(
         cmd: List[str],
         stdin=None,
@@ -39,7 +39,7 @@ def test_docker_login(mock_client) -> None:
     }
 
     with mock.patch("subprocess.run", side_effect=_mock_subprocess_run):
-        docker_login("docker_ecr")
+        ecr_docker_login("docker_ecr")
 
 
 def _make_test(name: str, state: str, team: str) -> Test:
