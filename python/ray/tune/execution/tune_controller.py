@@ -1551,9 +1551,11 @@ class TuneController:
                     # ignore all results that came after that.
                     break
 
-    def _process_trial_result(self, trial, result):
+    def _process_trial_result(self, trial: Trial, result: dict[str, Any]):
         result.update(trial_id=trial.trial_id)
         is_duplicate = RESULT_DUPLICATE in result
+        # Never checkpoint on duplicate results, recheck after callbacks
+        force_checkpoint = False
 
         # TrialScheduler and SearchAlgorithm still receive a
         # notification because there may be special handling for
@@ -1592,11 +1594,10 @@ class TuneController:
                     trial=trial,
                     result=result,
                 )
+            force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             trial.update_last_result(result)
             # Include in next experiment checkpoint
             self._mark_trial_to_checkpoint(trial)
-
-        force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
 
         # Checkpoints to disk. This should be checked even if
         # the scheduler decision is STOP or PAUSE. Note that
