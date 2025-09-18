@@ -11,7 +11,6 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray.core.generated import (
-    events_base_event_pb2,
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
     gcs_service_pb2_grpc,
@@ -55,19 +54,6 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
-# Event filtering configurations
-# Comma-separated list of event types that are allowed to be exposed to external services
-# Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
-# The list of all supported event types can be found in src/ray/protobuf/public/events_base_event.proto (EventType enum)
-# By default TASK_PROFILE_EVENT is not exposed to external services
-DEFAULT_EXPOSABLE_EVENT_TYPES = (
-    "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
-    "ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,"
-    "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_EXECUTION_EVENT"
-)
-EXPOSABLE_EVENT_TYPES = os.environ.get(
-    f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
-)
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
@@ -121,12 +107,6 @@ class AggregatorAgent(
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
         )
 
-        self._exposable_event_types = {
-            event_type.strip()
-            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
-            if event_type.strip()
-        }
-
         self._event_processing_enabled = False
         if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC and self._events_export_addr:
             logger.info(
@@ -138,7 +118,6 @@ class AggregatorAgent(
                 publish_client=AsyncHttpPublisherClient(
                     endpoint=self._events_export_addr,
                     executor=self._executor,
-                    events_filter_fn=self._can_expose_event,
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,
@@ -218,15 +197,6 @@ class AggregatorAgent(
                 )
 
         return events_event_aggregator_service_pb2.AddEventsReply()
-
-    def _can_expose_event(self, event) -> bool:
-        """
-        Check if an event should be allowed to be sent to external services.
-        """
-        return (
-            events_base_event_pb2.RayEvent.EventType.Name(event.event_type)
-            in self._exposable_event_types
-        )
 
     async def run(self, server) -> None:
         if server:

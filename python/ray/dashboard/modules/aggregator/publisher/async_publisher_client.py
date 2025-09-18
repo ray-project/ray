@@ -3,7 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import aiohttp
 
@@ -13,7 +13,11 @@ from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
 )
-from ray.dashboard.modules.aggregator.publisher.configs import PUBLISHER_TIMEOUT_SECONDS
+from ray.dashboard.modules.aggregator.publisher.configs import (
+    GCS_EXPOSABLE_EVENT_TYPES,
+    HTTP_EXPOSABLE_EVENT_TYPES,
+    PUBLISHER_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,29 @@ class PublisherClientInterface(ABC):
     Implementations should handle the actual publishing logic, filtering,
     and format conversion appropriate for their specific destination type.
     """
+
+    def __init__(self):
+        self._exposable_event_types = None
+
+    def _can_expose_event(self, event) -> bool:
+        """
+        Check if an event should be allowed to be published.
+        """
+        if self._exposable_event_types is None:
+            return True
+
+        if isinstance(self._exposable_event_types, (list, set)):
+            # For list/set of event types
+            event_type_name = events_base_event_pb2.RayEvent.EventType.Name(
+                event.event_type
+            )
+            return event_type_name in self._exposable_event_types
+        else:
+            raise ValueError(
+                f"Invalid exposable event types: {self._exposable_event_types}"
+            )
+
+        return True
 
     @abstractmethod
     async def publish(self, batch) -> PublishStats:
@@ -57,14 +84,20 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self,
         endpoint: str,
         executor: ThreadPoolExecutor,
-        events_filter_fn: Callable[[object], bool],
         timeout: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
+        super().__init__()
         self._endpoint = endpoint
         self._executor = executor
-        self._events_filter_fn = events_filter_fn
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
+
+        # Initialize exposable event types from environment variable
+        self._exposable_event_types = {
+            event_type.strip()
+            for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
+            if event_type.strip()
+        }
 
     async def publish(
         self, events_batch: list[events_base_event_pb2.RayEvent]
@@ -76,7 +109,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
                 num_events_published=0,
                 num_events_filtered_out=0,
             )
-        filtered = [e for e in events_batch if self._events_filter_fn(e)]
+        filtered = [e for e in events_batch if self._can_expose_event(e)]
         num_filtered_out = len(events_batch) - len(filtered)
         if not filtered:
             # All filtered out -> success but nothing published
@@ -150,10 +183,13 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
         async_gcs_ray_event_export_service_stub,
         timeout: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
+        super().__init__()
         self._async_gcs_ray_event_export_service_stub = (
             async_gcs_ray_event_export_service_stub
         )
         self._timeout = timeout
+
+        self._exposable_event_types = GCS_EXPOSABLE_EVENT_TYPES
 
     async def publish(
         self,
@@ -174,8 +210,23 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
                 num_events_published=0,
                 num_events_filtered_out=0,
             )
+
+        # Filter events based on exposable event types
+        filtered_events = [e for e in events if self._can_expose_event(e)]
+        num_filtered_out = len(events) - len(filtered_events)
+
+        if not filtered_events and not has_task_events_metadata:
+            # all events filtered out and no task events metadata -> success but nothing published
+            return PublishStats(
+                is_publish_successful=True,
+                num_events_published=0,
+                num_events_filtered_out=num_filtered_out,
+            )
+
         try:
-            events_data = self._create_ray_events_data(events, task_events_metadata)
+            events_data = self._create_ray_events_data(
+                filtered_events, task_events_metadata
+            )
             request = events_event_aggregator_service_pb2.AddEventsRequest(
                 events_data=events_data
             )
@@ -191,8 +242,8 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
                 )
             return PublishStats(
                 is_publish_successful=True,
-                num_events_published=len(events),
-                num_events_filtered_out=0,
+                num_events_published=len(filtered_events),
+                num_events_filtered_out=num_filtered_out,
             )
         except Exception as e:
             logger.error(f"Failed to send events to GCS: {e}")
