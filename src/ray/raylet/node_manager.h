@@ -23,6 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
@@ -115,9 +116,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
-  // If true, core worker enables resource isolation by adding itself into appropriate
-  // cgroup.
-  bool enable_resource_isolation = false;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -151,7 +149,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       plasma::PlasmaClientInterface &store_client,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
-      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      std::unique_ptr<CgroupManagerInterface> cgroup_manager);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -887,6 +886,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 };
 
 }  // namespace ray::raylet

@@ -270,11 +270,8 @@ def test_prometheus_physical_stats_record(
                 break
         return str(raylet_proc.process.pid) == str(raylet_pid)
 
-    wait_for_condition(
-        lambda: test_case_stats_exist() and test_case_ip_correct(),
-        timeout=30,
-        retry_interval_ms=1000,
-    )
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+    wait_for_condition(test_case_ip_correct, timeout=30, retry_interval_ms=1000)
 
 
 @pytest.mark.skipif(
