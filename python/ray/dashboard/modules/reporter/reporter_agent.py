@@ -63,6 +63,9 @@ from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
 )
+from ray.dashboard.modules.reporter.reporter_models import (
+    StatsPayload,
+)
 
 import psutil
 
@@ -1770,15 +1773,25 @@ class ReporterAgent(
             self._metrics_agent.clean_all_dead_worker_metrics()
 
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
-        for gpu in stats["gpus"]:
-            if isinstance(gpu.get("processes_pids"), dict):
-                gpu["processes_pids"] = list(gpu["processes_pids"].values())
+        # for gpu in stats["gpus"]:
+        #     if isinstance(gpu.get("processes_pids"), dict):
+        #         gpu["processes_pids"] = list(gpu["processes_pids"].values())
+
+        stats["networkf"] = stats["network"]
+        stats["network"] = None
 
         # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
         # with the Ray Dashboard API and UI code.
 
-        # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
-        return jsonify_asdict(stats)
+        if StatsPayload is not None:
+            stats_dict = dashboard_utils.to_google_style(recursive_asdict(stats))
+
+            parsed_stats = StatsPayload.parse_obj(stats_dict)
+            out = json.dumps(parsed_stats.dict())
+            return out
+        else:
+            # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
+            return jsonify_asdict(stats)
 
     async def run(self, server):
         if server:
