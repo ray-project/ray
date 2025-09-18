@@ -214,7 +214,7 @@ def get_step(
 def generate_block_step(num_tests: int):
     step = {
         "block": "Run release tests",
-        "depends_on": "~",
+        "depends_on": None,
         "key": "block_run_release_tests",
         "prompt": f"You are triggering {num_tests} tests. Do you want to proceed?",
     }
