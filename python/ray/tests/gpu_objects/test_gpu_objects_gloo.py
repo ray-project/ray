@@ -676,7 +676,7 @@ def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     ):
         actor.double.remote([gpu_ref, normal_ref])
 
-        
+
 def test_app_error_inter_actor(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]

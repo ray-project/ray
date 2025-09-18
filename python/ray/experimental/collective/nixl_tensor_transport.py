@@ -4,6 +4,7 @@ import ray
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
 )
+from ray.util.collective.collective import get_group_handle
 from ray.util.collective.types import (
     NIXL_GROUP_NAME,
     Backend,
