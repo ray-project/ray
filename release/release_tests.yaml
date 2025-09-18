@@ -2176,6 +2176,11 @@
 
   cluster:
     byod:
+      runtime_env:
+        # Enable verbose stats for resource manager
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+
+      # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
