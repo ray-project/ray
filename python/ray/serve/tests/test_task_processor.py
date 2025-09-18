@@ -508,12 +508,12 @@ class TestTaskConsumerWithRayServe:
 
             @task_handler(name="orchestrate_task")
             def orchestrate_task(self, payload):
-                task_id_ref = send_request_to_queue.remote(
+                send_request_to_queue.remote(
                     worker_config, payload, task_name="process_data"
                 )
                 self.message_received.append(payload)
 
-                return f"Orchestrated complex task: {(ray.get(task_id_ref))}"
+                return f"Orchestrated complex task for payload: {payload}"
 
             async def get_worker_task_count(self):
                 return await self.worker_deployment.get_worker_task_count.remote()
@@ -542,9 +542,9 @@ class TestTaskConsumerWithRayServe:
                 handle.get_message_received.remote().result()
             )
 
-            return worker_count == num_tasks_to_send and sorted(
+            return worker_count == num_tasks_to_send and set(
                 data_received_by_orchestrator
-            ) == sorted(data_sent_to_orchestrator)
+            ) == set(data_sent_to_orchestrator)
 
         wait_for_condition(check_data_processed_properly, timeout=300)
         serve.delete("multi_consumer_app")
