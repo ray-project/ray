@@ -12,7 +12,7 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
 )
-from ray_release.buildkite.step import get_step_for_test_group
+from ray_release.buildkite.step import generate_block_step, get_step_for_test_group
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
 from ray_release.logger import logger
@@ -155,6 +155,11 @@ def main(
     if build_id:
         env["RAYCI_BUILD_ID"] = build_id
 
+    # If the build is manually triggered and there are more than 5 tests
+    # Ask user to confirm before launching the tests.
+    if test_filters and len(tests) >= 5:
+        block_step = generate_block_step(len(tests))
+
     steps = get_step_for_test_group(
         grouped_tests,
         minimum_run_per_test=run_per_test,
@@ -163,7 +168,9 @@ def main(
         priority=priority.value,
         global_config=global_config,
         is_concurrency_limit=not no_concurrency_limit,
+        block_step=block_step["key"] if block_step else None,
     )
+    steps = [block_step] + steps if block_step else steps
 
     if "BUILDKITE" in os.environ:
         if os.path.exists(PIPELINE_ARTIFACT_PATH):
