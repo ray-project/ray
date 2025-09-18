@@ -106,31 +106,39 @@ class TestBinaryExpressions:
         "expr, expected_op",
         [
             (col("age") != lit(25), Operation.NE),
-            (col("status").isin(["active", "pending"]), Operation.IN),
+            (col("status").is_in(["active", "pending"]), Operation.IN),
             (col("status").not_in(["inactive", "deleted"]), Operation.NOT_IN),
+            (col("a").is_in(col("b")), Operation.IN),
         ],
-        ids=["not_equal", "isin", "not_in"],
+        ids=["not_equal", "is_in", "not_in", "is_in_amongst_cols"],
     )
     def test_new_binary_operations(self, expr, expected_op):
         """Test new binary operations."""
         assert isinstance(expr, BinaryExpr)
         assert expr.op == expected_op
 
-    def test_isin_with_list(self):
-        """Test isin with list of values."""
-        expr = col("status").isin(["active", "pending", "completed"])
+    def test_is_in_with_list(self):
+        """Test is_in with list of values."""
+        expr = col("status").is_in(["active", "pending", "completed"])
         assert isinstance(expr, BinaryExpr)
         assert expr.op == Operation.IN
         # The right operand should be a LiteralExpr containing the list
         assert expr.right.value == ["active", "pending", "completed"]
 
-    def test_isin_with_expr(self):
-        """Test isin with expression."""
+    def test_is_in_with_expr(self):
+        """Test is_in with expression."""
         values_expr = lit(["a", "b", "c"])
-        expr = col("category").isin(values_expr)
+        expr = col("category").is_in(values_expr)
         assert isinstance(expr, BinaryExpr)
         assert expr.op == Operation.IN
         assert expr.right == values_expr
+
+    def test_is_in_amongst_cols(self):
+        """Test is_in with expression."""
+        expr = col("a").is_in(col("b"))
+        assert isinstance(expr, BinaryExpr)
+        assert expr.op == Operation.IN
+        assert expr.right == col("b")
 
 
 class TestBooleanExpressions:

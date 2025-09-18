@@ -196,7 +196,7 @@ class Expr(ABC):
         """Check if the expression value is not null."""
         return UnaryExpr(Operation.IS_NOT_NULL, self)
 
-    def isin(self, values: Union[List[Any], "Expr"]) -> "Expr":
+    def is_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
         """Check if the expression value is in a list of values."""
         if not isinstance(values, Expr):
             values = LiteralExpr(values)
@@ -331,7 +331,7 @@ class UnaryExpr(Expr):
     op: Operation
     operand: Expr
 
-    data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
+    data_type: DataType = field(init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (

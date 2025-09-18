@@ -2791,10 +2791,10 @@ def test_with_column_floor_division_and_logical_operations(
             [True, False, True],
             "is_not_null_with_actual_nulls",
         ),
-        # Test isin operations
+        # Test is_in operations
         pytest.param(
             [{"value": 1}, {"value": 2}, {"value": 3}],
-            col("value").isin([1, 3]),
+            col("value").is_in([1, 3]),
             [True, False, True],
             "isin_operation",
         ),
@@ -2838,7 +2838,7 @@ def test_with_column_null_checks_and_membership_operations(
     test_description,
     target_max_block_size_infinite_or_default,
 ):
-    """Test null checking, isin/not_in membership operations, and string comparisons with with_column."""
+    """Test null checking, is_in/not_in membership operations, and string comparisons with with_column."""
     ds = ray.data.from_items(test_data)
     result_ds = ds.with_column("result", expression)
 
@@ -3074,7 +3074,7 @@ def test_with_column_chained_expression_operations(
         ),
         # Filter with membership operations
         pytest.param(
-            col("category").isin(["A", "B"]),
+            col("category").is_in(["A", "B"]),
             [
                 {"category": "A"},
                 {"category": "B"},
