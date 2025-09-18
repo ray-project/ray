@@ -275,15 +275,16 @@ class AutoscalingState:
         metrics_timeseries_dicts = []
 
         for replica_id in self._running_replicas:
-            if replica_id in self._replica_requests:
+            replica_metric_report = self._replica_requests.get(replica_id, None)
+            if (
+                replica_metric_report is not None
+                and RUNNING_REQUESTS_KEY in replica_metric_report.metrics
+            ):
                 metrics_timeseries_dicts.append(
                     {
-                        metric_name: self._replica_requests[replica_id].metrics[
-                            metric_name
+                        RUNNING_REQUESTS_KEY: replica_metric_report.metrics[
+                            RUNNING_REQUESTS_KEY
                         ]
-                        for metric_name in self._replica_requests[replica_id].metrics
-                        if metric_name
-                        == RUNNING_REQUESTS_KEY  # only collect running requests
                     }
                 )
 
@@ -302,11 +303,16 @@ class AutoscalingState:
 
         for handle_metric in self._handle_requests.values():
             for replica_id in self._running_replicas:
+                if (
+                    RUNNING_REQUESTS_KEY not in handle_metric.metrics
+                    or replica_id not in handle_metric.metrics[RUNNING_REQUESTS_KEY]
+                ):
+                    continue
                 metrics_timeseries_dicts.append(
                     {
-                        k: handle_metric.metrics.get(k, {}).get(replica_id, [])
-                        for k in handle_metric.metrics
-                        if k == RUNNING_REQUESTS_KEY  # only collect running requests
+                        RUNNING_REQUESTS_KEY: handle_metric.metrics[
+                            RUNNING_REQUESTS_KEY
+                        ][replica_id]
                     }
                 )
 

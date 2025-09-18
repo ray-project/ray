@@ -1,5 +1,6 @@
 import asyncio
 import bisect
+import heapq
 import logging
 import statistics
 from collections import defaultdict
@@ -403,8 +404,7 @@ def merge_instantaneous_total(
         return []
 
     # Build delta events per replica
-    # events[t] = total delta at time t across all replicas
-    events = defaultdict(float)  # time -> delta
+    events_heap = []
 
     if ttl is not None:
         # expiry bookkeeping: last value + last time per replica
@@ -417,42 +417,46 @@ def merge_instantaneous_total(
 
         # initial delta
         t0, v0 = series[0].timestamp, series[0].value
-        events[t0] += v0
+        heapq.heappush(events_heap, (t0, v0))
         prev_t, prev_v = t0, v0
 
         if ttl is not None:
             last_time[rid], last_val[rid] = t0, v0
-            events[t0 + ttl] += -v0  # schedule initial expiry
+            heapq.heappush(events_heap, (t0 + ttl, -v0))  # schedule initial expiry
 
         for point in series[1:]:
             t, v = point.timestamp, point.value
             dv = v - prev_v
             if dv != 0.0:
-                events[t] += dv
+                heapq.heappush(events_heap, (t, dv))
             if ttl is not None:
                 # cancel previous expiry by adding back, then schedule new expiry
                 # (net effect: move expiry to t+ttl with the then-current value)
-                events[prev_t + ttl] += +prev_v  # cancel old expiry
-                events[t + ttl] += -v  # schedule new expiry
+                heapq.heappush(
+                    events_heap, (prev_t + ttl, +prev_v)
+                )  # cancel old expiry
+                heapq.heappush(events_heap, (t + ttl, -v))  # schedule new expiry
                 last_time[rid], last_val[rid] = t, v
             prev_t, prev_v = t, v
 
     # Sweep events (coalesce identical timestamps)
-    timeline = sorted(events.items())  # [(t, delta_sum_at_t), ...]
     merged: List[TimeStampedValue] = []
     current_sum = 0.0
 
-    for t, delta in timeline:
-        if delta == 0.0:
-            continue
-        current_sum += delta
-        # Record instantaneous total right after applying deltas at t
-        if merged and merged[-1].timestamp == t:
-            merged[-1] = TimeStampedValue(
-                t, current_sum
-            )  # coalesce exact same timestamp
-        else:
-            merged.append(TimeStampedValue(t, current_sum))
+    while events_heap:
+        # Process all events at the same timestamp together
+        current_time = events_heap[0][0]
+        net_delta = 0.0
+
+        # Collect all deltas at this timestamp
+        while events_heap and events_heap[0][0] == current_time:
+            t, delta = heapq.heappop(events_heap)
+            net_delta += delta
+
+        # Only record a point if there's a net change
+        if net_delta != 0.0:
+            current_sum += net_delta
+            merged.append(TimeStampedValue(current_time, current_sum))
 
     return merged
 
@@ -466,20 +470,11 @@ def merge_timeseries_dicts(
     """
     merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
 
-    # Collect all unique keys
-    all_keys = set()
     for ts_dict in timeseries_dicts:
-        all_keys.update(ts_dict.keys())
+        for key, ts in ts_dict.items():
+            merged[key].append(ts)
 
-    # Merge each key separately
-    for key in all_keys:
-        # Collect all series for this key across dictionaries
-        replicas_series = []
-        for ts_dict in timeseries_dicts:
-            if key in ts_dict:
-                replicas_series.append(ts_dict[key])
-
-        # Merge using instantaneous approach
-        merged[key] = merge_instantaneous_total(replicas_series, ttl=ttl)
-
-    return merged
+    return {
+        key: merge_instantaneous_total(ts_list, ttl=ttl)
+        for key, ts_list in merged.items()
+    }
