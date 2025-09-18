@@ -527,6 +527,8 @@ void NormalTaskSubmitter::PushNormalTask(
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         bool resubmit_generator = false;
+        std::optional<ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply>>
+            failure_callback;
         {
           RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
@@ -575,9 +577,7 @@ void NormalTaskSubmitter::PushNormalTask(
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             auto raylet_client = raylet_client_pool_->GetByID(cur_lease_entry.node_id);
             if (!raylet_client) {
-              callback(Status::Disconnected(absl::StrFormat(
-                           "Node %s dead", cur_lease_entry.node_id.Hex())),
-                       rpc::GetWorkerFailureCauseReply{});
+              failure_callback = std::move(callback);
             } else {
               raylet_client->GetWorkerFailureCause(cur_lease_entry.lease_id, callback);
             }
@@ -588,6 +588,12 @@ void NormalTaskSubmitter::PushNormalTask(
                        /*error_detail*/ status.message(),
                        /*worker_exiting=*/reply.worker_exiting(),
                        assigned_resources);
+        }
+        if (failure_callback.has_value()) {
+          failure_callback.value()(
+              Status::Disconnected(absl::StrFormat(
+                  "Node %s dead", NodeID::FromBinary(addr.node_id()).Hex())),
+              rpc::GetWorkerFailureCauseReply{});
         }
         if (status.ok()) {
           if (reply.was_cancelled_before_running()) {

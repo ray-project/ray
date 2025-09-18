@@ -172,7 +172,6 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis"
 }
   )");
@@ -224,7 +223,6 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_initial_reconnect_backoff_ms": 2000,
   "gcs_grpc_max_reconnect_backoff_ms": 2000
@@ -297,7 +295,6 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10
 }
@@ -357,7 +354,6 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10,
   "gcs_server_request_timeout_seconds": 10
