@@ -284,6 +284,11 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = get_env_str(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
 
+# Maximum timeout allowed for record_autoscaling_stats to run.
+RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
+    "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
+)
+
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
