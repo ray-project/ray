@@ -868,7 +868,7 @@ class AlgorithmConfig(_Config):
         return state
 
     @classmethod
-    def from_state(cls, state: Dict[str, Any]) -> "AlgorithmConfig":
+    def from_state(cls, state: Dict[str, Any]) -> Self:
         """Returns an instance constructed from the state.
 
         Args:
@@ -882,6 +882,12 @@ class AlgorithmConfig(_Config):
 
         ctor = state["class"]
         config = ctor()
+        if not issubclass(ctor, cls):
+            logger.warning(  # Warn that type-hints might not align
+                f"Constructing a AlgorithmConfig of type {cls} in from_state with "
+                f"different class type {type(config)}.",
+                stacklevel=2,
+            )
 
         config.__dict__.update(state)
 
