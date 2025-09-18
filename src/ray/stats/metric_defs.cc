@@ -14,6 +14,7 @@
 
 #include "ray/stats/metric_defs.h"
 
+#include "ray/stats/tag_defs.h"
 #include "ray/util/size_literals.h"
 
 using namespace ray::literals;
