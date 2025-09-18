@@ -112,20 +112,21 @@ void GcsSubscriber::SubscribeAllNodeInfo(
       std::move(subscription_failure_callback));
 }
 
-void GcsSubscriber::SubscribeAllNodeInfoLight(
-    const gcs::ItemCallback<rpc::GcsNodeInfoLight> &subscribe,
+void GcsSubscriber::SubscribeAllNodeAddressAndLiveness(
+    const gcs::ItemCallback<rpc::GcsNodeAddressAndLiveness> &subscribe,
     const gcs::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
-    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL_LIGHT);
-    subscribe(std::move(*msg.mutable_node_info_light_message()));
+    RAY_CHECK(msg.channel_type() ==
+              rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL);
+    subscribe(std::move(*msg.mutable_node_address_and_liveness_message()));
   };
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
-    RAY_LOG(WARNING) << "Subscription to NodeInfoLight channel failed: "
+    RAY_LOG(WARNING) << "Subscription to NodeAddressAndLiveness channel failed: "
                      << status.ToString();
   };
   subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
-      rpc::ChannelType::GCS_NODE_INFO_CHANNEL_LIGHT,
+      rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
       gcs_address_,
       /*key_id=*/std::nullopt,
       [done](const Status &status) {

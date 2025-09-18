@@ -352,9 +352,8 @@ message GcsNodeInfo {
   NodeDeathInfo death_info = 29;
 }
 
-// Lightweight version of GcsNodeInfo containing only essential fields.
-// This excludes expensive fields like labels, hostnames, socket paths, etc.
-message GcsNodeInfoLight {
+// A lighter version of GcsNodeInfo containing only essential fields.
+message GcsNodeAddressAndLiveness {
   // The ID of node.
   bytes node_id = 1;
 

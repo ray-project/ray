@@ -106,9 +106,10 @@ class NodeInfoGcsServiceHandler {
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllNodeInfoLight(GetAllNodeInfoLightRequest request,
-                                         GetAllNodeInfoLightReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetAllNodeAddressAndLiveness(
+      GetAllNodeAddressAndLivenessRequest request,
+      GetAllNodeAddressAndLivenessReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 class NodeResourceInfoGcsServiceHandler {

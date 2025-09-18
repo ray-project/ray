@@ -378,8 +378,9 @@ class NodeInfoAccessor {
       Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
 
   virtual  /// dead, this optional object is empty.
-      const rpc::GcsNodeInfoLight *
-      GetNodeInfoLight(const NodeID &node_id, bool filter_dead_nodes = true) const;
+      const rpc::GcsNodeAddressAndLiveness *
+      GetNodeAddressAndLiveness(const NodeID &node_id,
+                                bool filter_dead_nodes = true) const;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -388,8 +389,8 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
-  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfoLight> &GetAllNodeInfoLight()
-      const;
+  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
+      &GetAllNodeAddressAndLiveness() const;
 
   /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
@@ -408,8 +409,8 @@ class NodeInfoAccessor {
   /// added or a node is removed. The callback needs to be idempotent because it will also
   /// be called for existing nodes.
   /// \param done Callback that will be called when subscription is complete.
-  virtual void AsyncSubscribeToNodeChangeLight(
-      std::function<void(NodeID, const rpc::GcsNodeInfoLight &)> subscribe,
+  virtual void AsyncSubscribeToNodeAddressAndLivenessChange(
+      std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
       StatusCallback done);
 
   /// Get only critical information of all nodes from an RPC to GCS synchronously with
@@ -417,11 +418,12 @@ class NodeInfoAccessor {
   /// address and liveness information.
   ///
   /// \return All nodes that match the given filters from the gcs without the cache.
-  virtual StatusOr<std::vector<rpc::GcsNodeInfoLight>> GetAllNodeInfoLightNoCache(
+  virtual StatusOr<std::vector<rpc::GcsNodeAddressAndLiveness>>
+  GetAllNodeAddressAndLivenessNoCache(
       int64_t timeout_ms,
       std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
-      std::optional<rpc::GetAllNodeInfoLightRequest::NodeSelector> node_selector =
-          std::nullopt);
+      std::optional<rpc::GetAllNodeAddressAndLivenessRequest::NodeSelector>
+          node_selector = std::nullopt);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -467,18 +469,19 @@ class NodeInfoAccessor {
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
-  /// Add a light node info to accessor cache.
-  virtual void HandleNotification(rpc::GcsNodeInfoLight &&node_info);
+  /// Add a node address and liveness info to accessor cache.
+  virtual void HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info);
 
   virtual bool IsSubscribedToNodeChange() const {
-    return node_change_callback_ != nullptr || node_change_callback_light_ != nullptr;
+    return node_change_callback_ != nullptr ||
+           node_change_callback_address_and_liveness_ != nullptr;
   }
 
  private:
   /// Save the fetch data operations in these functions, so we can call them again when
   /// GCS server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
-  FetchDataOperation fetch_node_light_data_operation_;
+  FetchDataOperation fetch_node_address_and_liveness_data_operation_;
 
   GcsClient *client_impl_;
 
@@ -492,12 +495,13 @@ class NodeInfoAccessor {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
 
   /// The callback to call when a new node is added or a node is removed when leveraging
-  /// the light api
-  std::function<void(NodeID, const rpc::GcsNodeInfoLight &)> node_change_callback_light_ =
-      nullptr;
+  /// the address and liveness api
+  std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
+      node_change_callback_address_and_liveness_ = nullptr;
 
-  /// A cache for information about all nodes when using the light api
-  absl::flat_hash_map<NodeID, rpc::GcsNodeInfoLight> node_cache_light_;
+  /// A cache for information about all nodes when using the address and liveness api
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
+      node_cache_address_and_liveness_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805

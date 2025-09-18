@@ -56,7 +56,8 @@ class GcsPublisher {
 
   void PublishNodeInfo(const NodeID &id, rpc::GcsNodeInfo message);
 
-  void PublishNodeInfoLight(const NodeID &id, rpc::GcsNodeInfoLight message);
+  void PublishNodeAddressAndLiveness(const NodeID &id,
+                                     rpc::GcsNodeAddressAndLiveness message);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
   void PublishWorkerFailure(const WorkerID &id, rpc::WorkerDeltaData message);
