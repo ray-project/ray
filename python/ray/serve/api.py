@@ -10,7 +10,7 @@ from starlette.types import ASGIApp
 
 import ray
 from ray import cloudpickle
-from ray._private.serialization import pickle_dumps
+from ray._common.serialization import pickle_dumps
 from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
