@@ -71,4 +71,9 @@ StatusOr<std::unordered_set<std::string>> SysFsCgroupDriver::ReadControllerFile(
   return std::unordered_set<std::string>{};
 }
 
+Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
+                                             const std::string &process) {
+  return Status::OK();
+}
+
 }  // namespace ray
