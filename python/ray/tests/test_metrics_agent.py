@@ -597,6 +597,8 @@ def test_operation_stats(monkeypatch, shutdown_only):
         "ray_operation_queue_time_ms_bucket",
         "ray_operation_active_count",
     ]
+
+    monkeypatch.setenv("RAY_emit_main_service_metrics", "1")
     timeseries = PrometheusTimeseries()
     addr = ray.init()
     remote_signal = SignalActor.remote()
@@ -654,7 +656,7 @@ def test_operation_stats(monkeypatch, shutdown_only):
             assert {"raylet", "gcs_server"} == components
         return True
 
-        wait_for_condition(verify, timeout=30)
+    wait_for_condition(verify, timeout=30)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
