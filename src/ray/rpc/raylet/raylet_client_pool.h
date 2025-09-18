@@ -32,6 +32,9 @@ namespace rpc {
 using RayletClientFactoryFn =
     std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
 class RayletClientPool {
+  friend bool CheckRayletClientPoolHasClient(const RayletClientPool &raylet_client_pool,
+                                             const NodeID &node_id);
+
  public:
   /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
   /// raylet.

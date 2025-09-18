@@ -96,17 +96,6 @@ std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetOrConnectByAddr
   return connection;
 }
 
-// NOTE: On node death the raylet client is removed from the pool. Hence, you should not
-// add a RAY_CHECK after you call GetByID for nullptr.
-std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetByID(ray::NodeID id) {
-  absl::MutexLock lock(&mu_);
-  auto it = client_map_.find(id);
-  if (it == client_map_.end()) {
-    return {};
-  }
-  return it->second;
-}
-
 void RayletClientPool::Disconnect(ray::NodeID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
