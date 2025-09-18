@@ -88,9 +88,9 @@ instrumented_io_context::instrumented_io_context(
       event_stats_(std::make_shared<EventTracker>()),
       emit_metrics_(emit_metrics),
       context_name_(context_name) {
-  if (emit_metrics) {
-    ScheduleLagProbe(*this, context_name_);
-  }
+//  if (emit_metrics) {
+//    ScheduleLagProbe(*this, context_name_);
+//  }
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
