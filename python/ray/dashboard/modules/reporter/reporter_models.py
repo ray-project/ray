@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any, Tuple, Union
 
 if PYDANTIC_INSTALLED:
 
+    # TODO(aguo): Use these pydantic models in the dashboard API as well.
     class ProcessGPUInfo(BaseModel):
         """
         Information about GPU usage for a single process.
@@ -114,6 +115,13 @@ if PYDANTIC_INSTALLED:
     NetworkSpeed = Tuple[float, float]  # (sendSpeed, receiveSpeed) in bytes/sec
 
     class DiskUsage(BaseModel):
+        """
+        Disk usage information based on psutil.diskusage.
+        NOTE: Backwards compatibility for this model must be maintained.
+        If broken, the downstream dashboard API and UI code will break.
+        If you must make a backwards-incompatible change, you must make sure
+        to update the relevant code in the dashboard API and UI as well.
+        """
         total: int
         used: int
         free: int
