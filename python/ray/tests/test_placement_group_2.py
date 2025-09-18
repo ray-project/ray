@@ -4,9 +4,9 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,

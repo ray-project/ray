@@ -1,9 +1,9 @@
 """Types conversion between different backends."""
 
-from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, Tuple, TYPE_CHECKING, Optional
+from enum import Enum
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from numpy import int32
 
@@ -61,9 +61,12 @@ class TensorTransportMetadata:
 
     Args:
         tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
+        tensor_device: The device of the tensor. Currently, we require all tensors in the
+        list have the same device type.
     """
 
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
+    tensor_device: Optional["torch.device"] = None
 
 
 @dataclass

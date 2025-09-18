@@ -20,7 +20,7 @@ import { ClassNameProps } from "./props";
 type CpuProfilingLinkProps = PropsWithChildren<
   {
     pid: string | number | null | undefined;
-    ip: string | null | undefined;
+    nodeId: string | null | undefined;
     type: string | null;
   } & ClassNameProps
 >;
@@ -34,7 +34,7 @@ type TaskProfilingStackTraceProps = {
 type MemoryProfilingProps = PropsWithChildren<
   {
     pid: string | number | null | undefined;
-    ip: string | null | undefined;
+    nodeId: string | null | undefined;
     type?: string | null;
   } & ClassNameProps
 >;
@@ -92,15 +92,20 @@ export const TaskCpuStackTraceLink = ({
 
 export const CpuStackTraceLink = ({
   pid,
-  ip,
+  nodeId,
   type = "",
 }: CpuProfilingLinkProps) => {
-  if (!pid || !ip || typeof pid === "undefined" || typeof ip === "undefined") {
+  if (
+    !pid ||
+    !nodeId ||
+    typeof pid === "undefined" ||
+    typeof nodeId === "undefined"
+  ) {
     return <div></div>;
   }
   return (
     <Link
-      href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+      href={`worker/traceback?pid=${pid}&node_id=${nodeId}&native=0`}
       target="_blank"
       title="Sample the current Python stack trace for this worker."
       rel="noreferrer"
@@ -112,16 +117,16 @@ export const CpuStackTraceLink = ({
 
 export const CpuProfilingLink = ({
   pid,
-  ip,
+  nodeId,
   type = "",
 }: CpuProfilingLinkProps) => {
-  if (!pid || !ip) {
+  if (!pid || !nodeId) {
     return <div></div>;
   }
 
   return (
     <Link
-      href={`worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
+      href={`worker/cpu_profile?pid=${pid}&node_id=${nodeId}&duration=5&native=0`}
       target="_blank"
       title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
       rel="noreferrer"
@@ -283,13 +288,13 @@ export const ProfilerButton = ({
 
 export const MemoryProfilingButton = ({
   pid,
-  ip,
+  nodeId,
   type = "",
 }: MemoryProfilingProps) => {
-  if (!pid || !ip) {
+  if (!pid || !nodeId) {
     return <div></div>;
   }
-  const profilerUrl = `memory_profile?pid=${pid}&ip=${ip}`;
+  const profilerUrl = `memory_profile?pid=${pid}&node_id=${nodeId}`;
 
   return <ProfilerButton profilerUrl={profilerUrl} type={type} />;
 };

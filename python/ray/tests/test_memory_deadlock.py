@@ -4,13 +4,12 @@ import threading
 import pytest
 
 import ray
-
 from ray.tests.test_memory_pressure import (
-    allocate_memory,
     Leaker,
+    allocate_memory,
     get_additional_bytes_to_reach_memory_usage_pct,
-    memory_usage_threshold,
     memory_monitor_refresh_ms,
+    memory_usage_threshold,
 )
 
 

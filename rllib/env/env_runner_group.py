@@ -37,7 +37,7 @@ from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     Deprecated,
     deprecation_warning,
     DEPRECATED_VALUE,
