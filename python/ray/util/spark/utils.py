@@ -102,7 +102,7 @@ def is_port_in_use(host, port):
     from contextlib import closing
 
     with closing(
-        s=socket.socket(
+        socket.socket(
             socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
         )
     ) as sock:
