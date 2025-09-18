@@ -3699,23 +3699,23 @@ class TestMultiAgentEpisode(unittest.TestCase):
                     for agent_id in ["a0", "a1"]:
                         actual_idx = e.agent_episodes[agent_id].t_started + indices
                         if actual_idx < len(
-                            e.agent_episodes[agent_id].extra_model_outputs[SOME_KEY]
+                            e.agent_episodes[agent_id].get_extra_model_outputs(SOME_KEY)
                         ):
                             check(
-                                e.agent_episodes[agent_id].extra_model_outputs[
+                                e.agent_episodes[agent_id].get_extra_model_outputs(
                                     SOME_KEY
-                                ][actual_idx],
+                                )[actual_idx],
                                 expected_data[agent_id],
                             )
                 elif desc == "negative index":
                     for agent_id in ["a0", "a1"]:
                         agent_ep = e.agent_episodes[agent_id]
                         actual_idx = (
-                            len(agent_ep.extra_model_outputs[SOME_KEY]) + indices
+                            len(agent_ep.get_extra_model_outputs(SOME_KEY)) + indices
                         )
                         if actual_idx >= 0:
                             check(
-                                agent_ep.extra_model_outputs[SOME_KEY][actual_idx],
+                                agent_ep.get_extra_model_outputs(SOME_KEY)[actual_idx],
                                 expected_data[agent_id],
                             )
                 elif desc in ["long list of indices", "short list of indices"]:
@@ -3723,9 +3723,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
                         agent_ep = e.agent_episodes[agent_id]
                         for i, expected_val in enumerate(expected_data[agent_id]):
                             actual_idx = agent_ep.t_started + indices[i]
-                            if actual_idx < len(agent_ep.extra_model_outputs[SOME_KEY]):
+                            if actual_idx < len(
+                                agent_ep.get_extra_model_outputs(SOME_KEY)
+                            ):
                                 check(
-                                    agent_ep.extra_model_outputs[SOME_KEY][actual_idx],
+                                    agent_ep.get_extra_model_outputs(SOME_KEY)[
+                                        actual_idx
+                                    ],
                                     expected_val,
                                 )
                 elif desc in ["long slice", "short slice"]:
@@ -3734,9 +3738,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
                         slice_indices = list(range(indices.start, indices.stop))
                         for i, expected_val in enumerate(expected_data[agent_id]):
                             actual_idx = agent_ep.t_started + slice_indices[i]
-                            if actual_idx < len(agent_ep.extra_model_outputs[SOME_KEY]):
+                            if actual_idx < len(
+                                agent_ep.get_extra_model_outputs(SOME_KEY)
+                            ):
                                 check(
-                                    agent_ep.extra_model_outputs[SOME_KEY][actual_idx],
+                                    agent_ep.get_extra_model_outputs(SOME_KEY)[
+                                        actual_idx
+                                    ],
                                     expected_val,
                                 )
 

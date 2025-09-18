@@ -1901,12 +1901,6 @@ class MultiAgentEpisode:
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
                 with `new_data` (which is expected to be a single observation).
-                Each value in the dict is the new observation data to overwrite existing data with.
-                This may be a list of individual observation(s) in case this episode
-                is still not numpy'ized yet. In case this episode has already been
-                numpy'ized, this should be (possibly complex) struct matching the
-                observation space and with a batch size of its leafs exactly the size
-                of the to-be-overwritten slice or segment (provided by `at_indices`).
                 A list of ints is interpreted as a list of indices, all of which to
                 overwrite with `new_data` (which is expected to be of the same size
                 as `len(at_indices)`).
@@ -1931,7 +1925,8 @@ class MultiAgentEpisode:
                 `new_data`.
         """
         for agent_id, new_agent_data in new_data.items():
-            assert agent_id in self.agent_episodes
+            if agent_id not in self.agent_episodes:
+                raise KeyError(f"AgentID '{agent_id}' not found in this episode.")
             self.agent_episodes[agent_id].set_observations(
                 new_data=new_agent_data,
                 at_indices=at_indices,
@@ -1959,7 +1954,7 @@ class MultiAgentEpisode:
                 action space and with a batch size of its leafs exactly the size
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
-                with `new_data` (which is expected to be a single action).
+                with `new_data` (which is expected to be a single observation).
                 A list of ints is interpreted as a list of indices, all of which to
                 overwrite with `new_data` (which is expected to be of the same size
                 as `len(at_indices)`).
@@ -1984,7 +1979,8 @@ class MultiAgentEpisode:
                 `new_data`.
         """
         for agent_id, new_agent_data in new_data.items():
-            assert agent_id in self.agent_episodes
+            if agent_id not in self.agent_episodes:
+                raise KeyError(f"AgentID '{agent_id}' not found in this episode.")
             self.agent_episodes[agent_id].set_actions(
                 new_data=new_agent_data,
                 at_indices=at_indices,
@@ -2037,7 +2033,8 @@ class MultiAgentEpisode:
                 `new_data`.
         """
         for agent_id, new_agent_data in new_data.items():
-            assert agent_id in self.agent_episodes
+            if agent_id not in self.agent_episodes:
+                raise KeyError(f"AgentID '{agent_id}' not found in this episode.")
             self.agent_episodes[agent_id].set_rewards(
                 new_data=new_agent_data,
                 at_indices=at_indices,
@@ -2068,7 +2065,7 @@ class MultiAgentEpisode:
                 the size of the to-be-overwritten slice or segment (provided by
                 `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
-                with `new_data` (which is expected to be a single reward).
+                with `new_data` (which is expected to be a single extra model output).
                 A list of ints is interpreted as a list of indices, all of which to
                 overwrite with `new_data` (which is expected to be of the same size
                 as `len(at_indices)`).
@@ -2082,18 +2079,19 @@ class MultiAgentEpisode:
             neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
-                rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                extra_model_outputs[key][agent_id] = [4, 5, 6, 7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
-                `set_rewards(individual_reward, -1,
+                `set_extra_model_outputs(key, individual_output, -1,
                 neg_index_as_lookback=True)` by overwriting the value of 6 in our
-                rewards buffer with the provided "individual_reward".
+                extra_model_outputs[key][agent_id] buffer with the provided "individual_output".
 
         Raises:
             IndexError: If the provided `at_indices` do not match the size of
                 `new_data`.
         """
         for agent_id, new_agent_data in new_data.items():
-            assert agent_id in self.agent_episodes
+            if agent_id not in self.agent_episodes:
+                raise KeyError(f"AgentID '{agent_id}' not found in this episode.")
             self.agent_episodes[agent_id].set_extra_model_outputs(
                 key=key,
                 new_data=new_agent_data,
