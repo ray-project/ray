@@ -26,8 +26,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/accessor.h"
+#include "ray/gcs_client/gcs_client.h"
 
 namespace ray {
 
@@ -37,7 +37,7 @@ using ::testing::Return;
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     const auto &worker_id = WorkerID::FromBinary(request.intended_worker_id());
     const auto &object_location_updates = request.object_location_updates();

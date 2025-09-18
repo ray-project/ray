@@ -8,7 +8,7 @@ RayDP combines your Spark and Ray clusters, making it easy to do large scale
 data processing using the PySpark API and seamlessly use that data to train
 your models using TensorFlow and PyTorch.
 
-For more information and examples, see the RayDP Github page:
+For more information and examples, see the RayDP GitHub page:
 https://github.com/oap-project/raydp
 
 ================
@@ -17,7 +17,7 @@ Installing RayDP
 
 RayDP can be installed from PyPI and supports PySpark 3.0 and 3.1.
 
-.. code-block bash
+.. code-block:: bash
 
   pip install raydp
 
@@ -31,7 +31,7 @@ RayDP can be installed from PyPI and supports PySpark 3.0 and 3.1.
 Creating a Spark Session
 ========================
 
-To create a spark session, call ``raydp.init_spark``
+To create a Spark session, call ``raydp.init_spark``
 
 For example,
 
@@ -123,7 +123,7 @@ PyTorch.
   from raydp.utils import random_split
   train_df, test_df = random_split(df, [0.7, 0.3])
 
-  # PyTorch Code 
+  # PyTorch Code
   import torch
   class LinearModel(torch.nn.Module):
       def __init__(self):

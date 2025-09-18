@@ -29,6 +29,9 @@
 /doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs
 /doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs
 
+# Public protobuf files.
+/src/ray/protobuf/public/ @edoakes @jjyao
+
 # ==== Libraries and frameworks ====
 
 # Dependencies
@@ -36,7 +39,7 @@
 
 # Common directory shared by core and the libraries.
 # @edoakes is the czar for now because the pattern is new.
-/python/ray/_common/ @edoakes @aslonnie
+/python/ray/_common/ @edoakes @jjyao
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
@@ -51,16 +54,20 @@
 /rllib/ @ray-project/ray-rllib
 /doc/source/rllib/ @ray-project/ray-rllib @ray-project/ray-docs
 
-# Tune
+# Ray Tune
 /python/ray/tune/ @ray-project/ray-tune
 /doc/source/tune/ @ray-project/ray-tune @ray-project/ray-docs
 
-# Train
+# Ray Train
 /python/ray/train/ @ray-project/ray-train
 /doc/source/train/ @ray-project/ray-train @ray-project/ray-docs
 
+# Ray AIR
+/python/ray/air/ @ray-project/ray-train
+
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
+/python/ray/data/llm.py @ray-project/ray-llm
 
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve
@@ -72,8 +79,8 @@
 /python/requirements/ml/dl-gpu-requirements.txt @richardliaw @matthewdeng
 
 # Ray symbol export
-/src/ray/ray_version_script.lds @aslonnie
-/src/ray/ray_exported_symbols.lds @aslonnie
+/src/ray/ray_version_script.lds @ray-project/ray-core
+/src/ray/ray_exported_symbols.lds @ray-project/ray-core
 
 # Ray usage stats
 /python/ray/_private/usage/ @edoakes @richardliaw @jjyao
@@ -105,8 +112,8 @@
 # on their own.
 /release/ray_release/byod/*.sh
 
-/.github/ISSUE_TEMPLATE/ @aslonnie
+/.github/ISSUE_TEMPLATE/ @ray-project/ray-ci
 
 /.github/workflows/ @ray-project/ray-ci
 
-/.gemini/ @edoakes @aslonnie
+/.gemini/ @edoakes @ray-project/ray-ci

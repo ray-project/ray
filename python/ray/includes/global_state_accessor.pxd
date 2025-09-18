@@ -24,7 +24,7 @@ from ray.includes.optional cimport (
     optional
 )
 
-cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
+cdef extern from "ray/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
         CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
@@ -70,7 +70,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
 cdef extern from * namespace "ray::gcs" nogil:
     """
     #include <thread>
-    #include "ray/gcs/gcs_server/store_client_kv.h"
+    #include "ray/gcs/store_client_kv.h"
     #include "ray/gcs/store_client/redis_store_client.h"
     #include "ray/util/raii.h"
     namespace ray {
@@ -99,9 +99,7 @@ cdef extern from * namespace "ray::gcs" nogil:
       RayConfig::instance().initialize(config_list);
 
       instrumented_io_context io_service{/*enable_lag_probe=*/false, /*running_on_single_thread=*/true};
-      // Set heartbeat_interval_ms to 0 to disable health checking for this temporary client.
-      RedisClientOptions options{host, port, username, password, use_ssl, /*heartbeat_interval_ms=*/0};
-
+      RedisClientOptions options{host, port, username, password, use_ssl};
       auto client = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(io_service, options));
 

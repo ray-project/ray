@@ -11,11 +11,11 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 import yaml
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.packaging import (
     create_package,
     download_and_unpack_package,
