@@ -55,6 +55,8 @@ HTTP_PROXY_TIMEOUT = 60
 #: If no replicas at target version is running by the time we're at
 #: max constructor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
+#: This constant is deprecated and will be removed in the future.
+#: Please use 'max_constructor_retry_count' instead in configurations.
 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
     "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
     get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None),
