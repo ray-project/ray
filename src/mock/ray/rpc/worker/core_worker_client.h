@@ -57,12 +57,12 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               PubsubLongPolling,
-              (const PubsubLongPollingRequest &request,
+              (PubsubLongPollingRequest && request,
                const ClientCallback<PubsubLongPollingReply> &callback),
               (override));
   MOCK_METHOD(void,
               PubsubCommandBatch,
-              (const PubsubCommandBatchRequest &request,
+              (PubsubCommandBatchRequest && request,
                const ClientCallback<PubsubCommandBatchReply> &callback),
               (override));
   MOCK_METHOD(void,
