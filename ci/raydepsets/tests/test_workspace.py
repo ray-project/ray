@@ -74,7 +74,7 @@ def test_parse_pre_hooks():
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
         pre_hook_depset = get_depset_by_name(config.depsets, "pre_hook_test_depset")
-        assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh"]
+        assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh test"]
 
 
 if __name__ == "__main__":

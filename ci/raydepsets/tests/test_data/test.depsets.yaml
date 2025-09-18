@@ -57,4 +57,4 @@ depsets:
       - requirements_test.txt
     output: requirements_compiled_pre_hook.txt
     pre_hooks:
-      - pre-hook-test.sh
+      - pre-hook-test.sh test
