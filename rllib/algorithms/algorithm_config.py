@@ -2270,7 +2270,7 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
-    ):
+    ) -> Self:
         """Sets LearnerGroup and Learner worker related configurations.
 
         Args:
@@ -3780,7 +3780,7 @@ class AlgorithmConfig(_Config):
         num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
-    ):
+    ) -> Self:
         """Sets the config's fault tolerance settings.
 
         Args:
