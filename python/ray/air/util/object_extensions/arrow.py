@@ -6,8 +6,8 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.air.util.object_extensions.pandas
+from ray._common.serialization import pickle_dumps
 from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.serialization import pickle_dumps
 from ray.util.annotations import PublicAPI
 
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
