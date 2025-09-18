@@ -394,7 +394,6 @@ def time_weighted_average(
 
 def merge_instantaneous_total(
     replicas_timeseries: List[List[TimeStampedValue]],
-    ttl: Optional[float] = None,
 ) -> List[TimeStampedValue]:
     """
     Merge multiple gauge time series (right-continuous, LOCF) into an
@@ -404,11 +403,12 @@ def merge_instantaneous_total(
     carried-forward (LOCF), which matches gauge semantics. It produces an exact
     instantaneous total across replicas without bias from arbitrary windowing.
 
+    Uses a k-way merge algorithm for O(n log k) complexity where k is the number
+    of timeseries and n is the total number of events.
+
     Args:
         replicas_timeseries: List of time series, one per replica. Each time series
             is a list of TimeStampedValue objects sorted by timestamp.
-        ttl: Optional time-to-live for values. If specified, values expire after
-            this duration and are removed from the total.
 
     Returns:
         A list of TimeStampedValue representing the instantaneous total at event times.
@@ -417,67 +417,59 @@ def merge_instantaneous_total(
     if not replicas_timeseries or not any(replicas_timeseries):
         return []
 
-    # Build delta events per replica
-    events_heap = []
+    # Filter out empty timeseries
+    active_series = [series for series in replicas_timeseries if series]
+    if not active_series:
+        return []
 
-    if ttl is not None:
-        # expiry bookkeeping: last value + last time per replica
-        last_time = [None] * len(replicas_timeseries)
-        last_val = [0.0] * len(replicas_timeseries)
+    # True k-way merge: heap maintains exactly k elements (one per series)
+    # Each element is (timestamp, replica_id, iterator)
+    merge_heap = []
+    current_values = [0.0] * len(active_series)  # Current value for each replica (LOCF)
 
-    for rid, series in enumerate(replicas_timeseries):
-        if not series:
-            continue
-
-        # initial delta
-        t0, v0 = series[0].timestamp, series[0].value
-        heapq.heappush(events_heap, (t0, v0))
-        prev_t, prev_v = t0, v0
-
-        if ttl is not None:
-            last_time[rid], last_val[rid] = t0, v0
-            heapq.heappush(events_heap, (t0 + ttl, -v0))  # schedule initial expiry
-
-        for point in series[1:]:
-            t, v = point.timestamp, point.value
-            dv = v - prev_v
-            if dv != 0.0:
-                heapq.heappush(events_heap, (t, dv))
-            if ttl is not None:
-                # cancel previous expiry by adding back, then schedule new expiry
-                # (net effect: move expiry to t+ttl with the then-current value)
+    # Initialize heap with first element from each series
+    for replica_idx, series in enumerate(active_series):
+        if series:  # Non-empty series
+            iterator = iter(series)
+            try:
+                first_point = next(iterator)
                 heapq.heappush(
-                    events_heap, (prev_t + ttl, +prev_v)
-                )  # cancel old expiry
-                heapq.heappush(events_heap, (t + ttl, -v))  # schedule new expiry
-                last_time[rid], last_val[rid] = t, v
-            prev_t, prev_v = t, v
+                    merge_heap,
+                    (first_point.timestamp, replica_idx, first_point.value, iterator),
+                )
+            except StopIteration:
+                pass
 
-    # Sweep events (coalesce identical timestamps)
     merged: List[TimeStampedValue] = []
-    current_sum = 0.0
+    running_total = 0.0
 
-    while events_heap:
-        # Process all events at the same timestamp together
-        current_time = events_heap[0][0]
-        net_delta = 0.0
+    while merge_heap:
+        # Pop the earliest event (heap size stays ≤ k)
+        timestamp, replica_idx, value, iterator = heapq.heappop(merge_heap)
 
-        # Collect all deltas at this timestamp
-        while events_heap and events_heap[0][0] == current_time:
-            t, delta = heapq.heappop(events_heap)
-            net_delta += delta
+        old_value = current_values[replica_idx]
+        current_values[replica_idx] = value
+        running_total += value - old_value
 
-        # Only record a point if there's a net change
-        if net_delta != 0.0:
-            current_sum += net_delta
-            merged.append(TimeStampedValue(current_time, current_sum))
+        # Try to get the next point from this replica's series and push it back
+        try:
+            next_point: TimeStampedValue = next(iterator)
+            heapq.heappush(
+                merge_heap,
+                (next_point.timestamp, replica_idx, next_point.value, iterator),
+            )
+        except StopIteration:
+            pass  # This series is exhausted
+
+        # Only add a point if the total actually changed
+        if value != old_value:  # Equivalent to new_total != old_total
+            merged.append(TimeStampedValue(timestamp, running_total))
 
     return merged
 
 
 def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
-    ttl: Optional[float] = None,
 ) -> DefaultDict[Hashable, List[TimeStampedValue]]:
     """
     Merge multiple time-series dictionaries using instantaneous merge approach.
@@ -488,7 +480,4 @@ def merge_timeseries_dicts(
         for key, ts in ts_dict.items():
             merged[key].append(ts)
 
-    return {
-        key: merge_instantaneous_total(ts_list, ttl=ttl)
-        for key, ts_list in merged.items()
-    }
+    return {key: merge_instantaneous_total(ts_list) for key, ts_list in merged.items()}

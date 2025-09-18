@@ -268,18 +268,6 @@ class TestInstantaneousMerge:
         ]
         assert_timeseries_equal(result, expected)
 
-    def test_merge_instantaneous_total_with_ttl(self):
-        """Test merge_instantaneous_total with TTL expiry."""
-        series = [TimeStampedValue(1.0, 5.0)]
-        result = merge_instantaneous_total([series], ttl=2.0)
-
-        # Should have initial value and expiry
-        expected = [
-            TimeStampedValue(1.0, 5.0),
-            TimeStampedValue(3.0, 0.0),  # expires at t=1.0+2.0=3.0
-        ]
-        assert_timeseries_equal(result, expected)
-
     def test_merge_instantaneous_total_complex_scenario(self):
         """Test complex scenario matching the autoscaling example."""
         # r1: starts at 5 (t=0.2), changes to 7 (t=0.8), then 6 (t=1.5)
@@ -447,19 +435,6 @@ class TestInstantaneousMerge:
         expected_metric3 = [TimeStampedValue(1.5, 20.0)]
         assert_timeseries_equal(result["metric3"], expected_metric3)
 
-    def test_merge_timeseries_dicts_instantaneous_with_ttl(self):
-        """Test merge_timeseries_dicts with TTL."""
-        s1 = InMemoryMetricsStore()
-        s1.add_metrics_point({"metric1": 5}, timestamp=1.0)
-
-        result = merge_timeseries_dicts(s1.data, ttl=2.0)
-
-        expected = [
-            TimeStampedValue(1.0, 5.0),
-            TimeStampedValue(3.0, 0.0),  # expires at t=1.0+2.0=3.0
-        ]
-        assert_timeseries_equal(result["metric1"], expected)
-
     def test_merge_instantaneous_vs_windowed_comparison(self):
         """Compare instantaneous merge vs windowed approach."""
         # Create test data that highlights the difference
@@ -578,41 +553,6 @@ class TestInstantaneousMerge:
         print(f"Full series average: {full_avg:.2f}")
         print(f"Early period average (0-10s): {early_avg:.2f}")
         print(f"Late period average (20-30s): {late_avg:.2f}")
-
-    def test_instantaneous_merge_with_ttl_epoch_times(self):
-        """Test instantaneous merge with TTL using epoch timestamps."""
-        base_time = 1703980800.0  # December 30, 2023 16:00:00 UTC
-        ttl = 15.0  # 15 second TTL
-
-        # Single replica with metrics over 25 seconds
-        replica_series = [
-            TimeStampedValue(base_time + 0.0, 10.0),  # t=0s: 10 requests
-            TimeStampedValue(base_time + 8.0, 15.0),  # t=8s: 15 requests
-            TimeStampedValue(base_time + 20.0, 12.0),  # t=20s: 12 requests
-        ]
-
-        result = merge_instantaneous_total([replica_series], ttl=ttl)
-
-        # Expected behavior with TTL:
-        # t=0: +10 (total=10), schedule expiry at t=15
-        # t=8: +5 (total=15), cancel old expiry, schedule new expiry at t=23
-        # t=20: -3 (total=12), cancel old expiry, schedule new expiry at t=35
-        # t=35: -12 (total=0), final expiry
-        expected = [
-            TimeStampedValue(base_time + 0.0, 10.0),  # Initial value
-            TimeStampedValue(base_time + 8.0, 15.0),  # Change to 15
-            TimeStampedValue(base_time + 20.0, 12.0),  # Change to 12
-            TimeStampedValue(base_time + 35.0, 0.0),  # Final expiry (20+15=35)
-        ]
-
-        assert_timeseries_equal(result, expected)
-
-        # Verify basic properties:
-        assert len(result) == 4  # Original 3 points + 1 expiry event
-        assert all(
-            point.timestamp >= base_time for point in result
-        )  # All timestamps should be valid
-        assert result[-1].value == 0.0  # Final value should be 0 after expiry
 
 
 if __name__ == "__main__":

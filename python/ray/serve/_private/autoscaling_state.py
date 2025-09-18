@@ -278,7 +278,7 @@ class AutoscalingState:
         metrics_timeseries_dicts = []
 
         for replica_id in self._running_replicas:
-            replica_metric_report = self._replica_requests.get(replica_id, None)
+            replica_metric_report = self._replica_metrics.get(replica_id, None)
             if (
                 replica_metric_report is not None
                 and RUNNING_REQUESTS_KEY in replica_metric_report.metrics
