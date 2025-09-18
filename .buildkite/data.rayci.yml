@@ -38,7 +38,7 @@ steps:
     tags:
       - data
     instance_type: medium
-    parallelism: 2
+    parallelism: 8
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
@@ -52,6 +52,7 @@ steps:
       - data
       - data_non_parallel
     instance_type: medium
+    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name data9build
@@ -63,7 +64,7 @@ steps:
       - python
       - data
     instance_type: medium
-    parallelism: 2
+    parallelism: 8
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
@@ -78,6 +79,7 @@ steps:
       - data
       - data_non_parallel
     instance_type: medium
+    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name datalbuild
