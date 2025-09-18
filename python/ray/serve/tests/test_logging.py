@@ -1369,7 +1369,7 @@ def test_configure_default_serve_logger_with_stderr_redirect(
     ],
     indirect=True,
 )
-def test_request_id_uniqueness_with_buffering(ray_instance):
+def test_request_id_uniqueness_with_buffering(serve_and_ray_shutdown, ray_instance):
     """Test request IDs are unique when buffering is enabled."""
 
     logger = logging.getLogger("ray.serve")
