@@ -24,7 +24,9 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from numpy.typing import NDArray
-    from torch._prims_common import DeviceLikeType
+
+    # alias of allowed device types by torch
+    DeviceLikeType = Union[str, torch.device, int]
 
     from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
     from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -54,7 +56,10 @@ NetworkType = Union["torch.nn.Module", "keras.Model"]
 """A neural network."""
 
 DeviceType = Union[str, "torch.device", "DeviceLikeType"]
-"""A device identifier, which can be a string (e.g. 'cpu', 'cuda:0'), a torch.device object, or other types supported by torch."""
+"""
+A device identifier, which can be a string (e.g. 'cpu', 'cuda:0'),
+a torch.device object, or other types supported by torch.
+"""
 
 RLModuleSpecType = Union["RLModuleSpec", "MultiRLModuleSpec"]
 """An RLModule spec (single-agent or multi-agent)."""

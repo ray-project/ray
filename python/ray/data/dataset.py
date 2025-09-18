@@ -129,12 +129,14 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
-    import torch.utils.data
     from tensorflow_metadata.proto.v0 import schema_pb2
-    from torch._prims_common import DeviceLikeType
+
+    # alias of allowed device types by torch
+    DeviceLikeType = Union[str, torch.device, int]
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
+
 
 from ray.data.expressions import Expr
 

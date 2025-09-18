@@ -41,10 +41,10 @@ from ray.util.annotations import PublicAPI, RayDeprecationWarning
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
-    from torch._prims_common import DeviceLikeType
 
     from ray.data.dataset import (
         CollatedData,
+        DeviceLikeType,
         MaterializedDataset,
         Schema,
         TensorFlowTensorBatchType,
