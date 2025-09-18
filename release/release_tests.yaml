@@ -3703,6 +3703,7 @@
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
         - RAY_enable_open_telemetry=1
         - RAY_emit_main_service_metrics=1
+        - RAY_io_context_event_loop_lag_collection_interval_ms=18000000
     cluster_compute: distributed.yaml
 
   run:
