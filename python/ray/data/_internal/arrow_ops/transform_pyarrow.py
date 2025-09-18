@@ -1,15 +1,17 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
+from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
-    INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
+    get_arrow_extension_tensor_types,
 )
 
 try:
@@ -18,6 +20,8 @@ except ImportError:
     pyarrow = None
 
 
+# Minimum version support {String,List,Binary}View types
+MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
 
 
@@ -65,6 +69,21 @@ def _create_empty_table(schema: "pyarrow.Schema"):
     return pa.table(arrays, schema=schema)
 
 
+def _hash_partition(
+    table: "pyarrow.Table",
+    num_partitions: int,
+) -> np.ndarray:
+
+    partitions = np.zeros((table.num_rows,), dtype=np.int64)
+    for i in range(table.num_rows):
+        _tuple = tuple(c[i] for c in table.columns)
+        partitions[i] = hash(_tuple) % num_partitions
+
+    # Convert to ndarray to compute hash partition indices
+    # more efficiently
+    return partitions
+
+
 def hash_partition(
     table: "pyarrow.Table",
     *,
@@ -88,15 +107,7 @@ def hash_partition(
         return {0: table}
 
     projected_table = table.select(hash_cols)
-
-    partitions = np.zeros((projected_table.num_rows,))
-    for i in range(projected_table.num_rows):
-        _tuple = tuple(c[i] for c in projected_table.columns)
-        partitions[i] = hash(_tuple) % num_partitions
-
-    # Convert to ndarray to compute hash partition indices
-    # more efficiently
-    partitions_array = np.asarray(partitions)
+    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
@@ -146,141 +157,210 @@ def take_table(
     return table
 
 
-def unify_schemas(
-    schemas: List["pyarrow.Schema"], *, promote_types: bool = False
-) -> "pyarrow.Schema":
-    """Version of `pyarrow.unify_schemas()` which also handles checks for
-    variable-shaped tensors in the given schemas.
-
-    This function scans all input schemas to identify columns that contain
-    variable-shaped tensors or objects. For tensor columns, it ensures the
-    use of appropriate tensor types (including variable-shaped tensor types).
-    For object columns, it uses a specific object type to accommodate any
-    objects present. Additionally, it handles columns with null-typed lists
-    by determining their actual types from the given schemas.
-
-    Currently, it disallows the concatenation of tensor columns and
-    pickled object columsn for performance reasons.
+def _reconcile_diverging_fields(
+    unique_schemas: List["pyarrow.Schema"],
+    promote_types: bool,
+) -> Dict[str, Any]:
     """
-    import pyarrow as pa
+    Identify and reconcile fields whose presence or types differ across the provided schemas.
 
+    Args:
+        unique_schemas: List of PyArrow schemas to find diverging fields in.
+        promote_types: Whether to promote types.
+
+    Returns:
+        A dictionary of diverging fields with their reconciled types.
+    """
+    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+
+    reconciled_fields = {}
+    field_types = defaultdict(set)  # field_name -> set of types seen so far
+    field_flags = defaultdict(
+        lambda: defaultdict(bool)
+    )  # field_name -> dict of boolean flags
+
+    # Process schemas and reconcile on-the-fly
+    for schema in unique_schemas:
+        for field_name in schema.names:
+            if field_name in reconciled_fields:
+                # If the field has already been reconciled, skip it.
+                continue
+
+            field_type = schema.field(field_name).type
+            field_types[field_name].add(field_type)
+            flags = field_flags[field_name]
+
+            # Update flags
+            flags["has_object"] |= isinstance(field_type, ArrowPythonObjectType)
+            flags["has_tensor"] |= isinstance(
+                field_type, get_arrow_extension_tensor_types()
+            )
+            flags["has_list"] |= pyarrow.types.is_list(field_type)
+            flags["has_null"] |= pyarrow.types.is_null(field_type)
+            flags["has_struct"] |= pyarrow.types.is_struct(field_type)
+
+            # Check for object-tensor conflict
+            if flags["has_object"] and flags["has_tensor"]:
+                raise ValueError(
+                    f"Found columns with both objects and tensors: {field_name}"
+                )
+
+            # Reconcile immediately if it's a special type and if it's divergent.
+            if any(flags.values()) and len(field_types[field_name]) > 1:
+                reconciled_value = _reconcile_field(
+                    non_null_types=field_types[field_name],
+                    promote_types=promote_types,
+                )
+                if reconciled_value is not None:
+                    reconciled_fields[field_name] = reconciled_value
+
+    return reconciled_fields
+
+
+def _reconcile_field(
+    non_null_types: List[pyarrow.DataType],
+    promote_types: bool = False,
+) -> Optional[pyarrow.DataType]:
+    """
+    Reconcile a single divergent field across schemas.
+
+    Returns reconciled type or None if default PyArrow handling is sufficient.
+    """
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
         ArrowVariableShapedTensorType,
-    )
-
-    schemas_to_unify = []
-    schema_field_overrides = {}
-
-    # Rollup columns with opaque (null-typed) lists, to override types in
-    # the following for-loop.
-    cols_with_null_list = set()
-
-    all_columns = set()
-    for schema in schemas:
-        for col_name in schema.names:
-            col_type = schema.field(col_name).type
-            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
-                cols_with_null_list.add(col_name)
-            all_columns.add(col_name)
-
-    from ray.air.util.tensor_extensions.arrow import (
-        get_arrow_extension_fixed_shape_tensor_types,
         get_arrow_extension_tensor_types,
     )
 
-    arrow_tensor_types = get_arrow_extension_tensor_types()
-    arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+    if not non_null_types:
+        return None
 
-    columns_with_objects = set()
-    columns_with_tensor_array = set()
-    for col_name in all_columns:
-        for s in schemas:
-            indices = s.get_all_field_indices(col_name)
-            if len(indices) > 1:
-                # This is broken for Pandas blocks and broken with the logic here
-                raise ValueError(
-                    f"Schema {s} has multiple fields with the same name: {col_name}"
-                )
-            elif len(indices) == 0:
-                continue
-            if isinstance(s.field(col_name).type, ArrowPythonObjectType):
-                columns_with_objects.add(col_name)
-            if isinstance(s.field(col_name).type, arrow_tensor_types):
-                columns_with_tensor_array.add(col_name)
+    tensor_types = get_arrow_extension_tensor_types()
 
-    if len(columns_with_objects.intersection(columns_with_tensor_array)) > 0:
-        # This is supportable if we use object type, but it will be expensive
-        raise ValueError(
-            "Found columns with both objects and tensors: "
-            f"{columns_with_tensor_array.intersection(columns_with_objects)}"
+    # Handle special cases in priority order
+
+    # 1. Tensor fields
+    tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
+    if tensor_field_types:
+        needs_variable_shape = ArrowTensorType._need_variable_shaped_tensor_array(
+            tensor_field_types
         )
-    for col_name in columns_with_tensor_array:
-        tensor_array_types = [
-            s.field(col_name).type
-            for s in schemas
-            if isinstance(s.field(col_name).type, arrow_tensor_types)
-        ]
 
-        if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
-            if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
-                new_type = tensor_array_types[0]
-            elif isinstance(tensor_array_types[0], arrow_fixed_shape_tensor_types):
-                new_type = ArrowVariableShapedTensorType(
-                    dtype=tensor_array_types[0].scalar_type,
-                    ndim=len(tensor_array_types[0].shape),
-                )
+        if needs_variable_shape:
+            first_tensor = tensor_field_types[0]
+            if isinstance(first_tensor, ArrowVariableShapedTensorType):
+                return first_tensor
             else:
-                raise ValueError(
-                    "Detected need for variable shaped tensor representation, "
-                    f"but schema is not ArrayTensorType: {tensor_array_types[0]}"
+                # Convert fixed-shape to variable-shape
+                return ArrowVariableShapedTensorType(
+                    dtype=first_tensor.scalar_type, ndim=len(first_tensor.shape)
                 )
-            schema_field_overrides[col_name] = new_type
 
-    for col_name in columns_with_objects:
-        schema_field_overrides[col_name] = ArrowPythonObjectType()
+    # 2. Object fields
+    if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
+        return ArrowPythonObjectType()
 
-    if cols_with_null_list:
-        # For each opaque list column, iterate through all schemas until we find
-        # a valid value_type that can be used to override the column types in
-        # the following for-loop.
-        for col_name in cols_with_null_list:
-            for schema in schemas:
-                col_type = schema.field(col_name).type
-                if not pa.types.is_list(col_type) or not pa.types.is_null(
-                    col_type.value_type
-                ):
-                    schema_field_overrides[col_name] = col_type
-                    break
+    # 3. Struct fields (recursive unification)
+    struct_types = [t for t in non_null_types if pyarrow.types.is_struct(t)]
+    if struct_types:
+        # Convert struct types to schemas
+        struct_schemas = []
+        for t in non_null_types:
+            if pyarrow.types.is_struct(t):
+                struct_schemas.append(pyarrow.schema(list(t)))
+        # Recursively unify
+        unified_struct = unify_schemas(struct_schemas, promote_types=promote_types)
+        return pyarrow.struct(list(unified_struct))
 
-    if schema_field_overrides:
-        # Go through all schemas and update the types of columns from the above loop.
-        for schema in schemas:
-            for col_name, col_new_type in schema_field_overrides.items():
-                var_shaped_col = schema.field(col_name).with_type(col_new_type)
-                col_idx = schema.get_field_index(col_name)
-                schema = schema.set(col_idx, var_shaped_col)
+    # 4. Null-typed list fields (Need this pyarrow < 14.0.0)
+    null_lists = [
+        t
+        for t in non_null_types
+        if pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)
+    ]
+    if null_lists:
+        # Find first non-null list type
+        for t in non_null_types:
+            if not (pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)):
+                return t
+    # At this phase, we have no special types to reconcile, so return None. Arrow will fail to unify.
+    return None
+
+
+def _unify_schemas_pyarrow(
+    schemas: List["pyarrow.Schema"], promote_types: bool = False
+) -> "pyarrow.Schema":
+    """Wrapper for pyarrow.unify_schemas with version compatibility."""
+    if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+        return pyarrow.unify_schemas(schemas)
+
+    promote_options = "permissive" if promote_types else "default"
+    return pyarrow.unify_schemas(schemas, promote_options=promote_options)
+
+
+def unify_schemas(
+    schemas: List["pyarrow.Schema"], *, promote_types: bool = False
+) -> "pyarrow.Schema":
+    """
+    Unify schemas handling Ray-specific types (tensors, objects, etc.).
+
+    Falls back to PyArrow's unify_schemas when possible, with custom
+    handling for tensor arrays, object types, and recursive struct unification.
+    """
+    if not schemas:
+        raise ValueError("No schemas provided for unify_schemas")
+
+    # Deduplicate schemas. Calling this before PyArrow's unify_schemas is more efficient (100x faster).
+
+    # Remove metadata for hashability
+    schemas[0].remove_metadata()
+    schemas_to_unify = [schemas[0]]
+    for schema in schemas[1:]:
+        schema.remove_metadata()
+        if not schema.equals(schemas[0]):
             schemas_to_unify.append(schema)
-    else:
-        schemas_to_unify = schemas
 
+    pyarrow_exception = None
+    # If there is only one schema, return it
+    if len(schemas_to_unify) == 1:
+        return schemas_to_unify[0]
+
+    # Try PyArrow's unification first, only reconcile for tensor fields
     try:
-        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
-            return pyarrow.unify_schemas(schemas_to_unify)
+        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+    except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid) as e:
+        # If we raise only on non tensor errors, it fails to unify PythonObjectType and pyarrow primitives.
+        # Look at test_pyarrow_conversion_error_handling for an example.
+        pyarrow_exception = e
+        pass
 
-        # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
-        #       allowing only promotion b/w nullable and non-nullable ones
-        arrow_promote_types_mode = "permissive" if promote_types else "default"
+    # Reconcile diverging fields
+    overrides = _reconcile_diverging_fields(schemas_to_unify, promote_types)
 
-        return pyarrow.unify_schemas(
-            schemas_to_unify, promote_options=arrow_promote_types_mode
-        )
+    # At this point, we're not able to reconcile the fields, so raise the original exception.
+    if not overrides:
+        raise pyarrow_exception
+
+    # Apply overrides to schemas
+    updated_schemas = []
+    for schema in schemas_to_unify:
+        for name, new_type in overrides.items():
+            try:
+                idx = schema.get_field_index(name)
+                field = schema.field(name).with_type(new_type)
+                schema = schema.set(idx, field)
+            except KeyError:
+                pass
+        updated_schemas.append(schema)
+    schemas_to_unify = updated_schemas
+
+    # Final unification with overrides applied
+    try:
+        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
     except Exception as e:
-        schemas_str = "\n-----\n".join([str(s) for s in schemas_to_unify])
-
+        schemas_str = "\n-----\n".join(str(s) for s in schemas_to_unify)
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
-
         raise
 
 
@@ -360,6 +440,12 @@ def _backfill_missing_fields(
     """
     import pyarrow as pa
 
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+        get_arrow_extension_tensor_types,
+    )
+
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
@@ -379,6 +465,8 @@ def _backfill_missing_fields(
     if column.type == unified_struct_type:
         return column
 
+    tensor_types = get_arrow_extension_tensor_types()
+
     aligned_fields = []
 
     # Iterate over the fields in the unified struct type schema
@@ -396,6 +484,22 @@ def _backfill_missing_fields(
                     unified_struct_type=field_type,
                     block_length=block_length,
                 )
+
+            # Handle tensor extension type mismatches
+            elif isinstance(field_type, tensor_types) and isinstance(
+                current_array.type, tensor_types
+            ):
+                # Convert to variable-shaped if needed
+                if ArrowTensorType._need_variable_shaped_tensor_array(
+                    [current_array.type, field_type]
+                ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
+                    # Only convert if it's not already a variable-shaped tensor array
+                    current_array = current_array.to_variable_shaped_tensor_array()
+
+            # The schema should already be unified by unify_schemas, so types
+            # should be compatible. If not, let the error propagate up.
+            # No explicit casting needed - PyArrow will handle type compatibility
+            # during struct creation or raise appropriate errors.
             aligned_fields.append(current_array)
         else:
             # If the field is missing, fill with nulls
@@ -790,8 +894,35 @@ def combine_chunked_array(
         return _try_combine_chunks_safe(array)
 
 
+# List of variable-width types using int64 offsets
+_VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES = [
+    pyarrow.types.is_large_list,
+    pyarrow.types.is_large_string,
+    pyarrow.types.is_large_binary,
+]
+
+
+# List of variable-width types using int32 offsets
+_VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES = [
+    pyarrow.types.is_string,
+    pyarrow.types.is_binary,
+    pyarrow.types.is_list,
+    # Modeled as list<struct<key, val>>
+    pyarrow.types.is_map,
+]
+
+if PYARROW_VERSION > MIN_PYARROW_VERSION_VIEW_TYPES:
+    _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES.extend(
+        [
+            pyarrow.types.is_string_view,
+            pyarrow.types.is_binary_view,
+            pyarrow.types.is_list_view,
+        ]
+    )
+
+
 def _try_combine_chunks_safe(
-    array: "pyarrow.ChunkedArray", max_chunk_size=INT32_OVERFLOW_THRESHOLD
+    array: "pyarrow.ChunkedArray",
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This method provides a safe way of combining `ChunkedArray`s exceeding 2 GiB
     in size, which aren't using "large_*" types (and therefore relying on int32
@@ -809,10 +940,13 @@ def _try_combine_chunks_safe(
         with potentially smaller number of chunks that have resulted from clumping
         the original ones)
 
+    Args:
+        array: The PyArrow ChunkedArray to safely combine.
+
     Returns:
-        - pa.Array if it's possible to combine provided pa.ChunkedArray into single
-        contiguous array
-        - pa.ChunkedArray (albeit with chunks re-combined) if it's not possible to
+        - ``pyarrow.Array`` if it's possible to combine provided ``pyarrow.ChunkedArray``
+        into single contiguous array
+        - ``pyarrow.ChunkedArray`` (albeit with chunks re-combined) if it's not possible to
         produce single pa.Array
     """
 
@@ -824,53 +958,53 @@ def _try_combine_chunks_safe(
         array
     ), f"Arrow `ExtensionType`s are not accepted (got {array.type})"
 
-    int64_type_predicates = [
-        pa.types.is_large_list,
-        pa.types.is_large_string,
-        pa.types.is_large_binary,
-        pa.types.is_large_unicode,
-    ]
-
-    if array.nbytes < max_chunk_size or any(
-        p(array.type) for p in int64_type_predicates
+    # It's safe to combine provided `ChunkedArray` in either of 2 cases:
+    #   - It's type is NOT a variable-width type (list, binary, string, map),
+    #     using int32 offsets into underlying data (bytes) array
+    #   - It's type is a variable-width type using int64 offsets (large_list,
+    #     large_string, etc)
+    #   - It's cumulative byte-size is < INT32_MAX
+    if (
+        not any(p(array.type) for p in _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES)
+        or any(p(array.type) for p in _VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES)
+        or array.nbytes < INT32_MAX
     ):
-        # It's safe to combine provided `ChunkedArray` in either of 2 cases:
-        #   - It's cumulative size is < 2 GiB
-        #   - It's of 'large' kind (ie one using int64 offsets internally)
         return array.combine_chunks()
 
     # In this case it's actually *NOT* safe to try to directly combine
     # Arrow's `ChunkedArray` and is impossible to produce single, contiguous
     # `Array` since
-    #     - It's estimated to hold > 2 GiB
-    #     - Its type is not of the "large" kind (and hence is using int32
-    #       offsets internally, which would overflow)
+    #     - It's of variable-width type that uses int32 offsets
+    #     - It's cumulative estimated byte-size is > INT32_MAX (2 GiB)
     #
     # In this case instead of combining into single contiguous array, we
-    # instead just "clump" existing chunks into bigger ones, but no bigger
-    # than 2 GiB each.
+    # instead "clump" existing chunks into ones such that each of these is < INT32_MAX.
     #
     # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
 
-    # To stay under 2 GiB limit we are slicing provided list of chunks into
-    # slices no larger than 2 GiB (as compared to just directly using `concat_arrays`)
-    slices = []
+    new_chunks = []
 
-    cur_slice_start = 0
-    cur_slice_size_bytes = 0
+    cur_chunk_group = []
+    cur_chunk_group_size = 0
 
-    for i, chunk in enumerate(array.chunks):
+    for chunk in array.chunks:
         chunk_size = chunk.nbytes
 
-        if cur_slice_size_bytes + chunk_size > max_chunk_size:
-            slices.append(array.chunks[cur_slice_start:i])
+        assert chunk_size <= INT32_MAX
 
-            cur_slice_start = i
-            cur_slice_size_bytes = 0
+        if cur_chunk_group_size + chunk_size > INT32_MAX:
+            # Combine an accumulated group, append to the new list of chunks
+            if cur_chunk_group:
+                new_chunks.append(pa.concat_arrays(cur_chunk_group))
 
-        cur_slice_size_bytes += chunk_size
+            cur_chunk_group = []
+            cur_chunk_group_size = 0
+
+        cur_chunk_group.append(chunk)
+        cur_chunk_group_size += chunk_size
 
     # Add remaining chunks as last slice
-    slices.append(array.chunks[cur_slice_start:])
+    if cur_chunk_group:
+        new_chunks.append(pa.concat_arrays(cur_chunk_group))
 
-    return pa.chunked_array([pa.concat_arrays(s) for s in slices])
+    return pa.chunked_array(new_chunks)

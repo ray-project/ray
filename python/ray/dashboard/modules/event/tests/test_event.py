@@ -14,10 +14,11 @@ from pprint import pprint
 
 import numpy as np
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import binary_to_hex
 from ray._private.event.event_logger import (
     filter_event_by_level,
     get_event_id,
@@ -33,7 +34,6 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-from ray._common.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,
@@ -137,7 +137,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
             __name__ + str(random.random()),
             test_log_file,
             max_bytes=2000,
-            backup_count=1000,
+            backup_count=0,
         )
         for i in range(test_count):
             sample_event = _get_event(str(i), job_id=job_id, source_type=source_type)
@@ -262,7 +262,7 @@ async def test_monitor_events():
         common = event_pb2.Event.SourceType.Name(event_pb2.Event.COMMON)
         common_log = os.path.join(temp_dir, f"event_{common}.log")
         test_logger = _test_logger(
-            __name__ + str(random.random()), common_log, max_bytes=10, backup_count=10
+            __name__ + str(random.random()), common_log, max_bytes=10, backup_count=0
         )
         test_events1 = []
         monitor_task = monitor_events(
@@ -314,7 +314,7 @@ async def test_monitor_events():
         log_file_count = len(os.listdir(temp_dir))
 
         test_logger = _test_logger(
-            __name__ + str(random.random()), common_log, max_bytes=1000, backup_count=10
+            __name__ + str(random.random()), common_log, max_bytes=1000, backup_count=0
         )
         assert len(os.listdir(temp_dir)) == log_file_count
 
@@ -333,7 +333,7 @@ async def test_monitor_events():
             await monitor_task
         assert monitor_task.done()
 
-        assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
+        assert len(os.listdir(temp_dir)) == 1, "There should just be 1 event log"
 
 
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])

@@ -1,6 +1,5 @@
-# Face Mask Detection Pipeline
+# Scalable video processing
 
-## Overview
 This tutorial builds an end-to-end face mask detection pipeline that leverages distributed fine-tuning, large-scale batch inference, video analytics, and scalable serving:
 
 [1.object_detection_train.ipynb](1.object_detection_train.ipynb)  
@@ -29,3 +28,14 @@ Demonstrate a real-world video analytics workflow: read a video from S3, split i
 
 [4.object_detection_serve.ipynb](4.object_detection_serve.ipynb)  
 Deploy the trained Faster R-CNN mask detector as a production-ready microservice using Ray Serve and FastAPI. Set up ingress, configure autoscaling and fractional GPU allocation, test the HTTP endpoint, and manage the service lifecycle both locally and through Anyscale Services.
+
+
+```{toctree}
+:hidden:
+
+1.object_detection_train
+2.object_detection_batch_inference_eval
+3.video_processing_batch_inference
+4.object_detection_serve
+
+```

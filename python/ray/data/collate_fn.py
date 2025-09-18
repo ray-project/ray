@@ -227,6 +227,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[Union[str, "torch.device"]] = None,
+        pin_memory: bool = False,
     ):
         """Initialize the collate function.
 
@@ -235,6 +236,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed. Can be a string
                 (e.g. "cpu", "cuda:0") or a torch.device object.
+            pin_memory: Whether to pin the memory of the created tensors.
         """
         import torch
 
@@ -244,6 +246,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
             self.device = torch.device(device)
         else:
             self.device = device
+        self.pin_memory = pin_memory
 
     def __call__(self, batch: "pyarrow.Table") -> Dict[str, List["torch.Tensor"]]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -265,5 +268,8 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         # before converting to numpy format and then to Tensors.
         combine_chunks = self.device.type == "cpu"
         return arrow_batch_to_tensors(
-            batch, dtypes=self.dtypes, combine_chunks=combine_chunks
+            batch,
+            dtypes=self.dtypes,
+            combine_chunks=combine_chunks,
+            pin_memory=self.pin_memory,
         )

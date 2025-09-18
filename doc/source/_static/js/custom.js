@@ -51,17 +51,18 @@ document.addEventListener("DOMContentLoaded", function() {
         for (let i = 0; i < codeButtons.length; i++) {
             const button = codeButtons[i];
             button.addEventListener("click", function() {
-                if (typeof gtag === 'undefined') {
-                    console.warn('Google Analytics (gtag) not loaded - code copy not tracked');
+                if (typeof window.dataLayer === 'undefined' || !Array.isArray(window.dataLayer)) {
+                    console.warn('Google Tag Manager dataLayer not available - code copy not tracked');
                     return;
                 }
 
-                gtag("event", "code_copy_click", {
-                     category: "ray_docs_copy_code",
-                     page_location: window.location.href,
-                     page_title: document.title,
-                     button_target: button.getAttribute("data-clipboard-target") || "unknown",
-                     value: 1,
+                window.dataLayer.push({
+                    event: "code_copy_click",
+                    category: "ray_docs_copy_code",
+                    page_location: window.location.href,
+                    page_title: document.title,
+                    button_target: button.getAttribute("data-clipboard-target") || "unknown",
+                    value: 1,
                 });
             });
         }
@@ -71,12 +72,13 @@ document.addEventListener("DOMContentLoaded", function() {
   let anyscaleButton = document.getElementById("try-anyscale")
   if (anyscaleButton) {
     anyscaleButton.onclick = () => {
-      if (typeof gtag === 'undefined') {
-          console.warn('Google Analytics (gtag) not loaded - try anyscale click not tracked');
+      if (typeof window.dataLayer === 'undefined' || !Array.isArray(window.dataLayer)) {
+          console.warn('Google Tag Manager dataLayer not available - try anyscale click not tracked');
           return;
       }
 
-      gtag("event", "try_anyscale_click", {
+      window.dataLayer.push({
+          event: "try_anyscale_click",
           category: "TryAnyscale",
           page_location: window.location.href,
           page_title: document.title,

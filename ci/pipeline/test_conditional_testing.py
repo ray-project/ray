@@ -4,13 +4,13 @@ import sys
 import tempfile
 from typing import List, Set
 
-import runfiles
 import pytest
+import runfiles
 import yaml
 
 from ci.pipeline.determine_tests_to_run import TagRule, TagRuleSet
 
-_REPO_NAME = "com_github_ray_project_ray"
+_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
@@ -24,6 +24,7 @@ python/ray/llm/llm.py: lint llm
 python/ray/workflow/workflow.py: lint workflow
 python/ray/tune/tune.py: lint ml train tune linux_wheels
 python/ray/train/train.py: lint ml train linux_wheels
+python/ray/util/dask/dask.py: lint python dask
 .buildkite/ml.rayci.yml: lint ml train tune
 rllib/rllib.py: lint rllib rllib_gpu rllib_directly
 
@@ -42,7 +43,9 @@ python/_raylet.pyx:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
-    - lint python compiled_graphs
+    - lint python cgraphs_direct_transport
+python/ray/experimental/gpu_object_manager/gpu_object_manager.py:
+    - lint python cgraphs_direct_transport
 
 .buildkite/core.rayci.yml: lint python core_cpp
 java/ray.java: lint java
@@ -54,11 +57,13 @@ docker/Dockerfile.ray: lint docker linux_wheels
 doc/code.py: lint doc
 doc/example.ipynb: lint doc
 doc/tutorial.rst: lint doc
-doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
-ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
+.vale.ini: lint doc
+.vale/styles/config/vocabularies/Core/accept.txt: lint doc
+
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements.txt: lint release_tests
 release/requirements_buildkite.txt: lint tools
+release/release_tests.yaml: lint tools
 ci/lint/lint.sh: lint tools
 .buildkite/lint.rayci.yml: lint tools
 .buildkite/macos.rayci.yml: lint macos_wheels
@@ -163,6 +168,7 @@ def test_conditional_testing_pull_request():
 def test_tag_rule():
     rule = TagRule(
         tags=["hit"],
+        lineno=1,
         dirs=["fancy"],
         files=["file.txt"],
         patterns=["python/*.py"],
@@ -179,7 +185,7 @@ def test_tag_rule():
     assert rule.match_tags("fancy") == ({"hit"}, True)
     assert rule.match_tags("not_match") == (set(), False)
 
-    skip_rule = TagRule(tags=[], files=["skip.txt"])
+    skip_rule = TagRule(tags=[], lineno=1, files=["skip.txt"])
     assert skip_rule.match("skip.txt")
     assert skip_rule.match_tags("skip.txt") == (set(), True)
     assert skip_rule.match_tags("not_match") == (set(), False)
@@ -190,14 +196,31 @@ def test_tag_rule_set():
     assert rule_set.match_tags("fancy/file.txt") == ({"fancy"}, True)
 
     rule_set = TagRuleSet(
-        "\n".join(["fancy/ #dir", "@fancy", ";", "\t\t  ", "foobar.txt", "@foobar"])
+        "\n".join(
+            [
+                "!fancy foobar",
+                "fancy/ #dir",
+                "@fancy",
+                ";",
+                "\t\t  ",
+                "foobar.txt",
+                "@foobar",
+            ]
+        )
     )
+    rule_set.check_rules()
     assert rule_set.match_tags("fancy/file.txt") == ({"fancy"}, True)
     assert rule_set.match_tags("foobar.txt") == ({"foobar"}, True)
     assert rule_set.match_tags("not_a_match") == (set(), False)
 
     rule_set = TagRuleSet("")
     assert rule_set.match_tags("anything") == (set(), False)
+
+
+def test_tag_rule_set_check_rules():
+    rule_set = TagRuleSet("\n".join(["!foobar", "fancy/ #dir", "@fancy"]))
+    with pytest.raises(ValueError):
+        rule_set.check_rules()
 
 
 if __name__ == "__main__":

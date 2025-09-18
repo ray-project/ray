@@ -223,8 +223,12 @@ class KubeRayProvider(ICloudInstanceProvider):
             # Handle the case where users manually increase `minReplicas`
             # to scale up the number of worker Pods. In this scenario,
             # `replicas` will be smaller than `minReplicas`.
-            num_workers_dict[node_type] = max(
-                worker_group["replicas"], worker_group["minReplicas"]
+            # num_workers_dict should account for multi-host replicas when
+            # `numOfHosts`` is set.
+            num_of_hosts = worker_group.get("numOfHosts", 1)
+            num_workers_dict[node_type] = (
+                max(worker_group["replicas"], worker_group["minReplicas"])
+                * num_of_hosts
             )
 
         # Add to launch nodes.

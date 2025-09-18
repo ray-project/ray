@@ -5,25 +5,22 @@ import os
 import re
 import sys
 import time
+
 import numpy as np
+import pytest
 import torch
 
-import pytest
-
-
-from ray._private.test_utils import run_string_as_driver
-from ray.exceptions import RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
-from ray.dag import DAGContext, InputNode, MultiOutputNode
-from ray.tests.conftest import *  # noqa
 from ray._common.utils import (
     get_or_create_event_loop,
 )
-
+from ray._private.test_utils import run_string_as_driver
+from ray.dag import DAGContext, InputNode, MultiOutputNode
 from ray.dag.tests.experimental.actor_defs import Actor, Collector
-
+from ray.exceptions import RayChannelTimeoutError
+from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +72,10 @@ def test_two_returns_one_reader(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        o3 = b.echo.bind(o1)
-        o4 = b.echo.bind(o2)
-        dag = MultiOutputNode([o3, o4])
+        out_1, out_2 = a.return_two.bind(i)
+        out_3 = b.echo.bind(out_1)
+        out_4 = b.echo.bind(out_2)
+        dag = MultiOutputNode([out_3, out_4])
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):

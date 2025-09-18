@@ -32,11 +32,11 @@ namespace ray {
 
 namespace raylet {
 
-/// Key groups on its owner id. For non-retriable task the owner id is itself,
-/// Since non-retriable task forms its own group.
+/// Key groups on its owner id. For non-retriable lease the owner id is Nil,
+/// Since non-retriable lease forms its own group.
 struct GroupKey {
-  explicit GroupKey(const TaskID &owner_id) : owner_id(owner_id) {}
-  const TaskID &owner_id;
+  explicit GroupKey(const TaskID &owner_id) : owner_id_(owner_id) {}
+  const TaskID &owner_id_;
 };
 
 struct Group {
@@ -44,46 +44,44 @@ struct Group {
   Group(const TaskID &owner_id, bool retriable)
       : owner_id_(owner_id), retriable_(retriable) {}
 
-  /// The parent task id of the tasks belonging to this group
+  /// The parent task id of the leases belonging to this group
   const TaskID &OwnerId() const;
 
-  /// Whether tasks in this group are retriable.
+  /// Whether leases in this group are retriable.
   const bool IsRetriable() const;
 
-  /// Gets the task time of the earliest task of this group, to be
+  /// Gets the assigned lease time of the earliest lease of this group, to be
   /// used for group priority.
-  const absl::Time GetAssignedTaskTime() const;
+  const absl::Time GetGrantedLeaseTime() const;
 
   /// Returns the worker to be killed in this group, in LIFO order.
   const std::shared_ptr<WorkerInterface> SelectWorkerToKill() const;
 
-  /// Tasks belonging to this group.
+  /// Leases belonging to this group.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllWorkers() const;
 
-  /// Adds worker that the task belongs to to the group.
+  /// Adds worker that the lease belongs to to the group.
   void AddToGroup(std::shared_ptr<WorkerInterface> worker);
 
  private:
-  /// Tasks belonging to this group.
+  /// Leases belonging to this group.
   std::vector<std::shared_ptr<WorkerInterface>> workers_;
 
-  /// The earliest creation time of the tasks.
-  absl::Time earliest_task_time_ = absl::Now();
+  /// The earliest creation time of the leases.
+  absl::Time earliest_granted_lease_time_ = absl::Now();
 
-  /// The owner id shared by tasks of this group.
-  /// TODO(clarng): make this const and implement move / swap.
+  /// The owner id shared by leases of this group.
   TaskID owner_id_;
 
-  /// Whether the tasks are retriable.
-  /// TODO(clarng): make this const and implement move / swap.
+  /// Whether the leases are retriable.
   bool retriable_;
 };
 
-/// Groups task by its owner id. Non-retriable task (whether it be task or actor) forms
-/// its own group. Prioritizes killing groups that are retriable first, else it picks the
-/// largest group, else it picks the newest group. The "age" of a group is based on the
-/// time of its earliest submitted task. When a group is selected for killing it selects
-/// the last submitted task.
+/// Groups leases by its owner id. Non-retriable leases (whether it be task or actor)
+/// forms its own group. Prioritizes killing groups that are retriable first, else it
+/// picks the largest group, else it picks the newest group. The "age" of a group is based
+/// on the time of its earliest granted leases. When a group is selected for killing it
+/// selects the last submitted task.
 ///
 /// When selecting a worker / task to be killed, it will set the task to-be-killed to be
 /// non-retriable if it is the last member of the group, and is retriable otherwise.

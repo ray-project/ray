@@ -13,11 +13,11 @@ from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.uv import get_uri as get_uv_uri
 from ray._private.runtime_env.validation import (
-    OPTION_TO_VALIDATION_FN,
     OPTION_TO_NO_PATH_VALIDATION_FN,
+    OPTION_TO_VALIDATION_FN,
 )
 from ray._private.thirdparty.dacite import from_dict
-from ray.core.generated.runtime_env_common_pb2 import (
+from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
 from ray.util.annotations import PublicAPI
@@ -272,6 +272,8 @@ class RuntimeEnv(dict):
             When a runtime env is specified by job submission API,
             only a module name (string) is allowed.
         nsight: Dictionary mapping nsight profile option name to it's value.
+        rocprof_sys: Dictionary mapping rocprof-sys profile option name and environment
+                   variables to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
@@ -297,6 +299,7 @@ class RuntimeEnv(dict):
         "config",
         "worker_process_setup_hook",
         "_nsight",
+        "_rocprof_sys",
         "mpi",
         "image_uri",
     }
@@ -319,6 +322,7 @@ class RuntimeEnv(dict):
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
         nsight: Optional[Union[str, Dict[str, str]]] = None,
+        rocprof_sys: Optional[Union[str, Dict[str, Dict[str, str]]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         mpi: Optional[Dict] = None,
@@ -343,6 +347,8 @@ class RuntimeEnv(dict):
             runtime_env["conda"] = conda
         if nsight is not None:
             runtime_env["_nsight"] = nsight
+        if rocprof_sys is not None:
+            runtime_env["_rocprof_sys"] = rocprof_sys
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -528,6 +534,9 @@ class RuntimeEnv(dict):
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("_nsight", None)
+
+    def rocprof_sys(self) -> Optional[Union[str, Dict[str, Dict[str, str]]]]:
+        return self.get("_rocprof_sys", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})

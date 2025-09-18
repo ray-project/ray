@@ -26,7 +26,9 @@ def main(args):
     """
     benchmark = Benchmark()
 
-    ds = ray.data.read_parquet("s3://ray-benchmark-data-internal/imagenet/parquet")
+    ds = ray.data.read_parquet(
+        "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet"
+    )
 
     num_rows = ds.count()
     if args.early_stop is not None:

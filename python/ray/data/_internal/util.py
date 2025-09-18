@@ -158,7 +158,7 @@ def _check_pyarrow_version():
 
 def _autodetect_parallelism(
     parallelism: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     ctx: DataContext,
     datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     mem_size: Optional[int] = None,
@@ -201,9 +201,14 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
+
     if mem_size is None and datasource_or_legacy_reader:
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
-    if mem_size is not None and not np.isnan(mem_size):
+    if (
+        mem_size is not None
+        and not np.isnan(mem_size)
+        and target_max_block_size is not None
+    ):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
         max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
 
@@ -242,13 +247,18 @@ def _autodetect_parallelism(
             reason = (
                 "output blocks of size at least "
                 "DataContext.get_current().target_min_block_size="
-                f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
+                f"{ctx.target_min_block_size / MiB} MiB"
             )
         elif parallelism == min_safe_parallelism:
+            # Handle ``None`` (unlimited) gracefully in the log message.
+            if ctx.target_max_block_size is None:
+                display_val = "unlimited"
+            else:
+                display_val = f"{ctx.target_max_block_size / MiB} MiB"
             reason = (
                 "output blocks of size at most "
                 "DataContext.get_current().target_max_block_size="
-                f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+                f"{display_val}"
             )
         else:
             reason = (
@@ -561,7 +571,7 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -620,25 +630,33 @@ def get_compute_strategy(
         return compute
     elif concurrency is not None:
         if isinstance(concurrency, tuple):
-            if (
-                len(concurrency) == 2
-                and isinstance(concurrency[0], int)
-                and isinstance(concurrency[1], int)
+            # Validate tuple length and that all elements are integers
+            if len(concurrency) not in (2, 3) or not all(
+                isinstance(c, int) for c in concurrency
             ):
-                if is_callable_class:
-                    return ActorPoolStrategy(
-                        min_size=concurrency[0], max_size=concurrency[1]
-                    )
-                else:
-                    raise ValueError(
-                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
-                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                        "control maximum number of workers to use."
-                    )
-            else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
+                )
+
+            # Check if function is callable class (common validation)
+            if not is_callable_class:
+                raise ValueError(
+                    "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                    f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                    "control maximum number of workers to use."
+                )
+
+            # Create ActorPoolStrategy based on tuple length
+            if len(concurrency) == 2:
+                return ActorPoolStrategy(
+                    min_size=concurrency[0], max_size=concurrency[1]
+                )
+            else:  # len(concurrency) == 3
+                return ActorPoolStrategy(
+                    min_size=concurrency[0],
+                    max_size=concurrency[1],
+                    initial_size=concurrency[2],
                 )
         elif isinstance(concurrency, int):
             if is_callable_class:
@@ -1497,16 +1515,20 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
 
 
 def _validate_rows_per_file_args(
-    *, num_rows_per_file: Optional[int] = None, min_rows_per_file: Optional[int] = None
-) -> Optional[int]:
+    *,
+    num_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> Tuple[Optional[int], Optional[int]]:
     """Helper method to validate and handle rows per file arguments.
 
     Args:
         num_rows_per_file: Deprecated parameter for number of rows per file
         min_rows_per_file: New parameter for minimum rows per file
+        max_rows_per_file: New parameter for maximum rows per file
 
     Returns:
-        The effective min_rows_per_file value to use
+        A tuple of (effective_min_rows_per_file, effective_max_rows_per_file)
     """
     if num_rows_per_file is not None:
         import warnings
@@ -1522,8 +1544,28 @@ def _validate_rows_per_file_args(
                 "Cannot specify both `num_rows_per_file` and `min_rows_per_file`. "
                 "Use `min_rows_per_file` as `num_rows_per_file` is deprecated."
             )
-        return num_rows_per_file
-    return min_rows_per_file
+        min_rows_per_file = num_rows_per_file
+
+    # Validate max_rows_per_file
+    if max_rows_per_file is not None and max_rows_per_file <= 0:
+        raise ValueError("max_rows_per_file must be a positive integer")
+
+    # Validate min_rows_per_file
+    if min_rows_per_file is not None and min_rows_per_file <= 0:
+        raise ValueError("min_rows_per_file must be a positive integer")
+
+    # Validate that max >= min if both are specified
+    if (
+        min_rows_per_file is not None
+        and max_rows_per_file is not None
+        and min_rows_per_file > max_rows_per_file
+    ):
+        raise ValueError(
+            f"min_rows_per_file ({min_rows_per_file}) cannot be greater than "
+            f"max_rows_per_file ({max_rows_per_file})"
+        )
+
+    return min_rows_per_file, max_rows_per_file
 
 
 def is_nan(value) -> bool:

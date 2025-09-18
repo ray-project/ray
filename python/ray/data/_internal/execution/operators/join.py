@@ -18,6 +18,10 @@ _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.LEFT_OUTER: "left outer",
     JoinType.RIGHT_OUTER: "right outer",
     JoinType.FULL_OUTER: "full outer",
+    JoinType.LEFT_SEMI: "left semi",
+    JoinType.RIGHT_SEMI: "right semi",
+    JoinType.LEFT_ANTI: "left anti",
+    JoinType.RIGHT_ANTI: "right anti",
 }
 
 
@@ -185,6 +189,8 @@ class JoinOperator(HashShufflingOperatorBase):
                 )
             ),
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
+            shuffle_progress_bar_name="Shuffle",
+            finalize_progress_bar_name="Join",
         )
 
     def _get_default_num_cpus_per_partition(self) -> int:

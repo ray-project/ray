@@ -4,6 +4,7 @@ import datetime
 import threading
 import time
 import unittest
+from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
@@ -13,9 +14,9 @@ from freezegun import freeze_time
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
-from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
-from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -78,7 +79,9 @@ class TestActorPool(unittest.TestCase):
             return None
 
     def _create_actor_fn(
-        self, labels: Dict[str, Any]
+        self,
+        labels: Dict[str, Any],
+        logical_actor_id: str = "Actor1",
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
@@ -89,14 +92,15 @@ class TestActorPool(unittest.TestCase):
         self,
         min_size=1,
         max_size=4,
+        initial_size=1,
         max_tasks_in_flight=4,
     ):
         pool = _ActorPool(
-            compute_strategy=ActorPoolStrategy(
-                min_size=min_size,
-                max_size=max_size,
-                max_tasks_in_flight_per_actor=max_tasks_in_flight,
-            ),
+            min_size=min_size,
+            max_size=max_size,
+            initial_size=initial_size,
+            max_actor_concurrency=1,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight,
             create_actor_fn=self._create_actor_fn,
             per_actor_resource_usage=ExecutionResources(cpu=1),
         )
@@ -106,7 +110,9 @@ class TestActorPool(unittest.TestCase):
         self, pool: _ActorPool, node_id="node1"
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
-        num_actors = pool.scale_up(1)
+        num_actors = pool.scale(
+            ActorPoolScalingRequest(delta=1, reason="adding pending actor")
+        )
 
         assert num_actors == 1
         assert self._last_created_actor_and_ready_ref is not None
@@ -147,12 +153,20 @@ class TestActorPool(unittest.TestCase):
     def test_can_scale_down(self):
         pool = self._create_actor_pool(min_size=1, max_size=4)
 
+        downscaling_request = ActorPoolScalingRequest.downscale(
+            delta=-1, reason="scaling down"
+        )
+
         with freeze_time() as f:
             # Scale up
-            pool.scale_up(1)
+            pool.scale(ActorPoolScalingRequest(delta=1, reason="scaling up"))
             # Assert we can't scale down immediately after scale up
-            assert not pool.can_scale_down()
-            assert pool._last_scaling_up_ts == time.time()
+            assert not pool._can_apply(downscaling_request)
+            assert pool._last_upscaled_at == time.time()
+
+            # Check that we can still scale down if downscaling request
+            # is a forced one
+            assert pool._can_apply(replace(downscaling_request, force=True))
 
             # Advance clock
             f.tick(
@@ -162,7 +176,7 @@ class TestActorPool(unittest.TestCase):
             )
 
             # Assert can scale down after debounce period
-            assert pool.can_scale_down()
+            assert pool._can_apply(downscaling_request)
 
     def test_add_pending(self):
         # Test that pending actor is added in the correct state.
@@ -579,13 +593,32 @@ class TestActorPool(unittest.TestCase):
         assert res5 is None
 
 
+def test_setting_initial_size_for_actor_pool():
+    data_context = ray.data.DataContext.get_current()
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(
+            min_size=1, max_size=4, initial_size=2
+        ),
+        ray_remote_args={"num_cpus": 1},
+    )
+
+    op.start(ExecutionOptions())
+
+    assert op._actor_pool.get_actor_info() == _ActorPoolInfo(
+        running=0, pending=2, restarting=0
+    )
+    ray.shutdown()
+
+
 def test_min_max_resource_requirements(restore_data_context):
     data_context = ray.data.DataContext.get_current()
     op = ActorPoolMapOperator(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
-        target_max_block_size=None,
         compute_strategy=ray.data.ActorPoolStrategy(
             min_size=1,
             max_size=2,

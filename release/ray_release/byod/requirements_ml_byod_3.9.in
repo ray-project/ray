@@ -14,7 +14,7 @@ evaluate
 fairscale
 fastapi
 filelock
-gcsfs==2023.5.0
+gcsfs==2023.12.1
 gsutil
 ipywidgets
 jupytext
@@ -27,6 +27,7 @@ modin
 numpy
 openai-whisper
 openskill
+orjson
 petastorm
 protobuf
 pyarrow

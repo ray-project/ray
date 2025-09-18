@@ -1,16 +1,16 @@
 import os
 import sys
 import time
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray.util.state import list_actors
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray._private.test_utils import (
     convert_actor_state,
     kill_actor_and_wait_for_failure,
@@ -18,8 +18,8 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_pid_to_exit,
 )
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray.util.state import list_actors
 
 
 def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
@@ -192,39 +192,50 @@ def test_actor_fail_during_constructor_restart(ray_start_cluster_head):
     assert ray.get(report_node_id_actor.get.remote()) != actor_node_id
 
 
-def test_reconstruction_suppression(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
-    num_nodes = 5
-    worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
+def test_actor_restart_multiple_callers(ray_start_cluster):
+    cluster = ray_start_cluster
+    _ = cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
 
-    @ray.remote(max_restarts=1)
-    class Counter:
-        def __init__(self):
-            self.x = 0
+    _ = cluster.add_node(num_cpus=4)
+    actor_worker_node = cluster.add_node(num_cpus=0, resources={"actor": 1})
+    cluster.wait_for_nodes()
 
-        def inc(self):
-            self.x += 1
-            return self.x
+    @ray.remote(
+        num_cpus=0,
+        # Only one of the callers should successfully restart the actor.
+        max_restarts=1,
+        # Retry transient ActorUnavailableErrors.
+        max_task_retries=-1,
+        # Schedule the actor on actor_worker_node.
+        resources={"actor": 1},
+    )
+    class A:
+        def get_node_id(self) -> str:
+            return ray.get_runtime_context().get_node_id()
+
+    a = A.remote()
 
     @ray.remote
-    def inc(actor_handle):
-        return ray.get(actor_handle.inc.remote())
+    def call_a() -> str:
+        return ray.get(a.get_node_id.remote())
 
-    # Make sure all of the actors have started.
-    actors = [Counter.remote() for _ in range(10)]
-    ray.get([actor.inc.remote() for actor in actors])
+    # Run caller tasks in parallel across the other two nodes.
+    results = ray.get([call_a.remote() for _ in range(8)])
+    assert all(r == actor_worker_node.node_id for r in results), results
 
-    # Kill a node.
-    cluster.remove_node(worker_nodes[0])
+    # Kill the node that the actor is running on.
+    cluster.remove_node(actor_worker_node)
 
-    # Submit several tasks per actor. These should be randomly scheduled to the
-    # nodes, so that multiple nodes will detect and try to reconstruct the
-    # actor that died, but only one should succeed.
-    results = []
-    for _ in range(10):
-        results += [inc.remote(actor) for actor in actors]
-    # Make sure that we can get the results from the restarted actor.
-    results = ray.get(results)
+    # Run caller tasks in parallel again.
+    refs = [call_a.remote() for _ in range(8)]
+    ready, _ = ray.wait(refs, timeout=0.1)
+    assert len(ready) == 0
+
+    # The actor should be restarted once the node becomes available.
+    new_actor_worker_node = cluster.add_node(num_cpus=0, resources={"actor": 1})
+    results = ray.get(refs)
+    assert all(r == new_actor_worker_node.node_id for r in results), results
 
 
 @pytest.fixture

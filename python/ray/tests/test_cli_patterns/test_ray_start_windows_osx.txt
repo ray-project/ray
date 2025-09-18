@@ -15,7 +15,7 @@ Next steps
     ray\.init\(\)
 
   To submit a Ray job using the Ray Jobs CLI:
-    RAY_ADDRESS='http://.+:8265' ray job submit --working-dir \. -- python my_script\.py
+    RAY_API_SERVER_ADDRESS='http://.+:8265' ray job submit --working-dir \. -- python my_script\.py
 
   See https://docs\.ray\.io/en/latest/cluster/running-applications/job-submission/index\.html
   for more information on submitting Ray jobs to the Ray cluster.

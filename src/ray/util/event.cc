@@ -23,11 +23,9 @@
 #include <string>
 #include <vector>
 
-#include "absl/base/call_once.h"
-#include "absl/time/time.h"
 #include "ray/util/random.h"
 #include "ray/util/string_utils.h"
-#include "ray/util/timestamp_utils.h"
+#include "ray/util/time.h"
 
 using json = nlohmann::json;
 
@@ -52,7 +50,7 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
   // generate file name, if the soucrce type is RAYLET or GCS, the file name would like
   // event_GCS.log, event_RAYLET.log other condition would like
   // event_CORE_WOREKER_{pid}.log
-  std::string source_type_name = "";
+  std::string source_type_name;
   bool add_pid_to_file = false;
   if (auto event_source_type_ptr = std::get_if<rpc::Event_SourceType>(&source_type)) {
     rpc::Event_SourceType event_source_type = *event_source_type_ptr;
@@ -215,14 +213,11 @@ void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
 
 void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
   auto element = export_log_reporter_map_.find(export_event.source_type());
-  if (element != export_log_reporter_map_.end()) {
-    (element->second)->ReportExportEvent(export_event);
-  } else {
-    RAY_LOG(FATAL)
-        << "RayEventInit wasn't called with the necessary source type "
-        << ExportEvent_SourceType_Name(export_event.source_type())
-        << ". This indicates a bug in the code, and the event will be dropped.";
-  }
+  RAY_CHECK(element != export_log_reporter_map_.end())
+      << "RayEventInit wasn't called with the necessary source type "
+      << ExportEvent_SourceType_Name(export_event.source_type())
+      << ". This indicates a bug in the code, and the event will be dropped.";
+  element->second->ReportExportEvent(export_event);
 }
 
 void EventManager::AddReporter(std::shared_ptr<BaseEventReporter> reporter) {
@@ -270,7 +265,7 @@ void RayEventContext::SetEventContext(
   SetSourceType(source_type);
   UpdateCustomFields(custom_fields);
 
-  if (!global_context_started_setting_.fetch_or(1)) {
+  if (global_context_started_setting_.fetch_or(1) == 0) {
     global_context_ = std::make_unique<RayEventContext>();
     global_context_->SetSourceType(source_type);
     global_context_->UpdateCustomFields(custom_fields);
@@ -471,15 +466,13 @@ void RayExportEvent::SendEvent() {
   EventManager::Instance().PublishExportEvent(export_event);
 }
 
-static absl::once_flag init_once_;
-
-void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
+void RayEventInit_(const std::vector<SourceTypeVariant> &source_types,
                    const absl::flat_hash_map<std::string, std::string> &custom_fields,
                    const std::string &log_dir,
                    const std::string &event_level,
                    bool emit_event_to_log_file) {
   for (const auto &source_type : source_types) {
-    std::string source_type_name = "";
+    std::string source_type_name;
     auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
     if (auto event_source_type_ptr = std::get_if<rpc::Event_SourceType>(&source_type)) {
       // Set custom fields for non export events
@@ -503,23 +496,22 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
   SetEmitEventToLogFile(emit_event_to_log_file);
 }
 
-void RayEventInit(const std::vector<SourceTypeVariant> source_types,
+void RayEventInit(const std::vector<SourceTypeVariant> &source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
                   const std::string &event_level,
                   bool emit_event_to_log_file) {
-  absl::call_once(
-      init_once_,
-      [&source_types, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
-        RayEventInit_(
-            source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
-      });
+  static std::once_flag init_once_;
+  std::call_once(init_once_, [&]() {
+    RayEventInit_(
+        source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
+  });
 }
 
 bool IsExportAPIEnabledSourceType(
-    std::string source_type,
+    std::string_view source_type,
     bool enable_export_api_write_global,
-    std::vector<std::string> enable_export_api_write_config) {
+    const std::vector<std::string> &enable_export_api_write_config) {
   if (enable_export_api_write_global) {
     return true;
   }

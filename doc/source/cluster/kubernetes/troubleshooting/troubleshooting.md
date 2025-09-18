@@ -1,4 +1,4 @@
-(kuberay-troubleshootin-guides)=
+(kuberay-troubleshooting-guides)=
 
 # Troubleshooting guide
 
@@ -14,6 +14,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
 - [Autoscaler](#autoscaler)
+- [Multi-node GPU clusters](#multi-node-gpu)
 - [Other questions](#other-questions)
 
 (use-the-right-version-of-ray)=
@@ -28,7 +29,7 @@ When a Ray job is created, the Ray dashboard agent process on the head node gets
 
 (docker-image-for-apple-macbooks)=
 ## Use ARM-based docker images for Apple M1 or M2 MacBooks
-Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this Github issue](https://github.com/ray-project/ray/issues/39364), use platform-specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image).
+Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this GitHub issue](https://github.com/ray-project/ray/issues/39364), use platform-specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image).
 
 Use an image with the tag `aarch64`, for example, `image: rayproject/ray:2.41.0-aarch64`), if you are running KubeRay on a MacBook M1 or M2.
 
@@ -96,6 +97,11 @@ or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challengin
 One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide.
 Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
 Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
+
+(multi-node-gpu)=
+## Multi-node GPU Deployments
+
+For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <serve-multi-node-gpu-troubleshooting>`.
 
 (other-questions)=
 ## Other questions

@@ -1,7 +1,7 @@
-# Entity Recognition with LLMs
+# LLM training and inference
 
-<a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=entity-recognition-with-llms&redirectTo=/v2/template-preview/entity-recognition-with-llms">
-    <img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
+<a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=entity-recognition-with-llms&redirectTo=/v2/template-preview/entity-recognition-with-llms\">
+<img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt=\"Run on Anyscale\">
 </a>
 <br></br>
 <div align="left">
@@ -462,7 +462,7 @@ USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
         │ train_loop_config/args/ray_run_name                                                     lora_sft_ray │
         │ train_loop_config/args/ray_storage_path                                         ...orage/viggo/saves │
         │ train_loop_config/args/resources_per_worker/GPU                                                    1 │
-        │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xL4                      1 │
+        │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xA10G                      1 │
         │ train_loop_config/args/resume_from_checkpoint                                                        │
         │ train_loop_config/args/save_only_model                                                         False │
         │ train_loop_config/args/save_steps                                                                500 │
@@ -961,6 +961,7 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 Define an [LLM config](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) where you can define where the model comes from, it's [autoscaling behavior](https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling), what hardware to use and [engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html).
 
+**Note**: If you're using AWS S3, replace `AWS_REGION` in the `runtime_env`'s `env_vars` below with the cloud storage and respective region you saved your model artifacts to. Do the same if using other cloud storage options as well.
 
 ```python
 # Define config.
@@ -973,6 +974,7 @@ llm_config = LLMConfig(
         "dynamic_lora_loading_path": dynamic_lora_path,
         "max_num_adapters_per_replica": 16,  # You only have 1.
     },
+    runtime_env={"env_vars": {"AWS_REGION": "us-west-2"}},
     # runtime_env={"env_vars": {"HF_TOKEN": os.environ.get("HF_TOKEN")}},
     deployment_config={
         "autoscaling_config": {

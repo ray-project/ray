@@ -194,7 +194,11 @@ See [KubeRay issue #587](https://github.com/ray-project/kuberay/pull/587) for mo
 ## Ray Start Parameters
 The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
 container’s `ray start` entrypoint. For the full list of arguments, refer to
-the documentation for {ref}`ray start <ray-start-doc>`. We make special note of the following arguments:
+the documentation for {ref}`ray start <ray-start-doc>`. The RayCluster Kubernetes custom resource
+Custom Resource Definition (CRD) in KubeRay versions before 1.4.0 required this field to exist, but the value could be
+an empty map. As of KubeRay 1.4.0, ``rayStartParams`` is optional.
+
+Note the following arguments:
 
 ### dashboard-host
 For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.

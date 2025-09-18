@@ -11,6 +11,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -120,7 +121,7 @@ def test_all_to_all_operator():
         dummy_all_transform,
         input_op,
         DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
         name="TestAll",
@@ -138,7 +139,9 @@ def test_all_to_all_operator():
 
     # Check we return transformed bundles.
     assert not op.completed()
-    assert _take_outputs(op) == [[1, 2], [3, 4]]
+    outputs = _take_outputs(op)
+    expected = [[1, 2], [3, 4]]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
@@ -169,7 +172,7 @@ def test_num_outputs_total():
         dummy_all_transform,
         input_op=op1,
         data_context=DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
     assert op2.num_outputs_total() is None
@@ -514,7 +517,9 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     run_op_tasks_sync(op)
 
     # Check we don't hang and complete with num_gpus=1.
-    assert _take_outputs(op) == [[i * 2] for i in range(10)]
+    outputs = _take_outputs(op)
+    expected = [[i * 2] for i in range(10)]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     assert op.completed()
 
 
@@ -588,23 +593,49 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
         op.start(ExecutionOptions())
 
 
-def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
+@pytest.mark.parametrize(
+    "max_tasks_in_flight_strategy, max_tasks_in_flight_ctx, max_concurrency, expected_max_tasks_in_flight",
+    [
+        # Compute strategy takes precedence
+        (3, 5, 4, 3),
+        # DataContext.max_tasks_in_flight_per_actor takes precedence
+        (None, 5, 4, 5),
+        # Max tasks in-flight is derived as max_concurrency x 2
+        (None, None, 4, 8),
+    ],
+)
+def test_actor_pool_map_operator_should_add_input(
+    ray_start_regular_shared,
+    max_tasks_in_flight_strategy,
+    max_tasks_in_flight_ctx,
+    max_concurrency,
+    expected_max_tasks_in_flight,
+    restore_data_context,
+):
     """Tests that ActorPoolMapOperator refuses input when actors are pending."""
 
-    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
-        time.sleep(999)
+    ctx = DataContext.get_current()
+    ctx.max_tasks_in_flight_per_actor = max_tasks_in_flight_ctx
 
-    input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(10)]))
+
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_tasks_in_flight_per_actor=max_tasks_in_flight_strategy,
     )
-    compute_strategy = ActorPoolStrategy(size=1)
+
+    def _failing_transform(
+        block_iter: Iterable[Block], task_context: TaskContext
+    ) -> Iterable[Block]:
+        raise ValueError("expected failure")
 
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(_sleep),
+        create_map_transformer_from_block_fn(_failing_transform),
         input_op=input_op,
-        data_context=DataContext.get_current(),
+        data_context=ctx,
         name="TestMapper",
         compute_strategy=compute_strategy,
+        ray_remote_args={"max_concurrency": max_concurrency},
     )
 
     op.start(ExecutionOptions())
@@ -614,8 +645,8 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
     run_op_tasks_sync(op)
     assert op.should_add_input()
 
-    # Can accept up to four inputs per actor by default.
-    for _ in range(4):
+    # Assert that single actor can accept up to N tasks
+    for _ in range(expected_max_tasks_in_flight):
         assert op.should_add_input()
         op.add_input(input_op.get_next(), 0)
     assert not op.should_add_input()
@@ -656,7 +687,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     assert op.num_active_tasks() == 0
 
     # Scale up to the max size, the second half of the actors will be pending.
-    actor_pool.scale_up(num_actors)
+    actor_pool.scale(ActorPoolScalingRequest(delta=num_actors))
     assert actor_pool.num_pending_actors() == num_actors
     # `num_active_tasks` should exclude the metadata tasks for the pending actors.
     assert op.num_active_tasks() == 0

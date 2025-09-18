@@ -1,9 +1,11 @@
 import sys
 from typing import Any, AsyncIterator, Dict, List, Type
 
+import pydantic
 import pytest
 
 import ray
+from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorBuilder,
@@ -184,6 +186,90 @@ def test_builder():
     assert (
         processor.get_stage_by_name("DummyStage").map_batches_kwargs["concurrency"] == 2
     )
+
+
+class TestProcessorConfig:
+    def test_valid_concurrency(self):
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+            concurrency=(1, 2),
+        )
+        assert config.concurrency == (1, 2)
+
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+        )
+        assert config.concurrency == 1
+
+    def test_invalid_concurrency(self):
+        with pytest.raises(pydantic.ValidationError):
+            vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                concurrency=1.1,
+            )
+
+        with pytest.raises(pydantic.ValidationError):
+            vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                concurrency=[1, 2, 3],
+            )
+
+    @pytest.mark.parametrize("n", [1, 2, 10])
+    def test_positive_int_not_fail(self, n):
+        conf = ProcessorConfig(concurrency=n)
+        assert conf.concurrency == n
+
+    def test_positive_int_unusual_not_fail(self):
+        assert ProcessorConfig(concurrency="1").concurrency == 1
+        assert ProcessorConfig(concurrency=1.0).concurrency == 1
+        assert ProcessorConfig(concurrency="1.0").concurrency == 1
+
+    @pytest.mark.parametrize("pair", [(1, 1), (1, 2), (2, 8)])
+    def test_valid_tuple_not_fail(self, pair):
+        conf = ProcessorConfig(concurrency=pair)
+        assert conf.concurrency == pair
+
+    def test_valid_tuple_unusual_not_fail(self):
+        assert ProcessorConfig(concurrency=("1", 2)).concurrency == (1, 2)
+        assert ProcessorConfig(concurrency=(1, "2")).concurrency == (1, 2)
+        assert ProcessorConfig(concurrency=[1, "2"]).concurrency == (1, 2)
+
+    @pytest.mark.parametrize(
+        "bad,msg_part",
+        [
+            (0, "positive integer"),
+            (-5, "positive integer"),
+            ((1, 2, 3), "at most 2 items"),
+            ((0, 1), "positive integers"),
+            ((1, 0), "positive integers"),
+            ((-1, 2), "positive integers"),
+            ((1, -2), "positive integers"),
+            ((1, 2.5), "a number with a fractional part"),
+            ("2.1", "unable to parse string"),
+            ((5, 2), "min > max"),
+        ],
+    )
+    def test_invalid_inputs_raise(self, bad, msg_part):
+        with pytest.raises(pydantic.ValidationError) as e:
+            ProcessorConfig(concurrency=bad)
+        assert msg_part in str(e.value)
+
+    @pytest.mark.parametrize(
+        "n,expected", [(1, (1, 1)), (4, (1, 4)), (10, (1, 10)), ("10", (1, 10))]
+    )
+    def test_with_int_concurrency_scaling(self, n, expected):
+        conf = ProcessorConfig(concurrency=n)
+        assert conf.get_concurrency() == expected
+
+    @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (4, (4, 4)), (10, (10, 10))])
+    def test_with_int_concurrency_fixed(self, n, expected):
+        conf = ProcessorConfig(concurrency=n)
+        assert conf.get_concurrency(autoscaling_enabled=False) == expected
+
+    @pytest.mark.parametrize("pair", [(1, 1), (1, 3), (2, 8)])
+    def test_with_tuple_concurrency(self, pair):
+        conf = ProcessorConfig(concurrency=pair)
+        assert conf.get_concurrency() == pair
 
 
 if __name__ == "__main__":

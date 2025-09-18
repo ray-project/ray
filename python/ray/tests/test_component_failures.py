@@ -13,22 +13,23 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
-# This test checks that when a worker dies in the middle of a get, the plasma
-# store and raylet will not die.
+# This test checks that when a worker dies in the middle of a get, the raylet will not die.
 def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
-    def sleep_forever(signal):
-        ray.get(signal.send.remote())
-        time.sleep(10**6)
+    def wait_on_signal(signal_1, signal_2):
+        ray.get(signal_1.send.remote())
+        ray.get(signal_2.wait.remote())
+        return np.ones(200 * 1024, dtype=np.uint8)
 
     @ray.remote
     def get_worker_pid():
         return os.getpid()
 
-    signal = SignalActor.remote()
+    signal_1 = SignalActor.remote()
+    signal_2 = SignalActor.remote()
 
-    x_id = sleep_forever.remote(signal)
-    ray.get(signal.wait.remote())
+    x_id = wait_on_signal.remote(signal_1, signal_2)
+    ray.get(signal_1.wait.remote())
     # Get the PID of the other worker.
     worker_pid = ray.get(get_worker_pid.remote())
 
@@ -51,27 +52,28 @@ def test_dying_worker_get(ray_start_2_cpus):
     # Make sure the sleep task hasn't finished.
     ready_ids, _ = ray.wait([x_id], timeout=0)
     assert len(ready_ids) == 0
-    # Seal the object so the store attempts to notify the worker that the
-    # get has been fulfilled.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
+
+    # So that we attempt to notify the worker that the object is available.
+    ray.get(signal_2.send.remote())
+    ray.get(x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
     assert ray._private.services.remaining_processes_alive()
 
 
-# This test checks that when a driver dies in the middle of a get, the plasma
-# store and raylet will not die.
+# This test checks that when a driver dies in the middle of a get, the raylet will not die.
 def test_dying_driver_get(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
 
     @ray.remote
-    def sleep_forever():
-        time.sleep(10**6)
+    def wait_on_signal(signal):
+        ray.get(signal.wait.remote())
+        return np.ones(200 * 1024, dtype=np.uint8)
 
-    x_id = sleep_forever.remote()
+    signal = SignalActor.remote()
+    x_id = wait_on_signal.remote(signal)
 
     driver = """
 import ray
@@ -94,30 +96,30 @@ ray.get(ray.ObjectRef(ray._common.utils.hex_to_binary("{}")))
     # Make sure the original task hasn't finished.
     ready_ids, _ = ray.wait([x_id], timeout=0)
     assert len(ready_ids) == 0
-    # Seal the object so the store attempts to notify the worker that the
-    # get has been fulfilled.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
+    # So that we attempt to notify the worker that the object is available.
+    ray.get(signal.send.remote())
+    ray.get(x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
     assert ray._private.services.remaining_processes_alive()
 
 
-# This test checks that when a worker dies in the middle of a wait, the plasma
-# store and raylet will not die.
+# This test checks that when a worker dies in the middle of a wait, the raylet will not die.
 def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
-    def sleep_forever():
-        time.sleep(10**6)
+    def wait_on_signal(signal):
+        ray.get(signal.wait.remote())
+        return np.ones(200 * 1024, dtype=np.uint8)
 
     @ray.remote
     def get_pid():
         return os.getpid()
 
-    x_id = sleep_forever.remote()
+    signal = SignalActor.remote()
+    x_id = wait_on_signal.remote(signal)
     # Get the PID of the worker that block_in_wait will run on (sleep a little
-    # to make sure that sleep_forever has already started).
+    # to make sure that wait_on_signal has already started).
     time.sleep(0.1)
     worker_pid = ray.get(get_pid.remote())
 
@@ -133,26 +135,27 @@ def test_dying_worker_wait(ray_start_2_cpus):
     os.kill(worker_pid, SIGKILL)
     time.sleep(0.1)
 
-    # Create the object.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
+    # So that we attempt to notify the worker that the object is available.
+    ray.get(signal.send.remote())
+    ray.get(x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
     assert ray._private.services.remaining_processes_alive()
 
 
-# This test checks that when a driver dies in the middle of a wait, the plasma
-# store and raylet will not die.
+# This test checks that when a driver dies in the middle of a wait, the raylet will not die.
 def test_dying_driver_wait(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
 
     @ray.remote
-    def sleep_forever():
-        time.sleep(10**6)
+    def wait_on_signal(signal):
+        ray.get(signal.wait.remote())
+        return np.ones(200 * 1024, dtype=np.uint8)
 
-    x_id = sleep_forever.remote()
+    signal = SignalActor.remote()
+    x_id = wait_on_signal.remote(signal)
 
     driver = """
 import ray
@@ -175,10 +178,9 @@ ray.wait([ray.ObjectRef(ray._common.utils.hex_to_binary("{}"))])
     # Make sure the original task hasn't finished.
     ready_ids, _ = ray.wait([x_id], timeout=0)
     assert len(ready_ids) == 0
-    # Seal the object so the store attempts to notify the worker that the
-    # wait can return.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
+    # So that we attempt to notify the worker that the object is available.
+    ray.get(signal.send.remote())
+    ray.get(x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.

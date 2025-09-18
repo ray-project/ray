@@ -3,6 +3,7 @@ import dataclasses
 import json
 import logging
 from functools import wraps
+from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
@@ -81,7 +82,27 @@ class ServeHead(SubprocessModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @validate_endpoint()
     async def get_serve_instance_details(self, req: Request) -> Response:
-        from ray.serve.schema import ServeInstanceDetails
+        from ray.serve.schema import APIType, ServeInstanceDetails
+
+        api_type: Optional[APIType] = None
+        api_type_str = req.query.get("api_type")
+
+        if api_type_str:
+            api_type_lower = api_type_str.lower()
+            valid_values = APIType.get_valid_user_values()
+
+            if api_type_lower not in valid_values:
+                # Explicitly check against valid user values (excludes 'unknown')
+                return Response(
+                    status=400,
+                    text=(
+                        f"Invalid 'api_type' value: '{api_type_str}'. "
+                        f"Must be one of: {', '.join(valid_values)}"
+                    ),
+                    content_type="text/plain",
+                )
+
+            api_type = APIType(api_type_lower)
 
         controller = await self.get_serve_controller()
 
@@ -90,7 +111,9 @@ class ServeHead(SubprocessModule):
             details = ServeInstanceDetails.get_empty_schema_dict()
         else:
             try:
-                details = await controller.get_serve_instance_details.remote()
+                details = await controller.get_serve_instance_details.remote(
+                    source=api_type
+                )
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time
@@ -122,7 +145,7 @@ class ServeHead(SubprocessModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @validate_endpoint()
     async def put_all_applications(self, req: Request) -> Response:
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
         from ray.serve.config import ProxyLocation
         from ray.serve.schema import ServeDeploySchema

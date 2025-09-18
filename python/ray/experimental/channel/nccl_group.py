@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
-from ray.experimental.channel.accelerator_context import AcceleratorContext
 
 if TYPE_CHECKING:
     import torch
@@ -365,7 +365,7 @@ class _NcclGroup(Communicator):
             self._comm.destroy()
 
     def get_transport_name(self) -> str:
-        return "nccl"
+        return "accelerator"
 
     @classmethod
     def generate_communicator_id(cls) -> str:

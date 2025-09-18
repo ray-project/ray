@@ -34,6 +34,8 @@ def start_serve_with_context():
         ),
         servable_object=None,
         _deployment_config=DeploymentConfig(),
+        rank=0,
+        world_size=1,
     )
     try:
         yield
@@ -535,8 +537,8 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
             self.model_id = model_id
             self.record_handle = record_handle
 
-        def __del__(self):
-            self.record_handle.add.remote(self.model_id)
+        async def __del__(self):
+            await self.record_handle.add.remote(self.model_id)
 
         def __eq__(self, model):
             return model.model_id == self.model_id

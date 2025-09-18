@@ -16,6 +16,5 @@ rllib.env.utils
    :nosignatures:
    :toctree: env/
 
-   ~external_env_protocol.RLlink
    ~try_import_open_spiel
    ~try_import_pyspiel
