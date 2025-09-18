@@ -80,8 +80,10 @@ def _pa_add_or_concat(left: Any, right: Any) -> Any:
     if (
         isinstance(left, str)
         or isinstance(right, str)
-        or _is_pa_string_like(left)
-        or _is_pa_string_like(right)
+        or (isinstance(left, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(left))
+        or (
+            isinstance(right, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(right)
+        )
     ):
         left_input = _to_pa_string_input(left)
         right_input = _to_pa_string_input(right)
