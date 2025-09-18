@@ -34,10 +34,15 @@ std::string Metric::GetName() const {
 }
 
 void Metric::Record(double value,
-                    const std::vector<std::pair<std::string_view, std::string>> &tags) {
+                    const std::unordered_map<std::string, std::string> &tags) {
   RAY_CHECK(metric_ != nullptr) << "The metric_ must not be nullptr.";
   stats::Metric *metric = reinterpret_cast<stats::Metric *>(metric_);
-  metric->Record(value, tags);
+  std::vector<std::pair<std::string_view, std::string>> tags_pair_vec;
+  tags_pair_vec.reserve(tags.size());
+  for (const auto &tag : tags) {
+    tags_pair_vec.emplace_back(std::string_view(tag.first), tag.second);
+  }
+  metric->Record(value, std::move(tags_pair_vec));
 }
 
 Gauge::Gauge(const std::string &name,
@@ -47,8 +52,7 @@ Gauge::Gauge(const std::string &name,
   metric_ = new stats::Gauge(name, description, unit, tag_str_keys);
 }
 
-void Gauge::Set(double value,
-                const std::vector<std::pair<std::string_view, std::string>> &tags) {
+void Gauge::Set(double value, const std::unordered_map<std::string, std::string> &tags) {
   Record(value, tags);
 }
 
@@ -60,8 +64,8 @@ Histogram::Histogram(const std::string &name,
   metric_ = new stats::Histogram(name, description, unit, boundaries, tag_str_keys);
 }
 
-void Histogram::Observe(
-    double value, const std::vector<std::pair<std::string_view, std::string>> &tags) {
+void Histogram::Observe(double value,
+                        const std::unordered_map<std::string, std::string> &tags) {
   Record(value, tags);
 }
 
@@ -73,7 +77,7 @@ Counter::Counter(const std::string &name,
 }
 
 void Counter::Inc(double value,
-                  const std::vector<std::pair<std::string_view, std::string>> &tags) {
+                  const std::unordered_map<std::string, std::string> &tags) {
   Record(value, tags);
 }
 
