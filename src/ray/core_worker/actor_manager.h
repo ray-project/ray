@@ -191,7 +191,6 @@ class ActorManager {
   /// Check if actor is valid.
   bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;
 
-  /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Interface to submit tasks directly to other actors.
