@@ -33,8 +33,8 @@ def test_node_affinity_scheduling_strategy_invalid_attributes():
         match=re.escape(
             "Invalid node_id 'invalid_node_id'. Node ID must be a valid "
             "hex string. To get a list of all nodes and their IDs in your cluster, "
-            "use ray.nodes() refer to learn more https://docs.ray.io/en/latest/"
-            "ray-core/miscellaneous.html#node-information"
+            "use ray.nodes(). See https://docs.ray.io/en/latest/ray-core/miscellaneous.html"
+            "#node-information for more details."
         ),
     ):
         NodeAffinitySchedulingStrategy(
