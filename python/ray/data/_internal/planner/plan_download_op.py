@@ -62,7 +62,9 @@ def plan_download_op(
             size=1
         )  # Use single actor for partitioning
 
-        fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name, data_context), {})
+        fn, init_fn = _get_udf(
+            PartitionActor, (), {}, (uri_column_name, data_context), {}
+        )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
         partition_transform_fns = [
