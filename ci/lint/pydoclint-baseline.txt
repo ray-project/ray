@@ -1369,8 +1369,6 @@ python/ray/data/read_api.py
     DOC101: Function `read_text`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `read_text`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [drop_empty_lines: bool].
     DOC103: Function `read_numpy`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**numpy_load_args: ]. Arguments in the docstring but not in the function signature: [numpy_load_args: ].
-    DOC104: Function `read_binary_files`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Function `read_binary_files`: Argument names match, but type hints in these args do not match: paths, include_paths, filesystem, parallelism, ray_remote_args, arrow_open_stream_args, meta_provider, partition_filter, partitioning, ignore_missing_paths, shuffle, file_extensions, concurrency, override_num_blocks
 --------------------
 python/ray/data/tests/test_split.py
     DOC106: Function `assert_split_assignment`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
