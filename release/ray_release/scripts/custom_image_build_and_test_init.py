@@ -171,7 +171,7 @@ def main(
         is_concurrency_limit=not no_concurrency_limit,
         block_step_key=block_step["key"] if block_step else None,
     )
-    steps = [block_step] + steps if block_step else steps
+    steps = [{"group": "block", "steps": [block_step]}] if block_step else steps
 
     if "BUILDKITE" in os.environ:
         if os.path.exists(PIPELINE_ARTIFACT_PATH):
