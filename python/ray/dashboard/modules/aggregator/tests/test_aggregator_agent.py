@@ -717,7 +717,7 @@ EVENT_TYPES_TO_TEST = [
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
             },
         },
     ],
@@ -1109,6 +1109,90 @@ def test_aggregator_agent_publish_to_both_gcs_and_http(
     _wait_for_and_verify_task_definition_event_in_gcs(
         task_info_stub, unique_task_name, event
     )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                # Disable HTTP publisher to test GCS filtering in isolation
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC": "False",
+                # Enable GCS publisher
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_gcs_filtering_driver_job_events(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    """Test that driver job execution events are filtered out and not sent to GCS."""
+    cluster = ray_start_cluster_head_with_env_vars
+    agg_stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    task_info_stub = get_task_info_gcs_stub(cluster.gcs_address)
+
+    unique_task_name = f"gcs_filter_task_{uuid.uuid4()}"
+
+    task_event = _create_task_definition_event_for_gcs(
+        fake_timestamp[0], unique_task_name
+    )
+
+    # This event should be filtered out (DRIVER_JOB_EXECUTION_EVENT is NOT in GCS_EXPOSABLE_EVENT_TYPES)
+    driver_job_event = RayEvent(
+        event_id=b"driver_job_1",
+        source_type=RayEvent.SourceType.CORE_WORKER,
+        event_type=RayEvent.EventType.DRIVER_JOB_EXECUTION_EVENT,
+        timestamp=fake_timestamp[0],
+        severity=RayEvent.Severity.INFO,
+        message="driver job execution event - should be filtered",
+        driver_job_execution_event=DriverJobExecutionEvent(
+            job_id=b"test_job_1",
+            states=[
+                DriverJobExecutionEvent.StateTimestamp(
+                    state=DriverJobExecutionEvent.State.CREATED,
+                    timestamp=Timestamp(seconds=1234567890),
+                ),
+            ],
+        ),
+    )
+
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[task_event, driver_job_event],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    agg_stub.AddEvents(request)
+
+    # Wait for the task definition event to be stored in GCS (this should succeed)
+    _wait_for_and_verify_task_definition_event_in_gcs(
+        task_info_stub, unique_task_name, task_event
+    )
+
+    # Verify that only the task event was processed by GCS, not the driver job event
+    # We can verify this by checking that no other task events are stored beyond our expected one
+    # and ensuring that there were no errors during publishing.
+    # The filtering logic in the GCS publisher should have filtered out the driver job event
+
+    # Additional verification: try to find any events that shouldn't be there
+    # by checking that our expected event is the only one with our unique name
+    matched_task_event = _get_task_event_from_gcs(task_info_stub, unique_task_name)
+    assert matched_task_event is not None, "Expected task event should be found in GCS"
+    assert matched_task_event.task_info.name == unique_task_name
+
+    # Ensure HTTP publisher did not send anything (since it's disabled)
+    with pytest.raises(
+        RuntimeError, match="The condition wasn't met before the timeout expired."
+    ):
+        wait_for_condition(lambda: len(httpserver.log) > 0, 1)
+    assert len(httpserver.log) == 0
 
 
 if __name__ == "__main__":

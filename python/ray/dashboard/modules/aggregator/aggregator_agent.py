@@ -140,7 +140,7 @@ class AggregatorAgent(
             self._gcs_publisher = RayEventPublisher(
                 name="gcs_publisher",
                 publish_client=AsyncGCSPublisherClient(
-                    _async_gcs_ray_event_export_service_stub=_async_gcs_ray_event_export_service_stub
+                    async_gcs_ray_event_export_service_stub=_async_gcs_ray_event_export_service_stub
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,
