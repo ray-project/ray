@@ -320,6 +320,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def upsert_column(
         self, column_name: str, column_data: BlockColumn
     ) -> "pandas.DataFrame":
+        import pyarrow
+
         if isinstance(column_data, (pyarrow.Array, pyarrow.ChunkedArray)):
             column_data = column_data.to_pandas()
 
