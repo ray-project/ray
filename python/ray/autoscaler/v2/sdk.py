@@ -21,7 +21,7 @@ class ResourceRequest(NamedTuple):
 
 def request_cluster_resources(
     gcs_address: str,
-    to_request: List[ResourceRequest],
+    to_request: List[dict],
     timeout: int = DEFAULT_RPC_TIMEOUT_S,
 ):
     """Request resources from the autoscaler.
@@ -43,12 +43,10 @@ def request_cluster_resources(
     """
     assert len(gcs_address) > 0, "GCS address is not specified."
 
-    # Convert resource bundle dicts to ResourceRequest tuples if necessary
+    # Convert bundle dicts to ResourceRequest tuples.
     normalized: List[ResourceRequest] = []
     for r in to_request:
-        if isinstance(r, ResourceRequest):
-            normalized.append(r)
-        elif isinstance(r, dict):
+        if isinstance(r, dict):
             if "resources" in r:
                 resources = r["resources"]
                 selectors = r.get("label_selectors", [])
@@ -59,7 +57,7 @@ def request_cluster_resources(
                 selectors = [selectors]
             normalized.append(ResourceRequest(resources, selectors))
         else:
-            raise TypeError("Each element must be ResourceRequest or dict")
+            raise TypeError("Each element must be a dict")
     to_request = normalized
 
     # Aggregate bundle by shape.

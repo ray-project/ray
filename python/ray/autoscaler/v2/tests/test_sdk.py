@@ -20,7 +20,6 @@ from ray.autoscaler.v2.schema import (
 from ray.autoscaler.v2.sdk import (
     get_cluster_status,
     request_cluster_resources,
-    ResourceRequest,
 )
 from ray.autoscaler.v2.tests.util import (
     get_available_resources,
@@ -287,20 +286,18 @@ def test_request_cluster_resources_with_label_selectors(shutdown_only):
     stub = _autoscaler_state_service_stub()
     gcs_address = ctx.address_info["gcs_address"]
 
-    # Define two bundles, each with its own label_selector.
+    # Define two bundles, each with its own label_selector, to request.
     bundles = [
         {"CPU": 1},
         {"GPU": 1, "CPU": 2},
     ]
-    bundle_label_selector = [
+    bundle_label_selectors = [
         [{"region": "us-west1"}],
         [{"accelerator-type": "!in(A100)"}],
     ]
-
-    # Wrap bundles in ResourceRequest namedtuples
     to_request = [
-        ResourceRequest(resources=bundles[i], label_selectors=bundle_label_selector[i])
-        for i in range(len(bundles))
+        {"resources": b, "label_selectors": s}
+        for b, s in zip(bundles, bundle_label_selectors)
     ]
 
     # Send the request for these resource bundles

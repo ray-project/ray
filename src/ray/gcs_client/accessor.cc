@@ -21,8 +21,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs_client/gcs_client.h"
 #include "ray/common/scheduling/label_selector.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/util/container_util.h"
 
 namespace ray {
