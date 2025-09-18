@@ -14,8 +14,6 @@
 
 #include "ray/common/cgroup2/cgroup_manager.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <filesystem>
 #include <memory>
