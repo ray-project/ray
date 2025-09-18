@@ -163,7 +163,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             # java build types
             "java",
             # with cpp api
-            "with_cpp",
+            "with-cpp",
             # do not build ray
             "skip",
         ]
