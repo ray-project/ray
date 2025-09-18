@@ -33,8 +33,8 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/stats.h"
-#include "ray/util/logging.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
