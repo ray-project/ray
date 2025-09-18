@@ -52,6 +52,9 @@ class LinuxContainer(Container):
         ]
         if mask:
             build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]
+        if build_type == "with-cpp":
+            # Only set for Java tests because there's multi-language worker tests.
+            build_cmd += ["--build-arg", "RAY_DISABLE_EXTRA_CPP=0"]
         build_cmd += [
             "-f",
             "/ray/ci/ray_ci/tests.env.Dockerfile",
