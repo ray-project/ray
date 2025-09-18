@@ -353,15 +353,15 @@ class UDFExpr(Expr):
     as a PyArrow Array containing multiple values from that column across the batch.
 
     Args:
-        fn: The user-defined function to call
+        fn: The user-defined function to call or callable class instance
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        function_name: Optional name for the function (for debugging)
 
     Example:
         >>> from ray.data.expressions import col, udf
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
+        >>> from ray.data.datatype import DataType
         >>>
         >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
@@ -369,6 +369,18 @@ class UDFExpr(Expr):
         >>>
         >>> # Use in expressions
         >>> expr = add_one(col("value"))
+
+        >>> # Callable class example
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
+        >>> # Use callable class
+        >>> add_five = AddOffset(5)
+        >>> expr = add_five(col("value"))
     """
 
     fn: Callable[..., BatchColumn]
@@ -461,6 +473,14 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
+        >>> # Callable class UDF
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
         >>> # Use in dataset operations
         >>> ds = ray.data.from_items([
         ...     {"value": 5, "first": "John", "last": "Doe"},
@@ -473,12 +493,46 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         >>> # Multi-column transformation (each column becomes a PyArrow Array)
         >>> ds_formatted = ds.with_column("full_name", format_name(col("first"), col("last")))
         >>>
+        >>> # Callable class usage
+        >>> add_five = AddOffset(5)
+        >>> ds_with_offset = ds.with_column("value_plus_five", add_five(col("value")))
+        >>>
         >>> # Can also be used in complex expressions
         >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
     """
 
-    def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
-        return _create_udf_callable(func, return_dtype)
+    def decorator(func_or_class):
+        # Check if this is a callable class (has __call__ method defined)
+        if isinstance(func_or_class, type) and callable(func_or_class):
+            # This is a callable class - create a wrapper class
+            class ExpressionAwareCallableClass(func_or_class):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    # Create the UDF callable for this instance using the existing helper
+                    self._udf_callable = _create_udf_callable(self, return_dtype)
+
+                def __call__(self, *call_args, **call_kwargs):
+                    # Check if any argument is an expression
+                    has_expressions = any(
+                        isinstance(arg, Expr) for arg in call_args
+                    ) or any(isinstance(v, Expr) for v in call_kwargs.values())
+
+                    if has_expressions:
+                        # Use the existing _create_udf_callable logic
+                        return self._udf_callable(*call_args, **call_kwargs)
+                    else:
+                        # Call the parent's __call__ method for non-expression usage
+                        return super().__call__(*call_args, **call_kwargs)
+
+            # Preserve the original class name and module
+            ExpressionAwareCallableClass.__name__ = func_or_class.__name__
+            ExpressionAwareCallableClass.__qualname__ = func_or_class.__qualname__
+            ExpressionAwareCallableClass.__module__ = func_or_class.__module__
+
+            return ExpressionAwareCallableClass
+        else:
+            # This is a regular function
+            return _create_udf_callable(func_or_class, return_dtype)
 
     return decorator
 

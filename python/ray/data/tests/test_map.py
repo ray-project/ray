@@ -3176,6 +3176,51 @@ def test_with_column_filter_in_pipeline(ray_start_regular_shared):
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_udf_callable_class_in_complex_expressions(ray_start_regular_shared):
+    """Test callable class UDFs used within complex expressions."""
+
+    # Define a callable class for testing
+    @udf(DataType.int64())
+    class DoubleUDF:
+        def __init__(self, multiplier=2):
+            self.multiplier = multiplier
+
+        def __call__(self, x: pa.Array) -> pa.Array:
+            return pc.multiply(x, self.multiplier)
+
+    # Create test dataset
+    ds = ray.data.range(5)
+
+    # Create UDF instance
+    double_udf = DoubleUDF(multiplier=3)
+
+    # Test UDF in various complex expressions
+    ds_result = (
+        ds.with_column("udf_plus_literal", double_udf(col("id")) + lit(10))
+        .with_column("udf_in_comparison", double_udf(col("id")) > lit(5))
+        .with_column("udf_with_regular_expr", double_udf(col("id") + 1))
+        .with_column("nested_expr", (double_udf(col("id")) * 2) // 3)
+    )
+
+    # Verify results
+    result_df = ds_result.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "udf_plus_literal": [10, 13, 16, 19, 22],  # (id * 3) + 10
+            "udf_in_comparison": [False, False, True, True, True],  # (id * 3) > 5
+            "udf_with_regular_expr": [3, 6, 9, 12, 15],  # (id + 1) * 3
+            "nested_expr": [0, 2, 4, 6, 8],  # ((id * 3) * 2) // 3
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
 if __name__ == "__main__":
     import sys
 
