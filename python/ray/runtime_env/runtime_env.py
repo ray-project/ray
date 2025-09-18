@@ -274,7 +274,7 @@ class RuntimeEnv(dict):
         nsight: Dictionary mapping nsight profile option name to it's value.
         rocprof_sys: Dictionary mapping rocprof-sys profile option name and environment
                    variables to it's value.
-        unitrace: Dictionary mapping unitrace profile option name to it's value.
+        unitrace: Dictionary mapping unitrace option name to its value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.

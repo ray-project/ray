@@ -104,7 +104,7 @@ class RemoteFunction:
 
         # When gpu is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
-        # Note: Ray task worker process is not being reused when nsight or unitrace
+        # Note: Ray task worker process is not being reused when nsight/rocprof-sys/unitrace
         # profiler is running, as nsight/rocprof-sys/unitrace generates report
         # once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0

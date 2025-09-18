@@ -31,6 +31,7 @@ def parse_unitrace_config(unitrace_config: Dict[str, str]) -> List[str]:
     - List[str]: unitrace profile cmd line split into list of str
     """
     unitrace_cmd = ["unitrace"]
+
     for option, option_val in unitrace_config.items():
         # option standard based on
         # https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html

@@ -174,7 +174,7 @@ The best practice is to only specify the filename in output option.
 (profiling-unitrace-profiler)=
 ### Unitrace Profiler
 
-If you run Ray using Intel(R) GPUs, you need to run the unitrace profiler.
+If you run Ray on Intel(R) GPUs, you need the unitrace tool for GPU profiling.
 
 #### Build and Installation
 
