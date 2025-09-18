@@ -329,10 +329,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const OnLocationsFound &callback) {
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
-    // Create an object eviction subscription message.
-    auto request = std::make_unique<rpc::WorkerObjectLocationsSubMessage>();
-    request->set_intended_worker_id(owner_address.worker_id());
-    request->set_object_id(object_id.Binary());
+    // Create an object location subscription message.
+    rpc::WorkerObjectLocationsSubMessage request;
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
 
     auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
       RAY_CHECK(pub_message.has_worker_object_locations_message());
@@ -368,7 +368,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_locations_message()->Swap(request.get());
+    *sub_message->mutable_worker_object_locations_message() = std::move(request);
 
     object_location_subscriber_->Subscribe(
         std::move(sub_message),
