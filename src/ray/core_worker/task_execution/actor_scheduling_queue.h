@@ -110,8 +110,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// A map of actor task IDs -> is_canceled
   /// Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
-  // Helper to iterate and cancel all pending requests.
-  void CancelAllPendingUnsafe(const Status &status) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   friend class SchedulingQueueTest;
 };

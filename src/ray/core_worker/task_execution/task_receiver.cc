@@ -307,10 +307,16 @@ void TaskReceiver::SetupActor(bool is_asyncio,
 void TaskReceiver::Stop() {
   {
     absl::MutexLock lock(&stop_mu_);
+    if (stopping_) {
+      return;
+    }
     stopping_ = true;
   }
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
+  }
+  if (normal_scheduling_queue_) {
+    normal_scheduling_queue_->Stop();
   }
 }
 

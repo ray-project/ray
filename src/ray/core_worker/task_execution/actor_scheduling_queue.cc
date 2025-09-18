@@ -37,12 +37,8 @@ ActorSchedulingQueue::ActorSchedulingQueue(
 
 void ActorSchedulingQueue::Stop() {
   pool_manager_->Stop();
-  // Best-effort cancel of any pending tasks when stopping.
-  {
-    absl::MutexLock lock(&mu_);
-    CancelAllPendingUnsafe(Status::SchedulingCancelled(
-        "Actor scheduling queue stopped; canceling pending tasks"));
-  }
+  CancelAllPending(Status::SchedulingCancelled(
+      "Actor scheduling queue stopped; canceling pending tasks"));
 }
 
 bool ActorSchedulingQueue::TaskQueueEmpty() const {
@@ -258,7 +254,8 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 }
 
-void ActorSchedulingQueue::CancelAllPendingUnsafe(const Status &status) {
+void ActorSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
   // Cancel in-order pending tasks
   while (!pending_actor_tasks_.empty()) {
     auto head = pending_actor_tasks_.begin();
@@ -273,11 +270,6 @@ void ActorSchedulingQueue::CancelAllPendingUnsafe(const Status &status) {
     pending_task_id_to_is_canceled.erase(req.TaskID());
     pending_retry_actor_tasks_.pop_front();
   }
-}
-
-void ActorSchedulingQueue::CancelAllPending(const Status &status) {
-  absl::MutexLock lock(&mu_);
-  CancelAllPendingUnsafe(status);
 }
 
 void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {

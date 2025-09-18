@@ -59,11 +59,8 @@ void OutOfOrderActorSchedulingQueue::Stop() {
   if (fiber_state_manager_) {
     fiber_state_manager_->Stop();
   }
-  {
-    absl::MutexLock lock(&mu_);
-    CancelAllPendingUnsafe(Status::SchedulingCancelled(
-        "Out-of-order actor scheduling queue stopped; canceling pending tasks"));
-  }
+  CancelAllPending(Status::SchedulingCancelled(
+      "Out-of-order actor scheduling queue stopped; canceling pending tasks"));
 }
 
 bool OutOfOrderActorSchedulingQueue::TaskQueueEmpty() const {
@@ -258,18 +255,14 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   }
 }
 
-void OutOfOrderActorSchedulingQueue::CancelAllPendingUnsafe(const Status &status) {
+void OutOfOrderActorSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
   for (auto it = queued_actor_tasks_.begin(); it != queued_actor_tasks_.end();) {
     it->second.Cancel(status);
     pending_task_id_to_is_canceled.erase(it->first);
     auto to_erase = it++;
     queued_actor_tasks_.erase(to_erase);
   }
-}
-
-void OutOfOrderActorSchedulingQueue::CancelAllPending(const Status &status) {
-  absl::MutexLock lock(&mu_);
-  CancelAllPendingUnsafe(status);
 }
 
 }  // namespace core
