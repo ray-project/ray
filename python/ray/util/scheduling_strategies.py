@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
+from ray._raylet import NodeID
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -75,6 +76,18 @@ class NodeAffinitySchedulingStrategy:
         self._validate_attributes()
 
     def _validate_attributes(self):
+        invalid_node_id_error = ValueError(
+            f"Invalid node_id '{self.node_id}'. Node ID must be a valid "
+            "hex string. To get a list of all nodes and their IDs in your cluster, "
+            "use ray.nodes() refer to learn more https://docs.ray.io/en/latest/ray-core/miscellaneous.html#node-information"
+        )
+        try:
+            node_id = NodeID.from_hex(self.node_id)
+            if node_id.is_nil():
+                raise invalid_node_id_error
+        except Exception as e:
+            raise invalid_node_id_error from e
+
         if self._spill_on_unavailable and not self.soft:
             raise ValueError(
                 "Invalid NodeAffinitySchedulingStrategy attribute. "
