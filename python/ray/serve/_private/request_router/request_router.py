@@ -934,16 +934,16 @@ class RequestRouter(ABC):
                     if replicas:
                         yield replicas
 
-                if pending_request is None:
-                    continue
-
                 # We have a slight unintended behavior when enabled locality routing
                 # for both node and AZ. The intention is to try same node first,
                 # then try same AZ if node fails, then try everything else until a
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if not pending_request.routing_context.should_backoff:
+                if (
+                    pending_request
+                    and not pending_request.routing_context.should_backoff
+                ):
                     continue
 
                 if not entered_backoff:
