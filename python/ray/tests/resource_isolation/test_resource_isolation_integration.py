@@ -35,7 +35,6 @@ _BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
 def generate_node_id():
     """Returns a random node id."""
     return ray.NodeID.from_random().hex()
-    # return f"{random.getrandbits(56 * 4):056x}"
 
 
 # TODO(#54703): This test is deliberately overspecified right now. The test shouldn't
