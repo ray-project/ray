@@ -306,9 +306,7 @@ class TrainContext:
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
-        validate_function: Optional[
-            Callable[["Checkpoint", Optional[Dict]], Dict]
-        ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
     ) -> None:
         """
@@ -338,9 +336,9 @@ class TrainContext:
                 for callback in self.execution_context.train_context_callbacks
             ]
         ):
-            if validate_function:
+            if validate_fn:
                 validation_spec = _ValidationSpec(
-                    validate_function=validate_function, validate_config=validate_config
+                    validate_fn=validate_fn, validate_config=validate_config
                 )
             else:
                 validation_spec = None

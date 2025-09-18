@@ -19,7 +19,7 @@ def report(
     checkpoint_dir_name: Optional[str] = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
-    validate_function: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+    validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
     validate_config: Optional[Dict] = None,
 ):
     """Report metrics and optionally save a checkpoint.
@@ -97,9 +97,9 @@ def report(
             Defaults to uploading the checkpoint synchronously.
             This works when no checkpoint is provided but is not useful in that case.
         delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
-        validate_function: If provided, Ray Train will validate the checkpoint using
+        validate_fn: If provided, Ray Train will validate the checkpoint using
             this function.
-        validate_config: Configuration passed to the validate_function. Can contain info
+        validate_config: Configuration passed to the validate_fn. Can contain info
             like the validation dataset.
     """
     if delete_local_checkpoint_after_upload is None:
@@ -107,10 +107,8 @@ def report(
             checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
         )
 
-    if validate_config and not validate_function:
-        raise ValueError(
-            "validate_function must be provided together with validate_config"
-        )
+    if validate_config and not validate_fn:
+        raise ValueError("validate_fn must be provided together with validate_config")
 
     get_train_fn_utils().report(
         metrics=metrics,
@@ -118,7 +116,7 @@ def report(
         checkpoint_dir_name=checkpoint_dir_name,
         checkpoint_upload_mode=checkpoint_upload_mode,
         delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
-        validate_function=validate_function,
+        validate_fn=validate_fn,
         validate_config=validate_config,
     )
 

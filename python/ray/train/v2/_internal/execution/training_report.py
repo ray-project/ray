@@ -10,16 +10,14 @@ class _ValidationSpec:
 
     def __init__(
         self,
-        validate_function: Optional[
-            Callable[["Checkpoint", Optional[Dict]], Dict]
-        ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
     ):
-        self.validate_function = validate_function
+        self.validate_fn = validate_fn
         self.validate_config = validate_config
 
     def __repr__(self) -> str:
-        return f"ValidationSpec(validate_function={self.validate_function}, validate_config={self.validate_config})"
+        return f"ValidationSpec(validate_fn={self.validate_fn}, validate_config={self.validate_config})"
 
 
 class _TrainingReport:

@@ -81,11 +81,9 @@ def _get_state_from_training_result(
 
 
 @ray.remote
-def run_validate_function(
-    validation_spec: _ValidationSpec, checkpoint: Checkpoint
-) -> Dict:
+def run_validate_fn(validation_spec: _ValidationSpec, checkpoint: Checkpoint) -> Dict:
     """Run the user-defined validation function."""
-    metrics_dict = validation_spec.validate_function(
+    metrics_dict = validation_spec.validate_fn(
         checkpoint,
         validation_spec.validate_config,
     )
@@ -156,7 +154,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             self._checkpoint_results.append(checkpoint_result)
 
         # Kick off and track validation task
-        if validation_spec and validation_spec.validate_function:
+        if validation_spec and validation_spec.validate_fn:
             self._pending_training_results[
                 self._current_report_index
             ] = checkpoint_result
@@ -164,7 +162,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # TODO: rate limit this by using a queue?
             self._pending_validations[
                 self._current_report_index
-            ] = run_validate_function.remote(
+            ] = run_validate_fn.remote(
                 validation_spec, self._latest_checkpoint_result.checkpoint
             )
 

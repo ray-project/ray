@@ -200,37 +200,37 @@ async def test_checkpoint_validation_management(tmp_path):
     checkpoint_manager.register_checkpoint(
         training_results[0],
         _ValidationSpec(
-            validate_function=lambda checkpoint, config: {"score": 200},
+            validate_fn=lambda checkpoint, config: {"score": 200},
             validate_config=None,
         ),
     )
 
-    def failing_validate_function(checkpoint, config):
+    def failing_validate_fn(checkpoint, config):
         return "invalid_return_type"
 
     checkpoint_manager.register_checkpoint(
         training_results[1],
         _ValidationSpec(
-            validate_function=failing_validate_function,
+            validate_fn=failing_validate_fn,
             validate_config=None,
         ),
     )
 
-    def infinite_waiting_validate_function(checkpoint, config):
+    def infinite_waiting_validate_fn(checkpoint, config):
         while True:
             time.sleep(1)
 
     checkpoint_manager.register_checkpoint(
         training_results[2],
         _ValidationSpec(
-            validate_function=infinite_waiting_validate_function,
+            validate_fn=infinite_waiting_validate_fn,
             validate_config=None,
         ),
     )
     checkpoint_manager.register_checkpoint(
         training_results[3],
         _ValidationSpec(
-            validate_function=lambda checkpoint, config: config,
+            validate_fn=lambda checkpoint, config: config,
             validate_config={"score": 100},
         ),
     )

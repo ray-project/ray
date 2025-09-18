@@ -225,7 +225,7 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
-def test_report_validate_config_without_validate_function():
+def test_report_validate_config_without_validate_fn():
     def train_fn():
         ray.train.report(metrics={}, checkpoint=None, validate_config={"test": "test"})
 
@@ -238,7 +238,7 @@ def test_report_validate_config_without_validate_function():
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
-def test_report_validate_function_keeps_correct_checkpoints(tmp_path):
+def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
     def validate_fn(checkpoint, config):
         if config and "new_score" in config:
             return {"score": config["new_score"]}
@@ -259,7 +259,7 @@ def test_report_validate_function_keeps_correct_checkpoints(tmp_path):
             checkpoint=Checkpoint(checkpoint_dir),
             checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
             delete_local_checkpoint_after_upload=False,
-            validate_function=validate_fn,
+            validate_fn=validate_fn,
             validate_config=None,
         )
         with create_dict_checkpoint({}) as cp2:
@@ -267,7 +267,7 @@ def test_report_validate_function_keeps_correct_checkpoints(tmp_path):
                 metrics={"score": 3},
                 checkpoint=cp2,
                 checkpoint_upload_mode=CheckpointUploadMode.SYNC,
-                validate_function=validate_fn,
+                validate_fn=validate_fn,
                 validate_config=None,
             )
         with create_dict_checkpoint({}) as cp3:
@@ -275,7 +275,7 @@ def test_report_validate_function_keeps_correct_checkpoints(tmp_path):
                 metrics={"score": 2},
                 checkpoint=cp3,
                 checkpoint_upload_mode=CheckpointUploadMode.SYNC,
-                validate_function=validate_fn,
+                validate_fn=validate_fn,
                 validate_config={"new_score": 5},
             )
 
@@ -298,7 +298,7 @@ def test_report_validate_function_keeps_correct_checkpoints(tmp_path):
     assert result.best_checkpoints[1][1] == {"score": 5}
 
 
-def test_report_validate_function_error():
+def test_report_validate_fn_error():
     def validate_fn(checkpoint, config):
         if config["rank"] == 0 and config["iteration"] == 0:
             raise ValueError("validation failed")
@@ -310,14 +310,14 @@ def test_report_validate_function_error():
             ray.train.report(
                 metrics={},
                 checkpoint=cp1,
-                validate_function=validate_fn,
+                validate_fn=validate_fn,
                 validate_config={"rank": rank, "iteration": 0},
             )
         with create_dict_checkpoint({}) as cp2:
             ray.train.report(
                 metrics={},
                 checkpoint=cp2,
-                validate_function=validate_fn,
+                validate_fn=validate_fn,
                 validate_config={"rank": rank, "iteration": 1},
             )
 
