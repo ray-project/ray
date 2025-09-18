@@ -1538,8 +1538,10 @@ def test_map_batches_preserves_empty_block_format(
     # Applying subsequent map_batches should not change the type of the empty block.
     ds = (
         ray.data.from_pandas(df)
+        # Returns empty Pandas DF
         .map_batches(empty_pandas)
-        .map_batches(lambda x: x, batch_size=None)
+        # Returns batch-format as is
+        .map_batches(lambda x: x, batch_size=None, batch_format="pandas")
     )
 
     bundles = ds.iter_internal_ref_bundles()
