@@ -57,6 +57,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.core.generated import autoscaler_pb2
 from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.scripts.symmetric_run import symmetric_run
 from ray.util.annotations import PublicAPI
 from ray.util.check_open_ports import check_open_ports
 
@@ -2718,6 +2719,7 @@ cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
+cli.add_command(symmetric_run, name="symmetric-run")
 
 try:
     from ray.util.state.state_cli import (
@@ -2749,13 +2751,6 @@ try:
     cli.add_command(serve_cli)
 except Exception as e:
     logger.debug(f"Integrating ray serve command line tool failed with {e}")
-
-try:
-    from ray.scripts.symmetric_run import symmetric_run
-
-    cli.add_command(symmetric_run, name="symmetric-run")
-except Exception as e:
-    logger.debug(f"Integrating ray symmetric-run command line tool failed with {e}")
 
 
 def main():
