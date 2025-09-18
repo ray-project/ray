@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "gflags/gflags.h"
+#include "ray/common/node_config.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -106,6 +107,8 @@ int main(int argc, char *argv[]) {
   RayConfig::instance().initialize(config_list);
   ray::asio::testing::Init();
   ray::rpc::testing::Init();
+
+  ray::NodeConfig::Instance().SetNodeIpAddress(node_ip_address);
 
   // IO Service for main loop.
   SetThreadName("gcs_server");

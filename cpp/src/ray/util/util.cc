@@ -24,27 +24,6 @@
 namespace ray {
 namespace internal {
 
-std::string GetNodeIpAddress(const std::string &address) {
-  auto parts = ParseAddress(address);
-  RAY_CHECK(parts.has_value());
-  try {
-    boost::asio::io_service netService;
-    boost::asio::ip::udp::resolver resolver(netService);
-    boost::asio::ip::udp::resolver::query query(
-        boost::asio::ip::udp::v4(), (*parts)[0], (*parts)[1]);
-    boost::asio::ip::udp::resolver::iterator endpoints = resolver.resolve(query);
-    boost::asio::ip::udp::endpoint ep = *endpoints;
-    boost::asio::ip::udp::socket socket(netService);
-    socket.connect(ep);
-    boost::asio::ip::address addr = socket.local_endpoint().address();
-    return addr.to_string();
-  } catch (std::exception &e) {
-    RAY_LOG(FATAL) << "Could not get the node IP address with socket. Exception: "
-                   << e.what();
-    return "";
-  }
-}
-
 std::string getLibraryPathEnv() {
   auto path_env_p = std::getenv(kLibraryPathEnvName);
   if (path_env_p != nullptr && strlen(path_env_p) != 0) {

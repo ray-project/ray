@@ -15,6 +15,8 @@
 #pragma once
 
 #include <array>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ip/udp.hpp>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,6 +50,19 @@ std::string BuildAddress(const std::string &host, int port);
 /// \param address The address string to parse (e.g., "localhost:8000", "[::1]:8000").
 /// \return Optional array with [host, port] if port found, nullopt if no colon separator.
 std::optional<std::array<std::string, 2>> ParseAddress(const std::string &address);
+
+/// IP address by which the local node can be reached *from* the `address`.
+/// If no address is given, defaults to public DNS servers for detection.
+/// \param address The IP address and port of any known live service on the
+///                network you care about.
+/// \return The IP address by which the local node can be reached from the address.
+std::string GetNodeIpAddressFromPerspective(
+    const std::optional<std::string> &address = std::nullopt);
+
+/// Check if an address is IPv6 format or resolves to IPv6.
+/// \param address The IP or domain name to check (must be without port).
+/// \return true if the address is or resolves to IPv6, false if IPv4.
+bool IsIPv6(const std::string &address);
 
 /// Check whether the given port is available, via attempt to bind a socket to the port.
 /// Notice, the check could be non-authentic if there're concurrent port assignments.
