@@ -112,6 +112,31 @@ void GcsSubscriber::SubscribeAllNodeInfo(
       std::move(subscription_failure_callback));
 }
 
+void GcsSubscriber::SubscribeAllNodeInfoLight(
+    const gcs::ItemCallback<rpc::GcsNodeInfoLight> &subscribe,
+    const gcs::StatusCallback &done) {
+  auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
+    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL_LIGHT);
+    subscribe(std::move(*msg.mutable_node_info_light_message()));
+  };
+  auto subscription_failure_callback = [](const std::string &, const Status &status) {
+    RAY_LOG(WARNING) << "Subscription to NodeInfoLight channel failed: "
+                     << status.ToString();
+  };
+  subscriber_->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_NODE_INFO_CHANNEL_LIGHT,
+      gcs_address_,
+      /*key_id=*/std::nullopt,
+      [done](const Status &status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback));
+}
+
 Status GcsSubscriber::SubscribeAllWorkerFailures(
     const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
     const gcs::StatusCallback &done) {

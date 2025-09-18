@@ -725,7 +725,7 @@ void CoreWorker::SubscribeToNodeChanges() {
     // here to avoid destruction order fiasco between gcs_client and reference_counter_.
     auto on_node_change = [reference_counter = reference_counter_,
                            rate_limiter = lease_request_rate_limiter_](
-                              const NodeID &node_id, const rpc::GcsNodeInfo &data) {
+                              const NodeID &node_id, const rpc::GcsNodeInfoLight &data) {
       if (data.state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(node_id)
             << "Node failure. All objects pinned on that node will be lost if object "
@@ -739,7 +739,7 @@ void CoreWorker::SubscribeToNodeChanges() {
       }
     };
 
-    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+    gcs_client_->Nodes().AsyncSubscribeToNodeChangeLight(
         std::move(on_node_change), [this](const Status &) {
           {
             std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);

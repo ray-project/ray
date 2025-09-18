@@ -360,6 +360,11 @@ class GcsRpcClient {
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Get light information of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             GetAllNodeInfoLight,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
   /// Check GCS is alive.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
                              CheckAlive,

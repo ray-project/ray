@@ -665,6 +665,40 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
                    const Status &) { fetch_node_data_operation_(done); });
 }
 
+void NodeInfoAccessor::AsyncSubscribeToNodeChangeLight(
+    std::function<void(NodeID, const rpc::GcsNodeInfoLight &)> subscribe,
+    StatusCallback done) {
+  RAY_CHECK(node_change_callback_light_ == nullptr);
+  node_change_callback_light_ = std::move(subscribe);
+  RAY_CHECK(node_change_callback_light_ != nullptr);
+
+  fetch_node_light_data_operation_ = [this](const StatusCallback &done_callback) {
+    // Fetch all light node info
+    rpc::GetAllNodeInfoLightRequest request;
+    client_impl_->GetGcsRpcClient().GetAllNodeInfoLight(
+        std::move(request),
+        [this, done_callback](const Status &status,
+                              rpc::GetAllNodeInfoLightReply &&reply) {
+          if (status.ok()) {
+            for (const auto &node_info : reply.node_info_list()) {
+              rpc::GcsNodeInfoLight copy = node_info;
+              HandleNotification(std::move(copy));
+            }
+          }
+          if (done_callback) {
+            done_callback(status);
+          }
+        },
+        /*timeout_ms=*/-1);
+  };
+
+  client_impl_->GetGcsSubscriber().SubscribeAllNodeInfoLight(
+      /*subscribe=*/[this](rpc::GcsNodeInfoLight
+                               &&data) { HandleNotification(std::move(data)); },
+      /*done=*/[this, done = std::move(done)](
+                   const Status &) { fetch_node_light_data_operation_(done); });
+}
+
 const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
                                               bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
@@ -678,8 +712,26 @@ const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
   return nullptr;
 }
 
+const rpc::GcsNodeInfoLight *NodeInfoAccessor::GetNodeInfoLight(
+    const NodeID &node_id, bool filter_dead_nodes) const {
+  RAY_CHECK(!node_id.IsNil());
+  auto entry = node_cache_light_.find(node_id);
+  if (entry != node_cache_light_.end()) {
+    if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
+      return nullptr;
+    }
+    return &entry->second;
+  }
+  return nullptr;
+}
+
 const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &NodeInfoAccessor::GetAll() const {
   return node_cache_;
+}
+
+const absl::flat_hash_map<NodeID, rpc::GcsNodeInfoLight>
+    &NodeInfoAccessor::GetAllNodeInfoLight() const {
+  return node_cache_light_;
 }
 
 StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
@@ -695,6 +747,23 @@ StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
   }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(
+      std::move(request), &reply, timeout_ms));
+  return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
+}
+
+StatusOr<std::vector<rpc::GcsNodeInfoLight>> NodeInfoAccessor::GetAllNodeInfoLightNoCache(
+    int64_t timeout_ms,
+    std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
+    std::optional<rpc::GetAllNodeInfoLightRequest::NodeSelector> node_selector) {
+  rpc::GetAllNodeInfoLightRequest request;
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
+  }
+  if (node_selector.has_value()) {
+    *request.add_node_selectors() = std::move(node_selector.value());
+  }
+  rpc::GetAllNodeInfoLightReply reply;
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetAllNodeInfoLight(
       std::move(request), &reply, timeout_ms));
   return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
 }
@@ -770,9 +839,54 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
   }
 }
 
+void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfoLight &&node_info) {
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
+  bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
+  auto entry = node_cache_light_.find(node_id);
+  bool is_notif_new;
+  if (entry == node_cache_light_.end()) {
+    // If the entry is not in the cache, then the notification is new.
+    is_notif_new = true;
+  } else {
+    // If the entry is in the cache, then the notification is new if the node
+    // was alive and is now dead.
+    bool was_alive = (entry->second.state() == rpc::GcsNodeInfo::ALIVE);
+    is_notif_new = was_alive && !is_alive;
+
+    // Handle the same logic as in HandleNotification for preventing re-adding removed
+    // nodes
+    if (!was_alive && is_alive) {
+      RAY_LOG(INFO)
+          << "Light notification for addition of a node that was already removed:"
+          << node_id;
+      return;
+    }
+  }
+
+  // Add the notification to our light cache.
+  RAY_LOG(INFO).WithField(node_id)
+      << "Received light notification for node, IsAlive = " << is_alive;
+
+  auto &node = node_cache_light_[node_id];
+  if (is_alive) {
+    node = std::move(node_info);
+  } else {
+    node.set_node_id(node_info.node_id());
+    node.set_state(rpc::GcsNodeInfo::DEAD);
+    if (node_info.has_death_info()) {
+      node.mutable_death_info()->CopyFrom(node_info.death_info());
+    }
+  }
+
+  // If the notification is new, call registered callback.
+  if (is_notif_new && node_change_callback_light_ != nullptr) {
+    node_change_callback_light_(node_id, node_cache_light_[node_id]);
+  }
+}
+
 void NodeInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
-  if (IsSubscribedToNodeChange()) {
+  if (node_change_callback_ != nullptr) {
     client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
         /*subscribe=*/[this](rpc::GcsNodeInfo
                                  &&data) { HandleNotification(std::move(data)); },
@@ -782,6 +896,19 @@ void NodeInfoAccessor::AsyncResubscribe() {
             RAY_LOG(INFO)
                 << "Finished fetching all node information from gcs server after gcs "
                    "server or pub-sub server is restarted.";
+          });
+        });
+  }
+  if (node_change_callback_light_ != nullptr) {
+    client_impl_->GetGcsSubscriber().SubscribeAllNodeInfoLight(
+        /*subscribe=*/[this](rpc::GcsNodeInfoLight
+                                 &&data) { HandleNotification(std::move(data)); },
+        /*done=*/
+        [this](const Status &) {
+          fetch_node_light_data_operation_([](const Status &) {
+            RAY_LOG(INFO) << "Finished fetching all light node information from gcs "
+                             "server after gcs "
+                             "server or pub-sub server is restarted.";
           });
         });
   }

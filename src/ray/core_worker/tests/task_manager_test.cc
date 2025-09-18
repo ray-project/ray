@@ -2869,7 +2869,7 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
 
   // Mock the GCS client to return the preempted node info
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeInfoLight node_info;
   node_info.set_node_id(node_id.Binary());
   node_info.mutable_death_info()->set_reason(
       rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);

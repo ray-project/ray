@@ -57,6 +57,10 @@ class GcsSubscriber {
   void SubscribeAllNodeInfo(const gcs::ItemCallback<rpc::GcsNodeInfo> &subscribe,
                             const gcs::StatusCallback &done);
 
+  void SubscribeAllNodeInfoLight(
+      const gcs::ItemCallback<rpc::GcsNodeInfoLight> &subscribe,
+      const gcs::StatusCallback &done);
+
   Status SubscribeAllWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const gcs::StatusCallback &done);
