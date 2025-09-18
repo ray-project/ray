@@ -35,7 +35,10 @@ def check_refcounts_empty():
 @pytest.fixture(scope="module")
 def one_cpu_100MiB_shared():
     # It has lots of tests that don't require object spilling.
-    config = {"task_retry_delay_ms": 0, "automatic_object_spilling_enabled": False}
+    config = {
+        "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False,
+    }
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
     )

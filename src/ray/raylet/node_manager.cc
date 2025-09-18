@@ -1668,7 +1668,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 
   const bool is_actor_creation_task = lease.GetLeaseSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
-  metrics_num_task_scheduled_ += 1;
 
   if (is_actor_creation_task) {
     actor_id = lease.GetLeaseSpecification().ActorId();

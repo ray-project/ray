@@ -2923,7 +2923,7 @@ class TestAutoscaling:
 
             dsm.update()
             astate = asm._autoscaling_states[TEST_DEPLOYMENT_ID]
-            assert len(astate._replica_requests) == 0
+            assert len(astate._replica_metrics) == 0
 
         # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
         dsm.update()
