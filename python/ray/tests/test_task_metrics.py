@@ -9,7 +9,8 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
-    raw_metrics,
+    PrometheusTimeseries,
+    raw_metric_timeseries,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_assertion,
@@ -28,22 +29,28 @@ SLOW_METRIC_CONFIG = {
 }
 
 
-def tasks_by_state(info) -> dict:
-    return tasks_breakdown(info, lambda s: s.labels["State"])
+def tasks_by_state(info, timeseries: PrometheusTimeseries, flush: bool = False) -> dict:
+    if flush:
+        timeseries.flush()
+    return tasks_breakdown(info, lambda s: s.labels["State"], timeseries)
 
 
-def tasks_by_name_and_state(info) -> dict:
-    return tasks_breakdown(info, lambda s: (s.labels["Name"], s.labels["State"]))
-
-
-def tasks_by_all(info) -> dict:
+def tasks_by_name_and_state(info, timeseries: PrometheusTimeseries) -> dict:
     return tasks_breakdown(
-        info, lambda s: (s.labels["Name"], s.labels["State"], s.labels["IsRetry"])
+        info, lambda s: (s.labels["Name"], s.labels["State"]), timeseries
     )
 
 
-def tasks_breakdown(info, key_fn) -> dict:
-    res = raw_metrics(info)
+def tasks_by_all(info, timeseries: PrometheusTimeseries) -> dict:
+    return tasks_breakdown(
+        info,
+        lambda s: (s.labels["Name"], s.labels["State"], s.labels["IsRetry"]),
+        timeseries,
+    )
+
+
+def tasks_breakdown(info, key_fn, timeseries: PrometheusTimeseries) -> dict:
+    res = raw_metric_timeseries(info, timeseries)
     if "ray_tasks" in res:
         breakdown = defaultdict(int)
         for sample in res["ray_tasks"]:
@@ -75,15 +82,17 @@ a = [f.remote() for _ in range(10)]
 ray.get(a)
 """
     proc = run_string_as_driver_nonblocking(driver)
-
+    timeseries = PrometheusTimeseries()
     expected = {
         "RUNNING": 2.0,
         "PENDING_NODE_ASSIGNMENT": 8.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
-    assert tasks_by_name_and_state(info) == {
+    assert tasks_by_name_and_state(info, timeseries) == {
         ("f", "RUNNING"): 2.0,
         ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
@@ -92,7 +101,7 @@ ray.get(a)
 
 def test_task_job_ids(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -106,15 +115,18 @@ a = [f.remote() for _ in range(1)]
 ray.get(a)
 """
     procs = [run_string_as_driver_nonblocking(driver) for _ in range(3)]
+
     expected = {
         "RUNNING": 3.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
 
     # Check we have three jobs reporting "RUNNING".
-    metrics = raw_metrics(info)
+    metrics = raw_metric_timeseries(info, timeseries)
     jobs_at_state = defaultdict(set)
     for sample in metrics["ray_tasks"]:
         jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
@@ -127,7 +139,7 @@ ray.get(a)
 
 def test_task_nested(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -154,14 +166,14 @@ ray.get(w)
     }
 
     def check_task_state():
-        assert tasks_by_state(info) == expected
+        assert tasks_by_state(info, timeseries) == expected
 
     wait_for_assertion(
         check_task_state,
         timeout=20,
         retry_interval_ms=2000,
     )
-    assert tasks_by_name_and_state(info) == {
+    assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
         ("f", "RUNNING"): 2.0,
         ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
@@ -171,7 +183,7 @@ ray.get(w)
 
 def test_task_nested_wait(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -198,14 +210,14 @@ ray.get(w)
     }
 
     def check_task_state():
-        assert tasks_by_state(info) == expected
+        assert tasks_by_state(info, timeseries) == expected
 
     wait_for_assertion(
         check_task_state,
         timeout=20,
         retry_interval_ms=2000,
     )
-    assert tasks_by_name_and_state(info) == {
+    assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
         ("f", "RUNNING"): 2.0,
         ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
@@ -215,6 +227,7 @@ ray.get(w)
 
 def driver_for_test_task_fetch_args(head_info):
     ray.init("auto")
+    timeseries = PrometheusTimeseries()
 
     @ray.remote(resources={"worker": 1})
     def task1():
@@ -228,13 +241,15 @@ def driver_for_test_task_fetch_args(head_info):
     o2 = task2.remote(o1)
 
     wait_for_condition(
-        lambda: tasks_by_state(head_info).get("PENDING_ARGS_FETCH", 0.0) == 1.0
+        lambda: tasks_by_state(head_info, timeseries).get("PENDING_ARGS_FETCH", 0.0)
+        == 1.0
     )
 
     ray.cancel(o2)
 
     wait_for_condition(
-        lambda: tasks_by_state(head_info).get("PENDING_ARGS_FETCH", 0.0) == 0.0
+        lambda: tasks_by_state(head_info, timeseries).get("PENDING_ARGS_FETCH", 0.0)
+        == 0.0
     )
 
 
@@ -262,7 +277,7 @@ def test_task_fetch_args(ray_start_cluster):
 
 def test_task_wait_on_deps(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -287,9 +302,11 @@ ray.get(a)
         "PENDING_ARGS_AVAIL": 5.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
-    assert tasks_by_name_and_state(info) == {
+    assert tasks_by_name_and_state(info, timeseries) == {
         ("f", "RUNNING"): 1.0,
         ("g", "PENDING_ARGS_AVAIL"): 5.0,
     }
@@ -298,7 +315,7 @@ ray.get(a)
 
 def test_actor_tasks_queued(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -321,25 +338,22 @@ ray.get(z)
 """
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "RUNNING": 1.0,
-        "SUBMITTED_TO_WORKER": 9.0,
-        "FINISHED": 11.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-    assert tasks_by_name_and_state(info) == {
         ("F.__init__", "FINISHED"): 1.0,
         ("F.g", "FINISHED"): 10.0,
         ("F.f", "RUNNING"): 1.0,
         ("F.g", "SUBMITTED_TO_WORKER"): 9.0,
     }
+    wait_for_condition(
+        lambda: tasks_by_name_and_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
     proc.kill()
 
 
 def test_task_finish(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -365,9 +379,11 @@ time.sleep(999)
         "FINISHED": 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
-    assert tasks_by_name_and_state(info) == {
+    assert tasks_by_name_and_state(info, timeseries) == {
         ("g", "FAILED"): 1.0,
         ("f", "FINISHED"): 1.0,
     }
@@ -376,7 +392,7 @@ time.sleep(999)
 
 def test_task_retry(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -419,7 +435,7 @@ time.sleep(999)
         ("Phaser.inc", "FAILED", "0"): 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info) == expected,
+        lambda: tasks_by_all(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -429,7 +445,7 @@ time.sleep(999)
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows. Timing out.")
 def test_actor_task_retry(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import os
@@ -473,7 +489,7 @@ time.sleep(999)
         ("Phaser.inc", "FINISHED", "0"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info) == expected,
+        lambda: tasks_by_all(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -483,7 +499,7 @@ time.sleep(999)
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_task_failure(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -510,14 +526,16 @@ time.sleep(999)
         "FAILED": 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
     proc.kill()
 
 
 def test_concurrent_actor_tasks(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import asyncio
@@ -540,7 +558,9 @@ ray.get([a.f.remote() for _ in range(40)])
         "FINISHED": 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
     proc.kill()
 
@@ -548,7 +568,7 @@ ray.get([a.f.remote() for _ in range(40)])
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_export_now(shutdown_only):
     info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -567,20 +587,22 @@ ray.get(a)
     for i in range(10):
         print("Run job", i)
         run_string_as_driver(driver)
-        tasks_by_state(info)
+        tasks_by_state(info, timeseries)
 
     expected = {
         "FINISHED": 100.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on macos")
 def test_pull_manager_stats(shutdown_only):
     info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import time
@@ -613,7 +635,7 @@ ray.get([f.remote(x) for x in buf])"""
         return True
 
     wait_for_condition(
-        lambda: close_to_expected(tasks_by_state(info)),
+        lambda: close_to_expected(tasks_by_state(info, timeseries)),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -622,6 +644,7 @@ ray.get([f.remote(x) for x in buf])"""
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_stale_view_cleanup_when_job_exits(monkeypatch, shutdown_only):
+    timeseries = PrometheusTimeseries()
     with monkeypatch.context() as m:
         m.setenv(RAY_WORKER_TIMEOUT_S, 5)
         info = ray.init(num_cpus=2, **METRIC_CONFIG)
@@ -646,14 +669,18 @@ ray.get(g.remote())
             "RUNNING": 1.0,
         }
         wait_for_condition(
-            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+            lambda: tasks_by_state(info, timeseries) == expected,
+            timeout=20,
+            retry_interval_ms=500,
         )
 
         proc.kill()
         print("Killing a driver.")
         expected = {}
         wait_for_condition(
-            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+            lambda: tasks_by_state(info, timeseries, flush=True) == expected,
+            timeout=20,
+            retry_interval_ms=500,
         )
 
 
@@ -663,7 +690,7 @@ def test_metrics_batch(shutdown_only):
     config_copy = copy.deepcopy(METRIC_CONFIG)
     config_copy["_system_config"].update({"metrics_report_batch_size": 1})
     info = ray.init(num_cpus=2, **config_copy)
-
+    timeseries = PrometheusTimeseries()
     driver = """
 import ray
 import os
@@ -707,7 +734,7 @@ time.sleep(999)
         ("Phaser.inc", "FINISHED", "0"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info) == expected,
+        lambda: tasks_by_all(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
