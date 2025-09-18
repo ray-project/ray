@@ -7,6 +7,20 @@ if [[ ${BUILDKITE_COMMIT} == "HEAD" ]]; then
   export BUILDKITE_COMMIT
 fi
 
+# Get build ID from environment variables
+BUILD_ID="${RAYCI_BUILD_ID:-}"
+
+if [[ -z "${BUILD_ID}" ]]; then
+    if [[ -n "${BUILDKITE_BUILD_ID:-}" ]]; then
+        # Generate SHA256 hash of BUILDKITE_BUILD_ID and take first 8 chars
+        BUILD_ID=$(echo -n "${BUILDKITE_BUILD_ID}" | sha256sum | cut -c1-8)
+    fi
+fi
+
+export RAYCI_BUILD_ID="${BUILD_ID}"
+echo "RAYCI_BUILD_ID: ${RAYCI_BUILD_ID}"
+
+
 aws ecr get-login-password --region us-west-2 | \
     docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
 
