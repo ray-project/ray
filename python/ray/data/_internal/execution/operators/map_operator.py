@@ -806,8 +806,5 @@ def _split_blocks(blocks: Iterable[Block], split_factor: float) -> Iterable[Bloc
         offset = 0
         split_sizes = _splitrange(block.num_rows(), split_factor)
         for size in split_sizes:
-            # NOTE: copy=True is needed because this is an output block. If
-            # a block slice is put into the object store, the entire block
-            # will get serialized.
-            yield block.slice(offset, offset + size, copy=True)
+            yield block.slice(offset, offset + size, copy=False)
             offset += size
