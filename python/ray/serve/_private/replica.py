@@ -280,15 +280,12 @@ class ReplicaMetricsManager:
 
         await self._metrics_pusher.graceful_shutdown()
 
-    def should_collect_metrics(self) -> bool:
-        return self._autoscaling_config is not None
-
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if self.should_collect_metrics():
+        if self._autoscaling_config:
             self._metrics_pusher.start()
 
             # Push autoscaling metrics to the controller periodically.
@@ -307,7 +304,7 @@ class ReplicaMetricsManager:
                 ),
             )
 
-    def enable_custom_autoscaling_metrics(
+    async def enable_custom_autoscaling_metrics(
         self,
         custom_metrics_enabled: bool,
         record_autoscaling_stats_fn: Callable[[], Optional[concurrent.futures.Future]],
@@ -316,6 +313,11 @@ class ReplicaMetricsManager:
         if custom_metrics_enabled:
             self._custom_metrics_enabled = custom_metrics_enabled
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
+            return
+
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            # Replica has nothing to push, shutdown _metrics_pusher
+            await self._metrics_pusher.graceful_shutdown()
 
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
@@ -863,7 +865,7 @@ class ReplicaBase(ABC):
                             is not None
                         )
 
-                        self._metrics_manager.enable_custom_autoscaling_metrics(
+                        await self._metrics_manager.enable_custom_autoscaling_metrics(
                             custom_metrics_enabled=initialized,
                             record_autoscaling_stats_fn=self._user_callable_wrapper.call_record_autoscaling_stats,
                         )

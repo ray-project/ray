@@ -27,7 +27,6 @@ class TestCustomServeMetrics:
             autoscaling_config={
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests_per_replica": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
                 "metrics_interval_s": 1,
@@ -70,7 +69,6 @@ class TestCustomServeMetrics:
             autoscaling_config={
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests_per_replica": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
                 "metrics_interval_s": 1,
@@ -102,7 +100,6 @@ class TestCustomServeMetrics:
             autoscaling_config={
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests_per_replica": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
                 "metrics_interval_s": 1,

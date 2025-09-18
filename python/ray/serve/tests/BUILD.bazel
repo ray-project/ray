@@ -38,7 +38,7 @@ py_test_module_list(
         "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
     },
     files = [
-        "test_custom_metrics.py",
+        "test_custom_autoscaling_metrics.py",
     ],
     tags = [
         "exclusive",
