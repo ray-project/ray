@@ -88,6 +88,34 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "ray_node_definition_event",
+    srcs = [
+        "ray_node_definition_event.cc",
+    ],
+    hdrs = [
+        "ray_node_definition_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_node_definition_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_node_lifecycle_event",
+    srcs = [
+        "ray_node_lifecycle_event.cc",
+    ],
+    hdrs = [
+        "ray_node_lifecycle_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_node_lifecycle_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
     name = "ray_event_recorder_interface",
     hdrs = [
         "ray_event_recorder_interface.h",
