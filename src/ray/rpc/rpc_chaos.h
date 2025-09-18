@@ -15,6 +15,7 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 
 namespace ray {
 namespace rpc {
