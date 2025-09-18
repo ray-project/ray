@@ -32,11 +32,6 @@ _BASE_CGROUP_PATH = "/sys/fs/cgroup"
 # _BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
 
 
-def generate_node_id():
-    """Returns a random node id."""
-    return ray.NodeID.from_random().hex()
-
-
 # TODO(#54703): This test is deliberately overspecified right now. The test shouldn't
 # care about the cgroup hierarchy. It should just verify that application and system processes
 # are started in a cgroup with the correct constraints. This will be updated once cgroup
@@ -125,7 +120,7 @@ def test_ray_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
     )
-    node_id = generate_node_id()
+    node_id = ray.NodeID.from_random().hex()
     os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
     runner = CliRunner()
     result = runner.invoke(
