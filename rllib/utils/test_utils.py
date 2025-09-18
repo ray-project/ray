@@ -1367,11 +1367,17 @@ def run_rllib_example_script_experiment(
 
     # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
     # the CI tests w/o us knowing that they are broken (b/c some examples do not have
-    # a --as-test flag and/or any passing criteris).
+    # a --as-test flag and/or any passing criteria).
     if results.errors:
+        # Might cause an IndexError if the tuple is not long enough; in that case, use repr(e).
+        errors = [
+            e.args[0].args[2]
+            if e.args and hasattr(e.args[0], "args") and len(e.args[0].args) > 2
+            else repr(e)
+            for e in results.errors
+        ]
         raise RuntimeError(
-            "Running the example script resulted in one or more errors! "
-            f"{[e.args[0].args[2] for e in results.errors]}"
+            f"Running the example script resulted in one or more errors! {errors}"
         )
 
     # If run as a test, check whether we reached the specified success criteria.

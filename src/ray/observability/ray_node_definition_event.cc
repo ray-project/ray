@@ -27,6 +27,9 @@ RayNodeDefinitionEvent::RayNodeDefinitionEvent(const rpc::GcsNodeInfo &data,
           session_name) {
   data_.set_node_id(data.node_id());
   data_.set_node_ip_address(data.node_manager_address());
+  data_.mutable_start_timestamp()->CopyFrom(
+      AbslTimeNanosToProtoTimestamp(absl::ToInt64Nanoseconds(
+          absl::FromUnixMillis(data.start_time_ms()) - absl::UnixEpoch())));
   data_.mutable_labels()->insert(data.labels().begin(), data.labels().end());
 }
 
