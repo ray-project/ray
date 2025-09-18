@@ -859,15 +859,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The number of workers killed not by memory above threshold since last report.
   uint64_t number_workers_killed_ = 0;
 
-  /// Number of tasks that are received and scheduled.
-  uint64_t metrics_num_task_scheduled_;
-
-  /// Number of tasks that are executed at this node.
-  uint64_t metrics_num_task_executed_;
-
-  /// Number of tasks that are spilled back to other nodes.
-  uint64_t metrics_num_task_spilled_back_;
-
   /// Managers all bundle-related operations.
   std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 
