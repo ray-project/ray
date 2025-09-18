@@ -1,8 +1,10 @@
 import json
 import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Dict, Tuple
+
 
 import click
 import numpy as np
@@ -206,7 +208,17 @@ def train_func(use_ray: bool, config: Dict):
         local_time_taken = time.monotonic() - local_start_time
 
         if use_ray:
-            train.report(dict(loss=loss, local_time_taken=local_time_taken))
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                if train.get_context().get_world_rank() == 0:
+                    torch.save(
+                        model.state_dict(),
+                        os.path.join(temp_checkpoint_dir, "model.pt"),
+                    )
+
+                    train.report(
+                        dict(loss=loss, local_time_taken=local_time_taken),
+                        checkpoint=train.Checkpoint.from_directory(temp_checkpoint_dir),
+                    )
         else:
             print(f"Reporting loss: {loss:.4f}")
             if local_rank == 0:
