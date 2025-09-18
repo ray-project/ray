@@ -11,13 +11,13 @@ import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train._internal import session
-from ray.train._internal.session import (
-    _TrainingReport,
-    _TrainingResult,
-    _ValidationSpec,
-)
+from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
+from ray.train.v2._internal.execution.training_report import (
+    _TrainingReport,
+    _ValidationSpec,
+)
 from ray.train.v2._internal.util import (
     _copy_doc,
     construct_user_exception_with_traceback,

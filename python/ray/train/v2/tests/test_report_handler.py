@@ -6,7 +6,7 @@ import pytest
 
 from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingReport, _TrainingResult
+from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -15,6 +15,7 @@ from ray.train.v2._internal.execution.checkpoint.report_handler import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
     WorkerStatus,

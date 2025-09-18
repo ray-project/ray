@@ -10,7 +10,7 @@ from ray.train._internal.checkpoint_manager import (
     _CheckpointManager,
     _insert_into_sorted_list,
 )
-from ray.train._internal.session import _TrainingResult, _ValidationSpec
+from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.callback import (
     ReportCallback,
@@ -18,6 +18,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
+from ray.train.v2._internal.execution.training_report import _ValidationSpec
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.exceptions import ValidationFailedError
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint

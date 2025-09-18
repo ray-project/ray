@@ -11,7 +11,7 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 
 if TYPE_CHECKING:
-    from ray.train._internal.session import _TrainingReport
+    from ray.train.v2._internal.execution.training_report import _TrainingReport
 
 
 class ReportCallbackHandler(WorkerGroupCallback):

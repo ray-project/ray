@@ -1,12 +1,12 @@
 from typing import Any, Dict, List, Optional
 
 from ray.train import Checkpoint
-from ray.train._internal.session import _ValidationSpec
 from ray.train.v2._internal.execution.callback import (
     ReportCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.training_report import _ValidationSpec
 from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.callback import UserCallback
 

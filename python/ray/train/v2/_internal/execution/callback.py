@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.train._internal.session import _ValidationSpec
+from ray.train.v2._internal.execution.training_report import _ValidationSpec
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.api.result import Result
