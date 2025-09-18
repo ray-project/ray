@@ -107,6 +107,7 @@ def report(
             checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
         )
 
+    # TODO: figure out how to validate validate_fn itself
     if validate_config and not validate_fn:
         raise ValueError("validate_fn must be provided together with validate_config")
 

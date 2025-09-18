@@ -160,6 +160,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ] = checkpoint_result
 
             # TODO: rate limit this by using a queue?
+            # TODO: figure out where to place run_validate_fn task:
+            # head node is faster but want to avoid putting too much there
             self._pending_validations[
                 self._current_report_index
             ] = run_validate_fn.remote(
