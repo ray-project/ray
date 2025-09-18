@@ -19,7 +19,7 @@ from ray_release.logger import logger
 from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
 
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
-PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
+PIPELINE_ARTIFACT_PATH = os.path.join(_bazel_workspace_dir, "/tmp/pipeline_artifacts")
 
 
 @click.command(
@@ -176,7 +176,7 @@ def main(
     if "BUILDKITE" in os.environ:
         if os.path.exists(PIPELINE_ARTIFACT_PATH):
             shutil.rmtree(PIPELINE_ARTIFACT_PATH)
-
+        logger.info(f"Pipeline artifacts path: {PIPELINE_ARTIFACT_PATH}")
         os.makedirs(PIPELINE_ARTIFACT_PATH, exist_ok=True, mode=0o755)
 
         with open(os.path.join(PIPELINE_ARTIFACT_PATH, "pipeline.json"), "wt") as fp:
