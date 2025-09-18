@@ -15,8 +15,6 @@
 
 syntax = "proto3";
 
-import "src/ray/protobuf/public/runtime_environment.proto";
-
 package ray.rpc.events;
 
 // Message containing the definition information of a driver job.
