@@ -188,7 +188,8 @@ def request_resources(
     bundles: Optional[List[dict]] = None,
     bundle_label_selectors: Optional[List[dict]] = None,
 ) -> None:
-    """Remotely request some CPU or GPU resources from the autoscaler.
+    """Remotely request some CPU or GPU resources from the autoscaler. Optionally
+    specify label selectors for nodes with the requested resources.
 
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
@@ -200,8 +201,10 @@ def request_resources(
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made.
-        bundle_label_selector (List[Dict[str,str]]): Optional label selectors
-            that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}]) The elements in the bundle_label_selectors should be one-to-one mapping to the elements in bundles.
+        bundle_label_selectors (List[Dict[str,str]]): Optional label selectors
+            that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}])
+            The elements in the bundle_label_selectors should be one-to-one mapping
+            to the elements in bundles.
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
@@ -210,7 +213,7 @@ def request_resources(
         to_request.append({"resources": {"CPU": 1}, "label_selectors": []})
     if bundles:
         for i, bundle in enumerate(bundles):
-            selector = bundle_label_selector[i] if bundle_label_selector else {}
+            selector = bundle_label_selectors[i] if bundle_label_selectors else {}
             to_request.append({"resources": bundle, "label_selectors": selector})
 
     _internal_kv_put(
