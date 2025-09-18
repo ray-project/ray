@@ -1,5 +1,4 @@
 import os
-import random
 import sys
 from pathlib import Path
 
@@ -30,15 +29,13 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 _BASE_CGROUP_PATH = "/sys/fs/cgroup"
 #
 # Uncomment the following line.
-# _BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
+_BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
 
 
 def generate_node_id():
-    """Returns a random 56 character string.
-    TODO(#54703): This might have to be exposed properly through cython. Needs
-    to be cleaned up before closing the issue.
-    """
-    return f"{random.getrandbits(56 * 4):056x}"
+    """Returns a random node id."""
+    return ray.NodeID.from_random().hex()
+    # return f"{random.getrandbits(56 * 4):056x}"
 
 
 # TODO(#54703): This test is deliberately overspecified right now. The test shouldn't
