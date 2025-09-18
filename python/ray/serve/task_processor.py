@@ -1,4 +1,3 @@
-import json
 import logging
 import threading
 import time
@@ -36,18 +35,6 @@ class AsyncCapability(Enum):
     CANCEL_TASK = auto()  # Ability to cancel tasks asynchronously
     GET_METRICS = auto()  # Ability to retrieve metrics asynchronously
     HEALTH_CHECK = auto()  # Ability to perform health checks asynchronously
-
-
-def _json_dump(obj: Any) -> Any:
-    """Recursively make an object JSON serializable."""
-    if isinstance(obj, dict):
-        return {k: _json_dump(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_json_dump(i) for i in obj]
-    try:
-        return json.dumps(obj)
-    except (TypeError, ValueError):
-        return str(obj)
 
 
 @PublicAPI(stability="alpha")
@@ -545,14 +532,14 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             **kw: Additional keyword arguments passed by Celery
         """
         logger.info(
-            f"Task failure detected for task_id: {task_id}, args: {args}, kwargs: {kwargs}, einfo: {einfo}"
+            f"Task failure detected for task_id: {task_id}, args: {str(args)}, kwargs: {str(kwargs)}, einfo: {str(einfo)}"
         )
 
         dlq_args = [
             task_id,
             str(einfo.exception),
-            _json_dump(args),
-            _json_dump(kwargs),
+            str(args),
+            str(kwargs),
             str(einfo),
         ]
 
@@ -591,7 +578,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             **kwargs: Additional context information from Celery
         """
         logger.info(
-            f"Unknown task detected by Celery. Name: {name}, ID: {id}, Message: {message}"
+            f"Unknown task detected by Celery. Name: {name}, ID: {id}, Message: {str(message)}, Exc: {str(exc)}, Kwargs: {str(kwargs)}"
         )
 
         if self._config.unprocessable_task_queue_name:
@@ -601,9 +588,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
                 [
                     name,
                     id,
-                    _json_dump(message),
+                    str(message),
                     str(exc),
-                    _json_dump(kwargs),
+                    str(kwargs),
                 ],
             )
 
