@@ -1,18 +1,16 @@
-from typing import Dict, List, Optional, Union
 import threading
 import uuid
+from typing import Dict, List, Optional, Union
 
 import ray
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
+import ray.experimental.internal_kv as internal_kv
 from ray.experimental.collective.communicator import CommunicatorHandle
 from ray.experimental.collective.util import get_address_and_port
-import ray.experimental.internal_kv as internal_kv
-from ray.util.collective.types import Backend
+from ray.util.annotations import PublicAPI
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key,
 )
-from ray.util.annotations import PublicAPI
-
+from ray.util.collective.types import Backend
 
 _remote_communicator_manager: "Optional[RemoteCommunicatorManager]" = None
 _remote_communicator_manager_lock = threading.Lock()
@@ -77,10 +75,6 @@ def _do_init_collective_group(
     ray.util.collective.init_collective_group(
         world_size, rank, backend, group_name=name
     )
-    # Register a custom serializer for torch.Tensor. This allows torch.Tensors
-    # to use the created collective for communication between actors, instead of
-    # the normal serialize -> object store -> deserialize codepath.
-    TorchTensorType().register_custom_serializer()
 
 
 def _do_destroy_collective_group(self, name):

@@ -1,76 +1,10 @@
 import sys
-import time
 
 import numpy as np
 import pytest
 
 import ray
-import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import get_other_nodes
-
-
-@pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            # Force at least one task per node.
-            "num_cpus": 1,
-            "num_nodes": 4,
-            "object_store_memory": 1000 * 1024 * 1024,
-            "_system_config": {
-                "object_manager_pull_timeout_ms": 1000,
-                "object_manager_push_timeout_ms": 1000,
-            },
-        }
-    ],
-    indirect=True,
-)
-def test_object_reconstruction(ray_start_cluster):
-    cluster = ray_start_cluster
-
-    # Submit tasks with dependencies in plasma.
-    @ray.remote
-    def large_value():
-        # Sleep for a bit to force tasks onto different nodes.
-        time.sleep(0.1)
-        return np.zeros(10 * 1024 * 1024)
-
-    @ray.remote
-    def g(x):
-        return
-
-    # Kill the component on all nodes except the head node as the tasks
-    # execute. Do this in a loop while submitting tasks between each
-    # component failure.
-    time.sleep(0.1)
-    worker_nodes = get_other_nodes(cluster)
-    assert len(worker_nodes) > 0
-    component_type = ray_constants.PROCESS_TYPE_RAYLET
-    for node in worker_nodes:
-        process = node.all_processes[component_type][0].process
-        # Submit a round of tasks with many dependencies.
-        num_tasks = len(worker_nodes)
-        xs = [large_value.remote() for _ in range(num_tasks)]
-        # Wait for the tasks to complete, then evict the objects from the local
-        # node.
-        for x in xs:
-            ray.get(x)
-            ray._private.internal_api.free([x], local_only=True)
-
-        # Kill a component on one of the nodes.
-        process.terminate()
-        time.sleep(1)
-        process.kill()
-        process.wait()
-        assert process.poll() is not None
-
-        # Make sure that we can still get the objects after the
-        # executing tasks died.
-        print("F", xs)
-        xs = [g.remote(x) for x in xs]
-        print("G", xs)
-        ray.get(xs)
 
 
 @pytest.mark.parametrize(

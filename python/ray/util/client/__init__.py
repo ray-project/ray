@@ -9,10 +9,9 @@ from ray._private.client_mode_hook import (
     _explicitly_enable_client_mode,
 )
 from ray._private.ray_logging import setup_logger
+from ray._private.utils import check_version_info
 from ray.job_config import JobConfig
 from ray.util.annotations import DeveloperAPI
-from ray._private.utils import check_version_info
-
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +169,7 @@ class _ClientContext:
         import ray.util.client.server.server as ray_client_server
 
         server_handle, address_info = ray_client_server.init_and_serve(
-            "127.0.0.1:50051", *args, **kwargs
+            "127.0.0.1", 50051, *args, **kwargs
         )
         self._server = server_handle.grpc_server
         self.connect("127.0.0.1:50051")

@@ -1,10 +1,8 @@
 import pytest
 
 import ray
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    ActorPoolScalingRequest,
-)
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
@@ -47,19 +45,19 @@ def test_execution_resources(ray_start_10_cpus_shared):
     )
     assert (
         repr(r2)
-        == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r3)
-        == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=0.0, gpu=1, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r4)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=100.0MB, memory=0.0B)"
     )
     assert (
         repr(r5)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB, memory=64.0MB)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=1.0GB, memory=64.0MB)"
     )
     assert (
         repr(unlimited)
@@ -581,6 +579,16 @@ def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
         op.get_next()
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
+
+
+def test_execution_resources_to_resource_dict():
+    resources = ExecutionResources(cpu=1, gpu=2, object_store_memory=3, memory=4)
+    assert resources.to_resource_dict() == {
+        "CPU": 1,
+        "GPU": 2,
+        "object_store_memory": 3,
+        "memory": 4,
+    }
 
 
 if __name__ == "__main__":

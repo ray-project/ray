@@ -3,15 +3,14 @@ import logging
 import os
 import sys
 import traceback
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 import ray
-from ray._private.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter, TextFormatter
+from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_TO_STDERR,
@@ -32,13 +31,19 @@ from ray.serve._private.constants import (
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import EncodingType, LoggingConfig
 
-try:
-    import cProfile
-except ImportError:
-    pass
-
-
 buildin_print = builtins.print
+
+
+def should_skip_context_filter(record: logging.LogRecord) -> bool:
+    """Check if the log record should skip the context filter."""
+    return getattr(record, "skip_context_filter", False)
+
+
+class ServeCoreContextFilter(CoreContextFilter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if should_skip_context_filter(record):
+            return True
+        return super().filter(record)
 
 
 class ServeComponentFilter(logging.Filter):
@@ -63,6 +68,8 @@ class ServeComponentFilter(logging.Filter):
         Note: the filter doesn't do any filtering, it only adds the component
         attributes.
         """
+        if should_skip_context_filter(record):
+            return True
         if self.component_type and self.component_type == ServeComponentType.REPLICA:
             setattr(record, SERVE_LOG_DEPLOYMENT, self.component_name)
             setattr(record, SERVE_LOG_REPLICA, self.component_id)
@@ -84,6 +91,9 @@ class ServeContextFilter(logging.Filter):
     """
 
     def filter(self, record):
+        if should_skip_context_filter(record):
+            return True
+
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
@@ -360,33 +370,6 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    if RAY_SERVE_ENABLE_JSON_LOGGING:
-        logger.warning(
-            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
-            "'LoggingConfig' to enable json format."
-        )
-    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        file_handler.addFilter(CoreContextFilter())
-        file_handler.addFilter(ServeContextFilter())
-        file_handler.addFilter(
-            ServeComponentFilter(component_name, component_id, component_type)
-        )
-        file_handler.setFormatter(json_formatter)
-    else:
-        file_handler.setFormatter(serve_formatter)
-
-    if logging_config.enable_access_log is False:
-        file_handler.addFilter(log_access_log_filter)
-
-    # Remove unwanted attributes from the log record.
-    file_handler.addFilter(ServeLogAttributeRemovalFilter())
-
-    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
-    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
-        builtins.print = redirected_print
-        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
-        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
-
     # Create a memory handler that buffers log records and flushes to file handler
     # Buffer capacity: buffer_size records
     # Flush triggers: buffer full, ERROR messages, or explicit flush
@@ -395,6 +378,35 @@ def configure_component_logger(
         target=file_handler,
         flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
     )
+    if RAY_SERVE_ENABLE_JSON_LOGGING:
+        logger.warning(
+            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
+            "'LoggingConfig' to enable json format."
+        )
+    # Add filters directly to the memory handler effective for both buffered and non buffered cases
+    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
+        memory_handler.addFilter(ServeCoreContextFilter())
+        memory_handler.addFilter(ServeContextFilter())
+        memory_handler.addFilter(
+            ServeComponentFilter(component_name, component_id, component_type)
+        )
+        file_handler.setFormatter(json_formatter)
+    else:
+        file_handler.setFormatter(serve_formatter)
+
+    if logging_config.enable_access_log is False:
+        memory_handler.addFilter(log_access_log_filter)
+    else:
+        memory_handler.addFilter(ServeContextFilter())
+
+    # Remove unwanted attributes from the log record.
+    memory_handler.addFilter(ServeLogAttributeRemovalFilter())
+
+    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
+    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
+        builtins.print = redirected_print
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
     # Add the memory handler instead of the file handler directly
     logger.addHandler(memory_handler)
@@ -469,61 +481,6 @@ def configure_component_memory_profiler(
                 "is not installed. No memory profiling is happening. "
                 "`pip install memray` to enable memory profiling."
             )
-
-
-def configure_component_cpu_profiler(
-    component_name: str,
-    component_id: str,
-    component_type: Optional[ServeComponentType] = None,
-) -> Tuple[Optional[cProfile.Profile], Optional[str]]:
-    """Configures the CPU profiler for this component.
-
-    Does nothing if RAY_SERVE_ENABLE_CPU_PROFILING is disabled.
-
-    Returns:
-        2-tuple containing profiler object and log file name for profile stats.
-    """
-
-    if RAY_SERVE_ENABLE_CPU_PROFILING:
-        logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-        try:
-            import cProfile
-        except ImportError:
-            logger.warning(
-                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but cProfile "
-                "is not installed. No CPU profiling is happening."
-            )
-            return None, None
-        try:
-            # Need marshal to dump data. Check if marshal is installed before
-            # starting the profiler.
-            import marshal  # noqa: F401
-        except ImportError:
-            logger.warning(
-                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but marshal "
-                "is not installed. No CPU profiling is happening."
-            )
-            return None, None
-
-        logs_dir = get_serve_logs_dir()
-        cpu_profiler_file_name = get_component_file_name(
-            component_name=component_name,
-            component_id=component_id,
-            component_type=component_type,
-            suffix="_cprofile.prof",
-        )
-        cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
-
-        profile = cProfile.Profile()
-        profile.enable()
-        logger.info(
-            "RAY_SERVE_ENABLE_CPU_PROFILING is enabled. Started cProfile "
-            "on this actor."
-        )
-        return profile, cpu_profiler_file_path
-    else:
-        return None, None
 
 
 def get_serve_logs_dir() -> str:

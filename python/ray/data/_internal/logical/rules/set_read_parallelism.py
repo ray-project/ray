@@ -18,9 +18,11 @@ def compute_additional_split_factor(
     datasource_or_legacy_reader: Union[Datasource, Reader],
     parallelism: int,
     mem_size: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     cur_additional_split_factor: Optional[int] = None,
 ) -> Tuple[int, str, int, Optional[int]]:
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
+
     ctx = DataContext.get_current()
     detected_parallelism, reason, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
@@ -34,7 +36,13 @@ def compute_additional_split_factor(
         logger.debug(
             f"Expected in-memory size {mem_size}," f" block size {expected_block_size}"
         )
-        size_based_splits = round(max(1, expected_block_size / target_max_block_size))
+        if target_max_block_size is None:
+            # Unlimited block size -> no extra splits
+            size_based_splits = 1
+        else:
+            size_based_splits = round(
+                max(1, expected_block_size / target_max_block_size)
+            )
     else:
         size_based_splits = 1
     if cur_additional_split_factor:

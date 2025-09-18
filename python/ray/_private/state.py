@@ -5,10 +5,10 @@ from collections import defaultdict
 from typing import Dict, Optional
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import binary_to_hex, decode, hex_to_binary
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.protobuf_compat import message_to_dict
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.utils import (
     validate_actor_state_name,
 )
@@ -138,12 +138,12 @@ class GlobalState:
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
                 "Port": actor_table_data.address.port,
-                "NodeID": binary_to_hex(actor_table_data.address.raylet_id),
+                "NodeID": binary_to_hex(actor_table_data.address.node_id),
             },
             "OwnerAddress": {
                 "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port,
-                "NodeID": binary_to_hex(actor_table_data.owner_address.raylet_id),
+                "NodeID": binary_to_hex(actor_table_data.owner_address.node_id),
             },
             "State": gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[
                 actor_table_data.state
@@ -848,30 +848,57 @@ class GlobalState:
             return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
         return None
 
-    def get_max_resources_from_cluster_config(self) -> Optional[int]:
+    @staticmethod
+    def _calculate_max_resource_from_cluster_config(
+        cluster_config: Optional[autoscaler_pb2.ClusterConfig], key: str
+    ) -> Optional[int]:
+        """Calculate the maximum available resources for a given resource type from cluster config.
+        If the resource type is not available, return None.
+        """
+        if cluster_config is None:
+            return None
+
+        max_value = 0
+        for node_group_config in cluster_config.node_group_configs:
+            num_resources = node_group_config.resources.get(key, default=0)
+            num_nodes = node_group_config.max_count
+            if num_nodes == 0 or num_resources == 0:
+                continue
+            if num_nodes == -1 or num_resources == -1:
+                return sys.maxsize
+            max_value += num_nodes * num_resources
+        if max_value == 0:
+            return None
+        max_value_limit = cluster_config.max_resources.get(key, default=sys.maxsize)
+        return min(max_value, max_value_limit)
+
+    def get_max_resources_from_cluster_config(self) -> Optional[Dict[str, int]]:
+        """Get the maximum available resources for all resource types from cluster config.
+
+        Returns:
+            A dictionary mapping resource name to the maximum quantity of that
+            resource that could be available in the cluster based on the cluster config.
+            Returns None if the config is not available.
+            Values in the dictionary default to 0 if there is no such resource.
+        """
+        all_resource_keys = set()
+
         config = self.get_cluster_config()
         if config is None:
             return None
 
-        def calculate_max_resource_from_cluster_config(key: str) -> Optional[int]:
-            max_value = 0
+        if config.node_group_configs:
             for node_group_config in config.node_group_configs:
-                num_cpus = node_group_config.resources.get(key, default=0)
-                num_nodes = node_group_config.max_count
-                if num_nodes == 0 or num_cpus == 0:
-                    continue
-                if num_nodes == -1 or num_cpus == -1:
-                    return sys.maxsize
-                max_value += num_nodes * num_cpus
-            if max_value == 0:
-                return None
-            max_value_limit = config.max_resources.get(key, default=sys.maxsize)
-            return min(max_value, max_value_limit)
+                all_resource_keys.update(node_group_config.resources.keys())
+        if len(all_resource_keys) == 0:
+            return None
 
-        return {
-            key: calculate_max_resource_from_cluster_config(key)
-            for key in ["CPU", "GPU", "TPU"]
-        }
+        result = {}
+        for key in all_resource_keys:
+            max_value = self._calculate_max_resource_from_cluster_config(config, key)
+            result[key] = max_value if max_value is not None else 0
+
+        return result
 
 
 state = GlobalState()

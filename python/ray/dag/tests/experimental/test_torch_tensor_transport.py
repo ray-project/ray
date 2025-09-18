@@ -1,13 +1,14 @@
-import ray
 import os
 import sys
-import torch
-import pytest
 from typing import Dict
+
+import pytest
+import torch
+
+import ray
 from ray.dag import InputNode
-from ray.exceptions import RayTaskError
+from ray.exceptions import RaySystemError, RayTaskError
 from ray.tests.conftest import *  # noqa
-from ray.exceptions import RaySystemError
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -319,7 +320,8 @@ class TestWorkerToWorkerDeviceCPU:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
@@ -343,7 +345,8 @@ class TestWorkerToWorkerDeviceCPU:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(
                 sender,
@@ -391,7 +394,8 @@ class TestWorkerToWorkerDeviceGPU:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
@@ -461,7 +465,8 @@ class TestWorkerToWorkerDeviceDefault:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 

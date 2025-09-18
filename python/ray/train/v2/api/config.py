@@ -1,21 +1,30 @@
+import logging
 from dataclasses import dataclass
+from functools import cached_property
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
 
+import pyarrow.fs
+
 from ray.air.config import (
+    CheckpointConfig,
     FailureConfig as FailureConfigV1,
-    RunConfig as RunConfigV1,
     ScalingConfig as ScalingConfigV1,
 )
 from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import _DEPRECATED
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.migration_utils import (
     FAIL_FAST_DEPRECATION_MESSAGE,
     TRAINER_RESOURCES_DEPRECATION_MESSAGE,
 )
 from ray.train.v2._internal.util import date_str
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,7 +35,9 @@ class ScalingConfig(ScalingConfigV1):
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
-            ``resources_per_worker`` argument.
+            ``resources_per_worker`` argument. If the number of workers is 0,
+            the training function will run in local mode, meaning the training
+            function runs in the same process.
         use_gpu: If True, training will be done on GPUs (1 per worker).
             Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
@@ -43,7 +54,17 @@ class ScalingConfig(ScalingConfigV1):
             of accelerators.
             See :ref:`the available accelerator types <accelerator_types>`.
             Ensure that your cluster has instances with the specified accelerator type
-            or is able to autoscale to fulfill the request.
+            or is able to autoscale to fulfill the request. This field is required
+            when `use_tpu` is True and `num_workers` is greater than 1.
+        use_tpu: [Experimental] If True, training will be done on TPUs (1 TPU VM
+            per worker). Defaults to False. The number of TPUs reserved by each
+            worker can be overridden with the ``resources_per_worker``
+            argument. This arg enables SPMD execution of the training workload.
+        topology: [Experimental] If specified, Ray Train will launch the training
+            coordinator and workers on nodes with the specified topology. Topology is
+            auto-detected for TPUs and added as Ray node labels. This arg enables
+            SPMD execution of the training workload. This field is required
+            when `use_tpu` is True and `num_workers` is greater than 1.
 
     Example:
 
@@ -65,16 +86,68 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     trainer_resources: Optional[dict] = None
+    use_tpu: Union[bool] = False
+    topology: Optional[str] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
+        if self.use_gpu and self.use_tpu:
+            raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
+
+        if not self.use_tpu and self.num_tpus_per_worker > 0:
+            raise ValueError(
+                "`use_tpu` is False but `TPU` was found in "
+                "`resources_per_worker`. Either set `use_tpu` to True or "
+                "remove `TPU` from `resources_per_worker."
+            )
+
+        if self.use_tpu and self.num_tpus_per_worker == 0:
+            raise ValueError(
+                "`use_tpu` is True but `TPU` is set to 0 in "
+                "`resources_per_worker`. Either set `use_tpu` to False or "
+                "request a positive number of `TPU` in "
+                "`resources_per_worker."
+            )
+
+        if self.use_tpu and self.num_workers > 1:
+            if not self.topology:
+                raise ValueError(
+                    "`topology` must be specified in ScalingConfig when `use_tpu=True` "
+                    " and `num_workers` > 1."
+                )
+            if not self.accelerator_type:
+                raise ValueError(
+                    "`accelerator_type` must be specified in ScalingConfig when "
+                    "`use_tpu=True` and `num_workers` > 1."
+                )
+
+        if self.num_workers == 0:
+            logger.info(
+                "Running in local mode. The training function will run in the same process. "
+                "If you are using it and running into issues please file a report at "
+                "https://github.com/ray-project/ray/issues."
+            )
+
         super().__post_init__()
+
+    @property
+    def _resources_per_worker_not_none(self):
+        if self.resources_per_worker is None:
+            if self.use_tpu:
+                return {"TPU": 1}
+
+        return super()._resources_per_worker_not_none
 
     @property
     def _trainer_resources_not_none(self):
         return {}
+
+    @property
+    def num_tpus_per_worker(self):
+        """The number of TPUs to set per worker."""
+        return self._resources_per_worker_not_none.get("TPU", 0)
 
 
 @dataclass
@@ -82,13 +155,17 @@ class FailureConfig(FailureConfigV1):
     """Configuration related to failure handling of each training run.
 
     Args:
-        max_failures: Tries to recover a run at least this many times.
+        max_failures: Tries to recover a run from training worker errors at least this many times.
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
+        controller_failure_limit: [DeveloperAPI] The maximum number of controller failures to tolerate.
+            Setting to -1 will lead to infinite controller retries.
+            Setting to 0 will disable controller retries. Defaults to -1.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
+    controller_failure_limit: int = -1
 
     def __post_init__(self):
         # TODO(justinvyu): Add link to migration guide.
@@ -97,7 +174,8 @@ class FailureConfig(FailureConfigV1):
 
 
 @dataclass
-class RunConfig(RunConfigV1):
+@PublicAPI(stability="stable")
+class RunConfig:
     """Runtime configuration for training runs.
 
     Args:
@@ -119,6 +197,11 @@ class RunConfig(RunConfigV1):
             for all Ray Train worker actors.
     """
 
+    name: Optional[str] = None
+    storage_path: Optional[str] = None
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
+    failure_config: Optional[FailureConfig] = None
+    checkpoint_config: Optional[CheckpointConfig] = None
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
 
@@ -129,7 +212,19 @@ class RunConfig(RunConfigV1):
     log_to_file: str = _DEPRECATED
 
     def __post_init__(self):
-        super().__post_init__()
+        from ray.train.constants import DEFAULT_STORAGE_PATH
+
+        if self.storage_path is None:
+            self.storage_path = DEFAULT_STORAGE_PATH
+
+        if not self.failure_config:
+            self.failure_config = FailureConfig()
+
+        if not self.checkpoint_config:
+            self.checkpoint_config = CheckpointConfig()
+
+        if isinstance(self.storage_path, Path):
+            self.storage_path = self.storage_path.as_posix()
 
         # TODO(justinvyu): Add link to migration guide.
         run_config_deprecation_message = (
@@ -168,3 +263,11 @@ class RunConfig(RunConfigV1):
                 "See this issue for more context: "
                 "https://github.com/ray-project/ray/issues/49454"
             )
+
+    @cached_property
+    def storage_context(self) -> StorageContext:
+        return StorageContext(
+            storage_path=self.storage_path,
+            experiment_dir_name=self.name,
+            storage_filesystem=self.storage_filesystem,
+        )

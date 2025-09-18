@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+#include <filesystem>
+
 #ifdef _WIN32
 #include <process.h>
 #else
@@ -44,8 +46,6 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
-#include "ray/util/event_label.h"
-#include "ray/util/string_utils.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -58,7 +58,7 @@ namespace ray {
 // %L is loglevel, %P is process id, %t for thread id.
 constexpr char kLogFormatTextPattern[] = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
 constexpr char kLogFormatJsonPattern[] =
-    "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\",\"levelname\":\"%L\"%v}";
+    R"({"asctime":"%Y-%m-%d %H:%M:%S,%e","levelname":"%L"%v})";
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";        // NOLINT
@@ -76,10 +76,17 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
   void *frames[MAX_NUM_FRAMES];
 
 #ifndef _WIN32
+  // A deleter can be used with std::unique_ptr to free memory without passing function
+  // pointer of free
+  struct FreeDeleter {
+    void operator()(void *ptr) const { free(ptr); }
+  };
+
   const int num_frames = backtrace(frames, MAX_NUM_FRAMES);
-  char **frame_symbols = backtrace_symbols(frames, num_frames);
+  std::unique_ptr<char *, FreeDeleter> frame_symbols(
+      backtrace_symbols(frames, num_frames));
   for (int i = 0; i < num_frames; ++i) {
-    os << frame_symbols[i];
+    os << frame_symbols.get()[i];
 
     if (absl::Symbolize(frames[i], buf, sizeof(buf))) {
       os << " " << buf;
@@ -87,7 +94,6 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
 
     os << "\n";
   }
-  free(frame_symbols);
 #else
   const int num_frames = absl::GetStackTrace(frames, MAX_NUM_FRAMES, 0);
   for (int i = 0; i < num_frames; ++i) {
@@ -339,34 +345,6 @@ void RayLog::InitLogFormat() {
   return 1;
 }
 
-/*static*/ std::string RayLog::GetLogFilepathFromDirectory(const std::string &log_dir,
-                                                           const std::string &app_name) {
-  if (log_dir.empty()) {
-    return "";
-  }
-
-#ifdef _WIN32
-  int pid = _getpid();
-#else
-  pid_t pid = getpid();
-#endif
-  return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
-}
-
-/*static*/ std::string RayLog::GetErrLogFilepathFromDirectory(
-    const std::string &log_dir, const std::string &app_name) {
-  if (log_dir.empty()) {
-    return "";
-  }
-
-#ifdef _WIN32
-  int pid = _getpid();
-#else
-  pid_t pid = getpid();
-#endif
-  return JoinPaths(log_dir, absl::StrFormat("%s_%d.err", app_name, pid));
-}
-
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
                                     RayLogLevel severity_threshold,
                                     const std::string &log_filepath,
@@ -592,7 +570,7 @@ RayLog::~RayLog() {
     msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     for (const auto &callback : fatal_log_callbacks_) {
-      callback(EL_RAY_FATAL_CHECK_FAILED, expose_fatal_osstream_.str());
+      callback("RAY_FATAL_CHECK_FAILED", expose_fatal_osstream_.str());
     }
   }
 
@@ -603,7 +581,7 @@ RayLog::~RayLog() {
   // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
   if (log_format_json_) {
     logger->log(GetMappedSeverity(severity_),
-                /*fmt*/ ",\"{}\":\"{}\"{}",
+                /*fmt*/ R"(,"{}":"{}"{})",
                 kLogKeyMessage,
                 json_escape_string(msg_osstream_.str()),
                 context_osstream_.str());

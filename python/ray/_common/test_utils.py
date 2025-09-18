@@ -6,17 +6,20 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
 
 import asyncio
-from collections.abc import Awaitable
-from contextlib import contextmanager
 import inspect
 import os
 import time
 import traceback
-from typing import Any, Callable, Iterator
 import uuid
+from collections.abc import Awaitable
+from contextlib import contextmanager
+from enum import Enum
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 
 import ray
+import ray._common.usage.usage_lib as ray_usage_lib
 import ray._private.utils
+from ray._common.network_utils import build_address
 
 
 @ray.remote(num_cpus=0)
@@ -171,10 +174,76 @@ def simulate_s3_bucket(
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
-    s3_server = f"http://localhost:{port}"
+    s3_server = f"http://{build_address('localhost', port)}"
     server = ThreadedMotoServer(port=port)
     server.start()
     url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
     yield url
     server.stop()
     os.environ = old_env
+
+
+class TelemetryCallsite(Enum):
+    DRIVER = "driver"
+    ACTOR = "actor"
+    TASK = "task"
+
+
+def _get_library_usages() -> Set[str]:
+    return set(
+        ray_usage_lib.get_library_usages_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+    )
+
+
+def _get_extra_usage_tags() -> Dict[str, str]:
+    return ray_usage_lib.get_extra_usage_tags_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client()
+    )
+
+
+def check_library_usage_telemetry(
+    use_lib_fn: Callable[[], None],
+    *,
+    callsite: TelemetryCallsite,
+    expected_library_usages: List[Set[str]],
+    expected_extra_usage_tags: Optional[Dict[str, str]] = None,
+):
+    """Helper for writing tests to validate library usage telemetry.
+
+    `use_lib_fn` is a callable that will be called from the provided callsite.
+    After calling it, the telemetry data to export will be validated against
+    expected_library_usages and expected_extra_usage_tags.
+    """
+    assert len(_get_library_usages()) == 0, _get_library_usages()
+
+    if callsite == TelemetryCallsite.DRIVER:
+        use_lib_fn()
+    elif callsite == TelemetryCallsite.ACTOR:
+
+        @ray.remote
+        class A:
+            def __init__(self):
+                use_lib_fn()
+
+        a = A.remote()
+        ray.get(a.__ray_ready__.remote())
+    elif callsite == TelemetryCallsite.TASK:
+
+        @ray.remote
+        def f():
+            use_lib_fn()
+
+        ray.get(f.remote())
+    else:
+        assert False, f"Unrecognized callsite: {callsite}"
+
+    library_usages = _get_library_usages()
+    extra_usage_tags = _get_extra_usage_tags()
+
+    assert library_usages in expected_library_usages, library_usages
+    if expected_extra_usage_tags:
+        assert all(
+            [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
+        ), extra_usage_tags

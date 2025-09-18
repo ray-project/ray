@@ -270,14 +270,16 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                the package name 'pip' in front of the `pip_version` to form the final
                requirement string, the syntax of a requirement specifier is defined in
                full in PEP 508.
+            d) pip_install_options (optional, List[str]): user-provided options for
+              `pip install` command, defaults to ["--disable-pip-version-check", "--no-cache-dir"].
 
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
     dependencies (e.g. "uvicorn", "requests").
     """
     assert pip is not None
-
     result = None
+
     if sys.platform == "win32":
         logger.warning(
             "runtime environment support is experimental on Windows. "
@@ -287,14 +289,22 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
         pip_list = _handle_local_deps_requirement_file(pip)
-        result = dict(packages=pip_list, pip_check=False)
+        result = dict(
+            packages=pip_list,
+            pip_check=False,
+        )
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         result = dict(packages=pip, pip_check=False)
     elif isinstance(pip, dict):
-        if set(pip.keys()) - {"packages", "pip_check", "pip_version"}:
+        if set(pip.keys()) - {
+            "packages",
+            "pip_check",
+            "pip_install_options",
+            "pip_version",
+        }:
             raise ValueError(
                 "runtime_env['pip'] can only have these fields: "
-                "packages, pip_check and pip_version, but got: "
+                "packages, pip_check, pip_install_options and pip_version, but got: "
                 f"{list(pip.keys())}"
             )
 
@@ -309,8 +319,25 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                     "runtime_env['pip']['pip_version'] must be of type str, "
                     f"got {type(pip['pip_version'])}"
                 )
+        if "pip_install_options" in pip:
+            if not isinstance(pip["pip_install_options"], list):
+                raise TypeError(
+                    "runtime_env['pip']['pip_install_options'] must be of type "
+                    f"list[str] got {type(pip['pip_install_options'])}"
+                )
+            # Check each item in installation option.
+            for idx, cur_opt in enumerate(pip["pip_install_options"]):
+                if not isinstance(cur_opt, str):
+                    raise TypeError(
+                        "runtime_env['pip']['pip_install_options'] must be of type "
+                        f"list[str] got {type(cur_opt)} for {idx}-th item."
+                    )
+
         result = pip.copy()
+        # Contrary to pip_check, we do not insert the default value of pip_install_options.
+        # This is to maintain backwards compatibility with ray==2.0.1
         result["pip_check"] = pip.get("pip_check", False)
+
         if "packages" not in pip:
             raise ValueError(
                 f"runtime_env['pip'] must include field 'packages', but got {pip}"

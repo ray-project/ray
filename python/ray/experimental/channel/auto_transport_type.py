@@ -11,8 +11,8 @@ class AutoTransportType(ChannelOutputType):
     Type hint for automatic transport selection for tensors.
 
     With this type hint Compiled Graphs automatically decide the best transport
-    to use (e.g., NCCL or shared memory) based on the node locations and GPU IDs
-    of the readers and writers.
+    to use (e.g., accellerator or shared memory) based on the node locations and
+    GPU IDs of the readers and writers.
     """
 
     def __init__(
@@ -172,10 +172,10 @@ class TypeHintResolver:
                 _direct_return=auto_transport_type._direct_return,
             )
 
-        # Case 3: writer and readers use different GPUs, use NCCL to transport
+        # Case 3: writer and readers use different GPUs, use accelerator to transport
         # the tensors
         return TorchTensorType(
-            transport="nccl",
+            transport="accelerator",
             device=auto_transport_type.device,
             _static_shape=auto_transport_type._static_shape,
             _direct_return=auto_transport_type._direct_return,

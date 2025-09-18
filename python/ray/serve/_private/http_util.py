@@ -377,16 +377,7 @@ class ASGIReceiveProxy:
                 pickled_messages = await self._receive_asgi_messages(
                     self._request_metadata
                 )
-                if isinstance(pickled_messages, bytes):
-                    messages = pickle.loads(pickled_messages)
-                else:
-                    messages = (
-                        pickled_messages
-                        if isinstance(pickled_messages, list)
-                        else [pickled_messages]
-                    )
-
-                for message in messages:
+                for message in pickle.loads(pickled_messages):
                     self.queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
@@ -441,7 +432,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     from fastapi import APIRouter, Depends
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
-    def get_current_servable_instance():
+    async def get_current_servable_instance():
         from ray import serve
 
         return serve.get_replica_context().servable_object
@@ -657,11 +648,11 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         headers = MutableHeaders(scope=scope)
-        if SERVE_HTTP_REQUEST_ID_HEADER not in headers:
+        request_id = headers.get(SERVE_HTTP_REQUEST_ID_HEADER)
+
+        if request_id is None:
             request_id = generate_request_id()
             headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
-        elif SERVE_HTTP_REQUEST_ID_HEADER in headers:
-            request_id = headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":
@@ -723,6 +714,23 @@ async def start_asgi_http_server(
     # has no use to us.
     logging.getLogger("uvicorn.error").level = logging.CRITICAL
 
+    # Configure SSL if certificates are provided
+    ssl_kwargs = {}
+    if http_options.ssl_keyfile and http_options.ssl_certfile:
+        ssl_kwargs = {
+            "ssl_keyfile": http_options.ssl_keyfile,
+            "ssl_certfile": http_options.ssl_certfile,
+        }
+        if http_options.ssl_keyfile_password:
+            ssl_kwargs["ssl_keyfile_password"] = http_options.ssl_keyfile_password
+        if http_options.ssl_ca_certs:
+            ssl_kwargs["ssl_ca_certs"] = http_options.ssl_ca_certs
+
+        logger.info(
+            f"Starting HTTPS server on {http_options.host}:{http_options.port} "
+            f"with SSL certificate: {http_options.ssl_certfile}"
+        )
+
     # NOTE: We have to use lower level uvicorn Config and Server
     # class because we want to run the server as a coroutine. The only
     # alternative is to call uvicorn.run which is blocking.
@@ -739,6 +747,7 @@ async def start_asgi_http_server(
             access_log=False,
             log_level=None,
             log_config=None,
+            **ssl_kwargs,
         )
     )
 

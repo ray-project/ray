@@ -89,8 +89,7 @@ class MapTransformFn:
     def output_block_size_option(self):
         return self._output_block_size_option
 
-    def set_target_max_block_size(self, target_max_block_size: int):
-        assert target_max_block_size is not None
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
         self._output_block_size_option = OutputBlockSizeOption(
             target_max_block_size=target_max_block_size
         )
@@ -164,7 +163,7 @@ class MapTransformer:
         """Get the transform functions."""
         return self._transform_fns
 
-    def set_target_max_block_size(self, target_max_block_size: int):
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
         if target_max_block_size is not None:
             self._output_block_size_option = OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size
@@ -220,12 +219,9 @@ class MapTransformer:
         ctx: TaskContext,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
-        assert (
-            self.target_max_block_size is not None
-        ), "target_max_block_size must be set before running"
         for transform_fn in self._transform_fns:
             if not transform_fn.output_block_size_option:
-                transform_fn.set_target_max_block_size(self.target_max_block_size)
+                transform_fn.override_target_max_block_size(self.target_max_block_size)
 
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
@@ -255,7 +251,7 @@ class MapTransformer:
 
         fused_transform_fns = self._transform_fns + other._transform_fns
         transformer = MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
-        transformer.set_target_max_block_size(target_max_block_size)
+        transformer.override_target_max_block_size(target_max_block_size)
         return transformer
 
     def udf_time(self) -> float:
@@ -603,8 +599,5 @@ class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
             offset = 0
             split_sizes = _splitrange(block.num_rows(), self._additional_split_factor)
             for size in split_sizes:
-                # NOTE: copy=True is needed because this is an output block. If
-                # a block slice is put into the object store, the entire block
-                # will get serialized.
-                yield block.slice(offset, offset + size, copy=True)
+                yield block.slice(offset, offset + size, copy=False)
                 offset += size

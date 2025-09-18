@@ -49,6 +49,8 @@ def get_activation_fn(
             return nn.Tanh
         elif name_lower == "elu":
             return nn.ELU
+        elif name_lower == "softmax":
+            return nn.Softmax
     elif framework == "jax":
         if name_lower in ["linear", None]:
             return None

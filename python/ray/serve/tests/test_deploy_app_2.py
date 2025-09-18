@@ -3,19 +3,26 @@ import re
 import sys
 import time
 from copy import copy
+from functools import partial
+from typing import List
 
 import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import ReplicaID
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
+    check_running,
+    check_target_groups_ready,
+    get_application_url,
 )
 from ray.serve.schema import (
     ApplicationStatus,
@@ -23,7 +30,6 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
 )
-from ray.serve.tests.test_deploy_app import check_running
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
@@ -35,6 +41,14 @@ def check_log_file(log_file: str, expected_regex: list):
         for regex in expected_regex:
             assert re.findall(regex, s) != [], f"Did not find pattern '{regex}' in {s}"
     return True
+
+
+def check_deployments_dead(deployment_ids: List[DeploymentID]):
+    prefixes = [f"{id.app_name}#{id.name}" for id in deployment_ids]
+    actor_names = [
+        actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
+    ]
+    return all(f"ServeReplica::{p}" not in actor_names for p in prefixes)
 
 
 class TestDeploywithLoggingConfig:
@@ -395,18 +409,9 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ],
     )
     client.deploy_apps(config)
-
-    def check_application_running(
-        name: str, route_prefix: str, *, msg: str = "wonderful world"
-    ):
-        status = serve.status().applications[name]
-        assert status.status == "RUNNING"
-        assert httpx.post(f"http://localhost:8000{route_prefix}/").text == msg
-        return True
-
-    wait_for_condition(
-        check_application_running, name="declarative-app-1", route_prefix="/app-1"
-    )
+    wait_for_condition(check_running, app_name="declarative-app-1")
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
 
     # Now `serve.run` a dynamic app.
     @serve.deployment
@@ -415,12 +420,9 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             return "Hello!"
 
     serve.run(D.bind(), name="dynamic-app", route_prefix="/dynamic")
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     # Add a new app via declarative API.
     # Existing declarative app and dynamic app should not be affected.
@@ -432,46 +434,35 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ),
     )
     client.deploy_apps(config)
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running, name="declarative-app-2", route_prefix="/app-2"
-    )
-    wait_for_condition(
-        check_application_running, name="declarative-app-1", route_prefix="/app-1"
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
+
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     # Delete one of the apps via declarative API.
     # Other declarative app and dynamic app should not be affected.
     config.applications.pop(0)
     client.deploy_apps(config)
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running, name="declarative-app-2", route_prefix="/app-2"
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     wait_for_condition(lambda: "declarative-app-1" not in serve.status().applications)
 
     # Now overwrite the declarative app with a dynamic app with the same name.
     # On subsequent declarative apply, that app should not be affected.
     serve.run(D.bind(), name="declarative-app-2", route_prefix="/app-2")
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     config.applications = [
         ServeApplicationSchema(
@@ -481,39 +472,41 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ),
     ]
     client.deploy_apps(config)
+    wait_for_condition(check_running, app_name="declarative-app-1")
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-1",
-        route_prefix="/app-1",
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
+
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     # Verify that the controller does not delete the dynamic apps on recovery.
     ray.kill(client._controller, no_restart=False)
+
+    wait_for_condition(check_running, app_name="declarative-app-1")
+    # It takes some time for the target groups to be ready after controller recovery.
+    # So we make sure the target groups are ready before obtaining the URL.
     wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
+        check_target_groups_ready, client=client, app_name="declarative-app-1"
     )
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
+
+    wait_for_condition(check_running, app_name="dynamic-app")
+    wait_for_condition(check_target_groups_ready, client=client, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
+
+    wait_for_condition(check_running, app_name="declarative-app-2")
     wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
+        check_target_groups_ready, client=client, app_name="declarative-app-2"
     )
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     # Now overwrite the dynamic app with a declarative one and check that it gets
     # deleted upon another apply that doesn't include it.
@@ -525,11 +518,9 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
         ),
     ]
     client.deploy_apps(config)
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-    )
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
     config.applications = []
     client.deploy_apps(config)
@@ -546,23 +537,24 @@ def test_change_route_prefix(serve_instance):
         "import_path": "ray.serve.tests.test_config_files.pid.node",
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-
     wait_for_condition(check_running)
-    pid1 = httpx.get("http://localhost:8000/old").json()[0]
-
+    url = get_application_url()
+    pid1 = httpx.get(url).json()[0]
     # Redeploy application with route prefix /new.
     app_config["route_prefix"] = "/new"
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-
+    wait_for_condition(check_running)
     # Check that the old route is gone and the response from the new route
     # has the same PID (replica wasn't restarted).
     def check_switched():
         # Old route should be gone
-        resp = httpx.get("http://localhost:8000/old")
+        url = get_application_url(exclude_route_prefix=True)
+        resp = httpx.get(f"{url}/old")
         assert "Path '/old' not found." in resp.text
 
         # Response from new route should be same PID
-        pid2 = httpx.get("http://localhost:8000/new").json()[0]
+        url = get_application_url(exclude_route_prefix=True)
+        pid2 = httpx.get(f"{url}/new").json()[0]
         assert pid2 == pid1
         return True
 
@@ -602,6 +594,7 @@ def test_num_replicas_auto_api(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
     }
 
 
@@ -654,6 +647,7 @@ def test_num_replicas_auto_basic(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
@@ -775,6 +769,44 @@ def test_deploy_with_route_prefix_conflict(serve_instance):
     wait_for_condition(
         lambda: httpx.get("http://localhost:8000/app2").text == "wonderful world"
     )
+
+
+def test_update_config_graceful_shutdown_timeout(serve_instance):
+    """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
+    client = serve_instance
+
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+        "deployments": [{"name": "f", "graceful_shutdown_timeout_s": 1000}],
+    }
+
+    # Deploy first time
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+
+    # Start off with signal ready, and send query
+    handle.send.remote().result()
+    pid1 = handle.remote().result()[0]
+    print("PID of replica after first deployment:", pid1)
+
+    # Redeploy with shutdown timeout set to 5 seconds
+    config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+
+    pid2 = handle.remote().result()[0]
+    assert pid1 == pid2
+    print("PID of replica after redeployment:", pid2)
+
+    # Send blocking query
+    handle.send.remote(clear=True)
+    handle.remote()
+    # Try to delete deployment, should be blocked until the timeout at 5 seconds
+    client.delete_apps([SERVE_DEFAULT_APP_NAME], blocking=False)
+    # Replica should be dead within 10 second timeout, which means
+    # graceful_shutdown_timeout_s was successfully updated lightweightly
+    wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
 if __name__ == "__main__":

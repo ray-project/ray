@@ -1,15 +1,17 @@
+import random
+import time
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 
 import ray
 from ray import serve
-from ray._private.usage.usage_lib import (
+from ray._common.usage.usage_lib import (
     get_hardware_usages_to_report,
     record_extra_usage_tag,
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
+from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
 from ray.llm._internal.serve.observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -170,7 +172,7 @@ class TelemetryAgent:
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
         """Record telemetry model."""
-        from ray._private.usage.usage_lib import TagKey
+        from ray._common.usage.usage_lib import TagKey
 
         if model:
             self.models.append(model)
@@ -190,7 +192,7 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
             LLM_SERVE_TELEMETRY_ACTOR_NAME, namespace=LLM_SERVE_TELEMETRY_NAMESPACE
         )
     except ValueError:
-        from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+        from ray._common.constants import HEAD_NODE_RESOURCE_NAME
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
         telemetry_agent = TelemetryAgent.options(
@@ -203,9 +205,39 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
     return telemetry_agent
 
 
+def _retry_get_telemetry_agent(
+    max_retries: int = 5, base_delay: float = 0.1
+) -> TelemetryAgent:
+    max_retries = 5
+    base_delay = 0.1
+
+    telemetry_agent = None
+    for attempt in range(max_retries):
+        try:
+            telemetry_agent = _get_or_create_telemetry_agent()
+            return telemetry_agent
+        except ValueError as e:
+            # Due to race conditions among multiple replicas, we may get:
+            #   ValueError: Actor with name 'llm_serve_telemetry' already
+            #   exists in the namespace llm_serve_telemetry
+            logger.info(
+                "Attempt %s/%s to get telemetry agent failed", attempt + 1, max_retries
+            )
+            if attempt == max_retries - 1:
+                raise e
+
+            # Exponential backoff with jitter
+            exponential_delay = base_delay * (2**attempt)
+            jitter = random.uniform(0, 0.5)
+            delay = exponential_delay + jitter
+            # Max total wait time is ~3.5 seconds for 5 attempts.
+            time.sleep(delay)
+
+
 def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
     """Push telemetry report for a model."""
-    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent = _retry_get_telemetry_agent()
+    assert telemetry_agent is not None
     ray.get(telemetry_agent.record.remote(model))
 
 

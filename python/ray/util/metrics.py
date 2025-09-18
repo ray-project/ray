@@ -1,13 +1,14 @@
 import logging
+import os
 import re
 import warnings
-
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray._raylet import (
-    Sum as CythonCount,
-    Histogram as CythonHistogram,
+    Count as CythonCount,
     Gauge as CythonGauge,
+    Histogram as CythonHistogram,
+    Sum as CythonSum,
 )  # noqa: E402
 
 # Sum is used for CythonCount because it allows incrementing by positive
@@ -189,7 +190,21 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            self._metric = CythonCount(self._name, self._description, self._tag_keys)
+            if os.environ.get("RAY_enable_open_telemetry") == "1":
+                """
+                For the new opentelemetry implementation, we'll correctly use Counter
+                rather than Sum.
+                """
+                self._metric = CythonCount(
+                    self._name, self._description, self._tag_keys
+                )
+            else:
+                """
+                For the previous opencensus implementation, we used Sum to support
+                exporting Counter as a gauge metric. We'll drop that feature in the
+                new opentelemetry implementation.
+                """
+                self._metric = CythonSum(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__

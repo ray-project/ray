@@ -48,7 +48,8 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
       worker_context.GetWorkerID().Binary(),
       node_ip_address,
       event_name,
-      absl::GetCurrentTimeNanos());
+      absl::GetCurrentTimeNanos(),
+      task_event_buffer_.GetSessionName());
 }
 
 ProfileEvent::~ProfileEvent() {

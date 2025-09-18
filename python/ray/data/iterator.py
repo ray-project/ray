@@ -17,7 +17,7 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.block_batching.iter_batches import iter_batches
+from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
@@ -158,6 +158,11 @@ class DataIterator(abc.ABC):
             local_shuffle_seed=local_shuffle_seed,
         )
 
+    def _create_batch_iterator(
+        self, ref_bundles_iter: Iterator[RefBundle], **kwargs
+    ) -> BatchIterator:
+        return BatchIterator(ref_bundles_iter, **kwargs)
+
     def _iter_batches(
         self,
         *,
@@ -184,31 +189,27 @@ class DataIterator(abc.ABC):
                 blocks_owned_by_consumer,
             ) = self._to_ref_bundle_iterator()
 
-            iterator = iter(
-                iter_batches(
-                    ref_bundles_iterator,
-                    stats=stats,
-                    clear_block_after_read=blocks_owned_by_consumer,
-                    batch_size=batch_size,
-                    batch_format=batch_format,
-                    drop_last=drop_last,
-                    collate_fn=_collate_fn,
-                    finalize_fn=_finalize_fn,
-                    shuffle_buffer_min_size=local_shuffle_buffer_size,
-                    shuffle_seed=local_shuffle_seed,
-                    prefetch_batches=prefetch_batches,
-                )
-            )
-
             dataset_tag = self._get_dataset_tag()
+
+            batch_iterator = self._create_batch_iterator(
+                ref_bundles_iterator,
+                stats=stats,
+                dataset_tag=dataset_tag,
+                clear_block_after_read=blocks_owned_by_consumer,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                collate_fn=_collate_fn,
+                finalize_fn=_finalize_fn,
+                shuffle_buffer_min_size=local_shuffle_buffer_size,
+                shuffle_seed=local_shuffle_seed,
+                prefetch_batches=prefetch_batches,
+            )
 
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            for batch in iterator:
-                yield batch
-                StatsManager.update_iteration_metrics(stats, dataset_tag)
-            StatsManager.clear_iteration_metrics(dataset_tag)
+            yield from batch_iterator
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)
@@ -278,6 +279,7 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        pin_memory: bool = False,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
@@ -295,24 +297,57 @@ class DataIterator(abc.ABC):
             {'id': tensor([4, 5, 6, 7])}
             {'id': tensor([ 8,  9, 10, 11])}
 
-            Use the ``collate_fn`` to customize how the tensor batch is created.
+            Use the ``ArrowBatchCollateFn`` to customize how the tensor batch is created
+            from an Arrow batch.
 
-            >>> from typing import Any, Dict
+            >>> import pyarrow as pa
             >>> import torch
-            >>> import numpy as np
             >>> import ray
-            >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
-            ...     return torch.stack(
-            ...         [torch.as_tensor(array) for array in batch.values()],
-            ...         axis=1
-            ...     )
+            >>> from ray.data.collate_fn import ArrowBatchCollateFn
+            >>> class CustomArrowBatchCollateFn(ArrowBatchCollateFn):
+            ...     def __call__(self, batch: pa.Table) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"].to_numpy() + 5)
             >>> iterator = ray.data.from_items([
             ...     {"col_1": 1, "col_2": 2},
             ...     {"col_1": 3, "col_2": 4}]).iterator()
-            >>> for batch in iterator.iter_torch_batches(collate_fn=collate_fn):
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomArrowBatchCollateFn()):
             ...     print(batch)
-            tensor([[1, 2],
-                    [3, 4]])
+            tensor([6, 8])
+
+            Use the ``NumpyBatchCollateFn`` to customize how the tensor batch is created
+            from a Numpy batch.
+
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import torch
+            >>> import ray
+            >>> from ray.data.collate_fn import NumpyBatchCollateFn
+            >>> class CustomNumpyBatchCollateFn(NumpyBatchCollateFn):
+            ...     def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"] + 5)
+            >>> iterator = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}]).iterator()
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomNumpyBatchCollateFn()):
+            ...     print(batch)
+            tensor([6, 8])
+
+            Use the ``PandasBatchCollateFn`` to customize how the tensor batch is created
+            from a Pandas batch.
+
+            >>> import pandas as pd
+            >>> import torch
+            >>> import ray
+            >>> from ray.data.collate_fn import PandasBatchCollateFn
+            >>> class CustomPandasBatchCollateFn(PandasBatchCollateFn):
+            ...     def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"].to_numpy() + 5)
+            >>> iterator = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}]).iterator()
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomPandasBatchCollateFn()):
+            ...     print(batch)
+            tensor([6, 8])
 
         Time complexity: O(1)
 
@@ -365,6 +400,8 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
+                `pin_memory` is only supported when using `DefaultCollateFn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -377,6 +414,11 @@ class DataIterator(abc.ABC):
                 "collate_fn cannot be used with dtypes and device."
                 "You should manually move the output Torch tensors to the"
                 "desired dtype and device outside of collate_fn."
+            )
+
+        if pin_memory and collate_fn is not None:
+            raise ValueError(
+                "pin_memory is only supported when using `DefaultCollateFn`."
             )
 
         if device == "auto":
@@ -420,6 +462,7 @@ class DataIterator(abc.ABC):
             collate_fn = DefaultCollateFn(
                 dtypes=dtypes,
                 device=device,
+                pin_memory=pin_memory,
             )
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):

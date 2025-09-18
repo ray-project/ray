@@ -1,23 +1,23 @@
 import os
 import sys
-from typing import List, Set, Tuple, Optional
+from typing import List, Optional, Set, Tuple
 
-import yaml
 import click
+import yaml
+from ray_release.test import Test, TestState
 
-from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.builder_container import (
-    BuilderContainer,
+    DEFAULT_ARCHITECTURE,
     DEFAULT_BUILD_TYPE,
     DEFAULT_PYTHON_VERSION,
-    DEFAULT_ARCHITECTURE,
     PYTHON_VERSIONS,
+    BuilderContainer,
 )
+from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login, ci_init
-from ray_release.test import Test, TestState
+from ci.ray_ci.utils import ci_init, ecr_docker_login
+from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 
 CUDA_COPYRIGHT = """
 ==========
@@ -226,7 +226,7 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
     ci_init()
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    ecr_docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests

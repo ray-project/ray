@@ -22,7 +22,6 @@ def get_deploy_args(
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
-    docs_path: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -44,7 +43,6 @@ def get_deploy_args(
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
-        "docs_path": docs_path,
         "ingress": ingress,
     }
 
@@ -56,7 +54,6 @@ def deploy_args_to_deployment_info(
     deployment_config_proto_bytes: bytes,
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
-    docs_path: Optional[str],
     app_name: Optional[str] = None,
     ingress: bool = False,
     route_prefix: Optional[str] = None,
@@ -88,7 +85,6 @@ def deploy_args_to_deployment_info(
         deployer_job_id=deployer_job_id,
         start_time_ms=int(time.time() * 1000),
         route_prefix=route_prefix,
-        docs_path=docs_path,
         ingress=ingress,
     )
 

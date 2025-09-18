@@ -9,12 +9,15 @@ from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
+import httpx
 import requests
 from starlette.requests import Request
 
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -295,11 +298,20 @@ def check_num_replicas_gte(
 
 
 def check_num_replicas_eq(
-    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
+    name: str,
+    target: int,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_controller: bool = False,
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_alive_replicas(name, app_name) == target
+    if use_controller:
+        dep = serve.status().applications[app_name].deployments[name]
+        num_running_replicas = dep.replica_states.get(ReplicaState.RUNNING, 0)
+        assert num_running_replicas == target
+    else:
+        assert get_num_alive_replicas(name, app_name) == target
+
     return True
 
 
@@ -705,10 +717,35 @@ def tlog(s: str, level: str = "INFO"):
     print(f"[{level}] {now} {s}")
 
 
+def check_target_groups_ready(
+    client: ServeControllerClient,
+    app_name: str,
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+):
+    """Wait for target groups to be ready for the given app and protocol.
+
+    Target groups are ready when there are at least one target for the given protocol. And it's
+    possible that target groups are not ready immediately. An example is when the controller
+    is recovering from a crash.
+    """
+    target_groups = ray.get(client._controller.get_target_groups.remote(app_name))
+    target_groups = [
+        target_group
+        for target_group in target_groups
+        if target_group.protocol == protocol
+    ]
+    all_targets = [
+        target for target_group in target_groups for target in target_group.targets
+    ]
+    return len(all_targets) > 0
+
+
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_localhost: bool = False,
+    use_localhost: bool = True,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
 ) -> List[str]:
     """Get the URL of the application.
 
@@ -718,13 +755,21 @@ def get_application_urls(
         use_localhost: Whether to use localhost instead of the IP address.
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
-
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URLs of the application.
     """
-    client = _get_global_client()
+    client = _get_global_client(_health_check_controller=True)
     serve_details = client.get_serve_details()
+    assert (
+        app_name in serve_details["applications"]
+    ), f"App {app_name} not found in serve details. Use this method only when the app is known to be running."
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    # route_prefix is set to None when route_prefix value is specifically set to None
+    # in the config used to deploy the app.
+    if exclude_route_prefix or route_prefix is None:
+        route_prefix = ""
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
@@ -744,9 +789,14 @@ def get_application_urls(
         for target in target_group.targets:
             ip = "localhost" if use_localhost else target.ip
             if protocol == RequestProtocol.HTTP:
-                url = f"http://{ip}:{target.port}{route_prefix}"
+                scheme = "ws" if is_websocket else "http"
+                url = f"{scheme}://{build_address(ip, target.port)}{route_prefix}"
             elif protocol == RequestProtocol.GRPC:
-                url = f"{ip}:{target.port}"
+                if is_websocket:
+                    raise ValueError(
+                        "is_websocket=True is not supported with gRPC protocol."
+                    )
+                url = build_address(ip, target.port)
             else:
                 raise ValueError(f"Unsupported protocol: {protocol}")
             url = url.rstrip("/")
@@ -757,7 +807,9 @@ def get_application_urls(
 def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_localhost: bool = False,
+    use_localhost: bool = True,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
 ) -> str:
     """Get the URL of the application.
 
@@ -767,8 +819,41 @@ def get_application_url(
         use_localhost: Whether to use localhost instead of the IP address.
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
-
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
-    return random.choice(get_application_urls(protocol, app_name, use_localhost))
+    return random.choice(
+        get_application_urls(
+            protocol,
+            app_name,
+            use_localhost,
+            is_websocket,
+            exclude_route_prefix,
+        )
+    )
+
+
+def check_running(app_name: str = SERVE_DEFAULT_APP_NAME):
+    assert serve.status().applications[app_name].status == ApplicationStatus.RUNNING
+    return True
+
+
+def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
+    result_holder = {"resp": None}
+
+    def _attempt() -> bool:
+        try:
+            url = get_application_url("HTTP", app_name=app_name)
+            result_holder["resp"] = httpx.get(url, timeout=timeout)
+            return True
+        except (httpx.RequestError, IndexError):
+            return False
+
+    try:
+        wait_for_condition(_attempt, timeout=timeout)
+        return result_holder["resp"]
+    except RuntimeError as e:
+        # Preserve previous API by raising TimeoutError on expiry
+        raise TimeoutError from e

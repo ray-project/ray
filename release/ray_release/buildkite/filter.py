@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from ray_release.buildkite.settings import Frequency, get_frequency
 from ray_release.test import Test
 from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.configs.global_config import get_global_config
 
 
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
@@ -21,24 +22,38 @@ def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> An
 def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
-    test_attr_regex_filters: Optional[Dict[str, str]] = None,
+    test_filters: Optional[Dict[str, str]] = None,
     prefer_smoke_tests: bool = False,
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
 ) -> List[Tuple[Test, bool]]:
-    if test_attr_regex_filters is None:
-        test_attr_regex_filters = {}
+    if test_filters is None:
+        test_filters = {}
 
     tests_to_run = []
     for test in test_collection:
-        # First, filter by string attributes
         attr_mismatch = False
-        for attr, regex in test_attr_regex_filters.items():
-            if not re.fullmatch(regex, _unflattened_lookup(test, attr) or ""):
-                attr_mismatch = True
-                break
+        # Skip kuberay tests for now.
+        # TODO: (khluu) Remove this once we start running KubeRay release tests.
+        if test.is_kuberay() and get_global_config()["kuberay_disabled"]:
+            continue
+
+        # Check if any test attributes match filters
+        if test_filters:
+            for attr, value in test_filters.items():
+                # Only prefix filter doesn't use regex
+                if attr == "prefix":
+                    if not test.get_name().startswith(value):
+                        attr_mismatch = True
+                        break
+                else:  # Match filters using regex
+                    attr_value = _unflattened_lookup(test, attr) or ""
+                    if not re.fullmatch(value, attr_value):
+                        attr_mismatch = True
+                        break
         if attr_mismatch:
             continue
+
         if not run_jailed_tests:
             clone_test = copy.deepcopy(test)
             clone_test.update_from_s3()

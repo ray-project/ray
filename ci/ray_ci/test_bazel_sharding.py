@@ -1,9 +1,10 @@
-from typing import List
-import pytest
 import os
 import shutil
 import sys
 import tempfile
+from typing import List
+
+import pytest
 
 # Required for bazel
 file_parent = os.path.dirname(__file__)

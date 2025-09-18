@@ -9,10 +9,8 @@ import time
 from unittest import mock
 
 import numpy as np
-import psutil
 import pytest
 
-from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
@@ -20,8 +18,11 @@ import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -87,39 +88,6 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Wait till the log monitor reads the file.
     time.sleep(1.0)
-
-    # Make sure that nothing has died.
-    assert ray._private.services.remaining_processes_alive()
-
-
-@pytest.mark.skip(reason="This test is too expensive to run.")
-def test_move_log_files_to_old(shutdown_only):
-    info = ray.init(num_cpus=1)
-
-    logs_dir = os.path.join(info["session_dir"], "logs")
-
-    @ray.remote
-    class Actor:
-        def f(self):
-            print("function f finished")
-
-    # First create a temporary actor.
-    actors = [Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)]
-    ray.get([a.f.remote() for a in actors])
-
-    # Make sure no log files are in the "old" directory before the actors
-    # are killed.
-    assert len(glob.glob(f"{logs_dir}/old/worker*.out")) == 0
-
-    # Now kill the actors so the files get moved to logs/old/.
-    [a.__ray_terminate__.remote() for a in actors]
-
-    while True:
-        log_file_paths = glob.glob(f"{logs_dir}/old/worker*.out")
-        if len(log_file_paths) > 0:
-            with open(log_file_paths[0], "r") as f:
-                assert "function f finished\n" in f.readlines()
-            break
 
     # Make sure that nothing has died.
     assert ray._private.services.remaining_processes_alive()

@@ -125,6 +125,8 @@ class DeploymentStatus(str, Enum):
 
 
 class DeploymentStatusTrigger(str, Enum):
+    """Explains how a deployment reached its current DeploymentStatus."""
+
     UNSPECIFIED = "UNSPECIFIED"
     CONFIG_UPDATE_STARTED = "CONFIG_UPDATE_STARTED"
     CONFIG_UPDATE_COMPLETED = "CONFIG_UPDATE_COMPLETED"
@@ -143,6 +145,9 @@ class DeploymentStatusInternalTrigger(str, Enum):
     CONFIG_UPDATE = "CONFIG_UPDATE"
     AUTOSCALE_UP = "AUTOSCALE_UP"
     AUTOSCALE_DOWN = "AUTOSCALE_DOWN"
+    # MANUALLY_INCREASE_NUM_REPLICAS and MANUALLY_DECREASE_NUM_REPLICAS are used
+    # instead of CONFIG_UPDATE when the config update only scales
+    # the number of replicas.
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
@@ -229,6 +234,7 @@ class DeploymentStatusInfo:
 
         Args:
             trigger: An internal trigger that determines the state
+                transition. This is the new incoming trigger causing the
                 transition.
             message: The message to set in status info.
 
@@ -310,8 +316,21 @@ class DeploymentStatusInfo:
                 )
 
         elif self.status in {DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING}:
+            # Failures occurred while upscaling/downscaling
+            if trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
             # Deployment transitions to healthy
-            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+            elif trigger == DeploymentStatusInternalTrigger.HEALTHY:
                 return self._updated_copy(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED
@@ -328,45 +347,58 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
-            # Upscale replicas before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP
-            ) or (
-                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.UPSCALING, message=message
-                )
+            elif self.status_trigger == DeploymentStatusTrigger.AUTOSCALING:
+                # Upscale replicas before previous autoscaling has finished
+                if trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING,
+                        message=message,
+                    )
+                # Downscale replicas before previous autoscaling has finished
+                elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING,
+                        message=message,
+                    )
+                # Manually upscale replicas with config update before previous autoscaling has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING,
+                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                        message=message,
+                    )
+                # Manually downscale replicas with config update before previous autoscaling has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING,
+                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                        message=message,
+                    )
 
-            # Downscale replicas before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN
-            ) or (
-                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.DOWNSCALING, message=message
-                )
+            elif self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED:
+                # Upscale replicas before previous config update has finished
+                if (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING, message=message
+                    )
 
-            # Failures occurred while upscaling/downscaling
-            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
-                    message=message,
-                )
-            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
+                # Downscale replicas before previous config update has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING, message=message
+                    )
 
         elif self.status == DeploymentStatus.HEALTHY:
             # Deployment remains healthy
@@ -714,3 +746,93 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+
+
+# This error is used to raise when a by-value DeploymentResponse is converted to an
+# ObjectRef.
+OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
+    "Use handle.options(_by_reference=True) to enable it."
+)
+
+RUNNING_REQUESTS_KEY = "running_requests"
+
+
+@dataclass(order=True)
+class TimeStampedValue:
+    timestamp: float
+    value: float = field(compare=False)
+
+
+@dataclass
+class HandleMetricReport:
+    """Report from a deployment handle on queued and ongoing requests.
+
+    Args:
+        deployment_id: The deployment ID of the deployment handle.
+        handle_id: The handle ID of the deployment handle.
+        actor_id: If the deployment handle (from which this metric was
+            sent) lives on an actor, the ID of that actor.
+        handle_source: Describes what kind of entity holds this
+            deployment handle: a Serve proxy, a Serve replica, or
+            unknown.
+        queued_requests: The current number of queued requests at the
+            handle, i.e. requests that haven't been assigned to any
+            replica yet.
+        aggregated_metrics: A map of metric name to the aggregated value over the past
+            look_back_period_s seconds at the handle for each replica.
+        metrics: A map of metric name to the list of values running at that handle for each replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    handle_id: str
+    actor_id: str
+    handle_source: DeploymentHandleSource
+    queued_requests: float
+    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
+    metrics: Dict[str, Dict[ReplicaID, List[float]]]
+    timestamp: float
+
+    @property
+    def total_requests(self) -> float:
+        """Total number of queued and running requests."""
+        return self.queued_requests + sum(
+            self.aggregated_metrics.get(RUNNING_REQUESTS_KEY, {}).values()
+        )
+
+    @property
+    def is_serve_component_source(self) -> bool:
+        """Whether the handle source is a Serve actor.
+
+        More specifically, this returns whether a Serve actor tracked
+        by the controller holds the deployment handle that sent this
+        report. If the deployment handle lives on a driver, a Ray task,
+        or an actor that's not a Serve replica, then this returns False.
+        """
+        return self.handle_source in [
+            DeploymentHandleSource.PROXY,
+            DeploymentHandleSource.REPLICA,
+        ]
+
+
+@dataclass
+class ReplicaMetricReport:
+    """Report from a replica on ongoing requests.
+
+    Args:
+        replica_id: The replica ID of the replica.
+        aggregated_metrics: A map of metric name to the aggregated value over the past
+            look_back_period_s seconds at the replica.
+        metrics: A map of metric name to the list of values running at that replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    replica_id: ReplicaID
+    aggregated_metrics: Dict[str, float]
+    metrics: Dict[str, List[float]]
+    timestamp: float
