@@ -283,33 +283,31 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
 }
 
 void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
-  auto &[task_definition_event_rpc, task_execution_event_rpc, task_profile_event_rpc] =
-      ray_events_tuple;
-
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(timestamp_);
 
   // Populate the task definition event
-  if (task_spec_ && !task_definition_event_rpc) {
-    PopulateRpcRayEventBaseFields(task_definition_event_rpc.emplace(), true, timestamp);
+  if (task_spec_ && !ray_events_tuple.task_definition_event) {
+    PopulateRpcRayEventBaseFields(
+        ray_events_tuple.task_definition_event.emplace(), true, timestamp);
     if (is_actor_task_event_) {
       auto actor_task_definition_event =
-          task_definition_event_rpc->mutable_actor_task_definition_event();
+          ray_events_tuple.task_definition_event->mutable_actor_task_definition_event();
       PopulateRpcRayTaskDefinitionEvent(*actor_task_definition_event);
     } else {
       auto task_definition_event =
-          task_definition_event_rpc->mutable_task_definition_event();
+          ray_events_tuple.task_definition_event->mutable_task_definition_event();
       PopulateRpcRayTaskDefinitionEvent(*task_definition_event);
     }
   }
 
   // Populate the task execution event
-  PopulateRpcRayEventBaseFields(task_execution_event_rpc.has_value()
-                                    ? task_execution_event_rpc.value()
-                                    : task_execution_event_rpc.emplace(),
+  PopulateRpcRayEventBaseFields(ray_events_tuple.task_execution_event.has_value()
+                                    ? ray_events_tuple.task_execution_event.value()
+                                    : ray_events_tuple.task_execution_event.emplace(),
                                 false,
                                 timestamp);
   auto task_execution_event =
-      task_execution_event_rpc.value().mutable_task_execution_event();
+      ray_events_tuple.task_execution_event.value().mutable_task_execution_event();
   PopulateRpcRayTaskExecutionEvent(*task_execution_event, timestamp);
 }
 
@@ -361,14 +359,11 @@ void TaskProfileEvent::PopulateRpcRayEventBaseFields(
 }
 
 void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
-  auto &[task_definition_event, task_execution_event, task_profile_event] =
-      ray_events_tuple;
-
   // Using profile start time as the event generation timestamp
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
   // Populate Ray event base fields
-  auto &ray_event = task_profile_event.emplace();
+  auto &ray_event = ray_events_tuple.task_profile_event.emplace();
   PopulateRpcRayEventBaseFields(ray_event, timestamp);
 
   // Populate the task profile event
@@ -630,19 +625,17 @@ TaskEventBufferImpl::CreateRayEventsDataToSend(
   auto data = std::make_unique<rpc::events::RayEventsData>();
   // Move the ray events.
   for (auto &[task_attempt, ray_events_tuple] : agg_task_events) {
-    auto &[task_definition_event, task_execution_event, task_profile_event] =
-        ray_events_tuple;
-    if (task_definition_event) {
+    if (ray_events_tuple.task_definition_event) {
       auto events = data->add_events();
-      *events = std::move(task_definition_event.value());
+      *events = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (task_execution_event) {
+    if (ray_events_tuple.task_execution_event) {
       auto events = data->add_events();
-      *events = std::move(task_execution_event.value());
+      *events = std::move(ray_events_tuple.task_execution_event.value());
     }
-    if (task_profile_event) {
+    if (ray_events_tuple.task_profile_event) {
       auto events = data->add_events();
-      *events = std::move(task_profile_event.value());
+      *events = std::move(ray_events_tuple.task_profile_event.value());
     }
   }
 
