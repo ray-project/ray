@@ -475,6 +475,67 @@ class TestTaskConsumerWithRayServe:
 
         serve.delete("app_v1")
 
+    def test_task_consumer_with_app_custom_config(
+        self, temp_queue_directory, serve_instance, create_processor_config
+    ):
+        """Test that task consumer works with app custom config."""
+        processor_config = create_processor_config()
+        processor_config.adapter_config.app_custom_config = {"worker_concurrency": 10}
+        signal = SignalActor.remote()
+
+        @serve.deployment
+        @task_consumer(task_processor_config=processor_config)
+        class ServeTaskConsumer:
+            def __init__(self, signal_actor):
+                self._signal = signal_actor
+
+            @task_handler(name="process_request")
+            def process_request(self, data):
+                ray.get(self._signal.wait.remote())
+                return
+
+        serve.run(ServeTaskConsumer.bind(signal))
+
+        num_tasks = 10
+        for _ in range(num_tasks):
+            send_request_to_queue.remote(processor_config, f"test_data_{_}")
+
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == num_tasks, timeout=20
+        )
+
+    def test_task_consumer_with_task_custom_config(
+        self, temp_queue_directory, serve_instance, create_processor_config
+    ):
+        """Test that task consumer works with app custom config."""
+        processor_config = create_processor_config()
+        processor_config.adapter_config.task_custom_config = {
+            "retry_backoff_max": 1,
+            "retry_kwargs": {"max_retries": 10},
+        }
+
+        @serve.deployment
+        @task_consumer(task_processor_config=processor_config)
+        class ServeTaskConsumer:
+            def __init__(self):
+                self.num_calls = 0
+
+            @task_handler(name="process_request")
+            def process_request(self, data):
+                self.num_calls += 1
+                raise ValueError("Task failed as expected")
+
+            def get_num_calls(self):
+                return self.num_calls
+
+        handle = serve.run(ServeTaskConsumer.bind())
+
+        send_request_to_queue.remote(processor_config, "test_data_0")
+
+        wait_for_condition(
+            lambda: handle.get_num_calls.remote().result() == 11, timeout=20
+        )
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithDLQsConfiguration:

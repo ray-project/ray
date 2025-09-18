@@ -337,21 +337,24 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             broker=self._config.adapter_config.broker_url,
         )
 
-        self._app.conf.update(
-            loglevel="info",
-            worker_pool="threads",
-            worker_concurrency=self._config.adapter_config.worker_concurrency,
-            max_retries=self._config.max_retries,
-            task_default_queue=self._config.queue_name,
+        app_configuration = {
+            "loglevel": "info",
+            "worker_pool": "threads",
+            "worker_concurrency": self._config.adapter_config.worker_concurrency,
+            "task_default_queue": self._config.queue_name,
             # Store task results so they can be retrieved after completion
-            task_ignore_result=False,
+            "task_ignore_result": False,
             # Acknowledge tasks only after completion (not when received) for better reliability
-            task_acks_late=True,
+            "task_acks_late": True,
             # Reject and requeue tasks when worker is lost to prevent data loss
-            task_reject_on_worker_lost=True,
+            "task_reject_on_worker_lost": True,
             # Only prefetch 1 task at a time to match concurrency and prevent task hoarding
-            worker_prefetch_multiplier=1,
-        )
+            "worker_prefetch_multiplier": 1,
+        }
+        if self._config.adapter_config.app_custom_config:
+            app_configuration.update(self._config.adapter_config.app_custom_config)
+
+        self._app.conf.update(app_configuration)
 
         queue_config = {
             self._config.queue_name: {
@@ -402,6 +405,8 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             "retry_backoff_max": 60,  # Max backoff of 60 seconds
             "retry_jitter": False,  # Disable jitter for predictable testing
         }
+        if self._config.adapter_config.task_custom_config:
+            task_options.update(self._config.adapter_config.task_custom_config)
 
         if name:
             self._app.task(name=name, **task_options)(func)
