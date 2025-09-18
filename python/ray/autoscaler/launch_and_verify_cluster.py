@@ -68,6 +68,12 @@ def check_arguments():
     parser.add_argument(
         "cluster_config", type=str, help="Path to the cluster configuration file"
     )
+    parser.add_argument(
+        "--python-version",
+        type=str,
+        default="3.10",
+        help="Python version to use for the head node and worker nodes",
+    )
     args = parser.parse_args()
 
     assert not (
@@ -81,27 +87,28 @@ def check_arguments():
         args.num_expected_nodes,
         args.docker_override,
         args.wheel_override,
+        args.python_version,
     )
 
 
-def get_docker_image(docker_override):
+def get_docker_image(docker_override, python_ver):
     """
     Get the docker image to use for the head node and worker nodes.
 
     Args:
         docker_override: The value of the --docker-override flag.
-
+        python_ver: The Python version to use for the docker image.
     Returns:
         The docker image to use for the head node and worker nodes, or None if not
         applicable.
     """
     if docker_override == "latest":
-        return "rayproject/ray:latest-py39"
+        return f"rayproject/ray:latest-{python_ver}"
     elif docker_override == "nightly":
-        return "rayproject/ray:nightly-py39"
+        return f"rayproject/ray:nightly-{python_ver}"
     elif docker_override == "commit":
         if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
-            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py39"
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-{python_ver}"
         else:
             print(
                 "Error: docker image is only available for "
@@ -363,6 +370,7 @@ if __name__ == "__main__":
         num_expected_nodes,
         docker_override,
         wheel_override,
+        python_version,
     ) = check_arguments()
     cluster_config = Path(cluster_config)
     check_file(cluster_config)
@@ -371,7 +379,10 @@ if __name__ == "__main__":
     print(f"Number of retries for 'verify ray is running' step: {retries}")
     print(f"Using --no-config-cache flag: {no_config_cache}")
     print(f"Number of expected nodes for 'verify ray is running': {num_expected_nodes}")
+    print(f"Using Python version: {python_version}")
 
+    python_ver = f"py{python_version.replace('.', '')}"
+    print(f"Using Python version tag: {python_ver}")
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
     config_yaml["cluster_name"] = (
@@ -385,7 +396,7 @@ if __name__ == "__main__":
 
     print("======================================")
     print(f"Overriding docker image...: {docker_override}")
-    docker_override_image = get_docker_image(docker_override)
+    docker_override_image = get_docker_image(docker_override, python_ver)
     print(f"Using docker image: {docker_override_image}")
     if docker_override_image:
         override_docker_image(config_yaml, docker_override_image)
