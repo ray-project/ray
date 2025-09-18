@@ -190,9 +190,9 @@ class GcsActorSchedulerTest : public ::testing::Test {
                                                          required_placement_resources);
     return std::make_shared<gcs::GcsActor>(actor_creating_task_spec.GetMessage(),
                                            /*ray_namespace=*/"",
-                                           counter,
-                                           nullptr,
-                                           "");
+                                           /*counter=*/counter,
+                                           /*recorder=*/nullptr,
+                                           /*session_name=*/"");
   }
 
   std::shared_ptr<rpc::GcsNodeInfo> AddNewNode(
