@@ -185,6 +185,5 @@ def main(
             json.dump(settings, fp)
 
 
-
 if __name__ == "__main__":
     sys.exit(main())
