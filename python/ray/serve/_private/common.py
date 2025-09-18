@@ -800,20 +800,6 @@ class DeploymentSnapshot:
     errors: List[str]
     decisions: List[DecisionRecord]
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, DeploymentSnapshot):
-            return False
-        return (
-            self.app == other.app
-            and self.deployment == other.deployment
-            and self.current_replicas == other.current_replicas
-            and self.target_replicas == other.target_replicas
-            and self.min_replicas == other.min_replicas
-            and self.max_replicas == other.max_replicas
-            and self.scaling_status == other.scaling_status
-            and self.total_requests == other.total_requests
-        )
-
     def to_log_dict(self) -> Dict[str, object]:
         return {
             "timestamp_str": self.timestamp_str,
@@ -860,6 +846,19 @@ class DeploymentSnapshot:
         if val < 1.0:
             return f"{val * 1000:.0f}ms"
         return f"{val:.2f}s"
+
+    def is_scaling_equivalent(self, other: object) -> bool:
+        """Return True if scaling-related fields are equal.
+
+        Used for autoscaling snapshot log deduplication. Compares only:
+        current_replicas, scaling_status.
+        """
+        if not isinstance(other, DeploymentSnapshot):
+            return False
+        return (
+            self.current_replicas == other.current_replicas
+            and self.scaling_status == other.scaling_status
+        )
 
 
 RUNNING_REQUESTS_KEY = "running_requests"

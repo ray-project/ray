@@ -416,6 +416,63 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     assert pairs == [(0, 1), (1, 1)]
 
 
+# Test that no autoscaling snapshot logs are emitted for deployments without autoscaling_config
+def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
+    """Ensure no serve_autoscaling_snapshot logs are emitted without autoscaling_config."""
+    controller = _get_global_client()._controller
+
+    DEPLOY_NAME = f"snap_no_auto_{int(time.time())}"
+
+    @serve.deployment(name=DEPLOY_NAME)
+    def app():
+        return "no autoscale"
+
+    serve.run(app.bind())
+
+    controller_details = ray.get(controller.get_actor_details.remote())
+    log_rel = controller_details.log_file_path
+    base_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+    log_path = (
+        log_rel if os.path.isabs(log_rel) else os.path.join(base_logs_dir, log_rel)
+    )
+
+    candidate_paths = []
+    if os.path.exists(log_path):
+        candidate_paths.append(log_path)
+
+    controller_glob = os.path.join(base_logs_dir, "serve", "controller_*.log")
+    for p in glob.glob(controller_glob):
+        if p not in candidate_paths:
+            candidate_paths.append(p)
+
+    assert (
+        candidate_paths
+    ), f"No controller log candidates found; checked base {base_logs_dir}"
+
+    time.sleep(5)
+
+    found = []
+    marker = "serve_autoscaling_snapshot "
+    for path in candidate_paths:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if line.startswith(marker):
+                    try:
+                        payload_str = line.split(marker, 1)[1].strip()
+                        payload_obj = json.loads(payload_str)
+                        if payload_obj.get("deployment") == DEPLOY_NAME:
+                            found.append(payload_obj)
+                    except Exception:
+                        pass
+
+    assert not found, (
+        f"Found serve_autoscaling_snapshot logs for deployment {DEPLOY_NAME} "
+        f"even though no autoscaling_config was set: {found}"
+    )
+
+
 if __name__ == "__main__":
     import sys
 

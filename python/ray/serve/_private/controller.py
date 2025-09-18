@@ -425,7 +425,7 @@ class ServeController:
 
             key = dep_id
             last = self._last_autoscaling_snapshots.get(key)
-            if last is not None and last == deployment_snapshot:
+            if last is not None and last.is_scaling_equivalent(deployment_snapshot):
                 continue
 
             payload = deployment_snapshot.to_log_dict()
