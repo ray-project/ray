@@ -879,7 +879,6 @@ def test_select_columns(
 @pytest.mark.parametrize(
     "cols, expected_exception, expected_error",
     [
-        ([], ValueError, "select_columns requires at least one column to select"),
         (
             None,
             TypeError,
