@@ -121,7 +121,6 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
                 ]:
                     if stateTransition["state"] == "DEAD":
                         has_dead_state = True
-                        print(stateTransition["deathCause"])
                         assert (
                             stateTransition["deathCause"]["actorDiedErrorContext"][
                                 "reason"
