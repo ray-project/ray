@@ -22,11 +22,11 @@ namespace pubsub {
 class FakeSubscriberClient : public SubscriberClientInterface {
  public:
   void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
+      rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) override {}
 
   void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
+      rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) override {}
 };
 
