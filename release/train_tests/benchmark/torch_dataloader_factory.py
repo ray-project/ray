@@ -1,7 +1,6 @@
 from typing import Dict, Iterator, Tuple
 import logging
 from abc import ABC, abstractmethod
-import sys
 import multiprocessing
 
 import torch
@@ -100,26 +99,20 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
 
     def _create_multiprocessing_context(self):
         # Importing libs in torch dataloader worker subprocesses is very slow.
-        # Preload all imported modules to speed up subprocess forking.
-        imported_modules = list(sys.modules.keys())
+        # Preload some modules to speed up subprocess forking.
         ctx = multiprocessing.get_context("forkserver")
-        ctx.set_forkserver_preload(imported_modules)
+        modules = ["torch", "torchvision", "pandas", "numpy", "boto3", "fsspec"]
+        ctx.set_forkserver_preload(modules)
         return ctx
 
-    def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-        """Create a DataLoader for training data.
-
-        Returns:
-            An iterator that yields (image, label) tensors for training
-        """
+    def _create_dataloader(self, dataset_key: DatasetKey, batch_size: int):
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(f"Worker {worker_rank}: Creating train dataloader")
-
         dataloader_config = self.get_dataloader_config()
-        device = self._get_device()
 
         # Create dataset and dataloader
-        train_ds = self.get_iterable_datasets()[DatasetKey.TRAIN]
+        ds = self.get_iterable_datasets()[dataset_key]
+
+        device = self._get_device()
 
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
@@ -134,7 +127,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         timeout = (
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )
-        batch_size = dataloader_config.train_batch_size
 
         logger.info(
             f"Worker {worker_rank}: Creating train DataLoader with "
@@ -143,17 +135,22 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             f"timeout={timeout}, batch_size={batch_size}"
         )
 
+        multiprocessing_args = {}
+        if num_workers > 0:
+            multiprocessing_args = dict(
+                multiprocessing_context=self._create_multiprocessing_context(),
+                worker_init_fn=self.worker_init_fn,
+                persistent_workers=persistent_workers,
+            )
         dataloader = torch.utils.data.DataLoader(
-            dataset=train_ds,
+            dataset=ds,
             batch_size=batch_size,
             num_workers=num_workers,
             pin_memory=pin_memory,
-            persistent_workers=persistent_workers,
             prefetch_factor=prefetch_factor,
             timeout=timeout,
-            drop_last=True,
-            worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context=self._create_multiprocessing_context(),
+            drop_last=False,
+            **multiprocessing_args,
         )
         # Add a DistributedSampler to the dataloader if possible (map-style datasets)
         dataloader = ray.train.torch.prepare_data_loader(
@@ -161,6 +158,19 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         )
 
         return self.create_batch_iterator(dataloader, device)
+
+    def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        """Create a DataLoader for training data.
+
+        Returns:
+            An iterator that yields (image, label) tensors for training
+        """
+        worker_rank = ray.train.get_context().get_world_rank()
+        logger.info(f"Worker {worker_rank}: Creating train dataloader")
+
+        return self._create_dataloader(
+            DatasetKey.TRAIN, self.get_dataloader_config().train_batch_size
+        )
 
     def get_val_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a DataLoader for validation data.
@@ -171,49 +181,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         worker_rank = ray.train.get_context().get_world_rank()
         logger.info(f"Worker {worker_rank}: Creating validation dataloader")
 
-        dataloader_config = self.get_dataloader_config()
-        device = self._get_device()
-
-        # Create dataset and dataloader with row limits
-        val_ds = self.get_iterable_datasets()[DatasetKey.VALID]
-
-        # Adjust worker settings for 0 workers case
-        num_workers = max(0, self.num_torch_workers)
-        persistent_workers = num_workers > 0
-        pin_memory = (
-            dataloader_config.torch_pin_memory and torch.cuda.is_available()
-        )  # Use config setting
-
-        if dataloader_config.torch_prefetch_factor >= 0:
-            prefetch_factor = dataloader_config.torch_prefetch_factor
-        else:
-            prefetch_factor = None
-
-        timeout = (
-            dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
+        return self._create_dataloader(
+            DatasetKey.VALID, self.get_dataloader_config().validation_batch_size
         )
-        batch_size = dataloader_config.validation_batch_size
-
-        logger.info(
-            f"Worker {worker_rank}: Creating validation DataLoader with "
-            f"num_workers={num_workers}, pin_memory={pin_memory}, "
-            f"persistent_workers={persistent_workers}, prefetch_factor={prefetch_factor}, "
-            f"timeout={timeout}, batch_size={batch_size}"
-        )
-
-        dataloader = torch.utils.data.DataLoader(
-            dataset=val_ds,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            pin_memory=pin_memory,
-            persistent_workers=persistent_workers,
-            prefetch_factor=prefetch_factor,
-            timeout=timeout,
-            drop_last=False,
-            worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context=self._create_multiprocessing_context(),
-        )
-        dataloader = ray.train.torch.prepare_data_loader(
-            dataloader, move_to_device=False
-        )
-        return self.create_batch_iterator(dataloader, device)

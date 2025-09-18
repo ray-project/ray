@@ -25,10 +25,10 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs_client/accessor.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/tests/util.h"
@@ -107,7 +107,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     for (const auto &object_location_update : request.object_location_updates()) {
       ASSERT_TRUE(object_location_update.has_spilled_location_update());

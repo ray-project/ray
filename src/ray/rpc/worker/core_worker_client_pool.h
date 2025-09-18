@@ -23,9 +23,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/gcs_client/gcs_client.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
