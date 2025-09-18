@@ -39,7 +39,6 @@ _BASE_CGROUP_PATH = "/sys/fs/cgroup"
 def assert_cgroup_hierarchy_exists_for_node(
     node_id: str, resource_isolation_config: ResourceIsolationConfig
 ):
-    """ """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
     node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
     system_cgroup = node_cgroup / "system"
