@@ -610,6 +610,8 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
     const auto &infeasible_shapes = node_infeasible_request_pair.second;
     auto node = gcs_node_manager_.GetAliveNode(node_id);
     if (!node.has_value()) {
+      RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id
+                       << ". Raylet client to the node is not available.";
       continue;
     }
     auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(

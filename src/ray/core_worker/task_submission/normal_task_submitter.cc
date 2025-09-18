@@ -133,7 +133,6 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(lease_entry.addr);
   raylet_client->ReturnWorkerLease(
       addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
-
   worker_to_lease_entry_.erase(addr);
 }
 
