@@ -216,6 +216,7 @@ class TrainContext:
             )
         )
 
+    # TODO: make retry configurable
     @retry(
         description="upload checkpoint", max_attempts=3, match=COMMON_RETRYABLE_TOKENS
     )
