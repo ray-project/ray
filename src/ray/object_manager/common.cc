@@ -17,6 +17,8 @@
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "ray/common/ray_config.h"
 
 namespace ray {

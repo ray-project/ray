@@ -737,26 +737,24 @@ class TestSingelAgentEpisode(unittest.TestCase):
                 e.set_extra_model_outputs(
                     key=SOME_KEY, new_data=new_data, at_indices=indices
                 )
-                if desc == "single index" or desc == "zero index":
+                actual_data = e.get_extra_model_outputs(SOME_KEY)
+                if (
+                    desc == "single index"
+                    or desc == "zero index"
+                    or desc == "negative index"
+                ):
                     check(
-                        e.extra_model_outputs[SOME_KEY][e.t_started + indices],
-                        expected_data,
-                    )
-                elif desc == "negative index":
-                    actual_idx = len(e.extra_model_outputs[SOME_KEY]) + indices
-                    check(
-                        e.extra_model_outputs[SOME_KEY][e.t_started + actual_idx],
+                        actual_data[e.t_started + indices],
                         expected_data,
                     )
                 elif desc == "long list of indices" or desc == "short list of indices":
-                    actual_values = [
-                        e.extra_model_outputs[SOME_KEY][e.t_started + i]
-                        for i in indices
+                    actual_values = actual_data[
+                        slice(e.t_started + indices[0], e.t_started + indices[-1] + 1)
                     ]
                     check(actual_values, expected_data)
                 elif desc == "long slice" or desc == "short slice":
                     actual_values = [
-                        e.extra_model_outputs[SOME_KEY][e.t_started + i]
+                        actual_data[e.t_started + i]
                         for i in range(indices.start, indices.stop)
                     ]
                     check(actual_values, expected_data)
@@ -771,7 +769,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         with self.assertRaises(IndexError):
             episode.set_observations(
                 new_data=[7, 3, 5, 3], at_indices=slice(0, 2)
-            )  # Slice of size 2, data of size 3
+            )  # Slice of size 2, data of size 4
 
         # Test AssertionError when key doesn't exist for extra_model_outputs
         with self.assertRaises(AssertionError):

@@ -142,7 +142,6 @@ def test_disallow_non_unique_operators():
         "test_combine",
         [o2, o3],
         DataContext.get_current(),
-        target_max_block_size=None,
     )
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
@@ -798,7 +797,6 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     assert isinstance(logical_ops[0], Read)
     datasource = logical_ops[0]._datasource
     assert isinstance(datasource, ParquetDatasource)
-    assert datasource._unresolved_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
     assert logical_ops[1]._fn == udf

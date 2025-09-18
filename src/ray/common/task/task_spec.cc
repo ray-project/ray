@@ -28,42 +28,6 @@
 
 namespace ray {
 
-absl::Mutex TaskSpecification::mutex_;
-absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
-    TaskSpecification::sched_cls_to_id_;
-absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
-    TaskSpecification::sched_id_to_cls_;
-int TaskSpecification::next_sched_id_;
-
-SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
-    SchedulingClass id) {
-  absl::MutexLock lock(&mutex_);
-  auto it = sched_id_to_cls_.find(id);
-  RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
-  return it->second;
-}
-
-SchedulingClass TaskSpecification::GetSchedulingClass(
-    const SchedulingClassDescriptor &sched_cls) {
-  SchedulingClass sched_cls_id;
-  absl::MutexLock lock(&mutex_);
-  auto it = sched_cls_to_id_.find(sched_cls);
-  if (it == sched_cls_to_id_.end()) {
-    sched_cls_id = ++next_sched_id_;
-    // TODO(ekl) we might want to try cleaning up task types in these cases
-    if (sched_cls_id > 100) {
-      RAY_LOG_EVERY_MS(WARNING, 1000)
-          << "More than " << sched_cls_id
-          << " types of tasks seen, this may reduce performance.";
-    }
-    sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
-  } else {
-    sched_cls_id = it->second;
-  }
-  return sched_cls_id;
-}
-
 const BundleID TaskSpecification::PlacementGroupBundleId() const {
   if (message_->scheduling_strategy().scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::
@@ -99,7 +63,8 @@ void TaskSpecification::ComputeResources() {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
+    required_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_resources));
   }
 
   auto &required_placement_resources = message_->required_placement_resources().empty()
@@ -109,8 +74,8 @@ void TaskSpecification::ComputeResources() {
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(
-        new ResourceSet(MapFromProtobuf(required_placement_resources)));
+    required_placement_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_placement_resources));
   }
 
   // Set LabelSelector required for scheduling if specified. Parses string map
@@ -136,7 +101,7 @@ void TaskSpecification::ComputeResources() {
                                                     depth,
                                                     GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
-    sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
+    sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
@@ -166,12 +131,7 @@ const std::string TaskSpecification::GetSerializedActorHandle() const {
   return message_->actor_creation_task_spec().serialized_actor_handle();
 }
 
-JobID TaskSpecification::JobId() const {
-  if (message_->job_id().empty() /* e.g., empty proto default */) {
-    return JobID::Nil();
-  }
-  return JobID::FromBinary(message_->job_id());
-}
+JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
 
 const rpc::JobConfig &TaskSpecification::JobConfig() const {
   return message_->job_config();
@@ -670,16 +630,6 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
-  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    // It's useful to have the same predetermined value for both unspecified and empty
-    // runtime envs.
-    return 0;
-  }
-  size_t hash = std::hash<std::string>()(serialized_runtime_env);
-  return static_cast<int>(hash);
-}
-
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());
   std::vector<ConcurrencyGroup> concurrency_groups;
@@ -696,10 +646,10 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
           curr_group_message.function_descriptors(j)));
     }
 
-    concurrency_groups.push_back(
-        {std::string{curr_group_message.name()},
-         static_cast<uint32_t>(curr_group_message.max_concurrency()),
-         function_descriptors});
+    concurrency_groups.emplace_back(
+        std::string{curr_group_message.name()},
+        static_cast<uint32_t>(curr_group_message.max_concurrency()),
+        function_descriptors);
   }
 
   return concurrency_groups;

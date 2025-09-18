@@ -106,7 +106,8 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   // NOTE: We add the timer period to the enqueue time in order only measure the time in
   // which the handler was elgible to execute on the event loop but was queued by the
   // event loop.
-  auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
+  auto stats_handle =
+      io_service_.stats().RecordStart(name, false, period.total_nanoseconds());
   timer->async_wait(
       [weak_self = weak_from_this(),
        fn = std::move(fn),

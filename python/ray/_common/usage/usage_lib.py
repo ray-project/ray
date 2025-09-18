@@ -57,8 +57,8 @@ import requests
 import yaml
 
 import ray
-import ray._private.ray_constants as ray_constants
 import ray._common.usage.usage_constants as usage_constant
+import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient
 from ray.core.generated import gcs_pb2, usage_pb2
 from ray.experimental.internal_kv import (
