@@ -215,10 +215,10 @@ def train_func(use_ray: bool, config: Dict):
                         os.path.join(temp_checkpoint_dir, "model.pt"),
                     )
 
-                    train.report(
-                        dict(loss=loss, local_time_taken=local_time_taken),
-                        checkpoint=train.Checkpoint.from_directory(temp_checkpoint_dir),
-                    )
+                train.report(
+                    dict(loss=loss, local_time_taken=local_time_taken),
+                    checkpoint=train.Checkpoint.from_directory(temp_checkpoint_dir),
+                )
         else:
             print(f"Reporting loss: {loss:.4f}")
             if local_rank == 0:
