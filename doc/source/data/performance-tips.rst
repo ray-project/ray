@@ -425,8 +425,7 @@ You can configure execution options with the global DataContext. The options are
     )
 
 .. note::
-    Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all
-    Ray Data workloads.
+    Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
 
 Locality with output (ML ingest use case)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
