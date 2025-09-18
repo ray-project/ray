@@ -33,8 +33,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
+from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_logging.filters import CoreContextFilter
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -425,8 +425,10 @@ class ReplicaBase(ABC):
             ingress=ingress,
         )
 
-        self._port: Optional[int] = None
+        self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._http_port: Optional[int] = None
+        self._grpc_port: Optional[int] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -441,8 +443,10 @@ class ReplicaBase(ABC):
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
-            self._port,
+            self._internal_grpc_port,
             self._docs_path,
+            self._http_port,
+            self._grpc_port,
             current_rank,
         )
 
