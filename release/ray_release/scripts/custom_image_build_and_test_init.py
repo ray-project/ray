@@ -186,6 +186,8 @@ def main(
             "wt",
         ) as fp:
             json.dump(steps, fp)
+        for step in steps:
+            logger.info(f"Step: {step}")
 
         settings["frequency"] = settings["frequency"].value
         settings["priority"] = settings["priority"].value
