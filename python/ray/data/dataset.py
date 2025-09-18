@@ -792,9 +792,6 @@ class Dataset:
         self,
         column_name: str,
         expr: Expr,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -829,11 +826,6 @@ class Dataset:
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker.
-            memory: The heap memory in bytes to reserve for each parallel map worker.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for the map tasks (e.g., `num_gpus=1`).
 
@@ -846,13 +838,6 @@ class Dataset:
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
-
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
 
         plan = self._plan.copy()
         if isinstance(expr, DownloadExpr):
@@ -885,9 +870,6 @@ class Dataset:
         *,
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
         concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -928,11 +910,6 @@ class Dataset:
                 ``pyarrow.Table``. If ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker.
-            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -989,12 +966,6 @@ class Dataset:
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
         return self.map_batches(
             add_column,
             batch_format=batch_format,
@@ -1010,9 +981,6 @@ class Dataset:
         cols: List[str],
         *,
         compute: Optional[str] = None,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
         concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1044,11 +1012,6 @@ class Dataset:
             cols: Names of the columns to drop. If any name does not exist,
                 an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker.
-            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -1061,12 +1024,6 @@ class Dataset:
         def drop_columns(batch):
             return batch.drop(cols)
 
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
         return self.map_batches(
             drop_columns,
             batch_format="pyarrow",
@@ -1082,9 +1039,6 @@ class Dataset:
         cols: Union[str, List[str]],
         *,
         compute: Union[str, ComputeStrategy] = None,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
         concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1121,11 +1075,6 @@ class Dataset:
             cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker.
-            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -1157,12 +1106,6 @@ class Dataset:
 
         compute = TaskPoolStrategy(size=concurrency)
 
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
@@ -1179,9 +1122,6 @@ class Dataset:
         self,
         names: Union[List[str], Dict[str, str]],
         *,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         **ray_remote_args,
     ):
@@ -1227,11 +1167,6 @@ class Dataset:
         Args:
             names: A dictionary that maps old column names to new column names, or a
                 list of new column names.
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker.
-            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -1297,12 +1232,6 @@ class Dataset:
 
         compute = TaskPoolStrategy(size=concurrency)
 
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
@@ -1749,9 +1678,6 @@ class Dataset:
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Randomly shuffle the rows of this :class:`Dataset`.
@@ -1775,11 +1701,6 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
-            num_cpus: The number of CPUs to reserve for each parallel shuffle worker.
-            num_gpus: The number of GPUs to reserve for each parallel shuffle worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel shuffle
-                worker.
-            memory: The heap memory in bytes to reserve for each parallel shuffle worker.
 
         Returns:
             The shuffled :class:`Dataset`.
@@ -1792,12 +1713,6 @@ class Dataset:
                 "repartition() instead.",  # noqa: E501
             )
         plan = self._plan.copy()
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
         op = RandomShuffle(
             self._logical_plan.dag,
             seed=seed,
