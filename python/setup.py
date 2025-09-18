@@ -709,10 +709,9 @@ def copy_file(target_dir, filename, rootdir):
 
 def pip_run(build_ext):
     if SKIP_BAZEL_BUILD or setup_spec.build_type == BuildType.DEPS_ONLY:
-        BUILD_PYTHON = False
+        build(False, False, False, False)
     else:
-        BUILD_PYTHON = True
-    build(BUILD_PYTHON, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
+        build(True, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
 
     if setup_spec.type == SetupType.RAY:
         if setup_spec.build_type == BuildType.DEPS_ONLY:
