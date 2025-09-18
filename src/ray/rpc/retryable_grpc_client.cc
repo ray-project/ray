@@ -44,7 +44,7 @@ void RetryableGrpcClient::SetupCheckTimer() {
   std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
   timer_.async_wait([weak_self](boost::system::error_code error) {
     if (auto self = weak_self.lock(); self && (error == boost::system::errc::success)) {
-      self->CheckChannelStatus();
+      self->CheckChannelStatus(true);
     }
   });
 }
@@ -82,25 +82,24 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   case GRPC_CHANNEL_TRANSIENT_FAILURE:
   case GRPC_CHANNEL_CONNECTING: {
     if (server_unavailable_timeout_time_ < now) {
-      uint32_t attempt_number = pending_requests_.begin()->second->GetAttemptNumber();
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
-                       << (attempt_number > 0
-                               ? ExponentialBackoff::GetBackoffSeconds(
-                                     attempt_number - 1,
-                                     server_unavailable_base_timeout_seconds_,
-                                     max_backoff_seconds_,
-                                     exponential_factor_)
+                       << (attempt_number_ > 0
+                               ? ExponentialBackoff::GetBackoffMs(
+                                     attempt_number_ - 1,
+                                     server_unavailable_base_timeout_seconds_ * 1000,
+                                     server_unavailable_max_timeout_seconds_ * 1000) /
+                                     1000
                                : 0)
                        << " seconds";
       server_unavailable_timeout_callback_();
       // Reset the unavailable timeout.
       server_unavailable_timeout_time_ =
-          now + absl::Seconds(ExponentialBackoff::GetBackoffSeconds(
-                    attempt_number,
-                    server_unavailable_base_timeout_seconds_,
-                    max_backoff_seconds_,
-                    exponential_factor_));
-      pending_requests_.begin()->second->SetAttemptNumber(attempt_number + 1);
+          now + absl::Seconds(ExponentialBackoff::GetBackoffMs(
+                                  attempt_number_,
+                                  server_unavailable_base_timeout_seconds_ * 1000,
+                                  server_unavailable_max_timeout_seconds_ * 1000) /
+                              1000);
+      attempt_number_++;
     }
 
     if (reset_timer) {
@@ -122,6 +121,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       pending_requests_.erase(pending_requests_.begin());
     }
     pending_requests_bytes_ = 0;
+    attempt_number_ = 0;
     break;
   }
   default: {
@@ -168,14 +168,10 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
-    if (call_first_unavailable_timeout_callback_immediately_) {
-      server_unavailable_timeout_time_ = now;
-      CheckChannelStatus();
-    } else {
-      server_unavailable_timeout_time_ =
-          now + absl::Seconds(server_unavailable_base_timeout_seconds_);
-      SetupCheckTimer();
-    }
+    server_unavailable_timeout_time_ =
+        now + absl::Seconds(server_unavailable_base_timeout_seconds_);
+    attempt_number_++;
+    SetupCheckTimer();
   }
 }
 }  // namespace ray::rpc

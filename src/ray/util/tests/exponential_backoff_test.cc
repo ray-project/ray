@@ -21,17 +21,17 @@
 namespace ray {
 
 TEST(ExponentialBackoffTest, TestExponentialIncrease) {
-  ASSERT_EQ(ExponentialBackoff::GetBackoffMilliseconds(0, 157), 157 * 1);
-  ASSERT_EQ(ExponentialBackoff::GetBackoffMilliseconds(1, 157), 157 * 2);
-  ASSERT_EQ(ExponentialBackoff::GetBackoffMilliseconds(2, 157), 157 * 4);
-  ASSERT_EQ(ExponentialBackoff::GetBackoffMilliseconds(3, 157), 157 * 8);
+  ASSERT_EQ(ExponentialBackoff::GetBackoffMs(0, 157), 157 * 1);
+  ASSERT_EQ(ExponentialBackoff::GetBackoffMs(1, 157), 157 * 2);
+  ASSERT_EQ(ExponentialBackoff::GetBackoffMs(2, 157), 157 * 4);
+  ASSERT_EQ(ExponentialBackoff::GetBackoffMs(3, 157), 157 * 8);
 
-  ASSERT_EQ(ExponentialBackoff::GetBackoffMilliseconds(10, 0), 0);
-  ASSERT_EQ(ExponentialBackoff::GetBackoffMilliseconds(11, 0), 0);
+  ASSERT_EQ(ExponentialBackoff::GetBackoffMs(10, 0), 0);
+  ASSERT_EQ(ExponentialBackoff::GetBackoffMs(11, 0), 0);
 }
 
 TEST(ExponentialBackoffTest, TestExceedMaxBackoffReturnsMaxBackoff) {
-  auto backoff = ExponentialBackoff::GetBackoffMilliseconds(
+  auto backoff = ExponentialBackoff::GetBackoffMs(
       /*attempt*/ 10, /*base_ms*/ 1, /*max_backoff_ms*/ 5);
   ASSERT_EQ(backoff, 5);
 }
@@ -39,7 +39,7 @@ TEST(ExponentialBackoffTest, TestExceedMaxBackoffReturnsMaxBackoff) {
 TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
   // 2 ^ 64+ will overflow.
   for (int i = 64; i < 10000; i++) {
-    auto backoff = ExponentialBackoff::GetBackoffMilliseconds(
+    auto backoff = ExponentialBackoff::GetBackoffMs(
         /*attempt*/ i,
         /*base_ms*/ 1,
         /*max_backoff_ms*/ 1234);

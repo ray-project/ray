@@ -111,10 +111,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
     int64_t GetTimeoutMs() const { return timeout_ms_; }
 
-    uint32_t GetAttemptNumber() const { return attempt_number_; }
-
-    void SetAttemptNumber(uint32_t attempt_number) { attempt_number_ = attempt_number; }
-
    private:
     RetryableGrpcRequest(
         std::function<void(std::shared_ptr<RetryableGrpcRequest> request)> executor,
@@ -130,7 +126,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
     std::function<void(ray::Status)> failure_callback_;
     const size_t request_bytes_;
     const int64_t timeout_ms_;
-    uint32_t attempt_number_ = 0;
   };
 
  public:
@@ -142,9 +137,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       uint64_t server_unavailable_base_timeout_seconds,
       std::function<void()> server_unavailable_timeout_callback,
       std::string server_name,
-      bool call_first_unavailable_timeout_callback_immediately,
-      uint8_t exponential_factor,
-      int64_t max_backoff_seconds) {
+      int64_t server_unavailable_max_timeout_seconds) {
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
     // invoke private constructors.
     return std::shared_ptr<RetryableGrpcClient>(
@@ -155,9 +148,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                                 server_unavailable_base_timeout_seconds,
                                 std::move(server_unavailable_timeout_callback),
                                 std::move(server_name),
-                                call_first_unavailable_timeout_callback_immediately,
-                                exponential_factor,
-                                max_backoff_seconds));
+                                server_unavailable_max_timeout_seconds));
   }
 
   RetryableGrpcClient(const RetryableGrpcClient &) = delete;
@@ -186,9 +177,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                       uint64_t server_unavailable_base_timeout_seconds,
                       std::function<void()> server_unavailable_timeout_callback,
                       std::string server_name,
-                      bool call_first_unavailable_timeout_callback_immediately,
-                      uint8_t exponential_factor,
-                      int64_t max_backoff_seconds)
+                      int64_t server_unavailable_max_timeout_seconds)
       : io_context_(io_context),
         timer_(io_context),
         channel_(std::move(channel)),
@@ -199,15 +188,12 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         server_unavailable_timeout_callback_(
             std::move(server_unavailable_timeout_callback)),
         server_name_(std::move(server_name)),
-        call_first_unavailable_timeout_callback_immediately_(
-            call_first_unavailable_timeout_callback_immediately),
-        exponential_factor_(exponential_factor),
-        max_backoff_seconds_(max_backoff_seconds) {}
+        server_unavailable_max_timeout_seconds_(server_unavailable_max_timeout_seconds) {}
 
   // Set up the timer to run CheckChannelStatus.
   void SetupCheckTimer();
 
-  void CheckChannelStatus(bool reset_timer = true);
+  void CheckChannelStatus(bool reset_timer);
 
   instrumented_io_context &io_context_;
   boost::asio::deadline_timer timer_;
@@ -225,9 +211,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   std::function<void()> server_unavailable_timeout_callback_;
   // Human readable server name for logging purpose.
   const std::string server_name_;
-  const bool call_first_unavailable_timeout_callback_immediately_;
-  const uint8_t exponential_factor_;
-  const int64_t max_backoff_seconds_;
+  const int64_t server_unavailable_max_timeout_seconds_;
   // This is only set when there are pending requests and
   // we need to check channel status.
   // This is the time when the server will timeout for
@@ -242,6 +226,10 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       pending_requests_;
   // Total number of bytes of pending requests.
   size_t pending_requests_bytes_ = 0;
+
+  // Number of retries while the server is unavailable across all requests. Reset to 0
+  // when the server is available.
+  uint32_t attempt_number_ = 0;
 };
 
 template <typename Service, typename Request, typename Reply>

@@ -46,9 +46,8 @@ RayletClient::RayletClient(const rpc::Address &address,
           /*server_unavailable_timeout_callback=*/
           std::move(raylet_unavailable_timeout_callback),
           /*server_name=*/std::string("Raylet ") + address.ip_address(),
-          /*call_first_unavailable_timeout_callback_immediately=*/true,
-          /*exponential_factor=*/2,
-          /*max_backoff_seconds=*/60)) {}
+          /*server_unavailable_max_timeout_seconds=*/
+          ::RayConfig::instance().raylet_rpc_server_reconnect_max_timeout_s())) {}
 
 void RayletClient::RequestWorkerLease(
     const rpc::LeaseSpec &lease_spec,

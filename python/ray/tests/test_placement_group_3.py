@@ -55,6 +55,7 @@ def get_ray_status_output(address):
         generate_system_config_map(
             health_check_initial_delay_ms=0,
             health_check_failure_threshold=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -85,6 +86,7 @@ def test_create_placement_group_during_gcs_server_restart(
         generate_system_config_map(
             health_check_initial_delay_ms=0,
             health_check_failure_threshold=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
