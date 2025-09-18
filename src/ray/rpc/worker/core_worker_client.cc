@@ -37,11 +37,11 @@ CoreWorkerClient::CoreWorkerClient(
               .grpc_client_check_connection_status_interval_milliseconds(),
           /*server_unavailable_base_timeout_seconds=*/
           ::RayConfig::instance().core_worker_rpc_server_reconnect_base_timeout_s(),
+          /*server_unavailable_max_timeout_seconds=*/
+          ::RayConfig::instance().core_worker_rpc_server_reconnect_max_timeout_s(),
           /*server_unavailable_timeout_callback=*/
           std::move(core_worker_unavailable_timeout_callback),
-          /*server_name=*/"Core worker " + addr_.ip_address(),
-          /*server_unavailable_max_timeout_seconds=*/
-          ::RayConfig::instance().core_worker_rpc_server_reconnect_max_timeout_s())) {}
+          /*server_name=*/"Core worker " + addr_.ip_address())) {}
 
 void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
                                      bool skip_queue,

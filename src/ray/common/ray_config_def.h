@@ -696,11 +696,11 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
-/// Starting timeout for core worker grpc server reconnection in seconds (will
-/// exponentially increase until the maximum timeout)
+/// Starting timeout for core worker grpc server reconnection (will
+/// exponentially increase until the maximum timeout).
 RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_base_timeout_s, 1)
 
-/// Maximum timeout for core worker grpc server reconnection in seconds
+/// Maximum timeout for core worker grpc server reconnection.
 RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_max_timeout_s, 60)
 
 /// Maximum amount of memory that will be used by running tasks' args.
@@ -958,11 +958,11 @@ RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1
 // be cancelled.
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
 
-/// Starting timeout for raylet grpc server reconnection in seconds (will exponentially
-/// increase until the maximum timeout)
+/// Starting timeout for raylet grpc server reconnection (will exponentially
+/// increase until the maximum timeout).
 RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_base_timeout_s, 1)
 
-/// Maximum timeout for raylet grpc server reconnection in seconds
+/// Maximum timeout for raylet grpc server reconnection.
 RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_max_timeout_s, 60)
 
 // The number of grpc threads spun up on the worker process. This config is consumed
