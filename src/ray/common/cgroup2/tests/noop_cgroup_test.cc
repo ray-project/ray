@@ -1,4 +1,4 @@
-// Copyright 2024 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,35 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#include <memory>
+#include <utility>
 
-#include <cstdint>
-#include <string>
-
+#include "gtest/gtest.h"
+#include "ray/common/cgroup2/cgroup_manager.h"
+#include "ray/common/cgroup2/sysfs_cgroup_driver.h"
+#include "ray/common/status.h"
 namespace ray {
-namespace rpc {
-namespace testing {
 
-enum class RpcFailure : uint8_t {
-  None,
-  // Failure before server receives the request
-  Request,
-  // Failure after server sends the response
-  Response,
-};
+TEST(NoopCgroupTest, NoopCgroupDriverAndManagerBuildSuccessfullyOnAllPlatforms) {
+  std::unique_ptr<SysFsCgroupDriver> sysfs_cgroup_driver =
+      std::make_unique<SysFsCgroupDriver>();
+  auto cgroup_manager =
+      CgroupManager::Create("", "", 1, 1, std::move(sysfs_cgroup_driver));
+}
 
-/*
- * Get the random rpc failure to be injected
- * for the given rpc method.
- */
-RpcFailure GetRpcFailure(const std::string &name);
-
-/*
- * Initialize the rpc chaos framework (i.e. RpcFailureManager).
- * Should be called once before any rpc calls.
- */
-void Init();
-
-}  // namespace testing
-}  // namespace rpc
 }  // namespace ray
