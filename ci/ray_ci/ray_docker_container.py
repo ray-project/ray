@@ -5,7 +5,7 @@ from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, PYTHON_VERSIONS
 from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.docker_container import DockerContainer
+from ci.ray_ci.docker_container import DockerContainer, RayType
 from ci.ray_ci.utils import RAY_VERSION, docker_pull
 
 
@@ -21,7 +21,10 @@ class RayDockerContainer(DockerContainer):
         assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
         rayci_build_id = os.environ["RAYCI_BUILD_ID"]
         if base is None:
-            base = "base"
+            if self.image_type == RayType.RAY_EXTRA:
+                base = "base-extra"
+            else:
+                base = "base"
 
         if self.architecture == DEFAULT_ARCHITECTURE:
             suffix = base
@@ -29,6 +32,9 @@ class RayDockerContainer(DockerContainer):
             suffix = f"{base}-{self.architecture}"
 
         image_repo = self.image_type
+        if image_repo == RayType.RAY_EXTRA:
+            # Ray extra is a variation of ray, but with a different base suffix.
+            image_repo = RayType.RAY
 
         base_image = (
             f"{_DOCKER_ECR_REPO}:{rayci_build_id}"
@@ -77,6 +83,9 @@ class RayDockerContainer(DockerContainer):
         )
 
     def _get_image_names(self) -> List[str]:
-        ray_repo = f"rayproject/{self.image_type}"
+        repo_name = self.image_type
+        if self.image_type == RayType.RAY_EXTRA:
+            repo_name = RayType.RAY
+        ray_repo = f"rayproject/{repo_name}"
 
         return [f"{ray_repo}:{tag}" for tag in self._get_image_tags(external=True)]
