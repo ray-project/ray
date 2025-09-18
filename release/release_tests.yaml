@@ -171,7 +171,9 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: weekly
+  # Failing since Aug 2024
+  # https://github.com/ray-project/ray/issues/46687
+  frequency: manual
   team: ml
 
   cluster:
@@ -187,7 +189,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -1625,6 +1627,11 @@
 
   cluster:
     byod:
+      runtime_env:
+        # Enable verbose stats for resource manager
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+
+      # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
@@ -3517,7 +3524,9 @@
 
   stable: false
 
-  frequency: nightly
+  # Failing since Oct 2024.
+  # https://github.com/ray-project/ray/issues/36190
+  frequency: manual
   team: serve
   cluster:
     byod: {}
@@ -4066,7 +4075,7 @@
       pytest -sv test_batch_vllm.py
 
 - name: llm_batch_sglang_llama
-  frequency: manual # TODO(ray-llm): fix this test and re-enable it.
+  frequency: nightly
   python: "3.11"
   group: llm-batch
   team: llm

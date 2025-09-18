@@ -284,6 +284,11 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = get_env_str(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
 
+# Maximum timeout allowed for record_autoscaling_stats to run.
+RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
+    "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
+)
+
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
@@ -437,7 +442,7 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
 )
 
 # Used for gc.set_threshold() when proxy GC optimizations are enabled.
-RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 10_000)
+RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 700)
 
 # Interval at which cached metrics will be exported using the Ray metric API.
 # Set to `0` to disable caching entirely.
