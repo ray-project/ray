@@ -26,7 +26,7 @@ from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 @click.option(
     "--image-type",
     default="ray",
-    type=click.Choice(["ray", "ray-llm", "ray-ml"]),
+    type=click.Choice(["ray", "ray-extra", "ray-llm", "ray-ml"]),
 )
 @click.option(
     "--build-type",
