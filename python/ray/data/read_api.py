@@ -439,8 +439,6 @@ def read_datasource(
         datasource,
         datasource_or_legacy_reader,
         parallelism,
-        inmemory_size,
-        len(read_tasks) if read_tasks else 0,
         ray_remote_args,
         concurrency,
     )

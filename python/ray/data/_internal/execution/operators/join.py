@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockBuilder
@@ -152,32 +152,23 @@ class JoinOperator(HashShufflingOperatorBase):
         right_key_columns: Tuple[str],
         join_type: JoinType,
         *,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         left_columns_suffix: Optional[str] = None,
         right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
-        shuffle_aggregation_type: Optional[Type[StatefulShuffleAggregation]] = None,
     ):
-        # Runtime validation (still recommended even with type hints)
-        if shuffle_aggregation_type is not None:
-            if not issubclass(shuffle_aggregation_type, StatefulShuffleAggregation):
-                raise TypeError(
-                    f"shuffle_aggregation_type must be a subclass of StatefulShuffleAggregation, "
-                    f"got {shuffle_aggregation_type}"
-                )
-
-        aggregation_class = shuffle_aggregation_type or JoiningShuffleAggregation
-
         super().__init__(
-            name=f"Join(num_partitions={num_partitions})",
+            name_factory=(
+                lambda num_partitions: f"Join(num_partitions={num_partitions})"
+            ),
             input_ops=[left_input_op, right_input_op],
             data_context=data_context,
             key_columns=[left_key_columns, right_key_columns],
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
             partition_aggregation_factory=(
-                lambda aggregator_id, target_partition_ids: aggregation_class(
+                lambda aggregator_id, target_partition_ids: JoiningShuffleAggregation(
                     aggregator_id=aggregator_id,
                     join_type=join_type,
                     left_key_col_names=left_key_columns,
@@ -193,23 +184,8 @@ class JoinOperator(HashShufflingOperatorBase):
             finalize_progress_bar_name="Join",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> int:
-        """
-        CPU allocation for aggregating actors of Join operator is calculated as:
-        num_cpus (per partition) = CPU budget / # partitions
-
-        Assuming:
-        - Default number of partitions: 64
-        - Total operator's CPU budget with default settings: 8 cores
-        - Number of CPUs per partition: 8 / 64 = 0.125
-
-        These CPU budgets are derived such that Ray Data pipeline could run on a
-        single node (using the default settings).
-        """
-        return 0.125
-
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
-        return self.data_context.join_operator_actor_num_cpus_per_partition_override
+    def _get_operator_num_cpus_override(self) -> float:
+        return self.data_context.join_operator_actor_num_cpus_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(

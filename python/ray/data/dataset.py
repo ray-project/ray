@@ -2513,7 +2513,7 @@ class Dataset:
         self,
         ds: "Dataset",
         join_type: str,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         on: Tuple[str] = ("id",),
         right_on: Optional[Tuple[str]] = None,
         left_suffix: Optional[str] = None,
@@ -2740,7 +2740,10 @@ class Dataset:
             # input validation.
             SortKey(key).validate_schema(self.schema(fetch_if_missing=False))
 
-        if num_partitions is not None and num_partitions <= 0:
+        if num_partitions is None:
+            # TODO replace w/ size-based estimate
+            num_partitions = self._logical_plan.dag.estimated_num_outputs()
+        elif num_partitions <= 0:
             raise ValueError("`num_partitions` must be a positive integer")
 
         return GroupedData(self, key, num_partitions=num_partitions)

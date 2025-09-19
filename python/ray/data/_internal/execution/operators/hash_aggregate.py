@@ -111,15 +111,13 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         key_columns: Tuple[str],
         aggregation_fns: Tuple[AggregateFn],
         *,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            name=(
-                f"HashAggregate("
-                f"num_partitions={num_partitions}, "
-                f"key_columns={key_columns}"
-                f")"
+            name_factory=(
+                lambda num_partitions: f"HashAggregate(key_columns={key_columns}, "
+                f"num_partitions={num_partitions})"
             ),
             input_ops=[input_op],
             data_context=data_context,
@@ -147,25 +145,8 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             finalize_progress_bar_name="Aggregation",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> int:
-        """
-        CPU allocation for aggregating actors of Aggregate operator is calculated as:
-        num_cpus (per partition) = CPU budget / # partitions
-
-        Assuming:
-        - Default number of partitions: 200
-        - Total operator's CPU budget with default settings: 2 cores
-        - Number of CPUs per partition: 2 / 200 = 0.01
-
-        These CPU budgets are derived such that Ray Data pipeline could run on a
-        single node (using the default settings).
-        """
-        return 0.01
-
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
-        return (
-            self.data_context.hash_aggregate_operator_actor_num_cpus_per_partition_override
-        )
+    def _get_operator_num_cpus_override(self) -> float:
+        return self.data_context.hash_aggregate_operator_actor_num_cpus_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
