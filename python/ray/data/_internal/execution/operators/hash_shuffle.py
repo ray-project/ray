@@ -45,6 +45,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     _create_sub_pb,
     estimate_total_num_of_blocks,
 )
+from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
@@ -418,6 +419,19 @@ def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources)
     )
 
 
+def _estimate_output_block_byte_size(ops: List[LogicalOperator]) -> Optional[int]:
+    block_size_estimates = [
+        math.ceil(op.infer_metadata().size_bytes / op.estimated_num_outputs())
+        for op in ops
+        if (
+            op.infer_metadata().size_bytes is not None and
+            op.estimated_num_outputs() # not null and not 0
+        )
+    ]
+
+    return np.average(block_size_estimates, axis=0) if block_size_estimates else None
+
+
 class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
@@ -520,7 +534,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     num_partitions=target_num_partitions,
                     num_aggregators=num_aggregators,
                     total_available_cluster_resources=total_available_cluster_resources,
-                    partition_size_hint=partition_size_hint,
+                    # Individual partition size hint is either derived from
+                    #   - User input
+                    #   - Estimation (avg) of input ops output block size
+                    partition_size_hint=(
+                        partition_size_hint or
+                        _estimate_output_block_byte_size(input_logical_ops)
+                    ),
                 )
             ),
             data_context=data_context,
