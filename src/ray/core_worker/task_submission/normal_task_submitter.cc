@@ -804,7 +804,7 @@ size_t ClusterSizeBasedLeaseRequestRateLimiter::
 }
 
 void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
-    const rpc::GcsNodeInfoLight &data) {
+    const rpc::GcsNodeAddressAndLiveness &data) {
   if (data.state() == rpc::GcsNodeInfo::DEAD) {
     if (num_alive_nodes_ != 0) {
       num_alive_nodes_--;

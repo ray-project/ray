@@ -155,13 +155,13 @@ BENCHMARK_DEFINE_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeInfo)
                                  static_cast<int>(state.range(1))));
 }
 
-BENCHMARK_DEFINE_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeInfoLight)
+BENCHMARK_DEFINE_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeAddressAndLiveness)
 (benchmark::State &state) {
   size_t total_bytes = 0;
 
   for (auto _ : state) {
-    rpc::GetAllNodeInfoLightRequest request;
-    rpc::GetAllNodeInfoLightReply reply;
+    rpc::GetAllNodeAddressAndLivenessRequest request;
+    rpc::GetAllNodeAddressAndLivenessReply reply;
 
     bool callback_called = false;
     auto send_reply_callback =
@@ -169,7 +169,8 @@ BENCHMARK_DEFINE_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeInfoLight)
           callback_called = true;
         };
 
-    node_manager_->HandleGetAllNodeInfoLight(request, &reply, send_reply_callback);
+    node_manager_->HandleGetAllNodeAddressAndLiveness(
+        request, &reply, send_reply_callback);
 
     if (!callback_called) {
       state.SkipWithError("Callback not called");
@@ -193,7 +194,7 @@ BENCHMARK_DEFINE_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeInfoLight)
 
 // Register benchmarks with various configurations
 // Args: {node_count, label_count}
-BENCHMARK_REGISTER_F(GcsNodeManagerBenchmarkFixture, BM_HandleGetAllNodeInfo)
+BENCHMARK_REGISTER_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeInfo)
     ->Args({10, 0})     // Small cluster, no labels
     ->Args({10, 5})     // Small cluster, few labels
     ->Args({10, 20})    // Small cluster, moderate labels
@@ -209,7 +210,7 @@ BENCHMARK_REGISTER_F(GcsNodeManagerBenchmarkFixture, BM_HandleGetAllNodeInfo)
     ->Args({30000, 5})  // Massive cluster, few labels
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK_REGISTER_F(GcsNodeManagerBenchmarkFixture, BM_HandleGetAllNodeInfoLight)
+BENCHMARK_REGISTER_F(GcsNodeManagerBenchmarkFixture, HandleGetAllNodeAddressAndLiveness)
     ->Args({10, 0})     // Small cluster, no labels
     ->Args({10, 5})     // Small cluster, few labels
     ->Args({10, 20})    // Small cluster, moderate labels

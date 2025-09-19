@@ -1855,9 +1855,9 @@ TEST(LeaseRequestRateLimiterTest, StaticLeaseRequestRateLimiter) {
 }
 
 TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
-  rpc::GcsNodeInfoLight dead_node;
+  rpc::GcsNodeAddressAndLiveness dead_node;
   dead_node.set_state(rpc::GcsNodeInfo::DEAD);
-  rpc::GcsNodeInfoLight alive_node;
+  rpc::GcsNodeAddressAndLiveness alive_node;
   alive_node.set_state(rpc::GcsNodeInfo::ALIVE);
   {
     ClusterSizeBasedLeaseRequestRateLimiter limiter(1);
