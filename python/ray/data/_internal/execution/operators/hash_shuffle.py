@@ -58,8 +58,10 @@ from ray.data.block import (
     BlockType,
     to_stats,
 )
-from ray.data.context import DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS, \
-    DEFAULT_TARGET_MAX_BLOCK_SIZE
+from ray.data.context import (
+    DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
+    DEFAULT_TARGET_MAX_BLOCK_SIZE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -423,8 +425,8 @@ def _estimate_output_block_byte_size(ops: List[LogicalOperator]) -> Optional[int
         math.ceil(op.infer_metadata().size_bytes / op.estimated_num_outputs())
         for op in ops
         if (
-            op.infer_metadata().size_bytes is not None and
-            op.estimated_num_outputs() # not null and not 0
+            op.infer_metadata().size_bytes is not None
+            and op.estimated_num_outputs()  # not null and not 0
         )
     ]
 
@@ -467,13 +469,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         finalize_progress_bar_name: Optional[str] = None,
     ):
         input_logical_ops = [
-            input_physical_op._logical_operators[0]
-            for input_physical_op in input_ops
+            input_physical_op._logical_operators[0] for input_physical_op in input_ops
         ]
 
         estimated_num_input_blocks = [
-            input_op.estimated_num_outputs()
-            for input_op in input_logical_ops
+            input_op.estimated_num_outputs() for input_op in input_logical_ops
         ]
 
         # Derive target num partitions as either of
@@ -507,8 +507,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             "its hashing keys"
         )
 
-
-
         self._key_column_names: List[Tuple[str]] = key_columns
         self._num_partitions: int = target_num_partitions
 
@@ -540,8 +538,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     #   - User input
                     #   - Estimation (avg) of input ops output block size
                     partition_byte_size_estimate=(
-                        partition_size_hint or
-                        _estimate_output_block_byte_size(input_logical_ops)
+                        partition_size_hint
+                        or _estimate_output_block_byte_size(input_logical_ops)
                     ),
                 )
             ),
@@ -1047,9 +1045,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # NOTE: If no partition size hint is provided we simply assume target
             #       max block size specified as the best partition size estimate
             partition_byte_size_estimate=(
-                partition_byte_size_estimate or
-                self.data_context.target_max_block_size or
-                DEFAULT_TARGET_MAX_BLOCK_SIZE
+                partition_byte_size_estimate
+                or self.data_context.target_max_block_size
+                or DEFAULT_TARGET_MAX_BLOCK_SIZE
             ),
         )
 
@@ -1057,7 +1055,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             "num_cpus": self._get_aggregator_num_cpus(
                 total_available_cluster_resources,
                 estimated_aggregator_memory_required,
-                num_aggregators=num_aggregators
+                num_aggregators=num_aggregators,
             ),
             "memory": estimated_aggregator_memory_required,
             # NOTE: By default aggregating actors should be spread across available
@@ -1113,10 +1111,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - 25% of total available CPUs but
         #   - No more than 4 CPUs per aggregator
         #
-        cap = min(
-            4.0,
-            total_available_cluster_resources.cpu * 0.25 / num_aggregators
-        )
+        cap = min(4.0, total_available_cluster_resources.cpu * 0.25 / num_aggregators)
 
         target_num_cpus = min(cap, estimated_aggregator_memory_required / 4 * GiB)
 
@@ -1151,8 +1146,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
     ):
         super().__init__(
             name_factory=(
-                lambda num_partitions:
-                    f"Shuffle(key_columns={self._key_columns}, num_partitions={num_partitions})"
+                lambda num_partitions: f"Shuffle(key_columns={self._key_columns}, num_partitions={num_partitions})"
             ),
             input_ops=[input_op],
             data_context=data_context,
