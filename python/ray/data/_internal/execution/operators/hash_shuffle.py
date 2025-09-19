@@ -430,7 +430,13 @@ def _estimate_output_block_byte_size(ops: List[LogicalOperator]) -> Optional[int
         )
     ]
 
-    return np.average(block_size_estimates, axis=0) if block_size_estimates else None
+    input_block_bytes_estimate = math.ceil(
+        np.average(block_size_estimates, axis=0) if block_size_estimates else None
+    )
+
+    logger.info(f"Estimated input block byte size at {input_block_bytes_estimate / MiB:.1f}MiB")
+
+    return input_block_bytes_estimate
 
 
 class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
