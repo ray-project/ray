@@ -32,7 +32,10 @@ processor = build_llm_processor(
         payload=dict(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a bot that responds with haikus."},
+                {
+                    "role": "system",
+                    "content": "You are a bot that responds with haikus.",
+                },
                 {"role": "user", "content": row["item"]},
             ],
             temperature=0.0,
