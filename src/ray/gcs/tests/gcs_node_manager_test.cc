@@ -22,7 +22,10 @@
 
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -35,7 +38,10 @@ class GcsNodeManagerTest : public ::testing::Test {
         });
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
+        std::make_shared<gcs::InMemoryStoreClient>());
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
+    fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
   }
 
  protected:
@@ -43,14 +49,103 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
+  std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
 };
+
+// TODO(https://github.com/ray-project/ray/pull/56631): Re-enable
+// TestRayEventNodeEvents. It was temporarily disabled to unblock CI.
+TEST_F(GcsNodeManagerTest, DISABLED_TestRayEventNodeEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_context_->GetIoService(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
+  auto node = GenNodeInfo();
+  rpc::RegisterNodeRequest register_request;
+  register_request.mutable_node_info()->CopyFrom(*node);
+  rpc::RegisterNodeReply register_reply;
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+  // Add a node to the manager
+  node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
+  io_context_->GetIoService().poll();
+  auto register_events = fake_ray_event_recorder_->FlushBuffer();
+
+  // Test the node definition event + alive node lifecycle event
+  ASSERT_EQ(register_events.size(), 2);
+  auto ray_event_0 = std::move(*register_events[0]).Serialize();
+  auto ray_event_1 = std::move(*register_events[1]).Serialize();
+  ASSERT_EQ(ray_event_0.event_type(), rpc::events::RayEvent::NODE_DEFINITION_EVENT);
+  ASSERT_EQ(ray_event_0.source_type(), rpc::events::RayEvent::GCS);
+  ASSERT_EQ(ray_event_0.severity(), rpc::events::RayEvent::INFO);
+  ASSERT_EQ(ray_event_0.session_name(), "test_session_name");
+  ASSERT_EQ(ray_event_0.node_definition_event().node_id(), node->node_id());
+  ASSERT_EQ(ray_event_0.node_definition_event().node_ip_address(),
+            node->node_manager_address());
+  ASSERT_EQ(ray_event_0.node_definition_event().start_timestamp().seconds(),
+            node->start_time_ms() / 1000);
+  std::map<std::string, std::string> event_labels(
+      ray_event_0.node_definition_event().labels().begin(),
+      ray_event_0.node_definition_event().labels().end());
+  std::map<std::string, std::string> node_labels(node->labels().begin(),
+                                                 node->labels().end());
+  ASSERT_EQ(event_labels, node_labels);
+  ASSERT_EQ(ray_event_1.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
+  ASSERT_EQ(ray_event_1.source_type(), rpc::events::RayEvent::GCS);
+  ASSERT_EQ(ray_event_1.severity(), rpc::events::RayEvent::INFO);
+  ASSERT_EQ(ray_event_1.session_name(), "test_session_name");
+  ASSERT_EQ(ray_event_1.node_lifecycle_event().node_id(), node->node_id());
+  ASSERT_EQ(ray_event_1.node_lifecycle_event().state_transitions(0).state(),
+            rpc::events::NodeLifecycleEvent::ALIVE);
+
+  // Remove the node from the manager
+  rpc::UnregisterNodeRequest unregister_request;
+  unregister_request.set_node_id(node->node_id());
+  unregister_request.mutable_node_death_info()->set_reason(
+      rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
+  rpc::UnregisterNodeReply unregister_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request, &unregister_reply, send_reply_callback);
+  io_context_->GetIoService().poll();
+
+  // Test the dead node lifecycle event
+  auto unregister_events = fake_ray_event_recorder_->FlushBuffer();
+  ASSERT_EQ(unregister_events.size(), 1);
+  auto ray_event_03 = std::move(*unregister_events[0]).Serialize();
+  ASSERT_EQ(ray_event_03.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
+  ASSERT_EQ(ray_event_03.source_type(), rpc::events::RayEvent::GCS);
+  ASSERT_EQ(ray_event_03.severity(), rpc::events::RayEvent::INFO);
+  ASSERT_EQ(ray_event_03.session_name(), "test_session_name");
+  ASSERT_EQ(ray_event_03.node_lifecycle_event().node_id(), node->node_id());
+  ASSERT_EQ(ray_event_03.node_lifecycle_event().state_transitions(0).state(),
+            rpc::events::NodeLifecycleEvent::DEAD);
+  ASSERT_EQ(
+      ray_event_03.node_lifecycle_event().state_transitions(0).death_info().reason(),
+      rpc::events::NodeLifecycleEvent::DeathInfo::EXPECTED_TERMINATION);
+  ASSERT_EQ(ray_event_03.node_lifecycle_event()
+                .state_transitions(0)
+                .death_info()
+                .reason_message(),
+            "mock reason message");
+}
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -68,7 +163,9 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
@@ -111,7 +208,9 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
 
   // Create a test node
   auto node = GenNodeInfo();
