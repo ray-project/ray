@@ -24,13 +24,14 @@ class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdow
         datasource: Datasource,
         datasource_or_legacy_reader: Union[Datasource, Reader],
         parallelism: int,
+        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ):
         super().__init__(
             name=f"Read{datasource.get_name()}",
             input_op=None,
-            num_outputs=None,
+            num_outputs=num_outputs,
             ray_remote_args=ray_remote_args,
         )
         self._datasource = datasource
