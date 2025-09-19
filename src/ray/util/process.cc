@@ -122,7 +122,8 @@ class ProcessFD {
                             std::error_code &ec,
                             bool decouple,
                             const ProcessEnvironment &env,
-                            bool pipe_to_stdin) {
+                            bool pipe_to_stdin,
+                            bool new_process_group) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -251,6 +252,14 @@ class ProcessFD {
       if (pid_t pid2 = decouple ? fork() : 0) {
         _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
       }
+
+#if !defined(_WIN32)
+      // Put this child into a new process group if requested, before exec.
+      if (new_process_group) {
+        // setpgrp() is equivalent to setpgid(0,0).
+        (void)setpgrp();
+      }
+#endif
 
       // Redirect the read pipe to stdin so that child can track the
       // parent lifetime.
@@ -385,19 +394,22 @@ Process::Process(const char *argv[],
                  std::error_code &ec,
                  bool decouple,
                  const ProcessEnvironment &env,
-                 bool pipe_to_stdin) {
+                 bool pipe_to_stdin,
+                 bool new_process_group) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
 #ifdef __linux__
   KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
-    ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+    ProcessFD procfd =
+        ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin, new_process_group);
     if (!ec) {
       this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
     }
     return this->GetId();
   });
 #else
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+  ProcessFD procfd =
+      ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin, new_process_group);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
@@ -462,7 +474,8 @@ bool Process::IsValid() const { return GetId() != -1; }
 std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
                                                    bool decouple,
                                                    const std::string &pid_file,
-                                                   const ProcessEnvironment &env) {
+                                                   const ProcessEnvironment &env,
+                                                   bool new_process_group) {
   std::vector<const char *> argv;
   argv.reserve(args.size() + 1);
   for (size_t i = 0; i != args.size(); ++i) {
@@ -470,7 +483,13 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(), NULL, error, decouple, env);
+  Process proc(&*argv.begin(),
+               NULL,
+               error,
+               decouple,
+               env,
+               /*pipe_to_stdin=*/false,
+               new_process_group);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
     file << proc.GetId() << std::endl;
@@ -699,6 +718,18 @@ static inline std::error_code KillProcLinux(pid_t pid) {
 std::optional<std::error_code> KillProc(pid_t pid) {
 #if defined(__linux__)
   return {KillProcLinux(pid)};
+#else
+  return std::nullopt;
+#endif
+}
+
+std::optional<std::error_code> KillProcessGroup(pid_t pgid, int sig) {
+#if !defined(_WIN32)
+  std::error_code error;
+  if (killpg(pgid, sig) != 0) {
+    error = std::error_code(errno, std::system_category());
+  }
+  return {error};
 #else
   return std::nullopt;
 #endif
