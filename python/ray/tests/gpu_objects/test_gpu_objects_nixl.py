@@ -49,6 +49,25 @@ class GPUTestActor:
         return "Success"
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
+    actor = GPUTestActor.remote()
+    tensor = torch.tensor([1, 2, 3]).to("cuda")
+    ref1 = actor.echo.remote(tensor, "cuda")
+    ref2 = actor.echo.remote(tensor, "cuda")
+    ref3 = actor.echo.remote(tensor, "cuda")
+
+    # Test ray.get with default tensor transport, should use nixl here.
+    # TODO: Verify it's using the correct tensor transport.
+    assert torch.equal(ray.get(ref1), tensor)
+
+    # # Test ray.get with nixl tensor transport
+    assert torch.equal(ray.get(ref2, _tensor_transport="nixl"), tensor)
+
+    # # Test ray.get with object store tensor transport
+    assert torch.equal(ray.get(ref3, _tensor_transport="object_store"), tensor)
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_p2p(ray_start_regular):
     num_actors = 2
@@ -66,12 +85,12 @@ def test_p2p(ray_start_regular):
 
     # Trigger tensor transfer from src to dst actor
     result = dst_actor.sum.remote(ref, "cuda")
-    assert tensor.sum().item() == ray.get(result, _tensor_transport="object_store")
+    assert tensor.sum().item() == ray.get(result)
 
     # Test CPU to CPU transfer
     ref1 = src_actor.echo.remote(tensor1, "cpu")
     result1 = dst_actor.sum.remote(ref1, "cpu")
-    assert tensor1.sum().item() == ray.get(result1, _tensor_transport="object_store")
+    assert tensor1.sum().item() == ray.get(result1)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -83,7 +102,7 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
     # Intra-actor communication for pure GPU tensors
     ref = actor.echo.remote(tensor, "cuda")
     result = actor.sum.remote(ref, "cuda")
-    assert tensor.sum().item() == ray.get(result, _tensor_transport="object_store")
+    assert tensor.sum().item() == ray.get(result)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
