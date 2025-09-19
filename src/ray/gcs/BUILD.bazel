@@ -507,6 +507,7 @@ ray_cc_library(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
         "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/observability:metric_constants",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/pubsub:gcs_publisher",
@@ -537,6 +538,7 @@ ray_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":gcs_server_lib",
+        "//src/ray/observability:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
         "//src/ray/util:raii",

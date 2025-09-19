@@ -22,12 +22,16 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_client/rpc_client.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
 class GcsServerTest : public ::testing::Test {
  public:
-  GcsServerTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+  GcsServerTest()
+      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
+    TestSetupUtil::StartUpRedisServers(std::vector<int>());
+  }
 
   virtual ~GcsServerTest() { TestSetupUtil::ShutDownRedisServers(); }
 
@@ -40,7 +44,8 @@ class GcsServerTest : public ::testing::Test {
     config.node_ip_address = "127.0.0.1";
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    gcs_server_ = std::make_unique<gcs::GcsServer>(config, io_service_);
+    gcs_server_ = std::make_unique<gcs::GcsServer>(
+        config, io_service_, *fake_dropped_events_counter_);
     gcs_server_->Start();
 
     thread_io_service_ = std::make_unique<std::thread>([this] {
@@ -222,6 +227,9 @@ class GcsServerTest : public ::testing::Test {
   // Gcs client
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  // Fake metric for testing
+  std::unique_ptr<observability::FakeCounter> fake_dropped_events_counter_;
 
   // Timeout waiting for gcs server reply, default is 5s
   const std::chrono::milliseconds timeout_ms_{5000};

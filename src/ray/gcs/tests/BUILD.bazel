@@ -49,6 +49,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
+        "//src/ray/observability:fake_metric",
         "@com_google_googletest//:gtest",
     ],
 )

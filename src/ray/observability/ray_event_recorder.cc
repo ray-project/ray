@@ -19,10 +19,20 @@
 namespace ray {
 namespace observability {
 
-RayEventRecorder::RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                                   instrumented_io_context &io_service)
+using std::literals::operator""sv;
+
+RayEventRecorder::RayEventRecorder(
+    rpc::EventAggregatorClient &event_aggregator_client,
+    instrumented_io_context &io_service,
+    size_t max_buffer_size,
+    std::string_view metric_source,
+    ray::observability::MetricInterface &dropped_events_counter)
     : event_aggregator_client_(event_aggregator_client),
-      periodical_runner_(PeriodicalRunner::Create(io_service)) {}
+      periodical_runner_(PeriodicalRunner::Create(io_service)),
+      max_buffer_size_(max_buffer_size),
+      metric_source_(metric_source),
+      buffer_(max_buffer_size),
+      dropped_events_counter_(dropped_events_counter) {}
 
 void RayEventRecorder::StartExportingEvents() {
   absl::MutexLock lock(&mutex_);
@@ -64,9 +74,15 @@ void RayEventRecorder::ExportEvents() {
 void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
-  buffer_.reserve(buffer_.size() + data_list.size());
-  for (auto &data : data_list) {
-    buffer_.emplace_back(std::move(data));
+  if (data_list.size() + buffer_.size() > max_buffer_size_) {
+    size_t events_to_remove = data_list.size() + buffer_.size() - max_buffer_size_;
+    // Record dropped events from the buffer
+    RAY_LOG(ERROR) << "Dropping " << events_to_remove << " events from the buffer.";
+    dropped_events_counter_.Record(events_to_remove,
+                                   {{"Source"sv, std::string(metric_source_)}});
+  }
+  for (auto &event : data_list) {
+    buffer_.push_back(std::move(event));
   }
 }
 
