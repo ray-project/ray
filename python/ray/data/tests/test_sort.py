@@ -8,13 +8,13 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data import Dataset
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa

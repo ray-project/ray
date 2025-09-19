@@ -2,7 +2,6 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
@@ -13,6 +12,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.util import GiB
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey

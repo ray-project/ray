@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data import Dataset
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -26,6 +25,7 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values

@@ -11,7 +11,6 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
-from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
@@ -22,6 +21,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     unify_schemas,
 )
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
     ArrowPythonObjectArray,
