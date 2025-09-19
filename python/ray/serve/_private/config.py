@@ -16,8 +16,8 @@ from ray._common.pydantic_compat import (
     PositiveInt,
     validator,
 )
+from ray._common.serialization import pickle_dumps
 from ray._common.utils import resources_from_ray_options
-from ray._private.serialization import pickle_dumps
 from ray.serve._private.constants import (
     DEFAULT_CONSTRUCTOR_RETRY_COUNT,
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
