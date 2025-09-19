@@ -123,7 +123,8 @@ ray.util.placement_group(
     bundle_label_selector=[{"ray.io/market-type": "spot"}] + [{"ray.io/accelerator-type": "H100"} * 2]
 )
 ```
-## Using labels with autoascaler
+## Using labels with autoscaler
+
 Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up nodes to fulfill label requirements, you need to create multiple worker groups for different label requirement combinations and specify the all the corresponding labels in the `rayStartParams` field in the Ray cluster configuration. For example:
 
 ```python
@@ -132,13 +133,9 @@ Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up 
     }
 ```
 
-In the future, Ray plans to support creating pods with default labels. This can help reduce the effort to create multiple worker groups and specifying the labels in the `rayStartParams`.
+<!-- Comment out future plans from published docs.
 
-<!-- Commenting out until code is provided
-
-### An end-to-end example
-
-TBD -->
+In the future, Ray plans to support creating pods with default labels. This can help reduce the effort to create multiple worker groups and specifying the labels in the `rayStartParams`. -->
 
 ## Monitor nodes using labels
 
