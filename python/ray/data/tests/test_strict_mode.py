@@ -227,7 +227,7 @@ def test_strict_schema(ray_start_regular_shared):
     assert schema.names == ["data"]
 
     from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
-    from ray.data import DataContext
+    from ray.data.context import DataContext
 
     if DataContext.get_current().use_arrow_tensor_v2:
         expected_arrow_ext_type = ArrowTensorTypeV2(shape=(10,), dtype=pa.float64())
