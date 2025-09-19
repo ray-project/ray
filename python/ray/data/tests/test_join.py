@@ -22,9 +22,7 @@ from ray.tests.conftest import *  # noqa
         (1, 32, None),
     ],
 )
-@pytest.mark.parametrize(
-    "num_partitions", [None, 16]
-)
+@pytest.mark.parametrize("num_partitions", [None, 16])
 def test_simple_inner_join(
     ray_start_regular_shared_2_cpus,
     num_rows_left: int,
@@ -237,7 +235,12 @@ def test_simple_full_outer_join(
 @pytest.mark.parametrize("left_suffix", [None, "_left"])
 @pytest.mark.parametrize("right_suffix", [None, "_right"])
 @pytest.mark.parametrize("num_partitions", [None, 16])
-def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_suffix, num_partitions: Optional[int]):
+def test_simple_self_join(
+    ray_start_regular_shared_2_cpus,
+    left_suffix,
+    right_suffix,
+    num_partitions: Optional[int],
+):
     # NOTE: We override max-block size to make sure that in cases when a partition
     #       size hint is not provided, we're not over-estimating amount of memory
     #       required for the aggregators
