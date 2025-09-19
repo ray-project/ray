@@ -537,7 +537,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             **kw: Additional keyword arguments passed by Celery
         """
         logger.info(
-            f"Task failure detected for task_id: {task_id}, args: {str(args)}, kwargs: {str(kwargs)}, einfo: {str(einfo)}"
+            f"Task failure detected for task_id: {task_id}, einfo: {str(einfo)}"
         )
 
         dlq_args = [
@@ -583,7 +583,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             **kwargs: Additional context information from Celery
         """
         logger.info(
-            f"Unknown task detected by Celery. Name: {name}, ID: {id}, Message: {str(message)}, Exc: {str(exc)}, Kwargs: {str(kwargs)}"
+            f"Unknown task detected by Celery. Name: {name}, ID: {id}, Exc: {str(exc)}"
         )
 
         if self._config.unprocessable_task_queue_name:

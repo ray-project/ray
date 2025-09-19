@@ -504,6 +504,8 @@ class TestTaskConsumerWithRayServe:
             lambda: ray.get(signal.cur_num_waiters.remote()) == num_tasks, timeout=20
         )
 
+        ray.get(signal.send.remote())
+
     def test_task_consumer_with_task_custom_config(
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
