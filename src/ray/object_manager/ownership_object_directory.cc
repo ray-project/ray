@@ -329,10 +329,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const OnLocationsFound &callback) {
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
-    // Create an object eviction subscription message.
-    auto request = std::make_unique<rpc::WorkerObjectLocationsSubMessage>();
-    request->set_intended_worker_id(owner_address.worker_id());
-    request->set_object_id(object_id.Binary());
+    // Create an object location subscription message.
+    rpc::WorkerObjectLocationsSubMessage request;
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
 
     auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
       RAY_CHECK(pub_message.has_worker_object_locations_message());
@@ -346,7 +346,6 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto failure_callback = [this, owner_address](const std::string &object_id_binary,
                                                   const Status &status) {
       const auto obj_id = ObjectID::FromBinary(object_id_binary);
-      rpc::WorkerObjectLocationsPubMessage location_info;
       if (!status.ok()) {
         RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location: " << status.ToString();
@@ -362,13 +361,14 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
       // Location lookup can fail if the owner is reachable but no longer has a
       // record of this ObjectRef, most likely due to an issue with the
       // distributed reference counting protocol.
-      ObjectLocationSubscriptionCallback(location_info,
-                                         obj_id,
-                                         /*location_lookup_failed*/ true);
+      ObjectLocationSubscriptionCallback(
+          /*location_info=*/rpc::WorkerObjectLocationsPubMessage{},
+          obj_id,
+          /*location_lookup_failed*/ true);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_locations_message()->Swap(request.get());
+    *sub_message->mutable_worker_object_locations_message() = std::move(request);
 
     object_location_subscriber_->Subscribe(
         std::move(sub_message),

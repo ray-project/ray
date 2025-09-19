@@ -254,6 +254,7 @@ proto_library(
     deps = [
         ":export_actor_event_proto",
         ":export_dataset_metadata_proto",
+        ":export_dataset_operator_event_proto",
         ":export_driver_job_event_proto",
         ":export_node_event_proto",
         ":export_submission_job_event_proto",
@@ -345,6 +346,16 @@ proto_library(
 cc_proto_library(
     name = "export_train_state_cc_proto",
     deps = [":export_train_state_proto"],
+)
+
+proto_library(
+    name = "export_dataset_operator_event_proto",
+    srcs = ["export_dataset_operator_event.proto"],
+)
+
+cc_proto_library(
+    name = "export_dataset_operator_event_cc_proto",
+    deps = [":export_dataset_operator_event_proto"],
 )
 
 proto_library(
@@ -457,30 +468,11 @@ cc_proto_library(
 )
 
 proto_library(
-    name = "events_base_event_proto",
-    srcs = ["events_base_event.proto"],
-    deps = [
-        ":events_task_profile_events_proto",
-        "//src/ray/protobuf/public:events_actor_task_definition_event_proto",
-        "//src/ray/protobuf/public:events_driver_job_definition_event_proto",
-        "//src/ray/protobuf/public:events_driver_job_execution_event_proto",
-        "//src/ray/protobuf/public:events_task_definition_event_proto",
-        "//src/ray/protobuf/public:events_task_execution_event_proto",
-        "@com_google_protobuf//:timestamp_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "events_base_event_cc_proto",
-    deps = [":events_base_event_proto"],
-)
-
-proto_library(
     name = "events_event_aggregator_service_proto",
     srcs = ["events_event_aggregator_service.proto"],
     deps = [
         ":common_proto",
-        ":events_base_event_proto",
+        "//src/ray/protobuf/public:events_base_event_proto",
     ],
 )
 

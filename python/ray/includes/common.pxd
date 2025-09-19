@@ -158,7 +158,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef cppclass CLanguage "Language":
+    cdef cppclass CLanguage "ray::Language":
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
         pass
@@ -243,9 +243,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
-    cdef CLanguage LANGUAGE_CPP "Language::CPP"
-    cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
+    cdef CLanguage LANGUAGE_PYTHON "ray::Language::PYTHON"
+    cdef CLanguage LANGUAGE_CPP "ray::Language::CPP"
+    cdef CLanguage LANGUAGE_JAVA "ray::Language::JAVA"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::core::WorkerType::WORKER"
@@ -365,6 +365,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool allow_out_of_order_execution,
             int32_t max_pending_calls,
+            c_bool enable_tensor_transport,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
             const unordered_map[c_string, c_string] &label_selector)
@@ -390,7 +391,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
+cdef extern from "ray/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
             object (*)(CRayStatus, c_vector[T]) nogil,
@@ -409,7 +410,7 @@ cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
+cdef extern from "ray/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
         void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
@@ -615,7 +616,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         )
 
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
+cdef extern from "ray/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
@@ -645,12 +646,12 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
         const CGcsNodeInfo& node_info)
 
-cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
-    cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
+cdef extern from "ray/pubsub/python_gcs_subscriber.h" nogil:
+    cdef cppclass CPythonGcsSubscriber "ray::pubsub::PythonGcsSubscriber":
 
         CPythonGcsSubscriber(
             const c_string& gcs_address, int gcs_port, CChannelType channel_type,
@@ -668,10 +669,10 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus Close()
 
-cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/pubsub/python_gcs_subscriber.h" namespace "ray::pubsub" nogil:
     c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
         const CGcsNodeInfo& node_info)
 
@@ -765,9 +766,9 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
-            const c_string &name,
+            c_string name,
             uint32_t max_concurrency,
-            const c_vector[CFunctionDescriptor] &c_fds)
+            c_vector[CFunctionDescriptor] c_fds)
         CConcurrencyGroup()
         c_string GetName() const
         uint32_t GetMaxConcurrency() const

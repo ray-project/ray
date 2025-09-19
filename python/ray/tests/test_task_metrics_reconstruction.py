@@ -4,16 +4,19 @@ import numpy as np
 import pytest
 
 import ray
-
-from ray.tests.test_task_metrics import tasks_by_all, METRIC_CONFIG
 from ray._common.test_utils import (
     wait_for_condition,
 )
+from ray._private.test_utils import (
+    PrometheusTimeseries,
+)
+from ray.tests.test_task_metrics import METRIC_CONFIG, tasks_by_all
 
 
 # Copied from similar test in test_reconstruction_2.py.
 @pytest.mark.skipif(sys.platform == "win32", reason="No multi-node on Windows.")
 def test_task_reconstruction(ray_start_cluster):
+    timeseries = PrometheusTimeseries()
     cluster = ray_start_cluster
 
     # Head node with no resources.
@@ -44,7 +47,7 @@ def test_task_reconstruction(ray_start_cluster):
         ("dependent_task", "FINISHED", "0"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info) == expected,
+        lambda: tasks_by_all(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -63,7 +66,7 @@ def test_task_reconstruction(ray_start_cluster):
         ("dependent_task", "FINISHED", "1"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info) == expected,
+        lambda: tasks_by_all(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )

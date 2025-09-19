@@ -1,13 +1,13 @@
 import os
 import sys
 from unittest import mock
-import pytest
-import requests
 from unittest.mock import patch
 
+import pytest
+import requests
+
 import ray
-from ray._private.accelerators import TPUAcceleratorManager
-from ray._private.accelerators import tpu
+from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray.tests.conftest import _ray_start_cluster
 
 

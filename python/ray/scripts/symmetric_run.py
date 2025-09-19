@@ -1,17 +1,18 @@
 """Symmetric Run for Ray."""
 
-from typing import List
-
-import click
-import ray
 import socket
-import psutil
 import subprocess
 import sys
 import time
+from typing import List
 
+import click
+
+import ray
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
+
+import psutil
 
 CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
 
@@ -132,10 +133,13 @@ SEPARATOR REQUIREMENT:
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
-    separator = all_args.index("--")
-
-    if separator == -1:
-        raise click.ClickException("No separator '--' found in arguments.")
+    try:
+        separator = all_args.index("--")
+    except ValueError:
+        raise click.ClickException(
+            "No separator '--' found in arguments. Please use '--' to "
+            "separate Ray start arguments and the entrypoint command."
+        )
 
     run_and_start_args, entrypoint_on_head = (
         all_args[:separator],

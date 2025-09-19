@@ -77,6 +77,26 @@
 #  alert: default
 
 #######################
+# Baseline test
+#######################
+- name: hello_world
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
+#######################
 # Cluster scaling tests
 #######################
 - name: cluster_tune_scale_up_down
@@ -216,7 +236,9 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: weekly
+  # Failing since Aug 2024
+  # https://github.com/ray-project/ray/issues/46687
+  frequency: manual
   team: ml
 
   cluster:
@@ -232,7 +254,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -537,7 +559,9 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: nightly
+  # Jailed with
+  # https://github.com/ray-project/ray/issues/56282
+  frequency: manual
   team: ml
 
   stable: false
@@ -600,7 +624,9 @@
 
   stable: false
 
-  frequency: nightly
+  # Failing since Aug 2025.
+  # https://github.com/ray-project/ray/issues/52562
+  frequency: manual
 
   team: data
   cluster:
@@ -2150,6 +2176,11 @@
 
   cluster:
     byod:
+      runtime_env:
+        # Enable verbose stats for resource manager
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+
+      # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
@@ -4074,7 +4105,9 @@
 
   stable: false
 
-  frequency: nightly
+  # Failing since Oct 2024.
+  # https://github.com/ray-project/ray/issues/36190
+  frequency: manual
   team: serve
   cluster:
     byod: {}
@@ -4102,6 +4135,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
@@ -4122,6 +4157,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
@@ -4142,6 +4179,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
@@ -4162,6 +4201,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
@@ -4183,6 +4224,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-minimal.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
@@ -4203,6 +4246,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
@@ -4226,6 +4271,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
@@ -4249,6 +4296,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
@@ -4272,6 +4321,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
@@ -4295,6 +4346,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
@@ -4318,6 +4371,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
@@ -4341,6 +4396,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
@@ -4554,7 +4611,7 @@
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
-  frequency: nightly
+  frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
   python: "3.11"
   group: llm-serve
   team: llm
@@ -4599,7 +4656,7 @@
       pytest -sv test_batch_vllm.py
 
 - name: llm_batch_sglang_llama
-  frequency: manual # TODO(ray-llm): fix this test and re-enable it.
+  frequency: nightly
   python: "3.11"
   group: llm-batch
   team: llm
@@ -4622,6 +4679,7 @@
   python: "3.11"  # necessary for the llm-cu128 image
   working_dir: nightly_tests
   team: data
+  group: data-tests
 
   cluster:
     byod:
@@ -4644,6 +4702,7 @@
   python: "3.11"
   working_dir: nightly_tests
   team: data
+  group: data-tests
 
   cluster:
     byod:
@@ -4746,6 +4805,33 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: deployment_serve_llm  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
   frequency: weekly

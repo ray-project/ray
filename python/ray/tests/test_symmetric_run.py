@@ -1,9 +1,11 @@
-import ray
 import sys
-import pytest
 from contextlib import contextmanager
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 from click.testing import CliRunner
+
+import ray
 import ray.scripts.scripts as scripts
 
 
@@ -136,6 +138,16 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
                 # Test basic symmetric_run call using CliRunner
                 result = runner.invoke(symmetric_run, args)
                 assert result.exit_code == 0
+
+        # Test that invalid arguments are rejected
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+
+            args = ["--address", "127.0.0.1:6379", "echo", "test"]
+            with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+                result = runner.invoke(symmetric_run, args)
+                assert result.exit_code == 1
+                assert "No separator" in result.output
 
         # Test that invalid arguments are rejected
         with patch("subprocess.run") as mock_run:
