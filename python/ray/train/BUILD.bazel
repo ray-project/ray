@@ -4,6 +4,7 @@ load("//bazel:python.bzl", "doctest")
 doctest(
     name = "py_doctest[train]",
     size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -24,6 +25,7 @@ doctest(
 doctest(
     name = "py_doctest[train-gpu]",
     size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     files = [
         "_internal/session.py",
         "context.py",
