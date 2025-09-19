@@ -202,7 +202,7 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray._private.state.actors().values():
+        for actor_info in ray._common.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
