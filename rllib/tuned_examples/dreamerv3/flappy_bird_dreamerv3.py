@@ -14,9 +14,8 @@ https://arxiv.org/pdf/2010.02193.pdf
 # To see all available options:
 # python [this script name].py --help
 
-from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray import tune
-
+from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
 # Number of GPUs to run on.
 num_gpus = 0
