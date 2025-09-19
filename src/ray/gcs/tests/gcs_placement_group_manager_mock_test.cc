@@ -24,6 +24,7 @@
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -46,12 +47,15 @@ class GcsPlacementGroupManagerMockTest : public Test {
     resource_manager_ = std::make_shared<MockGcsResourceManager>(
         io_context_, cluster_resource_manager_, *node_manager_, NodeID::FromRandom());
 
-    gcs_placement_group_manager_ =
-        std::make_unique<GcsPlacementGroupManager>(io_context_,
-                                                   gcs_placement_group_scheduler_.get(),
-                                                   gcs_table_storage_.get(),
-                                                   *resource_manager_,
-                                                   [](auto &) { return ""; });
+    gcs_placement_group_manager_ = std::make_unique<GcsPlacementGroupManager>(
+        io_context_,
+        gcs_placement_group_scheduler_.get(),
+        gcs_table_storage_.get(),
+        *resource_manager_,
+        [](auto &) { return ""; },
+        fake_placement_group_gauge_,
+        fake_placement_group_creation_latency_in_ms_histogram_,
+        fake_placement_group_scheduling_latency_in_ms_histogram_);
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
@@ -64,6 +68,11 @@ class GcsPlacementGroupManagerMockTest : public Test {
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> resource_manager_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
+
+  // Fake metrics for testing
+  ray::observability::FakeMetric fake_placement_group_gauge_;
+  ray::observability::FakeMetric fake_placement_group_creation_latency_in_ms_histogram_;
+  ray::observability::FakeMetric fake_placement_group_scheduling_latency_in_ms_histogram_;
 };
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {

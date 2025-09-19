@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "ray/gcs/store_client/store_client.h"
+#include "ray/observability/metric_interface.h"
 
 namespace ray {
 
@@ -28,8 +29,14 @@ namespace gcs {
 /// Wraps around a StoreClient instance and observe the metrics.
 class ObservableStoreClient : public StoreClient {
  public:
-  explicit ObservableStoreClient(std::unique_ptr<StoreClient> delegate)
-      : delegate_(std::move(delegate)) {}
+  explicit ObservableStoreClient(
+      std::unique_ptr<StoreClient> delegate,
+      ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
+      ray::observability::MetricInterface &storage_operation_count_counter)
+      : delegate_(std::move(delegate)),
+        storage_operation_latency_in_ms_histogram_(
+            storage_operation_latency_in_ms_histogram),
+        storage_operation_count_counter_(storage_operation_count_counter) {}
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
@@ -70,6 +77,8 @@ class ObservableStoreClient : public StoreClient {
 
  private:
   std::unique_ptr<StoreClient> delegate_;
+  ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram_;
+  ray::observability::MetricInterface &storage_operation_count_counter_;
 };
 
 }  // namespace gcs

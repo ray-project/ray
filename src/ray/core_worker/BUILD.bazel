@@ -36,6 +36,7 @@ ray_cc_library(
         "//src/ray/common/cgroup:cgroup_context",
         "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/common/cgroup:constants",
+        "//src/ray/common:metrics",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker/task_submission:normal_task_submitter",
         "//src/ray/gcs_client",

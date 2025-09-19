@@ -38,44 +38,6 @@ namespace ray::stats {
 /// =========== PUBLIC METRICS; keep in sync with ray-metrics.rst =================
 /// ===============================================================================
 
-/// Tracks actors by state, including pending, running, and idle actors.
-///
-/// To avoid metric collection conflicts between components reporting on the same task,
-/// we use the "Source" required label.
-DEFINE_stats(
-    actors,
-    "Current number of actors currently in a particular state.",
-    // State: the actor state, which is from rpc::ActorTableData::ActorState,
-    // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
-    // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
-    // Name: the name of actor class (Keep in sync with the TASK_OR_ACTOR_NAME_TAG_KEY in
-    // python/ray/_private/telemetry/metric_cardinality.py) Source: component reporting,
-    // e.g., "gcs" or "executor".
-    ("State", "Name", "Source", "JobId"),
-    (),
-    ray::stats::GAUGE);
-
-/// Job related stats.
-DEFINE_stats(running_jobs,
-             "Number of jobs currently running.",
-             /*tags=*/(),
-             /*buckets=*/(),
-             ray::stats::GAUGE);
-
-DEFINE_stats(finished_jobs,
-             "Number of jobs finished.",
-             // TODO(hjiang): Consider adding task completion status, for example, failed,
-             // completed in tags.
-             /*tags=*/(),
-             /*buckets=*/(),
-             ray::stats::COUNT);
-
-DEFINE_stats(job_duration_s,
-             "Duration of jobs finished in seconds.",
-             ("JobId"),
-             (),
-             ray::stats::GAUGE);
-
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,
              // TODO(sang): Support placement_group_reserved_available | used
@@ -122,14 +84,6 @@ DEFINE_stats(object_store_dist,
                8192_MiB,
                16384_MiB}),
              ray::stats::HISTOGRAM);
-
-/// Placement group metrics from the GCS.
-DEFINE_stats(placement_groups,
-             "Number of placement groups broken down by state.",
-             // State: from rpc::PlacementGroupData::PlacementGroupState.
-             ("State"),
-             (),
-             ray::stats::GAUGE);
 
 /// ===============================================================================
 /// ===================== INTERNAL SYSTEM METRICS =================================
@@ -312,73 +266,6 @@ DEFINE_stats(spill_manager_request_total,
 DEFINE_stats(spill_manager_throughput_mb,
              "The throughput of {spill, restore} requests in MB.",
              ("Type"),
-             (),
-             ray::stats::GAUGE);
-
-/// GCS Storage
-DEFINE_stats(gcs_storage_operation_latency_ms,
-             "Time to invoke an operation on Gcs storage",
-             ("Operation"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(gcs_storage_operation_count,
-             "Number of operations invoked on Gcs storage",
-             ("Operation"),
-             (),
-             ray::stats::COUNT);
-
-/// Placement Group
-// The end to end placement group creation latency.
-// The time from placement group creation request has received
-// <-> Placement group creation succeeds (meaning all resources
-// are committed to nodes and available).
-DEFINE_stats(gcs_placement_group_creation_latency_ms,
-             "end to end latency of placement group creation",
-             (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
-// The time from placement group scheduling has started
-// <-> Placement group creation succeeds.
-DEFINE_stats(gcs_placement_group_scheduling_latency_ms,
-             "scheduling latency of placement groups",
-             (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(gcs_placement_group_count,
-             "Number of placement groups broken down by state in {Registered, Pending, "
-             "Infeasible}",
-             ("State"),
-             (),
-             ray::stats::GAUGE);
-
-/// GCS Actor Manager
-DEFINE_stats(gcs_actors_count,
-             "Number of actors per state {Created, Destroyed, Unresolved, Pending}",
-             ("State"),
-             (),
-             ray::stats::GAUGE);
-
-/// GCS Task Manager
-DEFINE_stats(gcs_task_manager_task_events_reported,
-             "Number of all task events reported to gcs.",
-             (),
-             (),
-             ray::stats::GAUGE);
-
-DEFINE_stats(gcs_task_manager_task_events_dropped,
-             /// Type:
-             ///     - PROFILE_EVENT: number of profile task events dropped from both
-             ///     workers and GCS.
-             ///     - STATUS_EVENT: number of task status updates events dropped from
-             ///     both workers and GCS.
-             "Number of task events dropped per type {PROFILE_EVENT, STATUS_EVENT}",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-
-DEFINE_stats(gcs_task_manager_task_events_stored,
-             "Number of task events stored in GCS.",
-             (),
              (),
              ray::stats::GAUGE);
 

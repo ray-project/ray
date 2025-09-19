@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_client/accessor.h"
 #include "ray/gcs_client/rpc_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -37,7 +38,24 @@ namespace ray {
 
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
-  GcsClientTest() : no_redis_(GetParam()) {
+  GcsClientTest()
+      : no_redis_(GetParam()),
+        actor_by_state_gauge_(std::make_unique<observability::FakeMetric>()),
+        gcs_actor_by_state_gauge_(std::make_unique<observability::FakeMetric>()),
+        running_job_gauge_(std::make_unique<observability::FakeMetric>()),
+        finished_job_counter_(std::make_unique<observability::FakeMetric>()),
+        job_duration_in_seconds_gauge_(std::make_unique<observability::FakeMetric>()),
+        placement_group_gauge_(std::make_unique<observability::FakeMetric>()),
+        placement_group_creation_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeMetric>()),
+        placement_group_scheduling_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeMetric>()),
+        task_events_reported_gauge_(std::make_unique<observability::FakeMetric>()),
+        task_events_dropped_gauge_(std::make_unique<observability::FakeMetric>()),
+        task_events_stored_gauge_(std::make_unique<observability::FakeMetric>()),
+        storage_operation_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeMetric>()),
+        storage_operation_count_counter_(std::make_unique<observability::FakeMetric>()) {
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
@@ -84,7 +102,22 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     });
 
     server_io_service_ = std::make_unique<instrumented_io_context>();
-    gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
+    gcs_server_ = std::make_unique<gcs::GcsServer>(
+        config_,
+        *server_io_service_,
+        *actor_by_state_gauge_,
+        *gcs_actor_by_state_gauge_,
+        *running_job_gauge_,
+        *finished_job_counter_,
+        *job_duration_in_seconds_gauge_,
+        *placement_group_gauge_,
+        *placement_group_creation_latency_in_ms_histogram_,
+        *placement_group_scheduling_latency_in_ms_histogram_,
+        *task_events_reported_gauge_,
+        *task_events_dropped_gauge_,
+        *task_events_stored_gauge_,
+        *storage_operation_latency_in_ms_histogram_,
+        *storage_operation_count_counter_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -147,7 +180,22 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
     server_io_service_.reset(new instrumented_io_context());
-    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
+    gcs_server_.reset(
+        new gcs::GcsServer(config_,
+                           *server_io_service_,
+                           *actor_by_state_gauge_,
+                           *gcs_actor_by_state_gauge_,
+                           *running_job_gauge_,
+                           *finished_job_counter_,
+                           *job_duration_in_seconds_gauge_,
+                           *placement_group_gauge_,
+                           *placement_group_creation_latency_in_ms_histogram_,
+                           *placement_group_scheduling_latency_in_ms_histogram_,
+                           *task_events_reported_gauge_,
+                           *task_events_dropped_gauge_,
+                           *task_events_stored_gauge_,
+                           *storage_operation_latency_in_ms_histogram_,
+                           *storage_operation_count_counter_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -417,6 +465,23 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
+
+  // Fake metrics for testing
+  std::unique_ptr<observability::FakeMetric> actor_by_state_gauge_;
+  std::unique_ptr<observability::FakeMetric> gcs_actor_by_state_gauge_;
+  std::unique_ptr<observability::FakeMetric> running_job_gauge_;
+  std::unique_ptr<observability::FakeMetric> finished_job_counter_;
+  std::unique_ptr<observability::FakeMetric> job_duration_in_seconds_gauge_;
+  std::unique_ptr<observability::FakeMetric> placement_group_gauge_;
+  std::unique_ptr<observability::FakeMetric>
+      placement_group_creation_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeMetric>
+      placement_group_scheduling_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeMetric> task_events_reported_gauge_;
+  std::unique_ptr<observability::FakeMetric> task_events_dropped_gauge_;
+  std::unique_ptr<observability::FakeMetric> task_events_stored_gauge_;
+  std::unique_ptr<observability::FakeMetric> storage_operation_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeMetric> storage_operation_count_counter_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());

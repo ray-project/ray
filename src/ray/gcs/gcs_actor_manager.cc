@@ -176,6 +176,8 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
 namespace ray {
 namespace gcs {
 
+using std::literals::operator""sv;
+
 bool is_uuid(const std::string &str) {
   static const boost::regex e(
       "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}");
@@ -226,7 +228,9 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    rpc::CoreWorkerClientPool &worker_client_pool)
+    rpc::CoreWorkerClientPool &worker_client_pool,
+    ray::observability::MetricInterface &actor_by_state_gauge,
+    ray::observability::MetricInterface &gcs_actor_by_state_gauge)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
@@ -236,19 +240,21 @@ GcsActorManager::GcsActorManager(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
-      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
+      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
+      actor_by_state_gauge_(actor_by_state_gauge),
+      gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge) {
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
   actor_state_counter_->SetOnChangeCallback(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
         int64_t num_actors = actor_state_counter_->Get(key);
-        ray::stats::STATS_actors.Record(
+        actor_by_state_gauge_.Record(
             num_actors,
-            {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
-             {"Name", key.second},
-             {"Source", "gcs"},
-             {"JobId", ""}});
+            {{"State"sv, rpc::ActorTableData::ActorState_Name(key.first)},
+             {"Name"sv, key.second},
+             {"Source"sv, "gcs"},
+             {"JobId"sv, ""}});
       });
 }
 
@@ -1847,11 +1853,13 @@ std::string GcsActorManager::DebugString() const {
 }
 
 void GcsActorManager::RecordMetrics() const {
-  ray::stats::STATS_gcs_actors_count.Record(registered_actors_.size(), "Registered");
-  ray::stats::STATS_gcs_actors_count.Record(created_actors_.size(), "Created");
-  ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
-  ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
-  ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
+  gcs_actor_by_state_gauge_.Record(registered_actors_.size(),
+                                   {{"State"sv, "Registered"}});
+  gcs_actor_by_state_gauge_.Record(created_actors_.size(), {{"State"sv, "Created"}});
+  gcs_actor_by_state_gauge_.Record(destroyed_actors_.size(), {{"State"sv, "Destroyed"}});
+  gcs_actor_by_state_gauge_.Record(unresolved_actors_.size(),
+                                   {{"State"sv, "Unresolved"}});
+  gcs_actor_by_state_gauge_.Record(GetPendingActorsCount(), {{"State"sv, "Pending"}});
   if (usage_stats_client_ != nullptr) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
                                                  liftime_num_created_actors_);

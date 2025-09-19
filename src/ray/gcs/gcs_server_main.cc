@@ -19,8 +19,10 @@
 #include <vector>
 
 #include "gflags/gflags.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server.h"
+#include "ray/gcs/metrics.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
@@ -162,7 +164,45 @@ int main(int argc, char *argv[]) {
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
-  ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
+
+  // GCS server metrics
+  ray::stats::Gauge actor_by_state_gauge{ray::GetActorMetric()};
+  ray::stats::Gauge gcs_actor_by_state_gauge{ray::gcs::GetGcsActorByStateMetric()};
+  ray::stats::Gauge running_job_gauge{ray::gcs::GetRunningJobMetric()};
+  ray::stats::Count finished_job_counter{ray::gcs::GetFinishedJobMetric()};
+  ray::stats::Gauge job_duration_in_seconds_gauge{
+      ray::gcs::GetJobDurationInSecondsMetric()};
+  ray::stats::Gauge placement_group_gauge{ray::gcs::GetPlacementGroupMetric()};
+  ray::stats::Histogram placement_group_creation_latency_in_ms_histogram{
+      ray::gcs::GetPlacementGroupCreationLatencyInMsMetric()};
+  ray::stats::Histogram placement_group_scheduling_latency_in_ms_histogram{
+      ray::gcs::GetPlacementGroupSchedulingLatencyInMsMetric()};
+  ray::stats::Gauge task_events_reported_gauge{
+      ray::gcs::GetTaskManagerTaskEventsReportedMetric()};
+  ray::stats::Gauge task_events_dropped_gauge{
+      ray::gcs::GetTaskManagerTaskEventsDroppedMetric()};
+  ray::stats::Gauge task_events_stored_gauge{
+      ray::gcs::GetTaskManagerTaskEventsStoredMetric()};
+  ray::stats::Histogram storage_operation_latency_in_ms_histogram{
+      ray::gcs::GetGcsStorageOperationLatencyInMsMetric()};
+  ray::stats::Count storage_operation_count_counter{
+      ray::gcs::GetGcsStorageOperationCountMetric()};
+
+  ray::gcs::GcsServer gcs_server(gcs_server_config,
+                                 main_service,
+                                 actor_by_state_gauge,
+                                 gcs_actor_by_state_gauge,
+                                 running_job_gauge,
+                                 finished_job_counter,
+                                 job_duration_in_seconds_gauge,
+                                 placement_group_gauge,
+                                 placement_group_creation_latency_in_ms_histogram,
+                                 placement_group_scheduling_latency_in_ms_histogram,
+                                 task_events_reported_gauge,
+                                 task_events_dropped_gauge,
+                                 task_events_stored_gauge,
+                                 storage_operation_latency_in_ms_histogram,
+                                 storage_operation_count_counter);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop

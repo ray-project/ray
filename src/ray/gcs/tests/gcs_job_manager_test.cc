@@ -24,6 +24,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 
 namespace ray {
@@ -57,15 +58,19 @@ class GcsJobManagerTest : public ::testing::Test {
               address.port());
         });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
-    gcs_job_manager_ = std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
-                                                            *gcs_publisher_,
-                                                            runtime_env_manager_,
-                                                            *function_manager_,
-                                                            *fake_kv_,
-                                                            io_service_,
-                                                            *worker_client_pool_,
-                                                            *fake_ray_event_recorder_,
-                                                            "test_session_name");
+    gcs_job_manager_ =
+        std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
+                                             *gcs_publisher_,
+                                             runtime_env_manager_,
+                                             *function_manager_,
+                                             *fake_kv_,
+                                             io_service_,
+                                             *worker_client_pool_,
+                                             *fake_ray_event_recorder_,
+                                             "test_session_name",
+                                             fake_running_job_gauge_,
+                                             fake_finished_job_counter_,
+                                             fake_job_duration_in_seconds_gauge_);
   }
 
   ~GcsJobManagerTest() {
@@ -87,6 +92,11 @@ class GcsJobManagerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{5000};
   std::unique_ptr<gcs::GcsJobManager> gcs_job_manager_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
+
+  // Fake metrics for testing
+  ray::observability::FakeMetric fake_running_job_gauge_;
+  ray::observability::FakeMetric fake_finished_job_counter_;
+  ray::observability::FakeMetric fake_job_duration_in_seconds_gauge_;
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
@@ -167,6 +177,16 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
     int job_id = JobID::FromBinary(job_info.job_id()).ToInt();
     ASSERT_EQ(job_info.is_running_tasks(), job_id % 2 != 0);
   }
+
+  gcs_job_manager_->RecordMetrics();
+  auto running_tag_to_value = fake_running_job_gauge_.GetTagToValue();
+  ASSERT_EQ(running_tag_to_value.size(), 1);
+  ASSERT_EQ(running_tag_to_value.begin()->second, num_jobs);
+  auto job_duration_tag_to_value = fake_job_duration_in_seconds_gauge_.GetTagToValue();
+  ASSERT_EQ(job_duration_tag_to_value.size(), num_jobs);
+  auto finished_tag_to_value = fake_finished_job_counter_.GetTagToValue();
+  ASSERT_EQ(finished_tag_to_value.size(), 1);
+  ASSERT_EQ(finished_tag_to_value.begin()->second, 0);
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
@@ -614,7 +634,10 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
                                      io_service_,
                                      *worker_client_pool_,
                                      *fake_ray_event_recorder_,
-                                     "test_session_name");
+                                     "test_session_name",
+                                     fake_running_job_counter_,
+                                     fake_finished_job_counter_,
+                                     fake_job_duration_in_seconds_counter_);
 
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
@@ -693,6 +716,11 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
   ASSERT_EQ(all_job_info_reply.job_info_list_size(), 1);
   auto job_table_data = all_job_info_reply.job_info_list(0);
   ASSERT_TRUE(job_table_data.is_dead());
+
+  gcs_job_manager.RecordMetrics();
+  auto tag_to_value = fake_finished_job_counter_.GetTagToValue();
+  ASSERT_EQ(tag_to_value.size(), 1);
+  ASSERT_EQ(tag_to_value.begin()->second, 1);
 }
 
 TEST_F(GcsJobManagerTest, TestNodeFailure) {

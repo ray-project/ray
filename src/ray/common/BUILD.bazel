@@ -409,3 +409,11 @@ ray_cc_library(
         "//src/ray/common:status",
     ],
 )
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_lib",
+    ],
+)
