@@ -65,13 +65,11 @@ def test_alias_functionality(expr, alias_name, expected_alias):
     import pandas as pd
 
     from ray.data._expression_evaluator import eval_expr
-    from ray.data.expressions import AliasExpr
 
     # Test alias creation
     aliased_expr = expr.alias(alias_name)
-    assert isinstance(aliased_expr, AliasExpr)
-    assert aliased_expr.alias == expected_alias
-    assert aliased_expr.expr.structurally_equals(expr)
+    assert aliased_expr.output_name == expected_alias
+    assert aliased_expr.structurally_equals(expr)
 
     # Test data type preservation
     assert aliased_expr.data_type == expr.data_type
