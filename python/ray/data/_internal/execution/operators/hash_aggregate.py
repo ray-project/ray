@@ -104,7 +104,6 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
 
 
 class HashAggregateOperator(HashShufflingOperatorBase):
-
     def __init__(
         self,
         data_context: DataContext,

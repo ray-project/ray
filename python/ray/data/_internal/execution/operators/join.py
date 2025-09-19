@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockBuilder
