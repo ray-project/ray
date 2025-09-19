@@ -147,7 +147,9 @@ def test_strict_default_batch_format(ray_start_regular_shared_2_cpus):
 
 
 @pytest.mark.parametrize("shape", [(10,), (10, 2)])
-def test_strict_tensor_support(ray_start_regular_shared_2_cpus, restore_data_context, shape):
+def test_strict_tensor_support(
+    ray_start_regular_shared_2_cpus, restore_data_context, shape
+):
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
     ds = ray.data.from_items([np.ones(shape), np.ones(shape)])

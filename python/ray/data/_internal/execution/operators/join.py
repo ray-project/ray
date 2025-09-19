@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.transform_pyarrow import _is_pa_extension_type

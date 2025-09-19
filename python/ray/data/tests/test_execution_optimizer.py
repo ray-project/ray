@@ -25,7 +25,6 @@ from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
-    Aggregate,
     RandomShuffle,
     Repartition,
     Sort,
@@ -52,7 +51,6 @@ from ray.data._internal.logical.rules.configure_map_task_memory import (
 from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.stats import DatasetStats
-from ray.data.aggregate import Count
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
