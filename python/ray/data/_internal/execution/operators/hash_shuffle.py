@@ -1040,7 +1040,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     ):
         assert num_partitions >= num_aggregators
 
-        aggregator_total_memory_required = self._estimate_aggregator_memory_allocation(
+        estimated_aggregator_memory_required = self._estimate_aggregator_memory_allocation(
             num_aggregators=num_aggregators,
             num_partitions=num_partitions,
             # NOTE: If no partition size hint is provided we simply assume target
@@ -1054,9 +1054,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
-                total_available_cluster_resources, num_aggregators=num_aggregators
+                total_available_cluster_resources,
+                estimated_aggregator_memory_required,
+                num_aggregators=num_aggregators
             ),
-            "memory": aggregator_total_memory_required,
+            "memory": estimated_aggregator_memory_required,
             # NOTE: By default aggregating actors should be spread across available
             #       nodes to prevent any single node being overloaded with a "thundering
             #       herd"
@@ -1072,8 +1074,18 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     def _get_aggregator_num_cpus(
         self,
         total_available_cluster_resources: ExecutionResources,
+        estimated_aggregator_memory_required: int,
         num_aggregators: int,
     ) -> float:
+        """Estimates number of CPU resources to be provisioned for individual
+        Aggregators.
+
+        Due to semantic of the Aggregator's role (outlined below), their CPU
+        allocation is mostly playing a role of complimenting their memory allocation
+        such that it serves as a protection mechanism from over-allocation of the
+        tasks that do not specify their respective memory resources.
+        """
+
         # First, check whether there is an override
         if self._get_operator_num_cpus_override() is not None:
             return self._get_operator_num_cpus_override()
@@ -1087,12 +1099,28 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #
         # Though we don't need to purposefully allocate any meaningful amount of
         # CPU resources to the shuffle aggregators, we're still allocating nominal
-        # CPU resources to it:
+        # CPU resources to it such that to compliment its required memory allocation
+        # and therefore protect from potential OOMs in case other tasks getting
+        # scheduled onto the same node, but not specifying their respective memory
+        # requirements.
         #
-        #   - 5% of total available CPUs but
+        # CPU allocation is determined like following
+        #
+        #   CPUs = Total memory required / 4 GiB (standard ratio in the conventional clouds)
+        #
+        # But no more than
+        #   - 25% of total available CPUs but
         #   - No more than 4 CPUs per aggregator
         #
-        return min(4.0, total_available_cluster_resources.cpu * 0.05 / num_aggregators)
+        cap = min(
+            4.0,
+            total_available_cluster_resources.cpu * 0.25 / num_aggregators
+        )
+
+        target_num_cpus = min(cap, estimated_aggregator_memory_required / 4 * GiB)
+
+        # Round resource to 5th decimal point (Ray's fractional granularity)
+        return round(target_num_cpus, 5)
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
