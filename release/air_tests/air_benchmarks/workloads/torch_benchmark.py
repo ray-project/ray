@@ -235,7 +235,7 @@ def train_torch_ray_air(
 ) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
-    from ray.train import ScalingConfig
+    from ray.train import ScalingConfig, RunConfig
     from ray.train.torch import TorchTrainer
 
     def train_loop(config):
@@ -250,6 +250,7 @@ def train_torch_ray_air(
             resources_per_worker={"CPU": cpus_per_worker},
             use_gpu=use_gpu,
         ),
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time
