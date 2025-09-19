@@ -26,13 +26,14 @@ import pyarrow as pa
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.data import DataContext, ExecutionOptions, ExecutionResources
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     _create_empty_table,
     hash_partition,
 )
 from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
     PhysicalOperator,
     RefBundle,
 )
@@ -56,6 +57,7 @@ from ray.data.block import (
     BlockType,
     to_stats,
 )
+from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 

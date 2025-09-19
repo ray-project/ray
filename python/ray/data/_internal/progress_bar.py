@@ -66,7 +66,7 @@ class ProgressBar:
             unit = " " + unit
 
         if enabled is None:
-            from ray.data import DataContext
+            from ray.data.context import DataContext
 
             enabled = DataContext.get_current().enable_progress_bars
         if not enabled:
