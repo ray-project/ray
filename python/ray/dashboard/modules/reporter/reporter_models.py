@@ -1,5 +1,5 @@
 from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
-from typing import List, Optional, Dict, Any, Tuple, Union
+from typing import List, Optional, Dict, Tuple
 
 if PYDANTIC_INSTALLED:
 
@@ -12,6 +12,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         pid: int
         gpuMemoryUsage: int  # in MB
         gpuUtilization: Optional[int] = None  # percentage
@@ -24,13 +25,16 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         index: int
         name: str
         uuid: str
         utilizationGpu: Optional[int] = None  # percentage
         memoryUsed: int  # in MB
         memoryTotal: int  # in MB
-        processesPids: Optional[List[ProcessGPUInfo]] = None  # converted to list in _compose_stats_payload
+        processesPids: Optional[
+            List[ProcessGPUInfo]
+        ] = None  # converted to list in _compose_stats_payload
 
     class TpuUtilizationInfo(BaseModel):
         """
@@ -40,6 +44,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         index: int
         name: str
         tpuType: str
@@ -58,6 +63,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         user: float
         system: float
         childrenUser: float
@@ -71,6 +77,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         rss: float
         vms: float
         pfaults: float
@@ -84,6 +91,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         uss: float
 
     class ProcessInfo(BaseModel):
@@ -94,6 +102,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         pid: int
         createTime: float
         cpuPercent: float
@@ -107,11 +116,19 @@ if PYDANTIC_INSTALLED:
 
     # Note: The actual data structure uses tuples for some fields, not structured objects
     # These are type aliases to document the tuple structure
-    MemoryUsage = Tuple[int, int, float, int]  # (total, available, percent, used) in bytes
-    LoadAverage = Tuple[Tuple[float, float, float], Optional[Tuple[float, float, float]]]  # (load, perCpuLoad)
+    MemoryUsage = Tuple[
+        int, int, float, int
+    ]  # (total, available, percent, used) in bytes
+    LoadAverage = Tuple[
+        Tuple[float, float, float], Optional[Tuple[float, float, float]]
+    ]  # (load, perCpuLoad)
     NetworkStats = Tuple[int, int]  # (sent, received) in bytes
-    DiskIOStats = Tuple[int, int, int, int]  # (readBytes, writeBytes, readCount, writeCount)
-    DiskIOSpeed = Tuple[float, float, float, float]  # (readSpeed, writeSpeed, readIops, writeIops)
+    DiskIOStats = Tuple[
+        int, int, int, int
+    ]  # (readBytes, writeBytes, readCount, writeCount)
+    DiskIOSpeed = Tuple[
+        float, float, float, float
+    ]  # (readSpeed, writeSpeed, readIops, writeIops)
     NetworkSpeed = Tuple[float, float]  # (sendSpeed, receiveSpeed) in bytes/sec
 
     class DiskUsage(BaseModel):
@@ -122,6 +139,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         total: int
         used: int
         free: int
@@ -135,6 +153,7 @@ if PYDANTIC_INSTALLED:
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
         """
+
         now: float  # POSIX timestamp
         hostname: str
         ip: str

@@ -1773,15 +1773,9 @@ class ReporterAgent(
             self._metrics_agent.clean_all_dead_worker_metrics()
 
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
-        # for gpu in stats["gpus"]:
-        #     if isinstance(gpu.get("processes_pids"), dict):
-        #         gpu["processes_pids"] = list(gpu["processes_pids"].values())
-
-        stats["networkf"] = stats["network"]
-        stats["network"] = None
-
-        # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
-        # with the Ray Dashboard API and UI code.
+        for gpu in stats["gpus"]:
+            if isinstance(gpu.get("processes_pids"), dict):
+                gpu["processes_pids"] = list(gpu["processes_pids"].values())
 
         if StatsPayload is not None:
             stats_dict = dashboard_utils.to_google_style(recursive_asdict(stats))
