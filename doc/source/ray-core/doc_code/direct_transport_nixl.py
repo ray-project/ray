@@ -14,6 +14,22 @@ class MyActor:
     def sum(self, tensor: torch.Tensor):
         return torch.sum(tensor)
 
+    def produce(self, tensors):
+        refs = []
+        for t in tensors:
+            refs.append(ray.put(t, _tensor_transport="nixl"))
+        return refs
+
+    def consume_with_nixl(self, refs):
+        # The :func:`ray.get <ray.get>` function will also use NIXL to retrieve the
+        # result.
+        tensors = [ray.get(ref) for ref in refs]
+        sum = 0
+        for t in tensors:
+            assert t.device.type == "cuda"
+            sum += t.sum().item()
+        return sum
+
 
 # No collective group is needed. The two actors just need to have NIXL
 # installed.
@@ -32,3 +48,11 @@ ray.get(result)
 print(ray.get(tensor))
 # torch.Tensor(...)
 # __nixl_get_end__
+
+# __nixl_put__and_get_start__
+tensor1 = torch.randn(1000, 1000).cuda()
+tensor2 = torch.randn(1000, 1000).cuda()
+refs = sender.produce.remote([tensor1, tensor2])
+print(receiver.consume_with_nixl.remote(refs))
+# torch.Tensor(...)
+# __nixl_put__and_get_end__
