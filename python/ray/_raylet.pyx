@@ -2215,13 +2215,11 @@ cdef execute_task_with_cancellation_handler(
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         print("runnning 2", file=sys.stderr)
         actor_class = manager.load_actor_class(job_id, function_descriptor)
-        print("runnning 2.1", file=sys.stderr)
         actor_id = core_worker.get_actor_id()
         print("runnning 2.2", file=sys.stderr)
         actor = actor_class.__new__(actor_class)
         print("runnning 2.3", file=sys.stderr)
         worker.actors[actor_id] = actor
-        print("runnning 3", file=sys.stderr)
 
         # Record the actor class via :actor_name: magic token in the log.
         #
