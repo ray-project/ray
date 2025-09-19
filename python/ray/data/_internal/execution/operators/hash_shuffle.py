@@ -1149,7 +1149,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
     ):
         super().__init__(
             name_factory=(
-                lambda num_partitions: f"Shuffle(key_columns={self._key_columns}, num_partitions={num_partitions})"
+                lambda num_partitions: f"Shuffle(key_columns={key_columns}, num_partitions={num_partitions})"
             ),
             input_ops=[input_op],
             data_context=data_context,
