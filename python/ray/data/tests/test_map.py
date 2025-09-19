@@ -22,7 +22,6 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver
-from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
@@ -31,6 +30,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _MapActorContext,
 )
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
