@@ -438,9 +438,10 @@ def read_datasource(
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
-        parallelism,
-        ray_remote_args,
-        concurrency,
+        parallelism=parallelism,
+        num_outputs=len(read_tasks) if read_tasks else 0,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
     )
     execution_plan = ExecutionPlan(
         stats,
