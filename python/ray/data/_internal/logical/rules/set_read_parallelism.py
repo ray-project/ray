@@ -116,7 +116,7 @@ class SetReadParallelismRule(Rule):
             logical_op._datasource_or_legacy_reader,
             logical_op._parallelism,
             logical_op._mem_size,
-            op.actual_target_max_block_size,
+            op.target_max_block_size_override or op.data_context.target_max_block_size,
             op._additional_split_factor,
         )
 
