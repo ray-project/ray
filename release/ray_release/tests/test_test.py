@@ -85,7 +85,7 @@ def test_convert_env_list_to_dict():
 
 
 def test_get_python_version():
-    assert _stub_test({}).get_python_version() == "3.9"
+    assert _stub_test({}).get_python_version() == "3.10"
     assert _stub_test({"python": "3.11"}).get_python_version() == "3.11"
 
 
@@ -96,11 +96,11 @@ def test_get_ray_image():
     assert (
         _stub_test(
             {
-                "python": "3.9",
+                "python": "3.10",
                 "cluster": {"byod": {}},
             }
         ).get_ray_image()
-        == "rayproject/ray:a1b2c3d4-py39-cpu"
+        == "rayproject/ray:a1b2c3d4-py310-cpu"
     )
     assert (
         _stub_test(
@@ -140,12 +140,12 @@ def test_get_ray_image():
         # Even on release branches, we also use the RAYCI_BUILD_ID.
         assert (
             _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:a1b2c3d4-py39-cpu"
+            == "rayproject/ray:a1b2c3d4-py310-cpu"
         )
         with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
             assert (
                 _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-                == "rayproject/ray:a1b2c3d4-py39-cpu"
+                == "rayproject/ray:a1b2c3d4-py310-cpu"
             )
 
         # Unless RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.
