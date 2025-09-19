@@ -928,7 +928,7 @@ class Worker:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, tensor_transport == chosen_tensor_transport
+                    object_id, tensor_transport=chosen_tensor_transport
                 )
 
         # Function actor manager or the import thread may call pickle.loads
