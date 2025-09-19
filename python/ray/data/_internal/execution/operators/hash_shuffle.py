@@ -401,7 +401,7 @@ def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources)
     #   - Shuffle operation is necessarily a terminal operation: it terminates current
     #     shuffle stage (set of operators that can execute concurrently)
     #   - Shuffle operation has very low computation footprint until all preceding
-    #     operation complete (ie until shuffle finalization)
+    #     operation completes (ie until shuffle finalization)
     #   - When shuffle is finalized only shuffle operator is executing (ie it has
     #     all of the cluster resources available at its disposal)
     #
