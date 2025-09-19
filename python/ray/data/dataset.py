@@ -2513,7 +2513,7 @@ class Dataset:
         self,
         ds: "Dataset",
         join_type: str,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         on: Tuple[str] = ("id",),
         right_on: Optional[Tuple[str]] = None,
         left_suffix: Optional[str] = None,
