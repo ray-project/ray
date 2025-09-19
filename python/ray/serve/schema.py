@@ -1322,10 +1322,6 @@ class CeleryAdapterConfig(BaseModel):
     broker_transport_options: Optional[Dict[str, Any]] = Field(
         default=None, description="The broker transport options to use for Celery."
     )
-    worker_concurrency: Optional[int] = Field(
-        default=10,
-        description="The number of concurrent worker threads for the task processor.",
-    )
 
 
 @PublicAPI(stability="alpha")

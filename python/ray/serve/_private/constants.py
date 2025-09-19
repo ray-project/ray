@@ -501,3 +501,7 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
 # This is used to detect and warn about long RPC latencies
 # between the controller and the replicas.
 RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
+
+RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL = (
+    "RAY_SERVE_MAX_ONGOING_REQUESTS_KEY_INTERNAL"
+)

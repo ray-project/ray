@@ -103,7 +103,6 @@ def create_processor_config(temp_queue_directory, transport_options):
                 broker_url="filesystem://",
                 backend_url=f"file://{results_path}",
                 broker_transport_options=transport_options,
-                worker_concurrency=1,
             ),
         }
 
@@ -159,7 +158,7 @@ class TestTaskConsumerWithRayServe:
         """Test that task consumers can be used as Ray Serve deployments."""
         processor_config = create_processor_config()
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             def __init__(self):
@@ -198,7 +197,7 @@ class TestTaskConsumerWithRayServe:
             failed_task_queue_name="my_failed_task_queue"
         )
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             def __init__(self):
@@ -246,7 +245,9 @@ class TestTaskConsumerWithRayServe:
         tracker = ProcessedTasksTracker.remote()
         signal1 = SignalActor.remote()
 
-        @serve.deployment(num_replicas=1, graceful_shutdown_timeout_s=60)
+        @serve.deployment(
+            num_replicas=1, graceful_shutdown_timeout_s=60, max_ongoing_requests=1
+        )
         @task_consumer(task_processor_config=config)
         class TaskConsumer:
             def __init__(self, tracker_ref, signal_ref):
@@ -325,7 +326,7 @@ class TestTaskConsumerWithRayServe:
             match="Async task handlers are not supported yet",
         ):
 
-            @serve.deployment
+            @serve.deployment(max_ongoing_requests=1)
             @task_consumer(task_processor_config=processor_config)
             class ServeTaskConsumer:
                 def __init__(self):
@@ -344,7 +345,7 @@ class TestTaskConsumerWithRayServe:
         """Test that task processor metrics are collected and exposed correctly."""
         processor_config = create_processor_config()
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             def __init__(self):
@@ -386,7 +387,7 @@ class TestTaskConsumerWithRayServe:
         """Test that the health check for the task processor works correctly."""
         processor_config = create_processor_config()
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             pass
@@ -429,7 +430,7 @@ class TestTaskConsumerWithRayServe:
 
         signal = SignalActor.remote()
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class MyTaskConsumer:
             def __init__(self, signal_actor):
@@ -483,7 +484,7 @@ class TestTaskConsumerWithRayServe:
         processor_config.adapter_config.app_custom_config = {"worker_concurrency": 10}
         signal = SignalActor.remote()
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             def __init__(self, signal_actor):
@@ -516,7 +517,7 @@ class TestTaskConsumerWithRayServe:
             "retry_kwargs": {"max_retries": 10},
         }
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             def __init__(self):
@@ -553,7 +554,7 @@ class TestTaskConsumerWithRayServe:
         failed_processor_config.queue_name = failed_queue_name
 
         # First consumer that always fails
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=failing_processor_config)
         class FailingTaskConsumer:
             @task_handler(name="process_request")
@@ -561,7 +562,7 @@ class TestTaskConsumerWithRayServe:
                 raise ValueError("Test error message from first consumer")
 
         # Second consumer that processes failed tasks
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=failed_processor_config)
         class FailedTaskConsumer:
             def __init__(self):
@@ -662,7 +663,7 @@ class TestTaskConsumerWithDLQsConfiguration:
             unprocessable_task_queue_name="unprocessable_task_queue"
         )
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             @task_handler(name="process_request")
@@ -692,7 +693,7 @@ class TestTaskConsumerWithDLQsConfiguration:
             failed_task_queue_name="failed_task_queue"
         )
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             @task_handler(name="process_request")
@@ -715,7 +716,7 @@ class TestTaskConsumerWithDLQsConfiguration:
             failed_task_queue_name="failed_task_queue",
         )
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             @task_handler(name="process_request")
@@ -743,7 +744,7 @@ class TestTaskConsumerWithDLQsConfiguration:
             failed_task_queue_name="failed_task_queue",
         )
 
-        @serve.deployment
+        @serve.deployment(max_ongoing_requests=1)
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             @task_handler(name="process_request")

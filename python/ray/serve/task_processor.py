@@ -9,7 +9,11 @@ from celery import Celery
 from celery.signals import task_failure, task_unknown
 
 from ray.serve import get_replica_context
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.schema import (
     CeleryAdapterConfig,
     TaskProcessorConfig,
@@ -46,7 +50,7 @@ class TaskProcessorAdapter(ABC):
     Use supports_async_capability() to check if a specific async operation is supported.
     """
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         """
         Initialize the TaskProcessorAdapter.
 
@@ -316,9 +320,10 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     _config: TaskProcessorConfig
     _worker_thread: Optional[threading.Thread] = None
     _worker_hostname: Optional[str] = None
+    _worker_concurrency: int = DEFAULT_MAX_ONGOING_REQUESTS
 
-    def __init__(self, config: TaskProcessorConfig):
-        super().__init__()
+    def __init__(self, config: TaskProcessorConfig, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         if not isinstance(config.adapter_config, CeleryAdapterConfig):
             raise TypeError(
@@ -326,6 +331,11 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             )
 
         self._config = config
+
+        if RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL in kwargs:
+            self._worker_concurrency = kwargs[
+                RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL
+            ]
 
         # Celery adapter does not support any async capabilities
         # self._async_capabilities is already an empty set from parent class
@@ -340,7 +350,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         app_configuration = {
             "loglevel": "info",
             "worker_pool": "threads",
-            "worker_concurrency": self._config.adapter_config.worker_concurrency,
+            "worker_concurrency": self._worker_concurrency,
             # Store task results so they can be retrieved after completion
             "task_ignore_result": False,
             # Acknowledge tasks only after completion (not when received) for better reliability

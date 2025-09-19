@@ -54,6 +54,7 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
@@ -395,6 +396,7 @@ class ReplicaBase(ABC):
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
+            deployment_config=deployment_config,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -1229,6 +1231,7 @@ class UserCallableWrapper:
         run_sync_methods_in_threadpool: bool,
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
+        deployment_config: DeploymentConfig,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1251,6 +1254,7 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._deployment_config = deployment_config
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -1491,6 +1495,9 @@ class UserCallableWrapper:
             # This allows deployments to define an async __init__
             # method (mostly used for testing).
             self._callable = self._deployment_def.__new__(self._deployment_def)
+            self._init_kwargs[
+                RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL
+            ] = self._deployment_config.max_ongoing_requests
             await self._call_func_or_gen(
                 self._callable.__init__,
                 args=self._init_args,
