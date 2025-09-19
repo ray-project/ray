@@ -2,13 +2,14 @@
 description: "Learn about using labels to control how Ray schedules tasks, actors, and placement groups to nodes in your Kubernetes cluster."
 ---
 
+(labels)=
 # Use labels to control scheduling
 
-In Ray version 2.48.0 and above, you can use labels to control scheduling for KubeRay. Labels are supported as an alpha feature.
+In Ray version 2.49.0 and above, you can use labels to control scheduling for KubeRay. Labels are supported as a beta feature.
 
 This page provides a conceptual overview and usage instructions for labels. Labels are key-value pairs that provide a human-readable configuration for users to control how Ray schedules tasks, actors, and placement group bundles to specific nodes.
 
-Ray labels build upon Kubernetes labels, including formatting restrictions. See the [Kubernetes docs on labels and selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/).
+.. note:: Ray labels share the same syntax and formatting restrictions as Kubernetes labels, but are conceptually distinct. See the [Kubernetes docs on labels and selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set).
 
 ## How do labels work?
 
@@ -28,18 +29,13 @@ During cluster initilization or as autoscaling events add nodes to your cluster,
 | Label | Description |
 | --- | --- |
 | `ray.io/node-id` | A unique ID generated for the node. |
-| `ray.io/accelerator-type` | The accelerator type of the node, for example `L4`. CPU-only machines have an empty string. |
-| `ray.io/market-type` | Indicates whether the node uses `spot` instances or `on-demand` instances. |
-| `ray.io/node-group` | The name of the node worker group or `head` for the head node. You specify group names while configuring worker groups. See [](kuberay-config). |
-| `ray.io/region` | The cloud region of the node. | 
-| `ray.io/availability-zone` | The available zone of the node. |
+| `ray.io/accelerator-type` | The accelerator type of the node, for example `L4`. CPU-only machines have an empty string. See {ref}`accelerator types <accelerator-types>` for a mapping of values. |
 
 .. note:: You can override default values using `ray start` parameters.
 
 The following are examples of default labels:
 
 ```python
-"ray.io/market-type": "spot" # Default label specifying the node is a spot instance.
 "ray.io/accelerator-type": "" # Default label indicating the machine is CPU-only.
 ```
 
@@ -50,7 +46,7 @@ You can add custom labels to your nodes using the `--labels` or `--labels-file` 
 
 <!-- INSERT EXAMPLES -->
 
-.. note:: You can't set labels using `ray.init()`. Local Ray clusters do not support labels.
+.. note:: You can't set labels using `ray.init()`. Local Ray clusters don't support labels.
 
 (label-selectors)=
 ## Specify label selectors
