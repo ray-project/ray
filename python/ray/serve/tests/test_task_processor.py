@@ -547,7 +547,6 @@ class TestTaskConsumerWithRayServe:
             ) == set(data_sent_to_orchestrator)
 
         wait_for_condition(check_data_processed_properly, timeout=300)
-        serve.delete("multi_consumer_app")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
