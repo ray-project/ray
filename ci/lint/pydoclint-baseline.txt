@@ -1120,9 +1120,11 @@ python/ray/data/_internal/execution/operators/map_transformer.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `MapTransformFn.__init__`: Docstring contains fewer arguments than in function signature.
+    DOC103: Method `MapTransformFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [input_type: MapTransformFnDataType, is_udf: bool, output_block_size_option: Optional[OutputBlockSizeOption]].
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `MapTransformer.__init__`: Docstring contains fewer arguments than in function signature.
+    DOC103: Method `MapTransformer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [init_fn: Optional[Callable[[], None]], output_block_size_option_override: Optional[OutputBlockSizeOption], transform_fns: List[MapTransformFn]].
 --------------------
 python/ray/data/_internal/execution/operators/output_splitter.py
     DOC101: Method `OutputSplitter._get_locations`: Docstring contains fewer arguments than in function signature.
