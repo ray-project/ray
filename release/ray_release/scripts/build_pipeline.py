@@ -10,10 +10,6 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step_for_test_group
-from ray_release.byod.build import (
-    build_anyscale_base_byod_images,
-    build_anyscale_custom_byod_image,
-)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
@@ -78,14 +74,14 @@ def main(
     env = {}
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
-    test_attr_regex_filters = settings["test_attr_regex_filters"]
+    test_filters = settings["test_filters"]
     priority = settings["priority"]
 
     logger.info(
         f"Found the following buildkite pipeline settings:\n\n"
         f"  frequency =               {settings['frequency']}\n"
         f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
-        f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
+        f"  test_filters =            {settings['test_filters']}\n"
         f"  ray_test_repo =           {settings['ray_test_repo']}\n"
         f"  ray_test_branch =         {settings['ray_test_branch']}\n"
         f"  priority =                {settings['priority']}\n"
@@ -110,7 +106,7 @@ def main(
     filtered_tests = filter_tests(
         test_collection,
         frequency=frequency,
-        test_attr_regex_filters=test_attr_regex_filters,
+        test_filters=test_filters,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
         run_unstable_tests=run_unstable_tests,
@@ -122,16 +118,6 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    logger.info("Build anyscale base BYOD images")
-    build_anyscale_base_byod_images(tests)
-    logger.info("Build anyscale custom BYOD images")
-    for test in tests:
-        if test.require_custom_byod_image():
-            build_anyscale_custom_byod_image(
-                test.get_anyscale_byod_image(),
-                test.get_anyscale_base_byod_image(),
-                test.get_byod_post_build_script(),
-            )
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""

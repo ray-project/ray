@@ -68,12 +68,6 @@ namespace rpc {
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
   _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
 
-// Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
-  virtual void Handle##METHOD(::ray::rpc::METHOD##Request request, \
-                              ::ray::rpc::METHOD##Reply *reply,    \
-                              ::ray::rpc::SendReplyCallback send_reply_callback) = 0;
-
 class GrpcService;
 
 /// Class that represents an gRPC server.
@@ -95,14 +89,12 @@ class GrpcServer {
   ///
   GrpcServer(std::string name,
              const uint32_t port,
-             std::string ip_address,
-             const ClusterID &cluster_id = ClusterID::Nil(),
+             bool listen_to_localhost_only,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
         port_(port),
-        ip_address_(std::move(ip_address)),
-        cluster_id_(cluster_id),
+        listen_to_localhost_only_(listen_to_localhost_only),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
@@ -161,8 +153,9 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
-  /// IP address of this server.
-  const std::string ip_address_;
+  /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
+  /// interfaces (0.0.0.0)
+  const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
   /// Indicates whether this server is in shutdown state.

@@ -1,27 +1,26 @@
-import logging
 import datetime
+import logging
 import time
 
-import ray
 import cupy
 
-from ray.util.collective.const import ENV
+import ray
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
-from ray.util.collective.const import get_store_name
+from ray.util.collective.collective_group.cuda_stream import get_stream_pool
+from ray.util.collective.const import ENV, get_store_name
 from ray.util.collective.types import (
-    AllReduceOptions,
-    BarrierOptions,
-    Backend,
-    ReduceOptions,
-    BroadcastOptions,
     AllGatherOptions,
+    AllReduceOptions,
+    Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
+    ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
     torch_available,
 )
-from ray.util.collective.collective_group.cuda_stream import get_stream_pool
 
 logger = logging.getLogger(__name__)
 
@@ -109,19 +108,12 @@ class Rendezvous:
         """
         if not self._store:
             raise ValueError("Rendezvous store is not setup.")
-        uid = None
-        timeout_delta = datetime.timedelta(seconds=timeout_s)
-        elapsed = datetime.timedelta(seconds=0)
-        start_time = datetime.datetime.now()
-        while elapsed < timeout_delta:
-            uid = ray.get(self._store.get_id.remote())
-            if not uid:
-                time.sleep(1)
-                elapsed = datetime.datetime.now() - start_time
-                continue
-            break
-        if not uid:
-            raise RuntimeError("Unable to get the NCCLUniqueID from the store.")
+        try:
+            uid = ray.get(self._store.wait_and_get_id.remote(), timeout=timeout_s)
+        except ray.exceptions.GetTimeoutError:
+            raise RuntimeError(
+                f"Unable to get the NCCLUniqueID from the store within {timeout_s} seconds."
+            ) from None
         return uid
 
 

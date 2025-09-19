@@ -1,19 +1,22 @@
-from typing import Tuple
-from contextlib import closing
 import socket
+from contextlib import closing
+from typing import TYPE_CHECKING, Tuple
 
 import ray
-
-from ray.util.collective.types import Backend
-from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
-from ray.experimental.collective.nixl_tensor_transport import NixlTensorTransport
 from ray.experimental.collective.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
+from ray.experimental.collective.nixl_tensor_transport import NixlTensorTransport
+from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
+from ray.util.collective.types import Backend
+
+if TYPE_CHECKING:
+    import torch
 
 # Singleton instances for tensor transport managers
 _nixl_tensor_transport_manager = None
-_collective_tensor_transport_manager = None
+_gloo_tensor_transport_manager = None
+_nccl_tensor_transport_manager = None
 
 
 def get_tensor_transport_manager(
@@ -32,11 +35,28 @@ def get_tensor_transport_manager(
         if _nixl_tensor_transport_manager is None:
             _nixl_tensor_transport_manager = NixlTensorTransport()
         return _nixl_tensor_transport_manager
-    elif tensor_transport == Backend.TORCH_GLOO or tensor_transport == Backend.NCCL:
-        global _collective_tensor_transport_manager
-        if _collective_tensor_transport_manager is None:
-            _collective_tensor_transport_manager = CollectiveTensorTransport()
-        return _collective_tensor_transport_manager
+    elif tensor_transport == Backend.TORCH_GLOO:
+        global _gloo_tensor_transport_manager
+        if _gloo_tensor_transport_manager is None:
+            _gloo_tensor_transport_manager = CollectiveTensorTransport(tensor_transport)
+        return _gloo_tensor_transport_manager
+    elif tensor_transport == Backend.NCCL:
+        global _nccl_tensor_transport_manager
+        if _nccl_tensor_transport_manager is None:
+            _nccl_tensor_transport_manager = CollectiveTensorTransport(tensor_transport)
+        return _nccl_tensor_transport_manager
+    else:
+        raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
+
+
+def device_match_transport(device: "torch.device", tensor_transport: Backend) -> bool:
+    """Check if the device matches the transport."""
+    if tensor_transport == Backend.NIXL:
+        return device.type == "cuda" or device.type == "cpu"
+    elif tensor_transport == Backend.TORCH_GLOO:
+        return device.type == "cpu"
+    elif tensor_transport == Backend.NCCL:
+        return device.type == "cuda"
     else:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 

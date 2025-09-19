@@ -30,7 +30,7 @@ from ray.train.v2._internal.execution.context import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.train_fn_utils import (
-    TrainFnUtils,
+    DistributedTrainFnUtils,
     set_train_fn_utils,
 )
 from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
@@ -138,8 +138,14 @@ class RayTrainWorker:
             logger.error(f"Error deserializing the training function: {e}")
             raise
 
+        def train_fn_with_final_checkpoint_flush():
+            train_fn()
+            get_train_context().checkpoint_upload_threadpool.shutdown()
+
         # Create and start the training thread.
-        get_train_context().execution_context.training_thread_runner.run(train_fn)
+        get_train_context().execution_context.training_thread_runner.run(
+            train_fn_with_final_checkpoint_flush
+        )
 
     def get_metadata(self) -> ActorMetadata:
         return ActorMetadata(
@@ -194,6 +200,7 @@ class RayTrainWorker:
         synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
+        controller_actor: ActorHandle,
         dataset_shard_provider: Optional["DatasetShardProvider"] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
@@ -213,6 +220,7 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
+            controller_actor=controller_actor,
             checkpoint=checkpoint,
             dataset_shard_provider=dataset_shard_provider,
         )
@@ -226,7 +234,7 @@ class RayTrainWorker:
         set_train_context(context)
 
         # user facing train fn utils
-        set_train_fn_utils(TrainFnUtils())
+        set_train_fn_utils(DistributedTrainFnUtils())
 
         for callback in self._callbacks:
             callback.after_init_train_context()

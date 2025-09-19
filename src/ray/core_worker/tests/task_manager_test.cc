@@ -23,14 +23,15 @@
 #include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 namespace core {
@@ -162,11 +163,9 @@ class TaskManagerTest : public ::testing::Test {
               stored_in_plasma.insert(object_id);
               return Status::OK();
             },
-            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+            [this](TaskSpecification &spec, uint32_t delay_ms) {
               num_retries_++;
               last_delay_ms_ = delay_ms;
-              last_object_recovery_ = object_recovery;
-              return Status::OK();
             },
             [this](const TaskSpecification &spec) {
               return this->did_queue_generator_resubmit_;
@@ -181,7 +180,8 @@ class TaskManagerTest : public ::testing::Test {
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
             },
-            mock_gcs_client_) {}
+            mock_gcs_client_,
+            fake_task_by_state_counter_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -226,14 +226,27 @@ class TaskManagerTest : public ::testing::Test {
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
-  bool last_object_recovery_ = false;
   std::unordered_set<ObjectID> stored_in_plasma;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
  public:
   TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
 };
+
+TEST_F(TaskManagerTest, TestRecordMetrics) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "");
+  manager_.RecordMetrics();
+  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  ASSERT_EQ(tag_to_value.size(), 1);  // one task state data point
+  ASSERT_EQ(tag_to_value.begin()->first.at("State"),
+            rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_AVAIL));
+  ASSERT_EQ(tag_to_value.begin()->second, 1);  // one task in the PENDING_ARGS_AVAIL state
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
   rpc::Address caller_address;
@@ -430,7 +443,6 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
     ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-    ASSERT_EQ(last_object_recovery_, false);
   }
 
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -565,13 +577,11 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
-  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 2);
   ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -1073,7 +1083,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
 
   // The return ID goes out of scope.
@@ -1137,7 +1146,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task completes again. One of the return objects is now
   // returned directly.
@@ -1202,7 +1210,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task fails due to worker crashed.
   {
@@ -1323,7 +1330,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // Dereference the generator to a list of its internal ObjectRefs.
   for (const auto &dynamic_return_id : dynamic_return_ids) {
@@ -1379,11 +1385,9 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       [](const RayObject &, const ObjectID &) {
         return Status::ObjectStoreFull("simulated");
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -1396,7 +1400,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1442,11 +1447,9 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
         }
         return Status::OK();
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -1459,7 +1462,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1503,11 +1507,9 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
         }
         return Status::OK();
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -1520,7 +1522,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
@@ -2560,10 +2563,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   bool signal_called = false;
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        ASSERT_TRUE(callback_status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
       }));
   ASSERT_TRUE(signal_called);

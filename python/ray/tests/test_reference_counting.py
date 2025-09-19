@@ -5,10 +5,10 @@ put the test in `test_reference_counting_standalone.py`.
 """
 # coding: utf-8
 import copy
+import gc
 import logging
 import os
 import sys
-import gc
 import time
 
 import numpy as np
@@ -35,7 +35,13 @@ def check_refcounts_empty():
 @pytest.fixture(scope="module")
 def one_cpu_100MiB_shared():
     # It has lots of tests that don't require object spilling.
-    config = {"task_retry_delay_ms": 0, "automatic_object_spilling_enabled": False}
+    config = {
+        "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False,
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+        "core_worker_rpc_server_reconnect_timeout_s": 0,
+        "grpc_client_check_connection_status_interval_milliseconds": 0,
+    }
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
     )

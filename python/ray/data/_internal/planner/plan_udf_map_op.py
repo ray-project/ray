@@ -5,7 +5,17 @@ import logging
 import queue
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import numpy as np
 import pandas as pd
@@ -22,9 +32,6 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
-    BlocksToBatchesMapTransformFn,
-    BlocksToRowsMapTransformFn,
-    BuildOutputBlocksMapTransformFn,
     MapTransformCallable,
     MapTransformer,
     Row,
@@ -41,8 +48,10 @@ from ray.data._internal.logical.operators.map_operator import (
     StreamingRepartition,
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
+from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
+    BatchFormat,
     Block,
     BlockAccessor,
     CallableClass,
@@ -109,7 +118,7 @@ def plan_project_op(
     columns_rename = op.cols_rename
     exprs = op.exprs
 
-    def fn(block: Block) -> Block:
+    def _project_block(block: Block) -> Block:
         try:
             block_accessor = BlockAccessor.for_block(block)
             if not block_accessor.num_rows():
@@ -118,19 +127,14 @@ def plan_project_op(
             # 1. evaluate / add expressions
             if exprs:
                 block_accessor = BlockAccessor.for_block(block)
-                new_columns = {}
-                for col_name in block_accessor.column_names():
-                    # For Arrow blocks, block[col_name] gives us a ChunkedArray
-                    # For Pandas blocks, block[col_name] gives us a Series
-                    new_columns[col_name] = block[col_name]
-
                 # Add/update with expression results
+                result_block = block
                 for name, expr in exprs.items():
-                    result = eval_expr(expr, block)
-                    new_columns[name] = result
+                    result = eval_expr(expr, result_block)
+                    result_block_accessor = BlockAccessor.for_block(result_block)
+                    result_block = result_block_accessor.upsert_column(name, result)
 
-                # Create a new block from the combined columns and add it
-                block = BlockAccessor.batch_to_block(new_columns)
+                block = result_block
 
             # 2. (optional) column projection
             if columns:
@@ -144,12 +148,14 @@ def plan_project_op(
 
             return block
         except Exception as e:
-            _try_wrap_udf_exception(e, block)
+            _try_wrap_udf_exception(e)
 
     compute = get_compute(op._compute)
-    transform_fn = _generate_transform_fn_for_map_block(fn)
-    map_transformer = _create_map_transformer_for_block_based_map_op(
-        transform_fn,
+
+    map_transformer = MapTransformer(
+        [
+            BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block)),
+        ]
     )
 
     return MapOperator.create(
@@ -171,9 +177,18 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
-    transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
-    transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
+
+    # Create a no-op transform that is just coalescing/slicing the incoming
+    # blocks
+    transform_fn = BlockMapTransformFn(
+        lambda blocks, ctx: blocks,
+        output_block_size_option=OutputBlockSizeOption.of(
+            target_num_rows_per_block=op.target_num_rows_per_block
+        ),
+    )
+
     map_transformer = MapTransformer([transform_fn])
+
     # Disable fusion for streaming repartition with the downstream op.
     return MapOperator.create(
         map_transformer,
@@ -195,6 +210,10 @@ def plan_filter_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
+    output_block_size_option = OutputBlockSizeOption.of(
+        target_max_block_size=data_context.target_max_block_size,
+    )
+
     expression = op._filter_expr
     compute = get_compute(op._compute)
     if expression is not None:
@@ -203,21 +222,35 @@ def plan_filter_op(
             try:
                 return block.filter(expression)
             except Exception as e:
-                _try_wrap_udf_exception(e, block)
+                _try_wrap_udf_exception(e)
 
-        transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
-        map_transformer = _create_map_transformer_for_map_batches_op(
-            transform_fn,
+        init_fn = None
+        transform_fn = BatchMapTransformFn(
+            _generate_transform_fn_for_map_batches(filter_batch_fn),
             batch_size=None,
-            batch_format="pyarrow",
+            batch_format=BatchFormat.ARROW,
             zero_copy_batch=True,
+            is_udf=True,
+            output_block_size_option=output_block_size_option,
         )
+
     else:
-        filter_fn, init_fn = _get_udf(op)
-        transform_fn = _generate_transform_fn_for_filter(filter_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, init_fn
+        udf_is_callable_class = isinstance(op._fn, CallableClass)
+        filter_fn, init_fn = _get_udf(
+            op._fn,
+            op._fn_args,
+            op._fn_kwargs,
+            op._fn_constructor_args if udf_is_callable_class else None,
+            op._fn_constructor_kwargs if udf_is_callable_class else None,
         )
+
+        transform_fn = RowMapTransformFn(
+            _generate_transform_fn_for_filter(filter_fn),
+            is_udf=True,
+            output_block_size_option=output_block_size_option,
+        )
+
+    map_transformer = MapTransformer([transform_fn], init_fn=init_fn)
 
     return MapOperator.create(
         map_transformer,
@@ -243,36 +276,51 @@ def plan_udf_map_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
+    output_block_size_option = OutputBlockSizeOption.of(
+        target_max_block_size=data_context.target_max_block_size,
+    )
+
     compute = get_compute(op._compute)
-    fn, init_fn = _get_udf(op)
+    udf_is_callable_class = isinstance(op._fn, CallableClass)
+    fn, init_fn = _get_udf(
+        op._fn,
+        op._fn_args,
+        op._fn_kwargs,
+        op._fn_constructor_args if udf_is_callable_class else None,
+        op._fn_constructor_kwargs if udf_is_callable_class else None,
+    )
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(fn)
-        map_transformer = _create_map_transformer_for_map_batches_op(
-            transform_fn,
-            op._batch_size,
-            op._batch_format,
-            op._zero_copy_batch,
-            init_fn,
+        transform_fn = BatchMapTransformFn(
+            _generate_transform_fn_for_map_batches(fn),
+            batch_size=op._batch_size,
+            batch_format=op._batch_format,
+            zero_copy_batch=op._zero_copy_batch,
+            is_udf=True,
+            output_block_size_option=output_block_size_option,
         )
+
     else:
         if isinstance(op, MapRows):
-            transform_fn = _generate_transform_fn_for_map_rows(fn)
+            udf_fn = _generate_transform_fn_for_map_rows(fn)
         elif isinstance(op, FlatMap):
-            transform_fn = _generate_transform_fn_for_flat_map(fn)
+            udf_fn = _generate_transform_fn_for_flat_map(fn)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
-        map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, init_fn
+        transform_fn = RowMapTransformFn(
+            udf_fn,
+            is_udf=True,
+            output_block_size_option=output_block_size_option,
         )
+
+    map_transformer = MapTransformer([transform_fn], init_fn=init_fn)
 
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
         name=op.name,
-        target_max_block_size=None,
         compute_strategy=compute,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
@@ -281,17 +329,23 @@ def plan_udf_map_op(
     )
 
 
-def _get_udf(op: AbstractUDFMap):
+def _get_udf(
+    op_fn: Callable,
+    op_fn_args: Tuple[Any, ...],
+    op_fn_kwargs: Dict[str, Any],
+    op_fn_constructor_args: Optional[Tuple[Any, ...]],
+    op_fn_constructor_kwargs: Optional[Dict[str, Any]],
+):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
     # be serializable.
-    udf = op._fn
-    fn_args = op._fn_args or ()
-    fn_kwargs = op._fn_kwargs or {}
+    udf = op_fn
+    fn_args = op_fn_args or ()
+    fn_kwargs = op_fn_kwargs or {}
 
     if isinstance(udf, CallableClass):
-        fn_constructor_args = op._fn_constructor_args or ()
-        fn_constructor_kwargs = op._fn_constructor_kwargs or {}
+        fn_constructor_args = op_fn_constructor_args or ()
+        fn_constructor_kwargs = op_fn_constructor_kwargs or {}
 
         is_async_udf = _is_async_udf(udf.__call__)
 
@@ -324,7 +378,7 @@ def _get_udf(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _try_wrap_udf_exception(e, item)
+                    _try_wrap_udf_exception(e)
 
         elif inspect.isasyncgenfunction(udf.__call__):
 
@@ -359,7 +413,7 @@ def _get_udf(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _try_wrap_udf_exception(e, item)
+                    _try_wrap_udf_exception(e)
 
     else:
 
@@ -367,7 +421,7 @@ def _get_udf(op: AbstractUDFMap):
             try:
                 return udf(item, *fn_args, **fn_kwargs)
             except Exception as e:
-                _try_wrap_udf_exception(e, item)
+                _try_wrap_udf_exception(e)
 
         def init_fn():
             pass
@@ -379,14 +433,11 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
     """If the Ray Debugger is enabled, keep the full stack trace unmodified
     so that the debugger can stop at the initial unhandled exception.
     Otherwise, clear the stack trace to omit noisy internal code path."""
-    error_message = f"Failed to process the following data block: {item}"
-
     ctx = ray.data.DataContext.get_current()
     if _is_ray_debugger_post_mortem_enabled() or ctx.raise_original_map_exception:
-        logger.error(error_message)
         raise e
     else:
-        raise UserCodeException(error_message) from e
+        raise UserCodeException("UDF failed to process a data block.") from e
 
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.
@@ -571,62 +622,6 @@ def _generate_transform_fn_for_map_block(
             yield out_block
 
     return transform_fn
-
-
-# Following are util functions for creating `MapTransformer`s.
-
-
-def _create_map_transformer_for_map_batches_op(
-    batch_fn: MapTransformCallable[DataBatch, DataBatch],
-    batch_size: Optional[int] = None,
-    batch_format: str = "default",
-    zero_copy_batch: bool = False,
-    init_fn: Optional[Callable[[], None]] = None,
-) -> MapTransformer:
-    """Create a MapTransformer for a map_batches operator."""
-    transform_fns = [
-        # Convert input blocks to batches.
-        BlocksToBatchesMapTransformFn(
-            batch_size=batch_size,
-            batch_format=batch_format,
-            zero_copy_batch=zero_copy_batch,
-        ),
-        # Apply the UDF.
-        BatchMapTransformFn(batch_fn, is_udf=True),
-        # Convert output batches to blocks.
-        BuildOutputBlocksMapTransformFn.for_batches(),
-    ]
-    return MapTransformer(transform_fns, init_fn)
-
-
-def _create_map_transformer_for_row_based_map_op(
-    row_fn: MapTransformCallable[Row, Row],
-    init_fn: Optional[Callable[[], None]] = None,
-) -> MapTransformer:
-    """Create a MapTransformer for a row-based map operator
-    (e.g. map, flat_map, filter)."""
-    transform_fns = [
-        # Convert input blocks to rows.
-        BlocksToRowsMapTransformFn.instance(),
-        # Apply the UDF.
-        RowMapTransformFn(row_fn, is_udf=True),
-        # Convert output rows to blocks.
-        BuildOutputBlocksMapTransformFn.for_rows(),
-    ]
-    return MapTransformer(transform_fns, init_fn=init_fn)
-
-
-def _create_map_transformer_for_block_based_map_op(
-    block_fn: MapTransformCallable[Block, Block],
-    init_fn: Optional[Callable[[], None]] = None,
-) -> MapTransformer:
-    """Create a MapTransformer for a block-based map operator."""
-    transform_fns = [
-        # Apply the UDF.
-        BlockMapTransformFn(block_fn),
-        BuildOutputBlocksMapTransformFn.for_blocks(),
-    ]
-    return MapTransformer(transform_fns, init_fn=init_fn)
 
 
 _SENTINEL = object()

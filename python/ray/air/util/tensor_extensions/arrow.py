@@ -1,34 +1,32 @@
 import abc
-from datetime import datetime
-
 import itertools
 import json
 import logging
 import sys
+from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
-import ray.cloudpickle as cloudpickle
-from enum import Enum
 
+import ray.cloudpickle as cloudpickle
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.util.tensor_extensions.utils import (
-    _is_ndarray_variable_shaped_tensor,
-    create_ragged_ndarray,
-    _should_convert_to_tensor,
     ArrayLike,
+    _is_ndarray_variable_shaped_tensor,
+    _should_convert_to_tensor,
+    create_ragged_ndarray,
 )
 from ray.data._internal.numpy_support import (
-    convert_to_numpy,
     _convert_datetime_to_np_datetime,
+    convert_to_numpy,
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
-from ray._private.ray_constants import env_integer
-
 
 PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
@@ -515,6 +513,10 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         """
         Convert an ExtensionScalar to a tensor element.
         """
+        # Handle None/null values
+        if scalar.value is None:
+            return None
+
         raw_values = scalar.value.values
         shape = scalar.type.shape
         value_type = raw_values.type
@@ -574,6 +576,9 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             shape = arr_type.shape
         return False
 
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._shape))
+
 
 @PublicAPI(stability="beta")
 class ArrowTensorType(_BaseFixedShapeArrowTensorType):
@@ -584,6 +589,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     """
 
     OFFSET_DTYPE = np.int32
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -614,6 +620,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
     OFFSET_DTYPE = np.int64
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -1116,6 +1123,11 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         """
         Convert an ExtensionScalar to a tensor element.
         """
+
+        # Handle None/null values
+        if scalar.value is None:
+            return None
+
         data = scalar.value.get("data")
         raw_values = data.values
 
@@ -1124,6 +1136,9 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         offset = raw_values.offset
         data_buffer = raw_values.buffers()[1]
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._ndim))
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the

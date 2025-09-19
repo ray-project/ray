@@ -3,7 +3,7 @@ import re
 import numpy as np
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 

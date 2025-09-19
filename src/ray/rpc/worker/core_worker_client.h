@@ -109,7 +109,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<ActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
-  virtual void GetObjectStatus(const GetObjectStatusRequest &request,
+  virtual void GetObjectStatus(GetObjectStatusRequest &&request,
                                const ClientCallback<GetObjectStatusReply> &callback) {}
 
   /// Ask the actor's owner to reply when the actor has no references.
@@ -118,17 +118,17 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<WaitForActorRefDeletedReply> &callback) {}
 
   /// Send a long polling request to a core worker for pubsub operations.
-  virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
-                                 const ClientCallback<PubsubLongPollingReply> &callback) {
-  }
+  void PubsubLongPolling(
+      PubsubLongPollingRequest &&request,
+      const ClientCallback<PubsubLongPollingReply> &callback) override {}
 
   /// Send a pubsub command batch request to a core worker for pubsub operations.
-  virtual void PubsubCommandBatch(
-      const PubsubCommandBatchRequest &request,
-      const ClientCallback<PubsubCommandBatchReply> &callback) {}
+  void PubsubCommandBatch(
+      PubsubCommandBatchRequest &&request,
+      const ClientCallback<PubsubCommandBatchReply> &callback) override {}
 
   virtual void UpdateObjectLocationBatch(
-      const UpdateObjectLocationBatchRequest &request,
+      UpdateObjectLocationBatchRequest &&request,
       const ClientCallback<UpdateObjectLocationBatchReply> &callback) {}
 
   virtual void GetObjectLocationsOwner(
@@ -136,7 +136,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
 
   virtual void ReportGeneratorItemReturns(
-      const ReportGeneratorItemReturnsRequest &request,
+      ReportGeneratorItemReturnsRequest &&request,
       const ClientCallback<ReportGeneratorItemReturnsReply> &callback) {}
 
   /// Tell this actor to exit immediately.
@@ -256,17 +256,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         PubsubLongPolling,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   PubsubLongPolling,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         PubsubCommandBatch,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   PubsubCommandBatch,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
                                    CoreWorkerService,
