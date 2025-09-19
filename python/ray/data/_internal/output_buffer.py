@@ -12,6 +12,30 @@ class OutputBlockSizeOption:
     target_max_block_size: Optional[int] = None
     target_num_rows_per_block: Optional[int] = None
 
+    def __post_init__(self):
+        if (
+            self.target_max_block_size is None
+            and self.target_num_rows_per_block is None
+        ):
+            raise ValueError(
+                "Either `target_max_block_size` or `target_num_rows_per_block` "
+                "must be specified"
+            )
+
+    @classmethod
+    def of(
+        cls,
+        target_max_block_size: Optional[int] = None,
+        target_num_rows_per_block: Optional[int] = None,
+    ) -> Optional["OutputBlockSizeOption"]:
+        if target_max_block_size is None and target_num_rows_per_block is None:
+            return None
+        else:
+            return OutputBlockSizeOption(
+                target_max_block_size=target_max_block_size,
+                target_num_rows_per_block=target_num_rows_per_block,
+            )
+
 
 class BlockOutputBuffer:
     """Generates output blocks of a given size or number of rows given a stream of

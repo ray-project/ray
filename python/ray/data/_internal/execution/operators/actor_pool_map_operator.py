@@ -301,7 +301,7 @@ class ActorPoolMapOperator(MapOperator):
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
-                target_max_block_size_override=self.actual_target_max_block_size,
+                target_max_block_size_override=self.target_max_block_size_override,
             )
             gen = actor.submit.options(
                 num_returns="streaming",
