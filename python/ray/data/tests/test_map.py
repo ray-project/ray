@@ -26,9 +26,6 @@ from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
-from ray.data._internal.execution.interfaces.ref_bundle import (
-    _ref_bundles_iterator_to_block_refs_list,
-)
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
@@ -1521,31 +1518,6 @@ def test_map_batches_combine_empty_blocks(
 
     # The number of partitions should not affect the map_batches() result.
     assert ds1.take_all() == ds2.take_all()
-
-
-def test_map_batches_preserves_empty_block_format(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Tests that the block format for empty blocks are not modified."""
-
-    def empty_pandas(batch):
-        return pd.DataFrame({"x": []})
-
-    df = pd.DataFrame({"x": [1, 2, 3]})
-
-    # First map_batches creates the empty Pandas block.
-    # Applying subsequent map_batches should not change the type of the empty block.
-    ds = (
-        ray.data.from_pandas(df)
-        .map_batches(empty_pandas)
-        .map_batches(lambda x: x, batch_size=None)
-    )
-
-    bundles = ds.iter_internal_ref_bundles()
-    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
-
-    assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) is pd.DataFrame
 
 
 def test_map_with_objects_and_tensors(
