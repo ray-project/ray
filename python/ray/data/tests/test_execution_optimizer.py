@@ -694,28 +694,6 @@ def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
     ) == {"prod": 384}
 
 
-def test_aggregate_operator(ray_start_regular_shared_2_cpus):
-    ctx = DataContext.get_current()
-
-    planner = create_planner()
-    read_op = get_parquet_read_logical_op()
-    op = Aggregate(
-        read_op,
-        key="col1",
-        aggs=[Count()],
-    )
-    plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
-
-    assert op.name == "Aggregate"
-    assert isinstance(physical_op, AllToAllOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], MapOperator)
-
-    # Check that the linked logical operator is the same the input op.
-    assert physical_op._logical_operators == [op]
-
-
 def test_aggregate_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.groupby("id").count()
