@@ -1,7 +1,11 @@
 import os
 from typing import Dict
 
-from ray._private.ray_constants import env_bool, env_set_by_user
+from ray._private.ray_constants import (
+    WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+    env_bool,
+    env_set_by_user,
+)
 
 # Unsupported configs can use this value to detect if the user has set it.
 _UNSUPPORTED = "UNSUPPORTED"
@@ -76,8 +80,12 @@ GET_ACTOR_TIMEOUT_S: int = 2
 # GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
 # way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR.
 CONTROLLERS_TO_POLL_PER_ITERATION: int = 5
+
 # Environment variable for Train execution callbacks
 RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
+
+# Ray Train does not warn by default when using blocking ray.get inside async actor.
+DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
@@ -93,6 +101,7 @@ ENV_VARS_TO_PROPAGATE = {
     ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
+    WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
 }
 
 

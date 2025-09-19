@@ -2808,7 +2808,7 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 
 
 # Global variable to make sure we only send out the warning once.
-blocking_get_inside_async_warned = False
+blocking_get_inside_async_logged = False
 
 
 @overload
@@ -2905,15 +2905,28 @@ def get(
     worker.check_connected()
 
     if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
-        global blocking_get_inside_async_warned
-        if not blocking_get_inside_async_warned:
-            logger.warning(
+        global blocking_get_inside_async_logged
+        if not blocking_get_inside_async_logged:
+            from ray._private.ray_constants import (
+                DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC,
+                WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+                env_bool,
+            )
+
+            blocking_get_inside_async_text = (
                 "Using blocking ray.get inside async actor. "
                 "This blocks the event loop. Please use `await` "
                 "on object ref with asyncio.gather if you want to "
                 "yield execution to the event loop instead."
             )
-            blocking_get_inside_async_warned = True
+            if env_bool(
+                WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+                DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC,
+            ):
+                logger.warning(blocking_get_inside_async_text)
+            else:
+                logger.debug(blocking_get_inside_async_text)
+            blocking_get_inside_async_logged = True
 
     with profiling.profile("ray.get"):
         # TODO(sang): Should make ObjectRefGenerator
