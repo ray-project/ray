@@ -43,7 +43,7 @@ class GcsActor {
       rpc::ActorTableData actor_table_data,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter,
-      observability::RayEventRecorderInterface *recorder,
+      observability::RayEventRecorderInterface &recorder,
       const std::string &session_name)
       : actor_table_data_(std::move(actor_table_data)),
         counter_(std::move(counter)),
@@ -284,8 +284,8 @@ class GcsActor {
   /// If true, actor events are exported for Export API
   bool export_event_write_enabled_ = false;
   std::unique_ptr<LeaseSpecification> lease_spec_;
-  /// Event recorder and session name for Ray events (optional)
-  observability::RayEventRecorderInterface *ray_event_recorder_ = nullptr;
+  /// Event recorder and session name for Ray events
+  observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
 };
 

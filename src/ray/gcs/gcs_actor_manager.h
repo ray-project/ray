@@ -481,7 +481,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
   /// Event recorder for emitting actor events
-  observability::RayEventRecorderInterface *ray_event_recorder_ = nullptr;
+  observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during

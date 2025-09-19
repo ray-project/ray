@@ -96,9 +96,10 @@ void GcsActor::WriteActorExportEvent() const {
   // If ray event is enabled and recorder present, emit actor events to the aggregator.
   if (RayConfig::instance().enable_ray_event() && ray_event_recorder_ != nullptr) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    // Emit definition event only when the actor is first registered
-    // (DEPENDENCIES_UNREADY)
-    if (actor_table_data_.state() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+    switch (actor_table_data_.state()) {
+    case rpc::ActorTableData::DEPENDENCIES_UNREADY:
+      // Emit definition event only when the actor is first registered
+      // (DEPENDENCIES_UNREADY)
       events.push_back(std::make_unique<observability::RayActorDefinitionEvent>(
           actor_table_data_, session_name_));
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
@@ -106,32 +107,26 @@ void GcsActor::WriteActorExportEvent() const {
           rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
           "",
           session_name_));
-    } else if (actor_table_data_.state() == rpc::ActorTableData::PENDING_CREATION) {
+      break;
+    case rpc::ActorTableData::PENDING_CREATION:
+    case rpc::ActorTableData::RESTARTING:
+    case rpc::ActorTableData::DEAD:
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_,
-          rpc::events::ActorLifecycleEvent::PENDING_CREATION,
-          "",
-          session_name_));
-    } else if (actor_table_data_.state() == rpc::ActorTableData::ALIVE) {
+          actor_table_data_, actor_table_data_.state(), "", session_name_));
+      break;
+    case rpc::ActorTableData::ALIVE:
       const std::string worker_id = actor_table_data_.address().worker_id();
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_,
-          rpc::events::ActorLifecycleEvent::ALIVE,
-          worker_id,
-          session_name_));
-    } else if (actor_table_data_.state() == rpc::ActorTableData::RESTARTING) {
-      events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_,
-          rpc::events::ActorLifecycleEvent::RESTARTING,
-          "",
-          session_name_));
-    } else if (actor_table_data_.state() == rpc::ActorTableData::DEAD) {
-      events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, rpc::events::ActorLifecycleEvent::DEAD, "", session_name_));
+          actor_table_data_, actor_table_data_.state(), worker_id, session_name_));
+      break;
+    default:
+      RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
+                     << rpc::ActorTableData::ActorState_Name(actor_table_data_.state());
+      break;
     }
-    if (!events.empty()) {
-      ray_event_recorder_->AddEvents(std::move(events));
-    }
+
+    ray_event_recorder_->AddEvents(std::move(events));
+    return;
   }
 
   /// Verify actor export events should be written to file

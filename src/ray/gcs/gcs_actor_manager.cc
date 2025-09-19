@@ -234,7 +234,7 @@ GcsActorManager::GcsActorManager(
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
       worker_client_pool_(worker_client_pool),
-      ray_event_recorder_(&ray_event_recorder),
+      ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
       destroy_owned_placement_group_if_needed_(
           std::move(destroy_owned_placement_group_if_needed)),

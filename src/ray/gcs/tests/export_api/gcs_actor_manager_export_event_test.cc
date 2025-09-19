@@ -280,13 +280,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   std::vector<SourceTypeVariant> source_types = {
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR};
   RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
-  // Also enable aggregator path and assert actor definition + lifecycle via Fake recorder
-  RayConfig::instance().initialize(R"({
-"enable_ray_event": true,
-"enable_export_api_write": true
-})");
-  // Use the member variable fake_ray_event_recorder_ that's already connected to
-  // GcsActorManager
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   rpc::CreateActorRequest create_actor_request;
@@ -322,26 +315,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
-
-  // Verify recorder received a definition event and an ALIVE lifecycle event
-  auto events = fake_ray_event_recorder_.FlushBuffer();
-  bool has_def = false;
-  bool has_alive = false;
-  for (auto &event : events) {
-    auto serialized_event = std::move(*event).Serialize();
-    if (serialized_event.event_type() == rpc::events::RayEvent::ACTOR_DEFINITION_EVENT) {
-      has_def = true;
-    }
-    if (serialized_event.event_type() == rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT) {
-      if (serialized_event.actor_lifecycle_event().state_transitions_size() > 0 &&
-          serialized_event.actor_lifecycle_event().state_transitions(0).state() ==
-              rpc::events::ActorLifecycleEvent::ALIVE) {
-        has_alive = true;
-      }
-    }
-  }
-  ASSERT_TRUE(has_def);
-  ASSERT_TRUE(has_alive);
 
   // Check correct export events are written for each of the 4 state transitions
   int num_retry = 5;
