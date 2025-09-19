@@ -2960,7 +2960,6 @@ TEST_F(PlasmaShutdownRaceTest, PlasmaCallbackHandlesShutdownRaceCondition) {
   ASSERT_EQ(tolerated_operations_.count(object_id4), 1);
 }
 
-#if GTEST_HAS_STREAM_REDIRECTION
 // Test that error message is sent to push_error_callback when task fails and will be retried
 TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
   std::string captured_error_message;
@@ -3042,6 +3041,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
   test_manager.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
 
+#if GTEST_HAS_STREAM_REDIRECTION
 // Test that error log is printed when push_error_callback fails
 TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
   using testing::internal::CaptureStderr;
