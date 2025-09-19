@@ -1,14 +1,14 @@
 import functools
-import gymnasium as gym
-import ray
 import shutil
 import unittest
-
 from pathlib import Path
 
+import gymnasium as gym
+
+import ray
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core import Columns, COMPONENT_RL_MODULE
+from ray.rllib.core import COMPONENT_RL_MODULE, Columns
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
@@ -313,6 +313,7 @@ class TestOfflinePreLearner(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

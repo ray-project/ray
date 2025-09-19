@@ -1,10 +1,10 @@
-import gymnasium as gym
-import ray
 import shutil
 import unittest
-
 from pathlib import Path
 
+import gymnasium as gym
+
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.columns import Columns
@@ -260,6 +260,7 @@ class TestOfflineData(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
