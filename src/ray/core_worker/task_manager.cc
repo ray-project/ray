@@ -1170,13 +1170,19 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
+      std::string num_retries_left_str =
+          num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+      auto error_message = "Task " + spec.FunctionDescriptor()->CallString() +
+                          " failed. There are " + num_retries_left_str +
+                          " retries remaining, so the task will be retried. Error: " +
+                          error_info.error_message();
       Status push_error_status =
           push_error_callback_(task_entry.spec_.JobId(),
                                rpc::ErrorType_Name(error_info.error_type()),
-                               error_info.error_message(),
+                               error_message,
                                current_time_ms());
       if (!push_error_status.ok()) {
-        RAY_LOG(INFO) << "Failed to push error to driver for task " << spec.TaskId();
+        RAY_LOG(ERROR) << "Failed to push error to driver for task " << spec.TaskId();
       }
 
       // Mark the new status and also include task spec info for the new attempt.
