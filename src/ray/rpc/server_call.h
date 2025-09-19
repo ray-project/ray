@@ -27,6 +27,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/rpc_types.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
 
@@ -60,8 +61,6 @@ void ResetServerCallExecutor();
 /// sent to the client.
 /// \param failure Failure callback which will be invoked when the reply fails to be
 /// sent to the client.
-using SendReplyCallback = std::function<void(
-    Status status, std::function<void()> success, std::function<void()> failure)>;
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {

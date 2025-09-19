@@ -7,7 +7,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/common/scheduling:scheduling_ids",
-        "//src/ray/rpc:client_call",
         "//src/ray/rpc:raylet_client_interface",
+        "//src/ray/rpc:rpc_types",
     ],
 )

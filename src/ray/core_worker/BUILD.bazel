@@ -78,7 +78,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:server_call",
+        "//src/ray/rpc:rpc_types",
     ],
 )
 
@@ -160,6 +160,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/gcs_client",
+        "//src/ray/util:thread_utils",
     ],
 )
 
@@ -340,6 +341,7 @@ ray_cc_library(
     hdrs = ["experimental_mutable_object_provider.h"],
     deps = [
         ":experimental_mutable_object_manager",
+        "//src/ray/common:asio",
         "//src/ray/rpc:client_call",
         "//src/ray/rpc:raylet_client_interface",
     ],
