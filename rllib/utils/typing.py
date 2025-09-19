@@ -25,9 +25,6 @@ if TYPE_CHECKING:
     import torch
     from numpy.typing import NDArray
 
-    # alias of allowed device types by torch
-    DeviceLikeType = Union[str, torch.device, int]
-
     from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
     from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.env.env_context import EnvContext
@@ -55,7 +52,7 @@ TensorShape = Union[Tuple[int], List[int]]
 NetworkType = Union["torch.nn.Module", "keras.Model"]
 """A neural network."""
 
-DeviceType = Union[str, "torch.device", "DeviceLikeType"]
+DeviceType = Union[str, "torch.device", "int"]
 """
 A device identifier, which can be a string (e.g. 'cpu', 'cuda:0'),
 a torch.device object, or other types supported by torch.
