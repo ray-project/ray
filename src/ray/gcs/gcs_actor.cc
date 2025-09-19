@@ -20,6 +20,7 @@
 #include "ray/observability/ray_actor_definition_event.h"
 #include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/public/events_actor_lifecycle_event.pb.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
@@ -94,7 +95,7 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 
 void GcsActor::WriteActorExportEvent() const {
   // If ray event is enabled and recorder present, emit actor events to the aggregator.
-  if (RayConfig::instance().enable_ray_event() && ray_event_recorder_ != nullptr) {
+  if (RayConfig::instance().enable_ray_event()) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
     switch (actor_table_data_.state()) {
     case rpc::ActorTableData::DEPENDENCIES_UNREADY:
@@ -105,19 +106,16 @@ void GcsActor::WriteActorExportEvent() const {
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
           actor_table_data_,
           rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
-          "",
           session_name_));
       break;
     case rpc::ActorTableData::PENDING_CREATION:
+    case rpc::ActorTableData::ALIVE:
     case rpc::ActorTableData::RESTARTING:
     case rpc::ActorTableData::DEAD:
       events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, actor_table_data_.state(), "", session_name_));
-      break;
-    case rpc::ActorTableData::ALIVE:
-      const std::string worker_id = actor_table_data_.address().worker_id();
-      events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, actor_table_data_.state(), worker_id, session_name_));
+          actor_table_data_,
+          ConvertActorStateToLifecycleEvent(actor_table_data_.state()),
+          session_name_));
       break;
     default:
       RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
@@ -125,7 +123,7 @@ void GcsActor::WriteActorExportEvent() const {
       break;
     }
 
-    ray_event_recorder_->AddEvents(std::move(events));
+    ray_event_recorder_.AddEvents(std::move(events));
     return;
   }
 

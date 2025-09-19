@@ -64,7 +64,7 @@ class GcsActor {
       rpc::TaskSpec task_spec,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter,
-      observability::RayEventRecorderInterface *recorder,
+      observability::RayEventRecorderInterface &recorder,
       const std::string &session_name)
       : actor_table_data_(std::move(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
@@ -87,7 +87,7 @@ class GcsActor {
       std::string ray_namespace,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter,
-      observability::RayEventRecorderInterface *recorder,
+      observability::RayEventRecorderInterface &recorder,
       const std::string &session_name)
       : task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
@@ -265,6 +265,26 @@ class GcsActor {
       RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
                      << rpc::ActorTableData::ActorState_Name(actor_state);
       return rpc::ExportActorData::DEAD;
+    }
+  }
+
+  rpc::events::ActorLifecycleEvent::State ConvertActorStateToLifecycleEvent(
+      rpc::ActorTableData::ActorState actor_state) const {
+    switch (actor_state) {
+    case rpc::ActorTableData::DEPENDENCIES_UNREADY:
+      return rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY;
+    case rpc::ActorTableData::PENDING_CREATION:
+      return rpc::events::ActorLifecycleEvent::PENDING_CREATION;
+    case rpc::ActorTableData::ALIVE:
+      return rpc::events::ActorLifecycleEvent::ALIVE;
+    case rpc::ActorTableData::RESTARTING:
+      return rpc::events::ActorLifecycleEvent::RESTARTING;
+    case rpc::ActorTableData::DEAD:
+      return rpc::events::ActorLifecycleEvent::DEAD;
+    default:
+      RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
+                     << rpc::ActorTableData::ActorState_Name(actor_state);
+      return rpc::events::ActorLifecycleEvent::DEAD;
     }
   }
 
