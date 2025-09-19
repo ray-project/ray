@@ -91,13 +91,11 @@ class NodeAffinitySchedulingStrategy:
 
         if self._spill_on_unavailable and not self.soft:
             raise ValueError(
-                "Invalid NodeAffinitySchedulingStrategy attribute. "
                 "_spill_on_unavailable cannot be set when soft is "
                 "False. Please set soft to True to use _spill_on_unavailable."
             )
         if self._fail_on_unavailable and self.soft:
             raise ValueError(
-                "Invalid NodeAffinitySchedulingStrategy attribute. "
                 "_fail_on_unavailable cannot be set when soft is "
                 "True. Please set soft to False to use _fail_on_unavailable."
             )
