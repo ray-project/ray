@@ -469,7 +469,7 @@ class NodeInfoAccessor {
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
-  /// Add a node address and liveness info to accessor cache.
+  /// Add rpc::GcsNodeAddressAndLiveness information to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info);
 
   virtual bool IsSubscribedToNodeChange() const {
@@ -495,7 +495,7 @@ class NodeInfoAccessor {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
 
   /// The callback to call when a new node is added or a node is removed when leveraging
-  /// the address and liveness api
+  /// the GcsNodeAddressAndLiveness version of the node api
   std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
       node_change_callback_address_and_liveness_ = nullptr;
 

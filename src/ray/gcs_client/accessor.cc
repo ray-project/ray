@@ -639,7 +639,10 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
      have to queue processing subscription updates until the initial population from
      AsyncGetAll is done.
   */
-
+  RAY_CHECK(node_change_callback_address_and_liveness_ == nullptr)
+      << "Subscriber is already subscribed to GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL, "
+         "subscribing to GCS_NODE_INFO_CHANNEL in addition is a waste of resources and "
+         "likely a bug.";
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = std::move(subscribe);
   RAY_CHECK(node_change_callback_ != nullptr);
@@ -668,6 +671,11 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
     std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
     StatusCallback done) {
+  RAY_CHECK(node_change_callback_ == nullptr)
+      << "Subscriber is already subscribed to GCS_NODE_INFO_CHANNEL, subscribing to "
+         "GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL in addition is a waste of resources and "
+         "likely "
+         "a bug.";
   RAY_CHECK(node_change_callback_address_and_liveness_ == nullptr);
   node_change_callback_address_and_liveness_ = std::move(subscribe);
   RAY_CHECK(node_change_callback_address_and_liveness_ != nullptr);
