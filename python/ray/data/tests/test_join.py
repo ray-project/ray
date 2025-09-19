@@ -22,11 +22,15 @@ from ray.tests.conftest import *  # noqa
         (1, 32, None),
     ],
 )
+@pytest.mark.parametrize(
+    "num_partitions", [None, 16]
+)
 def test_simple_inner_join(
     ray_start_regular_shared_2_cpus,
     num_rows_left: int,
     num_rows_right: int,
     partition_size_hint: Optional[int],
+    num_partitions: Optional[int],
 ):
     # NOTE: We override max-block size to make sure that in cases when a partition
     #       size hint is not provided, we're not over-estimating amount of memory
@@ -52,7 +56,7 @@ def test_simple_inner_join(
     joined: Dataset = doubles.join(
         squares,
         join_type="inner",
-        num_partitions=16,
+        num_partitions=num_partitions,
         on=("id",),
         partition_size_hint=partition_size_hint,
     )
@@ -88,11 +92,13 @@ def test_simple_inner_join(
         (32, 1),
     ],
 )
+@pytest.mark.parametrize("num_partitions", [None, 16])
 def test_simple_left_right_outer_semi_anti_join(
     ray_start_regular_shared_2_cpus,
     join_type,
     num_rows_left,
     num_rows_right,
+    num_partitions: Optional[int],
 ):
     # NOTE: We override max-block size to make sure that in cases when a partition
     #       size hint is not provided, we're not over-estimating amount of memory
@@ -148,7 +154,7 @@ def test_simple_left_right_outer_semi_anti_join(
     joined: Dataset = doubles.join(
         squares,
         join_type=join_type,
-        num_partitions=16,
+        num_partitions=num_partitions,
         on=("id",),
     )
 
@@ -176,10 +182,12 @@ def test_simple_left_right_outer_semi_anti_join(
         (32, 1),
     ],
 )
+@pytest.mark.parametrize("num_partitions", [None, 16])
 def test_simple_full_outer_join(
     ray_start_regular_shared_2_cpus,
     num_rows_left,
     num_rows_right,
+    num_partitions: Optional[int],
 ):
     # NOTE: We override max-block size to make sure that in cases when a partition
     #       size hint is not provided, we're not over-estimating amount of memory
@@ -206,7 +214,7 @@ def test_simple_full_outer_join(
     joined: Dataset = doubles.join(
         squares,
         join_type="full_outer",
-        num_partitions=16,
+        num_partitions=num_partitions,
         on=("id",),
         # NOTE: We override this to reduce hardware requirements
         #       for every aggregator (by default requiring 1 logical CPU)
@@ -228,7 +236,8 @@ def test_simple_full_outer_join(
 
 @pytest.mark.parametrize("left_suffix", [None, "_left"])
 @pytest.mark.parametrize("right_suffix", [None, "_right"])
-def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_suffix):
+@pytest.mark.parametrize("num_partitions", [None, 16])
+def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_suffix, num_partitions: Optional[int]):
     # NOTE: We override max-block size to make sure that in cases when a partition
     #       size hint is not provided, we're not over-estimating amount of memory
     #       required for the aggregators
@@ -244,7 +253,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
     joined: Dataset = doubles.join(
         doubles,
         join_type="inner",
-        num_partitions=16,
+        num_partitions=num_partitions,
         on=("id",),
         left_suffix=left_suffix,
         right_suffix=right_suffix,
@@ -284,7 +293,6 @@ def test_invalid_join_config(ray_start_regular_shared_2_cpus):
         ds.join(
             ds,
             "inner",
-            num_partitions=16,
             on="id",  # has to be tuple/list
             validate_schemas=True,
         )
@@ -295,7 +303,6 @@ def test_invalid_join_config(ray_start_regular_shared_2_cpus):
         ds.join(
             ds,
             "inner",
-            num_partitions=16,
             on=("id",),
             right_on="id",  # has to be tuple/list
             validate_schemas=True,
@@ -317,7 +324,6 @@ def test_invalid_join_not_matching_key_columns(
         empty_ds.join(
             non_empty_ds,
             join_type,
-            num_partitions=16,
             on=("id",),
             validate_schemas=True,
         )
@@ -338,7 +344,6 @@ def test_invalid_join_not_matching_key_columns(
         id_int_type_ds.join(
             id_float_type_ds,
             join_type,
-            num_partitions=16,
             on=("id",),
             validate_schemas=True,
         )
@@ -353,9 +358,11 @@ def test_invalid_join_not_matching_key_columns(
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
+@pytest.mark.parametrize("num_partitions", [None, 16])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
     join_type,
+    num_partitions: Optional[int],
 ):
     """Test anti-join when there are no matches - should return all rows from respective side"""
     DataContext.get_current().target_max_block_size = 1 * MiB
@@ -373,7 +380,7 @@ def test_anti_join_no_matches(
     joined: Dataset = doubles.join(
         squares,
         join_type=join_type,
-        num_partitions=4,
+        num_partitions=num_partitions,
         on=("id",),
     )
 
@@ -392,9 +399,11 @@ def test_anti_join_no_matches(
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
+@pytest.mark.parametrize("num_partitions", [None, 16])
 def test_anti_join_all_matches(
     ray_start_regular_shared_2_cpus,
     join_type,
+    num_partitions: Optional[int],
 ):
     """Test anti-join when all rows match - should return empty result"""
     DataContext.get_current().target_max_block_size = 1 * MiB
@@ -411,7 +420,7 @@ def test_anti_join_all_matches(
     joined: Dataset = doubles.join(
         squares,
         join_type=join_type,
-        num_partitions=4,
+        num_partitions=num_partitions,
         on=("id",),
     )
 
@@ -422,9 +431,11 @@ def test_anti_join_all_matches(
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
+@pytest.mark.parametrize("num_partitions", [None, 16])
 def test_anti_join_multi_key(
     ray_start_regular_shared_2_cpus,
     join_type,
+    num_partitions: Optional[int],
 ):
     """Test anti-join with multiple join keys"""
     DataContext.get_current().target_max_block_size = 1 * MiB
@@ -451,7 +462,7 @@ def test_anti_join_multi_key(
     joined: Dataset = left_ds.join(
         right_ds,
         join_type=join_type,
-        num_partitions=4,
+        num_partitions=num_partitions,
         on=("id", "oddness"),
     )
 
