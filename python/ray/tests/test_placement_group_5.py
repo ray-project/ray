@@ -97,7 +97,7 @@ def test_placement_group_no_resource(ray_start_cluster):
             ray.get(actor.value.remote())
 
         # Get all actors.
-        actor_infos = ray._private.state.actors()
+        actor_infos = ray._common.state.actors()
 
         first_node_ids = [
             actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
@@ -255,7 +255,7 @@ def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_stra
     [ray.get(actor.value.remote()) for actor in actors]
 
     # Get all actors.
-    actor_infos = ray._private.state.actors()
+    actor_infos = ray._common.state.actors()
 
     # Make sure all actors in counter_list are located in separate nodes.
     actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]

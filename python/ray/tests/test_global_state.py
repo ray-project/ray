@@ -157,15 +157,15 @@ def test_global_state_actor_table(ray_start_regular):
             return os.getpid()
 
     # actor table should be empty at first
-    assert len(ray._private.state.actors()) == 0
+    assert len(ray._common.state.actors()) == 0
 
     # actor table should contain only one entry
     def get_actor_table_data(field):
-        return list(ray._private.state.actors().values())[0][field]
+        return list(ray._common.state.actors().values())[0][field]
 
     a = Actor.remote()
     pid = ray.get(a.ready.remote())
-    assert len(ray._private.state.actors()) == 1
+    assert len(ray._common.state.actors()) == 1
     assert get_actor_table_data("Pid") == pid
 
     # actor table should contain only this entry
@@ -197,21 +197,21 @@ def test_global_state_actor_entry(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray._private.state.actors()) == 0
+    assert len(ray._common.state.actors()) == 0
 
     a = Actor.remote()
     b = Actor.remote()
     ray.get(a.ready.remote())
     ray.get(b.ready.remote())
-    assert len(ray._private.state.actors()) == 2
+    assert len(ray._common.state.actors()) == 2
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
-    assert ray._private.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray._private.state.actors(actor_id=a_actor_id)[
+    assert ray._common.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
+    assert ray._common.state.actors(actor_id=a_actor_id)[
         "State"
     ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-    assert ray._private.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray._private.state.actors(actor_id=b_actor_id)[
+    assert ray._common.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
+    assert ray._common.state.actors(actor_id=b_actor_id)[
         "State"
     ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
 

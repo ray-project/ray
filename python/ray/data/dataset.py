@@ -2086,7 +2086,7 @@ class Dataset:
 
         def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
             """Build a map from a actor to its node_id."""
-            actors_state = ray._private.state.actors()
+            actors_state = ray._common.state.actors()
             return {
                 actor: actors_state.get(actor._actor_id.hex(), {})
                 .get("Address", {})
