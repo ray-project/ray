@@ -1,4 +1,3 @@
-import io
 import logging
 import threading
 import traceback
@@ -54,7 +53,7 @@ from ray.exceptions import (
     WorkerCrashedError,
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
-from ray.util import inspect_serializability, serialization_addons
+from ray.util import serialization_addons
 
 logger = logging.getLogger(__name__)
 ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
@@ -64,22 +63,6 @@ ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
 
 class DeserializationError(Exception):
     pass
-
-
-def pickle_dumps(obj: Any, error_msg: str):
-    """Wrap cloudpickle.dumps to provide better error message
-    when the object is not serializable.
-    """
-    try:
-        return pickle.dumps(obj)
-    except (TypeError, ray.exceptions.OufOfBandObjectRefSerializationException) as e:
-        sio = io.StringIO()
-        inspect_serializability(obj, print_file=sio)
-        msg = f"{error_msg}:\n{sio.getvalue()}"
-        if isinstance(e, TypeError):
-            raise TypeError(msg) from e
-        else:
-            raise ray.exceptions.OufOfBandObjectRefSerializationException(msg)
 
 
 def _object_ref_deserializer(
@@ -713,7 +696,7 @@ class SerializationContext:
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
         # Regardless of whether `tensors` is empty, we always store the GPU object
-        # in the GPU object store. This ensures that `_get_tensor_meta` is not
+        # in the GPU object store. This ensures that `get_tensor_transport_metadata` is not
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager

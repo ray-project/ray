@@ -1,9 +1,11 @@
 from collections import UserDict
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.pandas import TensorDtype
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -234,9 +236,16 @@ def test_strict_schema(ray_start_regular_shared):
 
     assert schema.types == [expected_arrow_ext_type]
 
-    schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
+    def _id(batch):
+        assert isinstance(batch, pd.DataFrame)
+        return batch
+
+    schema = ds.map_batches(_id, batch_format="pandas").schema()
+
     assert isinstance(schema.base_schema, PandasBlockSchema)
     assert schema.names == ["data"]
+    assert schema.base_schema.types == [TensorDtype(shape=(10,), dtype=pa.float64())]
+    # NOTE: Schema by default returns Arrow types
     assert schema.types == [expected_arrow_ext_type]
 
 
