@@ -235,7 +235,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    def _combine_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
@@ -246,9 +246,11 @@ class PandasBlockBuilder(TableBlockBuilder):
             df.reset_index(drop=True, inplace=True)
         else:
             df = tables[0]
+
         ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
+
         return df
 
     @staticmethod
@@ -320,6 +322,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def upsert_column(
         self, column_name: str, column_data: BlockColumn
     ) -> "pandas.DataFrame":
+        import pyarrow
+
         if isinstance(column_data, (pyarrow.Array, pyarrow.ChunkedArray)):
             column_data = column_data.to_pandas()
 

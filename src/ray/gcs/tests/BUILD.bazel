@@ -50,6 +50,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
+        "//src/ray/observability:fake_metric",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -111,6 +112,8 @@ ray_cc_test(
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_node_manager",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_ray_event_recorder",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -208,6 +211,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_resource_manager",
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
@@ -229,6 +233,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_actor_scheduler",
         "//src/ray/gcs:gcs_resource_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
@@ -457,6 +462,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_node_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest",
     ],

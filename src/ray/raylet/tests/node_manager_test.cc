@@ -33,6 +33,7 @@
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/local_object_manager_interface.h"
@@ -307,7 +308,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
-    fake_task_by_state_counter_ = ray::observability::FakeMetric();
+    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -392,28 +393,30 @@ class NodeManagerTest : public ::testing::Test {
         [](const ray::RayLease &lease) {},
         *local_lease_manager_);
 
-    node_manager_ = std::make_unique<NodeManager>(io_service_,
-                                                  raylet_node_id_,
-                                                  "test_node_name",
-                                                  node_manager_config,
-                                                  *mock_gcs_client_,
-                                                  client_call_manager_,
-                                                  worker_rpc_pool_,
-                                                  raylet_client_pool_,
-                                                  *core_worker_subscriber_,
-                                                  *cluster_resource_scheduler_,
-                                                  *local_lease_manager_,
-                                                  *cluster_lease_manager_,
-                                                  *mock_object_directory_,
-                                                  *mock_object_manager_,
-                                                  *local_object_manager_,
-                                                  *lease_dependency_manager_,
-                                                  mock_worker_pool_,
-                                                  leased_workers_,
-                                                  *mock_store_client_,
-                                                  std::move(mutable_object_provider),
-                                                  /*shutdown_raylet_gracefully=*/
-                                                  [](const auto &) {});
+    node_manager_ = std::make_unique<NodeManager>(
+        io_service_,
+        raylet_node_id_,
+        "test_node_name",
+        node_manager_config,
+        *mock_gcs_client_,
+        client_call_manager_,
+        worker_rpc_pool_,
+        raylet_client_pool_,
+        *core_worker_subscriber_,
+        *cluster_resource_scheduler_,
+        *local_lease_manager_,
+        *cluster_lease_manager_,
+        *mock_object_directory_,
+        *mock_object_manager_,
+        *local_object_manager_,
+        *lease_dependency_manager_,
+        mock_worker_pool_,
+        leased_workers_,
+        *mock_store_client_,
+        std::move(mutable_object_provider),
+        /*shutdown_raylet_gracefully=*/
+        [](const auto &) {},
+        std::move(cgroup_manager_));
   }
 
   instrumented_io_context io_service_;
@@ -432,6 +435,7 @@ class NodeManagerTest : public ::testing::Test {
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
   std::unique_ptr<MockObjectManager> mock_object_manager_;
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
       std::make_shared<plasma::FakePlasmaClient>();
@@ -440,7 +444,7 @@ class NodeManagerTest : public ::testing::Test {
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -1066,6 +1070,58 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   ASSERT_EQ(reply1.success(), false);
   ASSERT_EQ(reply2.success(), false);
 }
+
+class PinObjectIDsIdempotencyTest : public NodeManagerTest,
+                                    public ::testing::WithParamInterface<bool> {};
+
+TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
+  // object_exists: determines whether we add an object to the plasma store which is used
+  // for pinning.
+  // object_exists == true: an object is added to the plasma store and PinObjectIDs is
+  // expected to succeed. A true boolean value is inserted at the index of the object
+  // in reply.successes.
+  // object_exists == false: an object is not added to the plasma store. PinObjectIDs will
+  // still succeed and not return an error when trying to pin a non-existent object, but
+  // will instead at the index of the object in reply.successes insert a false
+  // boolean value.
+  const bool object_exists = GetParam();
+  ObjectID id = ObjectID::FromRandom();
+
+  if (object_exists) {
+    rpc::Address owner_addr;
+    plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+    RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+
+  rpc::PinObjectIDsReply reply1;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  int64_t primary_bytes = local_object_manager_->GetPrimaryBytes();
+  rpc::PinObjectIDsReply reply2;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  // For each invocation of HandlePinObjectIDs, we expect the size of reply.successes and
+  // the boolean values it contains to not change.
+  EXPECT_EQ(reply1.successes_size(), 1);
+  EXPECT_EQ(reply1.successes(0), object_exists);
+  EXPECT_EQ(reply2.successes_size(), 1);
+  EXPECT_EQ(reply2.successes(0), object_exists);
+  EXPECT_EQ(local_object_manager_->GetPrimaryBytes(), primary_bytes);
+}
+
+INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
+                         PinObjectIDsIdempotencyTest,
+                         testing::Bool());
 
 }  // namespace ray::raylet
 

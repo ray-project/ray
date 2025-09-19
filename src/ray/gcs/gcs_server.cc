@@ -35,6 +35,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/gcs/store_client_kv.h"
+#include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -56,8 +57,10 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
   }
 }
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     instrumented_io_context &main_service)
+GcsServer::GcsServer(
+    const ray::gcs::GcsServerConfig &config,
+    instrumented_io_context &main_service,
+    ray::observability::MetricInterface &event_recorder_dropped_events_counter)
     : io_context_provider_(main_service),
       config_(config),
       storage_type_(GetStorageType()),
@@ -122,7 +125,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           config_.metrics_agent_port, event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
-          io_context_provider_.GetIOContext<observability::RayEventRecorder>())),
+          io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
+          RayConfig::instance().ray_event_recorder_max_queued_events(),
+          observability::kMetricSourceGCS,
+          event_recorder_dropped_events_counter)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
@@ -329,7 +335,9 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
                                        gcs_table_storage_.get(),
                                        io_context_provider_.GetDefaultIOContext(),
                                        &raylet_client_pool_,
-                                       rpc_server_.GetClusterId());
+                                       rpc_server_.GetClusterId(),
+                                       *ray_event_recorder_,
+                                       config_.session_name);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(

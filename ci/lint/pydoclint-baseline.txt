@@ -166,6 +166,10 @@ python/ray/_private/runtime_env/setup_hook.py
 python/ray/_private/runtime_env/utils.py
     DOC103: Function `check_output_cmd`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ]. Arguments in the docstring but not in the function signature: [kwargs: ].
 --------------------
+python/ray/_private/serialization.py
+    DOC106: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
+    DOC107: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
+--------------------
 python/ray/_private/services.py
     DOC201: Function `_build_python_executable_command_memory_profileable` does not have a return section in docstring
     DOC101: Function `get_ray_address_from_environment`: Docstring contains fewer arguments than in function signature.
@@ -1116,21 +1120,11 @@ python/ray/data/_internal/execution/operators/map_transformer.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `MapTransformFn.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `MapTransformFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [category: MapTransformFnCategory, input_type: MapTransformFnDataType, is_udf: bool, output_type: MapTransformFnDataType].
+    DOC103: Method `MapTransformFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [input_type: MapTransformFnDataType, is_udf: bool, output_block_size_option: Optional[OutputBlockSizeOption]].
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `MapTransformer.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `MapTransformer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [init_fn: Optional[Callable[[], None]], transform_fns: List[MapTransformFn]].
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `BuildOutputBlocksMapTransformFn.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `BuildOutputBlocksMapTransformFn.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [input_type: MapTransformFnDataType].
-    DOC402: Method `BuildOutputBlocksMapTransformFn.__call__` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Method `BuildOutputBlocksMapTransformFn.__call__` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `ApplyAdditionalSplitToOutputBlocks.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ApplyAdditionalSplitToOutputBlocks.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [additional_split_factor: int].
+    DOC103: Method `MapTransformer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [init_fn: Optional[Callable[[], None]], output_block_size_option_override: Optional[OutputBlockSizeOption], transform_fns: List[MapTransformFn]].
 --------------------
 python/ray/data/_internal/execution/operators/output_splitter.py
     DOC101: Method `OutputSplitter._get_locations`: Docstring contains fewer arguments than in function signature.
@@ -1216,7 +1210,7 @@ python/ray/data/_internal/numpy_support.py
 --------------------
 python/ray/data/_internal/output_buffer.py
     DOC101: Method `BlockOutputBuffer.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `BlockOutputBuffer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_block_size_option: OutputBlockSizeOption].
+    DOC103: Method `BlockOutputBuffer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_block_size_option: Optional[OutputBlockSizeOption]].
 --------------------
 python/ray/data/_internal/plan.py
     DOC101: Method `ExecutionPlan.get_plan_as_string`: Docstring contains fewer arguments than in function signature.
@@ -1365,8 +1359,6 @@ python/ray/data/read_api.py
     DOC101: Function `read_text`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `read_text`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [drop_empty_lines: bool].
     DOC103: Function `read_numpy`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**numpy_load_args: ]. Arguments in the docstring but not in the function signature: [numpy_load_args: ].
-    DOC104: Function `read_binary_files`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Function `read_binary_files`: Argument names match, but type hints in these args do not match: paths, include_paths, filesystem, parallelism, ray_remote_args, arrow_open_stream_args, meta_provider, partition_filter, partitioning, ignore_missing_paths, shuffle, file_extensions, concurrency, override_num_blocks
 --------------------
 python/ray/data/tests/test_split.py
     DOC106: Function `assert_split_assignment`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
@@ -2814,8 +2806,4 @@ python/ray/widgets/render.py
 python/ray/widgets/util.py
     DOC103: Function `_has_missing`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*deps: Iterable[Union[str, Optional[str]]]]. Arguments in the docstring but not in the function signature: [deps: ].
     DOC103: Function `repr_with_fallback`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*notebook_deps: Iterable[Union[str, Optional[str]]]]. Arguments in the docstring but not in the function signature: [notebook_deps: ].
---------------------
-python/ray/_private/serialization.py
-    DOC106: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------
