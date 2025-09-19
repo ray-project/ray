@@ -1,8 +1,8 @@
 import pytest
 
 import ray
-from ray.data import Dataset
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     assert_blocks_expected_in_plasma,
