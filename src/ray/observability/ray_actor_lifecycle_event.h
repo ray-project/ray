@@ -26,7 +26,6 @@ class RayActorLifecycleEvent : public RayEvent<rpc::events::ActorLifecycleEvent>
  public:
   RayActorLifecycleEvent(const rpc::ActorTableData &data,
                          rpc::events::ActorLifecycleEvent::State state,
-                         const std::string &worker_id,
                          const std::string &session_name);
 
   std::string GetEntityId() const override;

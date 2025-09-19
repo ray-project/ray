@@ -29,14 +29,12 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   data.set_name("MyActor");
   data.set_ray_namespace("test_ns");
   data.set_node_id("node-1");
+  data.mutable_address()->set_worker_id("worker-123");
 
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
-      data,
-      rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
-      /*worker_id=*/"",
-      "sess1");
+      data, rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY, "sess1");
   auto event2 = std::make_unique<RayActorLifecycleEvent>(
-      data, rpc::events::ActorLifecycleEvent::ALIVE, /*worker_id=*/"worker-123", "sess1");
+      data, rpc::events::ActorLifecycleEvent::ALIVE, "sess1");
 
   event1->Merge(std::move(*event2));
   auto serialized_event = std::move(*event1).Serialize();
