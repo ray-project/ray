@@ -19,8 +19,9 @@ from PIL import Image
 from io import BytesIO
 from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
-# Load "LMMs-Eval-Lite" dataset from Hugging Face 
+# Load "LMMs-Eval-Lite" dataset from Hugging Face
 import datasets as datasets_lib
+
 vision_dataset_llms_lite = datasets_lib.load_dataset(
     "lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val"
 )
@@ -179,6 +180,7 @@ def create_vlm_config():
         concurrency=1,
         has_image=True,
     )
+
 
 def run_vlm_example():
     """Run the complete VLM example workflow."""

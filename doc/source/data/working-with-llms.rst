@@ -234,20 +234,10 @@ Batch inference with an OpenAI-compatible endpoint
 
 You can also make calls to deployed models that have an OpenAI compatible API endpoint.
 
-First, configure the OpenAI API processor:
-
 .. literalinclude:: doc_code/working-with-llms/openai_api_example.py
     :language: python
-    :start-after: __openai_config_example_start__
-    :end-before: __openai_config_example_end__
-
-Then run the inference demo:
-
-.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
-    :language: python
-    :start-after: def run_openai_demo():
-    :end-before: # __openai_example_end__
-    :dedent: 4
+    :start-after: __openai_example_start__
+    :end-before: __openai_example_end__
 
 Usage Data Collection
 --------------------------
