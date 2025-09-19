@@ -2,7 +2,7 @@
 # This script is used to build an extra layer on top of the base anyscale/ray image
 # to run the object detection example notebooks.
 
-set -exo pipefail
+set -euxo pipefail
 
 # Install Python dependencies
 pip3 install --no-cache-dir \
