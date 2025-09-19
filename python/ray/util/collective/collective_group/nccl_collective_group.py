@@ -656,7 +656,7 @@ class NCCLGroup(BaseGroup):
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
         for i, tensor in enumerate(tensors):
-            p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
+            p2p_fn(tensor, comms[i], streams[i], peer_p2p_rank)
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
