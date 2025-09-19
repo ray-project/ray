@@ -482,7 +482,7 @@ class DataContext:
     #
     # When unset defaults to the smaller of
     #   - Total # of CPUs available in the cluster * 2
-    #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (64 by default)
+    #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
     max_hash_shuffle_aggregators: Optional[int] = None
 
     min_hash_shuffle_aggregator_wait_time_in_s: int = (
