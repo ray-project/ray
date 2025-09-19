@@ -89,6 +89,46 @@
             "$__all"
           ]
         }
+      },
+      {
+        "name": "interval",
+        "label": "Interval",
+        "type": "custom",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [
+          {
+            "selected": true,
+            "text": "30s",
+            "value": "30s"
+          },
+          {
+            "selected": false,
+            "text": "1m",
+            "value": "1m"
+          },
+          {
+            "selected": false,
+            "text": "5m",
+            "value": "5m"
+          },
+          {
+            "selected": false,
+            "text": "10m",
+            "value": "10m"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "15m"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "5m",
+          "value": "5m"
+        }
       }
     ]
   },
