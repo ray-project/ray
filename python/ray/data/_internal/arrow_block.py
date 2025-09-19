@@ -158,8 +158,11 @@ class ArrowBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List[Block]) -> Block:
-        return transform_pyarrow.concat(tables, promote_types=True)
+    def _combine_tables(tables: List[Block]) -> Block:
+        if len(tables) > 1:
+            return transform_pyarrow.concat(tables, promote_types=True)
+        else:
+            return tables[0]
 
     @staticmethod
     def _concat_would_copy() -> bool:
@@ -380,6 +383,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
         return self._table.rename_columns(columns_rename)
+
+    def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
+
+        result_table = self._table
+        for name, column in zip(other_block.column_names, other_block.columns):
+            result_table = result_table.append_column(name, column)
+
+        return result_table
 
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)

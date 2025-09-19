@@ -14,6 +14,8 @@
 
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package ray.rpc.events;
 
 // Message containing the definition of a node, as observed via GCS.
@@ -24,4 +26,5 @@ message NodeDefinitionEvent {
   bytes node_id = 1;
   string node_ip_address = 2;
   map<string, string> labels = 3;
+  google.protobuf.Timestamp start_timestamp = 4;
 }
