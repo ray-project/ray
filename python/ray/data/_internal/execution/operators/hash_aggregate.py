@@ -104,6 +104,7 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
 
 
 class HashAggregateOperator(HashShufflingOperatorBase):
+
     def __init__(
         self,
         data_context: DataContext,
@@ -115,11 +116,10 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            name=(
-                f"HashAggregate("
-                f"num_partitions={num_partitions}, "
-                f"key_columns={key_columns}"
-                f")"
+            name_factory=(
+                lambda num_partitions:
+                    f"HashAggregate(key_columns={key_columns}, "
+                    f"num_partitions={num_partitions})"
             ),
             input_ops=[input_op],
             data_context=data_context,

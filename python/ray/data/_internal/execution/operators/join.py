@@ -340,14 +340,16 @@ class JoinOperator(HashShufflingOperatorBase):
         right_key_columns: Tuple[str],
         join_type: JoinType,
         *,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         left_columns_suffix: Optional[str] = None,
         right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            name=f"Join(num_partitions={num_partitions})",
+            name_factory=(
+                lambda num_partitions: f"Join(num_partitions={num_partitions})"
+            ),
             input_ops=[left_input_op, right_input_op],
             data_context=data_context,
             key_columns=[left_key_columns, right_key_columns],
