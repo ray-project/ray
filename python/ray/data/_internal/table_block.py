@@ -591,3 +591,15 @@ class TableBlockAccessor(BlockAccessor):
             return BlockAccessor.for_block(block).to_pandas()
         else:
             return BlockAccessor.for_block(block).to_default()
+
+    def hstack(self, other_block: Block) -> Block:
+        """Combine this table with another table horizontally (column-wise).
+        This will append the columns.
+
+        Args:
+            other_block: The table to hstack side-by-side with.
+
+        Returns:
+            A new table with columns from both tables combined.
+        """
+        raise NotImplementedError
