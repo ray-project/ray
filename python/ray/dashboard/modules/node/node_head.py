@@ -39,10 +39,10 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 
 logger = logging.getLogger(__name__)
 

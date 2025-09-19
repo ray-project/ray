@@ -368,6 +368,10 @@ def test_report_stats():
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
     assert len(records) == 44
 
+    stats_payload = agent._generate_stats_payload(STATS_TEMPLATE)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
+
 
 def test_report_stats_gpu():
     dashboard_agent = MagicMock()
@@ -489,6 +493,10 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gram_used"] == 6
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
 
+    stats_payload = agent._generate_stats_payload(STATS_TEMPLATE)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
+
 
 def test_get_tpu_usage():
     dashboard_agent = MagicMock()
@@ -552,7 +560,9 @@ def test_report_stats_tpu():
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
-    STATS_TEMPLATE["tpus"] = [
+    stats = copy.deepcopy(STATS_TEMPLATE)
+
+    stats["tpus"] = [
         {
             "index": 0,
             "name": "tpu-0",
@@ -605,7 +615,7 @@ def test_report_stats_tpu():
         "tpu_memory_used": 0,
         "tpu_memory_total": 0,
     }
-    records = agent._to_records(STATS_TEMPLATE, {})
+    records = agent._to_records(stats, {})
     num_tpu_records = 0
     for record in records:
         if record.gauge.name in tpu_metrics_aggregated:
@@ -618,6 +628,10 @@ def test_report_stats_tpu():
     assert tpu_metrics_aggregated["tpu_duty_cycle"] == 10
     assert tpu_metrics_aggregated["tpu_memory_used"] == 1400
     assert tpu_metrics_aggregated["tpu_memory_total"] == 8000
+
+    stats_payload = agent._generate_stats_payload(stats)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
 
 
 def test_report_per_component_stats():
@@ -844,6 +858,10 @@ def test_report_per_component_stats():
     assert "python mock" not in uss_records
     assert "python mock" not in cpu_records
     assert "python mock" not in num_fds_records
+
+    stats_payload = agent._generate_stats_payload(test_stats)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])

@@ -1,5 +1,6 @@
+from typing import Dict, List, Optional, Tuple
+
 from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
-from typing import List, Optional, Dict, Tuple
 
 if PYDANTIC_INSTALLED:
 
