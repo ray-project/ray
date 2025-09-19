@@ -346,6 +346,8 @@ class JobManager:
                 break
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        if job_supervisor is None:
+            job_supervisor = self._get_actor_for_job(job_id)
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
