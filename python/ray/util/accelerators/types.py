@@ -1,5 +1,5 @@
 import ray.util.accelerators.accelerators as _accelerators
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @DeveloperAPI(stability="alpha")
