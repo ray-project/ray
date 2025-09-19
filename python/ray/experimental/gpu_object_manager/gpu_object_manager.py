@@ -167,7 +167,6 @@ class GPUObjectManager:
 
             weakref.finalize(obj_ref, self._cleanup_gpu_object_metadata, obj_id)
 
-
     def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
         obj_id = obj_ref.hex()
         with self._metadata_lock:
@@ -222,9 +221,9 @@ class GPUObjectManager:
             )
             if tensor_transport == TensorTransportEnum.OBJECT_STORE:
                 tensors = ray.get(
-                    src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                        __ray_fetch_gpu_object__, obj_id
-                    )
+                    src_actor.__ray_call__.options(
+                        concurrency_group="_ray_system"
+                    ).remote(__ray_fetch_gpu_object__, obj_id)
                 )
                 self.gpu_object_store.add_object(obj_id, tensors)
             else:
@@ -248,7 +247,10 @@ class GPUObjectManager:
                     None, None, tensor_transport_backend
                 )
                 __ray_recv__(
-                    None, obj_id, gpu_object_meta.tensor_transport_meta, communicator_meta
+                    None,
+                    obj_id,
+                    gpu_object_meta.tensor_transport_meta,
+                    communicator_meta,
                 )
 
     def trigger_out_of_band_tensor_transfer(
