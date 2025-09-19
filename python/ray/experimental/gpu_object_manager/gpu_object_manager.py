@@ -162,10 +162,18 @@ class GPUObjectManager:
             self._gpu_object_ref_counts[obj_id] = 1
 
             # Register a callback to clean up metadata when the object is deleted
-            # We use a weakref callback to detect when the ObjectRef is garbage collected
+            # We need to handle the fact that ray.ObjectRef doesn't support direct weak references
+            # So we create a proxy object that can be weakly referenced
             import weakref
 
-            weakref.finalize(obj_ref, self._cleanup_gpu_object_metadata, obj_id)
+            class ObjectRefProxy:
+                pass
+
+            proxy = ObjectRefProxy()
+            # Store a strong reference to the ObjectRef in the proxy
+            proxy.obj_ref = obj_ref
+            # Now create a weak reference to the proxy instead
+            weakref.finalize(proxy, self._cleanup_gpu_object_metadata, obj_id)
 
     def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
         obj_id = obj_ref.hex()
