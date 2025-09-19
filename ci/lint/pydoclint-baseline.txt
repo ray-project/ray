@@ -1990,10 +1990,6 @@ python/ray/train/torch/train_loop_utils.py
     DOC111: Method `_TorchAccelerator.backward`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
 --------------------
 python/ray/train/v2/_internal/callbacks/accelerators.py
-    DOC101: Function `_share_cuda_visible_devices`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `_share_cuda_visible_devices`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [worker_group: WorkerGroup].
-    DOC101: Function `_share_accelerator_ids`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `_share_accelerator_ids`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [worker_group: WorkerGroup].
     DOC101: Function `_get_visible_accelerator_ids_per_worker`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `_get_visible_accelerator_ids_per_worker`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [accelerator_name: str, worker_metadatas: List[ActorMetadata]].
 --------------------
