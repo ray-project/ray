@@ -1,7 +1,6 @@
 import abc
 from typing import List, Optional, Tuple, Union
 
-
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.specs_base import Spec
