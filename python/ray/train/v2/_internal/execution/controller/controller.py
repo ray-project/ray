@@ -28,6 +28,9 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.checkpoint.report_handler import (
     ReportCallbackHandler,
 )
+from ray.train.v2._internal.execution.checkpoint.validation_manager import (
+    ValidationManager,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
@@ -131,17 +134,22 @@ class TrainController:
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
+        self._validation_manager = ValidationManager(
+            checkpoint_manager=self._checkpoint_manager,
+        )
         report_handler = ReportCallbackHandler(
             report_callbacks=(
-                [self._checkpoint_manager]
+                [self._checkpoint_manager, self._validation_manager]
                 + [c for c in self._callbacks if isinstance(c, ReportCallback)]
             )
         )
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_callbacks = [self._scaling_policy] + [
-            c for c in self._callbacks if isinstance(c, ControllerCallback)
-        ]
+        self._controller_callbacks = (
+            [self._scaling_policy]
+            + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
+            + [self._validation_manager]
+        )
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
@@ -402,13 +410,8 @@ class TrainController:
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
-            self._checkpoint_manager.poll_validations()
 
-            if (
-                worker_group_status.finished
-                and not worker_group_status.errors
-                and not self._checkpoint_manager.has_pending_validations()
-            ):
+            if worker_group_status.finished and not worker_group_status.errors:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -533,7 +536,7 @@ class TrainController:
             error=self.get_training_failed_error(),
             path=storage.experiment_fs_path,
             best_checkpoints=best_checkpoints,
-            failed_validations=self._checkpoint_manager.failed_validations,
+            failed_validations=self._validation_manager.failed_validations,
             metrics_dataframe=metrics_dataframe,
             _storage_filesystem=storage.storage_filesystem,
         )

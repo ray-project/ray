@@ -1,9 +1,7 @@
 import asyncio
 import logging
-from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
-import ray
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
@@ -20,9 +18,7 @@ from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.training_report import _ValidationSpec
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2.api.exceptions import ValidationFailedError
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
-from ray.train.v2.api.validation_info import ValidationInfo
 
 try:
     from pydantic import BaseModel
@@ -80,21 +76,6 @@ def _get_state_from_training_result(
     )
 
 
-@ray.remote
-def run_validate_fn(validation_spec: _ValidationSpec, checkpoint: Checkpoint) -> Dict:
-    """Run the user-defined validation function."""
-    metrics_dict = validation_spec.validate_fn(
-        checkpoint,
-        validation_spec.validate_config,
-    )
-    if not isinstance(metrics_dict, dict):
-        raise ValueError(
-            "The validate function must return a dictionary of metrics. "
-            f"Got {type(metrics_dict)} instead."
-        )
-    return metrics_dict
-
-
 class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback):
     def __init__(
         self,
@@ -108,14 +89,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # for the current worker group.
         self._current_report_index = 0
 
-        # Map from validation (identified by report number) to validation task
-        self._pending_validations = {}
-
-        # Map from report number to training result
+        # Map from checkpoint to training result
         self._pending_training_results = {}
-
-        # Map from report number to ValidationInfo
-        self._failed_validations = OrderedDict()
 
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
@@ -126,7 +101,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     def register_checkpoint(
         self,
         checkpoint_result: _TrainingResult,
-        validation_spec: Optional[_ValidationSpec],
+        is_result_pending: bool,
     ):
         """Register new checkpoint and add to bookkeeping.
 
@@ -137,7 +112,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         Args:
             checkpoint_result: Tracked checkpoint and associated metrics to add to bookkeeping.
-            validation_spec: Validation specification for the checkpoint.
+            is_result_pending: Whether the result is pending or fully ready.
         """
         self._latest_checkpoint_result = checkpoint_result
 
@@ -153,20 +128,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
-        # Kick off and track validation task
-        if validation_spec and validation_spec.validate_fn:
+        if is_result_pending:
             self._pending_training_results[
-                self._current_report_index
+                checkpoint_result.checkpoint
             ] = checkpoint_result
-
-            # TODO: rate limit this by using a queue?
-            # TODO: figure out where to place run_validate_fn task:
-            # head node is faster but want to avoid putting too much there
-            self._pending_validations[
-                self._current_report_index
-            ] = run_validate_fn.remote(
-                validation_spec, self._latest_checkpoint_result.checkpoint
-            )
 
         self._save_state_and_delete_old_checkpoints()
 
@@ -178,6 +143,22 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         asyncio.create_task(async_notify())
 
+    def update_checkpoints_with_metrics(
+        self, checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]]
+    ):
+        """Update the checkpoints with the metrics."""
+        for checkpoint, metrics in checkpoint_to_metrics.items():
+            checkpoint_result = self._pending_training_results[checkpoint]
+            checkpoint_result.metrics.update(metrics)
+            self._checkpoint_results.remove(checkpoint_result)
+            _insert_into_sorted_list(
+                self._checkpoint_results,
+                checkpoint_result,
+                key=self._get_checkpoint_score,
+            )
+            self._pending_training_results.pop(checkpoint)
+        self._save_state_and_delete_old_checkpoints()
+
     def _save_state_and_delete_old_checkpoints(self):
         """Delete the old checkpoints."""
         # Get checkpoints to delete
@@ -187,7 +168,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             worst_results = set(
                 self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
             )
-            # Except for the latest checkpoint and checkpoints with pending validations
+            # Except for the latest checkpoint and pending checkpoints
             results_to_delete = worst_results - {self._latest_checkpoint_result}
             results_to_delete = results_to_delete - set(
                 self._pending_training_results.values()
@@ -212,51 +193,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             checkpoint = checkpoint_result.checkpoint
             logger.debug("Deleting checkpoint: ", checkpoint)
             delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
-
-    def poll_validations(self):
-        """Poll the pending validations and update the checkpoint manager state."""
-        report_numbers = list(self._pending_validations.keys())
-        for report_number in report_numbers:
-            validation_task = self._pending_validations[report_number]
-            done, _ = ray.wait([validation_task], timeout=0)
-            if done:
-                try:
-                    metrics = ray.get(done[0])
-                    training_result = self._pending_training_results[report_number]
-                    training_result.metrics.update(metrics)
-                    self._checkpoint_results.remove(training_result)
-                    _insert_into_sorted_list(
-                        self._checkpoint_results,
-                        training_result,
-                        key=self._get_checkpoint_score,
-                    )
-                except ray.exceptions.RayTaskError as e:
-                    self._failed_validations[report_number] = ValidationInfo(
-                        checkpoint=self._pending_training_results[
-                            report_number
-                        ].checkpoint,
-                        validation_failed_error=ValidationFailedError(e.cause),
-                    )
-                    logger.exception(
-                        f"Validation failed for checkpoint {self._pending_training_results[report_number].checkpoint}"
-                    )
-                # TODO: retry validations and time out appropriately.
-                self._pending_validations.pop(report_number)
-                self._pending_training_results.pop(report_number)
-        self._save_state_and_delete_old_checkpoints()
-
-    def has_pending_validations(self) -> bool:
-        """Return whether there are any pending validations."""
-        return len(self._pending_validations) > 0
-
-    @property
-    def failed_validations(self) -> Optional[List[ValidationInfo]]:
-        """Return all the failed validations."""
-        return (
-            list(self._failed_validations.values())
-            if self._failed_validations
-            else None
-        )
 
     # --------------------------
     # CheckpointManager state
@@ -395,7 +331,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         rank_0_metrics = metrics[0]
         self.register_checkpoint(
             _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics),
-            validation_spec,
+            bool(validation_spec),
         )
 
     # --------------------------

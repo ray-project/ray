@@ -1,21 +1,19 @@
-import os
-import time
 import uuid
-from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from unittest.mock import create_autospec
 
 import pytest
 
 import ray
-from ray.train import Checkpoint, CheckpointConfig
-from ray.train._internal.session import _TrainingResult, _ValidationSpec
+from ray.train import CheckpointConfig
+from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.tests.util import create_dummy_training_results
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -23,27 +21,6 @@ def ray_start_4_cpus():
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
-
-
-def _create_dummy_training_results(
-    num_results: int, storage_context: StorageContext
-) -> List[_TrainingResult]:
-    training_results = []
-    for i in range(num_results):
-        checkpoint_path = os.path.join(
-            storage_context.experiment_fs_path, f"checkpoint_{i}"
-        )
-        os.makedirs(checkpoint_path, exist_ok=True)
-        training_results.append(
-            _TrainingResult(
-                checkpoint=Checkpoint(
-                    path=Path(checkpoint_path).as_posix(),
-                    filesystem=storage_context.storage_filesystem,
-                ),
-                metrics={"score": i},
-            )
-        )
-    return training_results
 
 
 def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -> bool:
@@ -115,7 +92,7 @@ async def test_save_load_state_equivalence(
         storage_context=storage_context,
         checkpoint_config=checkpoint_config,
     )
-    training_results = _create_dummy_training_results(
+    training_results = create_dummy_training_results(
         num_results=3, storage_context=storage_context
     )
 
@@ -171,14 +148,14 @@ async def test_before_init_train_context(tmp_path):
     }
 
     # Assert with a checkpoint
-    latest_checkpoint_result = _create_dummy_training_results(1, storage_context)[0]
+    latest_checkpoint_result = create_dummy_training_results(1, storage_context)[0]
     checkpoint_manager.register_checkpoint(latest_checkpoint_result, None)
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
     }
 
 
-async def test_checkpoint_validation_management(tmp_path):
+async def test_pending_checkpoint_management(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
         experiment_dir_name="checkpoint_validation_management_experiment",
@@ -192,91 +169,30 @@ async def test_checkpoint_validation_management(tmp_path):
         storage_context=storage_context,
         checkpoint_config=checkpoint_config,
     )
-    training_results = _create_dummy_training_results(
-        num_results=4, storage_context=storage_context
+    training_results = create_dummy_training_results(
+        num_results=3, storage_context=storage_context
     )
 
-    # Register passing, failing, and timing out checkpoints
-    checkpoint_manager.register_checkpoint(
-        training_results[0],
-        _ValidationSpec(
-            validate_fn=lambda checkpoint, config: {"score": 200},
-            validate_config=None,
-        ),
-    )
-
-    def failing_validate_fn(checkpoint, config):
-        return "invalid_return_type"
-
-    checkpoint_manager.register_checkpoint(
-        training_results[1],
-        _ValidationSpec(
-            validate_fn=failing_validate_fn,
-            validate_config=None,
-        ),
-    )
-
-    def infinite_waiting_validate_fn(checkpoint, config):
-        while True:
-            time.sleep(1)
-
-    checkpoint_manager.register_checkpoint(
-        training_results[2],
-        _ValidationSpec(
-            validate_fn=infinite_waiting_validate_fn,
-            validate_config=None,
-        ),
-    )
-    checkpoint_manager.register_checkpoint(
-        training_results[3],
-        _ValidationSpec(
-            validate_fn=lambda checkpoint, config: config,
-            validate_config={"score": 100},
-        ),
-    )
-    assert checkpoint_manager.has_pending_validations()
+    # Register pending/final checkpoints and verify their storage
+    checkpoint_manager.register_checkpoint(training_results[0], True)
+    checkpoint_manager.register_checkpoint(training_results[2], False)
+    checkpoint_manager.register_checkpoint(training_results[1], True)
     assert checkpoint_manager._checkpoint_results == [
         training_results[0],
         training_results[1],
         training_results[2],
-        training_results[3],
     ]
-    assert not checkpoint_manager.failed_validations
-
-    # Assert checkpoint state after most tasks are done
-    non_timeout_validations = []
-    for (
-        report_number,
-        validation_task,
-    ) in checkpoint_manager._pending_validations.items():
-        if report_number != 2:
-            non_timeout_validations.append(validation_task)
-    ray.wait(
-        non_timeout_validations,
-        # Pick high timeout to guarantee completion but ray.wait should finish much earlier
-        timeout=100,
-        num_returns=len(non_timeout_validations),
-    )
-    checkpoint_manager.poll_validations()
-    assert checkpoint_manager.has_pending_validations()
-    assert checkpoint_manager._checkpoint_results == [
-        training_results[2],  # keep because pending
-        training_results[3],  # keep because latest
-        training_results[0],  # keep because highest score
-    ]
-    assert len(checkpoint_manager.failed_validations) == 1
 
     # Assert checkpoint state after all tasks are done
-    ray.cancel(checkpoint_manager._pending_validations[2])
-    with pytest.raises(ray.exceptions.TaskCancelledError):
-        ray.get(checkpoint_manager._pending_validations[2])
-    checkpoint_manager.poll_validations()
-    assert not checkpoint_manager.has_pending_validations()
+    checkpoint_manager.update_checkpoints_with_metrics(
+        {
+            training_results[0].checkpoint: {"score": 100},
+            training_results[1].checkpoint: {"score": 200},
+        }
+    )
     assert checkpoint_manager._checkpoint_results == [
-        training_results[3],  # keep because latest
-        training_results[0],  # keep because highest score
+        training_results[1],
     ]
-    assert len(checkpoint_manager.failed_validations) == 2
 
 
 if __name__ == "__main__":

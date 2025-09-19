@@ -1,12 +1,13 @@
+import os
 import time
 import uuid
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional
 from unittest.mock import MagicMock
 
+from ray.train import Checkpoint
+from ray.train._internal.session import _TrainingResult
 from ray.train.context import TrainContext
-from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
-    CheckpointManager,
-)
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
@@ -20,6 +21,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
     ScalingPolicy,
 )
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
@@ -94,17 +96,6 @@ class DummyWorkerGroup(WorkerGroup):
     @classmethod
     def set_start_failure(cls, start_failure):
         cls._start_failure = start_failure
-
-
-class DummyCheckpointManager(CheckpointManager):
-    _has_pending_validations = True
-
-    def has_pending_validations(self):
-        return self._has_pending_validations
-
-    @classmethod
-    def set_has_pending_validations(cls, has_pending_validations):
-        cls._has_pending_validations = has_pending_validations
 
 
 class MockScalingPolicy(ScalingPolicy):
@@ -276,3 +267,24 @@ def create_dummy_train_context() -> TrainContext:
         TrainContext: A standardized TrainContext instance for testing.
     """
     return DummyTrainContext()
+
+
+def create_dummy_training_results(
+    num_results: int, storage_context: StorageContext
+) -> List[_TrainingResult]:
+    training_results = []
+    for i in range(num_results):
+        checkpoint_path = os.path.join(
+            storage_context.experiment_fs_path, f"checkpoint_{i}"
+        )
+        os.makedirs(checkpoint_path, exist_ok=True)
+        training_results.append(
+            _TrainingResult(
+                checkpoint=Checkpoint(
+                    path=Path(checkpoint_path).as_posix(),
+                    filesystem=storage_context.storage_filesystem,
+                ),
+                metrics={"score": i},
+            )
+        )
+    return training_results
