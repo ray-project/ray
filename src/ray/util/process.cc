@@ -122,7 +122,8 @@ class ProcessFD {
                             std::error_code &ec,
                             bool decouple,
                             const ProcessEnvironment &env,
-                            bool pipe_to_stdin) {
+                            bool pipe_to_stdin,
+                            std::function<void(const std::string &)> add_to_cgroup) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -210,6 +211,7 @@ class ProcessFD {
 
     // If we don't pipe to stdin close pipes that are not needed.
     if (pid <= 0 && pipefds[0] != -1) {
+      add_to_cgroup(std::to_string(getpid()));
       close(pipefds[0]);  // not the parent, so close the read end of the pipe
       pipefds[0] = -1;
     }
@@ -385,19 +387,22 @@ Process::Process(const char *argv[],
                  std::error_code &ec,
                  bool decouple,
                  const ProcessEnvironment &env,
-                 bool pipe_to_stdin) {
+                 bool pipe_to_stdin,
+                 std::function<void(const std::string &)> add_to_cgroup) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
 #ifdef __linux__
   KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
-    ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+    ProcessFD procfd = ProcessFD::spawnvpe(
+        argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup));
     if (!ec) {
       this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
     }
     return this->GetId();
   });
 #else
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+  ProcessFD procfd = ProcessFD::spawnvpe(
+      argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup));
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
