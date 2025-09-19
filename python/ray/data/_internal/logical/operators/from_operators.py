@@ -26,11 +26,17 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadataWithSchema],
     ):
-        super().__init__(self.__class__.__name__, [], len(input_blocks))
+        super().__init__(
+            name=self.__class__.__name__,
+            input_blocks=[],
+            num_outputs=len(input_blocks),
+        )
+
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
             len(input_metadata),
         )
+
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
         self._input_data = [
             RefBundle(
