@@ -115,7 +115,7 @@ class TableBlockBuilder(BlockBuilder):
         raise NotImplementedError
 
     @staticmethod
-    def _concat_tables(tables: List[Block]) -> Block:
+    def _combine_tables(tables: List[Block]) -> Block:
         raise NotImplementedError
 
     @staticmethod
@@ -140,10 +140,10 @@ class TableBlockBuilder(BlockBuilder):
 
         tables.extend(self._tables)
 
-        if len(tables) > 0:
-            return self._concat_tables(tables)
-        else:
+        if len(tables) == 0:
             return self._empty_table()
+        else:
+            return self._combine_tables(tables)
 
     def num_rows(self) -> int:
         return self._num_rows
