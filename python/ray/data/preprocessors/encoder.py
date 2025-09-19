@@ -1,6 +1,6 @@
 from collections import Counter, OrderedDict
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, Hashable, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -270,7 +270,6 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-        from typing import Any
 
         def safe_get(v: Any, stats: Dict[str, int]):
             from collections.abc import Hashable

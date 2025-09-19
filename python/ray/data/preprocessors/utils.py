@@ -1,12 +1,7 @@
 import hashlib
-from collections import deque
-from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
+from typing import List
 
-from ray.data.aggregate import AggregateFnV2
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    from ray.data.dataset import Dataset
 
 
 @DeveloperAPI
