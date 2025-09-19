@@ -299,15 +299,18 @@ class ReplicaMetricsManager:
             ),
         )
 
+    def should_collect_metrics(self) -> bool:
+        return (
+            self._autoscaling_config
+            and not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+        )
+
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if (
-            self._autoscaling_config
-            and not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-        ):
+        if self.should_collect_metrics():
             self.start_metrics_pusher()
 
     def enable_custom_autoscaling_metrics(
@@ -359,12 +362,9 @@ class ReplicaMetricsManager:
         new_aggregated_metrics = {}
         new_metrics = {**self._metrics_store.data}
 
-        if not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # Keep the legacy window_avg ongoing requests in the merged metrics dict
-            window_avg = (
-                self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
-            )
-            new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
+        # Keep the legacy window_avg ongoing requests in the merged metrics dict
+        window_avg = self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
+        new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
 
         replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
@@ -434,10 +434,7 @@ class ReplicaMetricsManager:
         return None
 
     async def _add_autoscaling_metrics_point_async(self) -> None:
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            metrics_dict = {}
-        else:
-            metrics_dict = {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
+        metrics_dict = {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
 
         # Use cached availability flag to avoid repeated runtime checks
         if self._custom_metrics_enabled:
