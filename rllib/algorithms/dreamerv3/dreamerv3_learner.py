@@ -9,8 +9,8 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 
 

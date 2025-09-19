@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
@@ -15,7 +16,6 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType

@@ -4,9 +4,9 @@ import time
 
 import numpy as np
 
-from ray.tune import result as tune_result
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
 from ray.rllib.utils.annotations import override
+from ray.tune import result as tune_result
 
 
 class _MockTrainer(Algorithm):

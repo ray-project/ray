@@ -3,8 +3,8 @@ from typing import Dict
 from ray.rllib.algorithms.impala.impala import IMPALAConfig
 from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
-    vtrace_torch,
     make_time_major,
+    vtrace_torch,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY

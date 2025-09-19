@@ -1,40 +1,41 @@
 """
 TensorFlow policy class used for CQL.
 """
-from functools import partial
-import numpy as np
-import gymnasium as gym
 import logging
-import tree
+from functools import partial
 from typing import Dict, List, Type, Union
+
+import gymnasium as gym
+import numpy as np
+import tree
 
 import ray
 from ray.rllib.algorithms.sac.sac_tf_policy import (
+    ActorCriticOptimizerMixin as SACActorCriticOptimizerMixin,
+    ComputeTDErrorMixin,
+    _get_dist_class,
     apply_gradients as sac_apply_gradients,
+    build_sac_model,
     compute_and_clip_gradients as sac_compute_and_clip_gradients,
     get_distribution_inputs_and_class,
-    _get_dist_class,
-    build_sac_model,
     postprocess_trajectory,
     setup_late_mixins,
     stats,
     validate_spaces,
-    ActorCriticOptimizerMixin as SACActorCriticOptimizerMixin,
-    ComputeTDErrorMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
-from ray.rllib.policy.tf_mixins import TargetNetworkMixin
-from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_mixins import TargetNetworkMixin
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import get_variable, try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
