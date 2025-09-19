@@ -11,16 +11,36 @@ from ray.train.v2._internal.execution.worker_group import Worker
 
 
 def test_torch_trainer_cuda_initialization():
-    """Test that Torch CUDA initialization works with TorchTrainer."""
+    """Test that Torch CUDA initialization works with TorchTrainer.
+
+    This test verifies that PyTorch can properly initialize CUDA on multiple
+    workers before the training context is set up, ensuring that GPU resources
+    are available and accessible across all training workers.
+
+    See https://github.com/ray-project/ray/pull/56509 for more details.
+    """
 
     def train_func():
+        """Empty training function for this initialization test.
+
+        Since we're only testing CUDA initialization, the actual training
+        logic is not needed for this test case.
+        """
         pass
 
     def init_torch():
-        return torch.cuda.is_available()
+        """Trigger (lazy) initialization of CUDA."""
+        torch.cuda.is_available()
 
     class InitTorchCallback(WorkerGroupCallback):
+        """Callback to initialize PyTorch CUDA before training begins.
+
+        Implements before_init_train_context because this is where torch is typically imported,
+        ensuring that the CUDA environment is properly initialized.
+        """
+
         def before_init_train_context(self, workers: List[Worker]):
+            """Execute CUDA initialization on all workers."""
             futures = []
             for worker in workers:
                 futures.append(worker.execute_async(init_torch))
@@ -28,6 +48,7 @@ def test_torch_trainer_cuda_initialization():
             return {}
 
     callback = InitTorchCallback()
+
     trainer = TorchTrainer(
         train_func,
         scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
