@@ -135,7 +135,7 @@ def check_ray_processes(node):
     type=str,
     help=ray_constants.LOGGER_FORMAT_HELP,
 )
-@click.version_option()
+@click.version_option(package_name="ant-ray")
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
     ray._private.ray_logging.setup_logger(level, logging_format)
