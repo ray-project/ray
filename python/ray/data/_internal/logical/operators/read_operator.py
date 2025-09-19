@@ -1,5 +1,6 @@
 import copy
 import functools
+import math
 from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
