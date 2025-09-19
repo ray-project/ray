@@ -674,6 +674,10 @@ Under the hood, the accelerator type option is implemented as a :ref:`custom res
 This forces the task or actor to be placed on a node with that particular accelerator type available.
 This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
 
+.. note::
+
+    The method of referencing accelerator type constants (e.g., ``ray.util.accelerators.NVIDIA_A100``) will be deprecated in future versions. Please use string format instead (e.g., ``A100``).
+
 .. testcode::
     :hide:
 
@@ -681,6 +685,7 @@ This also lets the multi-node-type autoscaler know that there is demand for that
     import ray.util.accelerators
 
     v100_resource_name = f"accelerator_type:{ray.util.accelerators.NVIDIA_TESLA_V100}"
+    # v100_resource_name = "accelerator_type:V100"
     ray.init(num_gpus=4, resources={v100_resource_name: 1})
 
 .. testcode::
@@ -688,9 +693,15 @@ This also lets the multi-node-type autoscaler know that there is demand for that
     from ray.util.accelerators import NVIDIA_TESLA_V100
 
     @ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
+    # @ray.remote(num_gpus=1, accelerator_type="V100")
     def train(data):
         return "This function was run on a node with a Tesla V100 GPU"
 
     ray.get(train.remote(1))
 
 See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types.
+You can also discover them programmatically using the following methods:
+
+For a simple list of all type constants, use print(ray.util.accelerators.TYPES).
+For a categorized list of all accelerators, use ``ray.util.accelerators.TYPES`` or ``ray.util.accelerators.types.all_types()``.
+For accelerators from a specific vendor (e.g., NVIDIA), use ``ray.util.accelerators.types.vendor_types("NVIDIA")``.
