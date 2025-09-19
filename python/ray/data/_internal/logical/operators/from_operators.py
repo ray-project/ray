@@ -28,7 +28,7 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     ):
         super().__init__(
             name=self.__class__.__name__,
-            input_blocks=[],
+            input_dependencies=[],
             num_outputs=len(input_blocks),
         )
 
