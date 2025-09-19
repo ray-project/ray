@@ -82,26 +82,9 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   case GRPC_CHANNEL_TRANSIENT_FAILURE:
   case GRPC_CHANNEL_CONNECTING: {
     if (server_unavailable_timeout_time_ < now) {
-      RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
-                       << (attempt_number_ > 0
-                               ? ExponentialBackoff::GetBackoffMs(
-                                     attempt_number_ - 1,
-                                     server_unavailable_base_timeout_seconds_ * 1000,
-                                     server_unavailable_max_timeout_seconds_ * 1000) /
-                                     1000
-                               : 0)
-                       << " seconds";
       server_unavailable_timeout_callback_();
-      // Reset the unavailable timeout.
-      server_unavailable_timeout_time_ =
-          now + absl::Seconds(ExponentialBackoff::GetBackoffMs(
-                                  attempt_number_,
-                                  server_unavailable_base_timeout_seconds_ * 1000,
-                                  server_unavailable_max_timeout_seconds_ * 1000) /
-                              1000);
-      attempt_number_++;
+      server_unavailable_timeout_time_ = absl::InfiniteFuture();
     }
-
     if (reset_timer) {
       SetupCheckTimer();
     }
@@ -121,7 +104,6 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       pending_requests_.erase(pending_requests_.begin());
     }
     pending_requests_bytes_ = 0;
-    attempt_number_ = 0;
     break;
   }
   default: {
@@ -168,10 +150,14 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
-    server_unavailable_timeout_time_ =
-        now + absl::Seconds(server_unavailable_base_timeout_seconds_);
-    attempt_number_++;
-    SetupCheckTimer();
+    if (server_unavailable_timeout_seconds_ == 0) {
+      server_unavailable_timeout_time_ = now;
+      CheckChannelStatus(true);
+    } else {
+      server_unavailable_timeout_time_ =
+          now + absl::Seconds(server_unavailable_timeout_seconds_);
+      SetupCheckTimer();
+    }
   }
 }
 }  // namespace ray::rpc
