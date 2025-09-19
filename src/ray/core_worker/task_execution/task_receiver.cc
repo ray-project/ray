@@ -27,6 +27,18 @@ namespace core {
 void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
+  {
+    absl::MutexLock lock(&stop_mu_);
+    if (stopping_) {
+      // Reject new tasks once shutdown begins.
+      RAY_LOG(INFO)
+          << "Rejecting PushTask due to worker shutdown: task will be cancelled";
+      reply->set_was_cancelled_before_running(true);
+      send_reply_callback(
+          Status::SchedulingCancelled("Worker is shutting down"), nullptr, nullptr);
+      return;
+    }
+  }
   TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
   if (task_spec.IsActorCreationTask()) {
@@ -293,6 +305,10 @@ void TaskReceiver::SetupActor(bool is_asyncio,
 }
 
 void TaskReceiver::Stop() {
+  {
+    absl::MutexLock lock(&stop_mu_);
+    stopping_ = true;
+  }
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
   }
