@@ -166,6 +166,16 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
+    rank_to_bundle_index: Optional[List[int]] = Field(
+        default=None,
+        description=(
+            "Optional mapping of vLLM rank IDs to placement group bundle indices. "
+            "If provided, must have length equal to tensor_parallel_size * pipeline_parallel_size. "
+            "This allows fine-grained control over which ranks are placed in which bundles. "
+            "Only used when custom placement_group_bundles are specified."
+        ),
+    )
+
     resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,
         description="This will override the default resource bundles for placement groups. "
@@ -471,32 +481,161 @@ class LLMConfig(BaseModelExtended):
         if "memory" in ray_actor_options:
             replica_actor_resources["memory"] = ray_actor_options["memory"]
 
-        if (
-            "placement_group_bundles" in deployment_config
-            or "placement_group_strategy" in deployment_config
-        ):
-            raise ValueError(
-                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. "
-                "Use scaling_config to configure replica placement group."
+        # Clean separation: custom path vs default path
+        if self._has_custom_placement_config(deployment_config):
+            # CUSTOM PATH: User specified placement groups - validate and use as-is
+            self._validate_user_placement_config(deployment_config, engine_config)
+        else:
+            # DEFAULT PATH: TP ranks colocated, PP ranks cross-node allowed
+            self._apply_default_placement_config(
+                deployment_config, replica_actor_resources, engine_config
             )
 
-        try:
-            child_actor_bundles = engine_config.placement_bundles
-        except ValueError:
-            # May happen if all bundles are empty.
-            child_actor_bundles = []
+        return deployment_config
 
-        pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
-            child_actor_bundles, replica_actor_resources
+    def _has_custom_placement_config(self, deployment_config: Dict[str, Any]) -> bool:
+        """Check if user provided custom placement group configuration."""
+        return (
+            "placement_group_bundles" in deployment_config
+            or "placement_group_strategy" in deployment_config
         )
+
+    def _apply_default_placement_config(
+        self,
+        deployment_config: Dict[str, Any],
+        replica_actor_resources: Dict[str, float],
+        engine_config,
+    ) -> None:
+        """Apply default placement group configuration.
+
+        Default strategy: TP ranks colocated, PP ranks cross-node allowed.
+        Creates one bundle per PP stage, each bundle gets tp_size GPUs.
+        If resources_per_bundle is specified, falls back to engine config logic.
+        """
+        # If resources_per_bundle is specified, use engine config logic for compatibility
+        if self.resources_per_bundle:
+            try:
+                bundles = engine_config.placement_bundles
+            except ValueError:
+                # May happen if all bundles are empty.
+                bundles = []
+
+            bundles = [replica_actor_resources] + bundles
+            deployment_config.update(
+                {
+                    "placement_group_bundles": bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
+            return
+
+        # New default behavior: TP ranks colocated, PP ranks cross-node allowed
+        # Following guidance: placement_group_bundles=[{"cpu":1 , "gpu": tp_size} * pp_size]
+        tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
+        pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
+
+        # Create topology-aware bundles: one bundle per PP stage, each with tp_size GPUs
+        bundle_template = {
+            "CPU": 1,  # Each bundle gets 1 CPU
+            "GPU": tp_size,  # Each bundle gets tp_size GPUs (for TP ranks)
+        }
+
+        # Add accelerator type annotation if specified
+        if self.accelerator_type:
+            bundle_template[f"accelerator_type:{self.accelerator_type}"] = 0.001
+
+        # Create pp_size bundles (one per PP stage)
+        topology_bundles = [bundle_template.copy() for _ in range(pp_size)]
+
         deployment_config.update(
             {
-                "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
+                "placement_group_bundles": topology_bundles,
+                "placement_group_strategy": "PACK",
             }
         )
 
-        return deployment_config
+    def _validate_user_placement_config(
+        self, deployment_config: Dict[str, Any], engine_config
+    ) -> None:
+        """Validate user-provided placement group configuration."""
+        # Both bundles and strategy must be provided together
+        if "placement_group_bundles" not in deployment_config:
+            raise ValueError(
+                "placement_group_strategy specified without placement_group_bundles. "
+                "Both must be provided for custom placement group configuration."
+            )
+        if "placement_group_strategy" not in deployment_config:
+            raise ValueError(
+                "placement_group_bundles specified without placement_group_strategy. "
+                "Both must be provided for custom placement group configuration."
+            )
+
+        bundles = deployment_config["placement_group_bundles"]
+        strategy = deployment_config["placement_group_strategy"]
+
+        # Validate strategy
+        valid_strategies = {"PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"}
+        if strategy not in valid_strategies:
+            raise ValueError(
+                f"Invalid placement_group_strategy: {strategy}. "
+                f"Valid options are: {valid_strategies}"
+            )
+
+        # Validate bundles
+        if not bundles or not isinstance(bundles, list):
+            raise ValueError("placement_group_bundles must be a non-empty list")
+
+        total_gpus = 0
+        for i, bundle in enumerate(bundles):
+            if not isinstance(bundle, dict):
+                raise ValueError(f"Bundle {i} must be a dictionary")
+
+            # Check for negative resources
+            for resource, amount in bundle.items():
+                if not isinstance(amount, (int, float)) or amount < 0:
+                    raise ValueError(
+                        f"Bundle {i} resource '{resource}' must be a non-negative number, got {amount}"
+                    )
+
+            total_gpus += bundle.get("GPU", 0)
+
+        # Get expected GPU count from engine config and validate rank mapping
+        try:
+            tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
+            pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
+            expected_gpus = tp_size * pp_size
+
+            if total_gpus < expected_gpus:
+                raise ValueError(
+                    f"Insufficient GPU resources in placement group bundles. "
+                    f"Need at least {expected_gpus} GPUs for tensor_parallel_size={tp_size}, "
+                    f"pipeline_parallel_size={pp_size}, but got {total_gpus} GPUs total."
+                )
+
+            # Validate rank_to_bundle_index if provided
+            if self.rank_to_bundle_index is not None:
+                if len(self.rank_to_bundle_index) != expected_gpus:
+                    raise ValueError(
+                        f"rank_to_bundle_index must have length {expected_gpus} "
+                        f"(tensor_parallel_size * pipeline_parallel_size), "
+                        f"but got {len(self.rank_to_bundle_index)}"
+                    )
+
+                max_bundle_index = len(bundles) - 1
+                for rank, bundle_idx in enumerate(self.rank_to_bundle_index):
+                    if (
+                        not isinstance(bundle_idx, int)
+                        or bundle_idx < 0
+                        or bundle_idx > max_bundle_index
+                    ):
+                        raise ValueError(
+                            f"rank_to_bundle_index[{rank}] = {bundle_idx} is invalid. "
+                            f"Must be an integer between 0 and {max_bundle_index} (inclusive)."
+                        )
+
+        except AttributeError:
+            # If engine config doesn't have parallelism info, skip this validation
+            pass
 
     def _get_deployment_name(self) -> str:
         return self.model_id.replace("/", "--").replace(".", "_")
