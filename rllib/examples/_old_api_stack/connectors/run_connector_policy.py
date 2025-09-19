@@ -4,9 +4,10 @@ and uses it in a serving or inference setting.
 """
 
 import argparse
-import gymnasium as gym
 import os
 import tempfile
+
+import gymnasium as gym
 
 from ray.rllib.examples._old_api_stack.connectors.prepare_checkpoint import (
     # For demo purpose only. Would normally not need this.

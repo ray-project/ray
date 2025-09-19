@@ -1,5 +1,5 @@
 import gymnasium as gym
-from gymnasium.spaces import Discrete, Box, Dict
+from gymnasium.spaces import Box, Dict, Discrete
 
 from ray.rllib.utils.spaces.repeated import Repeated
 

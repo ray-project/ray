@@ -9,11 +9,10 @@ from pathlib import Path
 
 import grpc
 import requests
+
 from ray.rllib.env import EnvContext
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
-)
-from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
 

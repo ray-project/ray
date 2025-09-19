@@ -1,6 +1,6 @@
+import re
 from collections import defaultdict
 from pprint import pprint
-import re
 
 import numpy as np
 

@@ -79,8 +79,8 @@ from typing import Optional, Sequence
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
 import numpy as np
+from matplotlib.colors import Normalize
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
