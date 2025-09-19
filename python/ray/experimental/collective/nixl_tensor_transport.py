@@ -46,9 +46,9 @@ class NixlTensorTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         gpu_object: List["torch.Tensor"],
     ) -> NixlTransportMetadata:
+        from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
         from ray.util.collective.types import NixlTransportMetadata
-        from ray.util.collective.collective import get_group_handle
 
         nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
         device = None
