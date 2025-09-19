@@ -38,6 +38,7 @@
 #include "ray/object_manager/plasma/client.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/container_util.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
