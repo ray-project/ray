@@ -1089,7 +1089,7 @@ python/ray/data/_internal/execution/interfaces/executor.py
     DOC201: Method `Executor.execute` does not have a return section in docstring
 --------------------
 python/ray/data/_internal/execution/interfaces/physical_operator.py
-    DOC201: Method `DataOpTask.on_data_ready` does not have a return section in docstring
+    DOC201: Method `DataOpTask.take_buffered_outputs` does not have a return section in docstring
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `MetadataOpTask.__init__`: Docstring contains fewer arguments than in function signature.

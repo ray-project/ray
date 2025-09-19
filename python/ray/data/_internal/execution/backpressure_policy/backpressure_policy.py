@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ray.data.context import DataContext
 
@@ -42,21 +42,3 @@ class BackpressurePolicy(ABC):
         backpressured if any of the policies returns False.
         """
         return True
-
-    def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
-        """Return the maximum bytes of pending task outputs can be read for
-        the given operator. None means no limit.
-
-        This is used for output backpressure to limit how much data an operator
-        can read from its running tasks.
-
-        Note, if multiple backpressure policies return non-None values for an operator,
-        the minimum of those values will be used as the limit.
-
-        Args:
-            op: The operator to get the limit for.
-
-        Returns:
-            The maximum bytes that can be read, or None if no limit.
-        """
-        return None

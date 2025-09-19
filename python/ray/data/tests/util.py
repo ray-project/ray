@@ -90,7 +90,7 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
         for ref in ready:
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
-                task.on_data_ready(None)
+                task.take_buffered_outputs(None)
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()
@@ -108,7 +108,7 @@ def run_one_op_task(op):
     )
     task = waitable_to_tasks[ready[0]]
     if isinstance(task, DataOpTask):
-        task.on_data_ready(None)
+        task.take_buffered_outputs(None)
     else:
         assert isinstance(task, MetadataOpTask)
         task.on_task_finished()

@@ -316,19 +316,19 @@ class ResourceManager:
         assert self._op_resource_allocator is not None
         return self._op_resource_allocator
 
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        """Return the maximum bytes of pending task outputs can be read for
-        the given operator. None means no limit."""
+    def get_budget_for_scheduling(
+        self, op: PhysicalOperator
+    ) -> Optional[ExecutionResources]:
+        """Budget for scheduling new tasks or actors, including pending task outputs."""
         if self._op_resource_allocator is None:
             return None
-        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+        return self._op_resource_allocator.get_budget_for_scheduling(op)
 
-    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return the budget for the given operator, or None if the operator
-        has unlimited budget."""
+    def get_budget_for_outputs(self, op: PhysicalOperator) -> int:
+        """Budget for outputs taken from tasks."""
         if self._op_resource_allocator is None:
             return None
-        return self._op_resource_allocator.get_budget(op)
+        return self._op_resource_allocator.get_budget_for_outputs(op)
 
 
 class OpResourceAllocator(ABC):
@@ -348,15 +348,15 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        """Return the maximum bytes of pending task outputs can be read for
-        the given operator. None means no limit."""
+    def get_budget_for_scheduling(
+        self, op: PhysicalOperator
+    ) -> Optional[ExecutionResources]:
+        """Budget for scheduling new tasks or actors, including pending task outputs."""
         ...
 
     @abstractmethod
-    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return the budget for the given operator, or None if the operator
-        has unlimited budget."""
+    def get_budget_for_outputs(self, op: PhysicalOperator) -> Optional[int]:
+        """Budget for outputs taken from tasks."""
         ...
 
 
@@ -549,25 +549,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._reservation_ratio / (len(eligible_ops))
         )
         for index, op in enumerate(eligible_ops):
-            # Reserve at least half of the default reserved resources for the outputs.
-            # This makes sure that we will have enough budget to pull blocks from the
-            # op.
-            reserved_for_outputs = ExecutionResources(
-                0, 0, max(default_reserved.object_store_memory / 2, 1)
-            )
-
             min_resource_usage, max_resource_usage = op.min_max_resource_requirements()
-            reserved_for_tasks = default_reserved.subtract(reserved_for_outputs)
-            reserved_for_tasks = reserved_for_tasks.max(min_resource_usage)
-            reserved_for_tasks = reserved_for_tasks.min(max_resource_usage)
+            reserved = default_reserved.max(min_resource_usage).min(max_resource_usage)
 
-            # Check if the remaining resources are enough for both reserved_for_tasks
-            # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
+            # Check if the remaining resources are enough to satisfy the total reserved
+            # resources. Note, we only consider CPU and GPU, but not
             # object_store_memory, because object_store_memory can be oversubscribed,
             # but CPU/GPU cannot.
-            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
-                remaining, ignore_object_store_memory=True
-            ):
+            if reserved.satisfies_limit(remaining, ignore_object_store_memory=True):
                 self._reserved_min_resources[op] = True
             else:
                 # If the remaining resources are not enough to reserve the minimum
@@ -578,7 +567,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # ops. It's fine that downstream ops don't get the minimum reservation,
                 # because they can wait for upstream ops to finish and release resources.
                 self._reserved_min_resources[op] = False
-                reserved_for_tasks = ExecutionResources(
+                reserved = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
                 # Add `id(self)` to the log_once key so that it will be logged once
@@ -591,17 +580,59 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                         " The job may hang forever unless the cluster scales up."
                     )
 
-            self._op_reserved[op] = reserved_for_tasks
-            self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
+            self._op_reserved[op] = reserved
 
-            op_total_reserved = reserved_for_tasks.add(reserved_for_outputs)
-            remaining = remaining.subtract(op_total_reserved)
+            remaining = remaining.subtract(reserved)
             remaining = remaining.max(ExecutionResources.zero())
 
         self._total_shared = remaining
 
-    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        return self._op_budgets.get(op)
+    def get_budget_for_scheduling(
+        self, op: PhysicalOperator
+    ) -> Optional[ExecutionResources]:
+        if op not in self._op_budgets:
+            return None
+
+        budget = self._op_budgets[op]
+        return budget.copy(
+            object_store_memory=self._get_object_store_memory_budget_for_scheduling(op)
+        )
+
+    def _get_object_store_memory_budget_for_scheduling(
+        self, op: PhysicalOperator
+    ) -> Optional[int]:
+        total_memory_budget = self._op_budgets[op].object_store_memory
+        if math.isinf(total_memory_budget):
+            return None
+
+        # Reserve at least half of the reserved object store memory for the outputs.
+        # This makes sure that there's enough budget to pull blocks from streaming
+        # generators and avoid deadlock.
+        memory_reserved_for_outputs = max(
+            self._op_reserved[op].object_store_memory / 2, 1
+        )
+        memory_used_by_outputs = self._get_op_outputs_usage_with_downstream(op)
+        unused_memory_reserved_for_outputs = max(
+            memory_reserved_for_outputs - memory_used_by_outputs, 0
+        )
+        memory_budget_for_scheduling = max(
+            total_memory_budget - unused_memory_reserved_for_outputs, 0
+        )
+
+        return int(memory_budget_for_scheduling)
+
+    def get_budget_for_outputs(self, op: PhysicalOperator) -> Optional[int]:
+        if op not in self._op_budgets:
+            return None
+
+        memory_budget_for_outputs = self._op_budgets[op].object_store_memory
+        if (
+            memory_budget_for_outputs == 0
+            and self._should_unblock_streaming_output_backpressure(op)
+        ):
+            memory_budget_for_outputs = 1
+
+        return int(memory_budget_for_outputs)
 
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
@@ -635,24 +666,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             for next_op in self._get_downstream_ineligible_ops(op)
         )
         return op_outputs_usage
-
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        if op not in self._op_budgets:
-            return None
-        res = self._op_budgets[op].object_store_memory
-        # Add the remaining of `_reserved_for_op_outputs`.
-        op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
-        res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
-        if math.isinf(res):
-            self._output_budgets[op] = res
-            return None
-
-        res = int(res)
-        assert res >= 0
-        if res == 0 and self._should_unblock_streaming_output_backpressure(op):
-            res = 1
-        self._output_budgets[op] = res
-        return res
 
     def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator
@@ -696,14 +709,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         remaining_shared = self._total_shared
         for op in eligible_ops:
             # Calculate the memory usage of the operator.
-            op_mem_usage = 0
-            # Add the memory usage of the operator itself,
-            # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += self._resource_manager._mem_op_internal[op]
-            # Add the portion of op outputs usage that has
-            # exceeded `_reserved_for_op_outputs`.
-            op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
-            op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
+            op_mem_usage = self._resource_manager._mem_op_internal[op]
+            op_mem_usage += self._get_op_outputs_usage_with_downstream(op)
             op_usage = self._resource_manager.get_op_usage(op).copy(
                 object_store_memory=op_mem_usage
             )
