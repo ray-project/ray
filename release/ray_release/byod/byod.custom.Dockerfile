@@ -6,9 +6,9 @@ FROM "$BASE_IMAGE"
 
 ARG POST_BUILD_SCRIPT
 
-ARG LOCK_FILE=dummy.lock
+ARG LOCK_FILE
 
-COPY "$LOCK_FILE" /home/ray/python_depset.lock
+RUN cp $LOCK_FILE* /home/ray/
 
 COPY "$POST_BUILD_SCRIPT" /tmp/post_build_script.sh
 RUN /tmp/post_build_script.sh
