@@ -38,9 +38,9 @@ class MapTransformFn(ABC):
     ):
         """
         Args:
-            callable: the underlying Python callable object.
-            input_type: the type of the input data.
-            output_type: the type of the output data.
+            input_type: Expected type of the input data.
+            is_udf: Whether this transformation is UDF or not.
+            output_block_size_option: (Optional) Output block size configuration.
         """
         self._input_type = input_type
         self._output_block_size_option = output_block_size_option
@@ -147,10 +147,11 @@ class MapTransformer:
     ):
         """
         Args:
-        transform_fns: A list of `MapTransformFn`s that will be executed sequentially
-            to transform data.
-        init_fn: A function that will be called before transforming data.
-            Used for the actor-based map operator.
+            transform_fns: A list of `MapTransformFn`s that will be executed sequentially
+                to transform data.
+            init_fn: A function that will be called before transforming data.
+                Used for the actor-based map operator.
+            output_block_size_option_override: (Optional) Output block size configuration.
         """
 
         self._transform_fns = []
