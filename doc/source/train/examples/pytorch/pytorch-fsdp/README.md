@@ -48,13 +48,13 @@ This tutorial provides a comprehensive, step-by-step guide on integrating PyTorc
 
 </style>
 
-## Example Overview
+## Example overview
 
 For demonstration purposes, this tutorial integrates Ray Train with FSDP2 using a **Vision Transformer (ViT)** trained on the FashionMNIST dataset. ViT was chosen because it has clear, repeatable block structures (transformer blocks) that are ideal for demonstrating FSDP2's sharding capabilities. 
 
-While this is a relatively simple example, FSDP's complexity can lead to common challenges during training, such as out-of-memory (OOM) errors. Throughout this guide, these common issues are addressed by providing practical tips for improving performance and reducing memory utilization based on your specific use case. 
+While this example is relatively simple, FSDP's complexity can lead to common challenges during training, such as out-of-memory (OOM) errors. This guide addresses common issues by providing practical tips for improving performance and reducing memory utilization based on your specific use case. 
 
-## 1. Package and Model Setup
+## 1. Package and model setup
 
 Install the required dependencies for this tutorial:
 
@@ -82,7 +82,7 @@ import logging
 logger = logging.getLogger(__name__)
 ```
 
-### Model Definition
+### Model definition
 The following function initializes a Vision Transformer (ViT) model configured for the FashionMNIST dataset:
 
 
@@ -247,7 +247,7 @@ def train_func(config):
     save_model_for_inference(model, world_rank)
 ```
 
-### 2a. Storage Configuration
+### Storage Configuration
 
 This demo uses cluster storage to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In those cases, you should use object storage instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage).
 
@@ -255,50 +255,50 @@ This demo uses cluster storage to allow for quick iteration and development, but
 
 PyTorch's `fully_shard` enables sharding at various granularities. At the most granular level, you can shard every layer to minimize peak memory utilization, but this also increases communication costs between Ray Train workers. Experiment with different sharding granularities to find the optimal balance for your use case. This example only shards the encoder blocks—the largest layers in the Vision Transformer.
 
-Beyond sharding granularity, FSDP2 offers several configuration options to optimize performance and mitigate out-of-memory (OOM) errors:
+Beyond sharding granularity, FSDP2 offers several configuration options to optimize performance and mitigate OOM errors:
 
-### 3a. Device Mesh Configuration
+### Device mesh configuration
 
-`init_device_mesh` configures a `DeviceMesh` that describes the training run's device topology. This demo uses a simple 1D mesh for data parallelism, but `DeviceMesh` also supports multi-dimensional parallelism approaches including tensor parallelism and pipeline parallelism. In many cases, integrating several types of parallelism can further help to improve training performance.
+`init_device_mesh` configures a `DeviceMesh` that describes the training run's device topology. This example uses a simple 1D mesh for data parallelism, but `DeviceMesh` also supports multi-dimensional parallelism approaches including tensor parallelism and pipeline parallelism. In many cases, integrating several types of parallelism can further help to improve training performance.
 
-For more information on advanced multi-dimensional parallelism configurations, see the [PyTorch device mesh documentation](https://docs.pytorch.org/tutorials/recipes/distributed_device_mesh.html).
+For more information about advanced multi-dimensional parallelism configurations, see the [PyTorch device mesh documentation](https://docs.pytorch.org/tutorials/recipes/distributed_device_mesh.html).
 
-### 3b. CPU Offloading 
+### CPU offloading 
 
 CPU offloading reduces GPU memory footprint by storing model components in the CPU. However, this comes with the trade-off of increased data transfer overhead between CPU and GPU during computation.
 
-**How CPU offloading works:**
-- Sharded parameters, gradients, and optimizer states are stored on CPU
-- Sharded parameters are copied to GPU during forward/backward computation and freed after use
-- Computed gradients are copied to the CPU where the optimizer step is computed
+**CPU offloading does the following:**
+- Stores sharded parameters, gradients, and optimizer states on CPU
+- Copies sharded parameters to GPU during forward/backward computation and frees them after use
+- Copies computed gradients to the CPU where PyTorch computes the optimizer step
 
 **When to use CPU offloading:**
 - When GPU memory is constrained
-- For very large models that do not fit in GPU memory
+- For very large models that don't fit in GPU memory
 
-**When not to use CPU offloading:**
+**Don't use CPU offloading in the following cases:**
 - When CPU memory is limited (can cause CPU crashes due to out-of-memory error)
 - When training speed is more important than memory usage
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
-    <h3>Without CPU Offloading</h3>
+    <h3>Without CPU offloading</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-fsdp/images/gpu_memory_profile.png" width="600"/>
   </div>
   <div style="text-align: center;">
-    <h3>With CPU Offloading</h3>
+    <h3>With CPU offloading</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-fsdp/images/cpu_offload_profile.png" width="600"/>
   </div>
 </div>
-Note: The above images are generated using PyTorch's Memory Profiler, which is covered later in this tutorial.
+Note: The above images are generated using PyTorch's Memory Profiler, which this tutorial covers later.
 
-It can be seen that CPU Offloading significantly reduces the amount of GPU memory occupied by model parameters. 
+It can be seen that CPU offloading significantly reduces the amount of GPU memory occupied by model parameters. 
 
-Learn more about CPU offloading on the [PyTorch documentation](https://docs.pytorch.org/docs/stable/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.CPUOffloadPolicy).
+Learn more about CPU offloading in the [PyTorch documentation](https://docs.pytorch.org/docs/stable/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.CPUOffloadPolicy).
 
 
-### 3c. `reshard_after_forward`  
-`fully_shard` has a `reshard_after_forward` flag that enables all-gathered model weights to be freed immediately after the forward pass. This reduces peak GPU memory usage but increases the communication overhead between workers during the backward pass as parameters need to be all-gathered again. If unsharded model parameters are able to completely fit on each worker and do not pose a memory bottleneck, there is no need to enable `reshard_after_forward`.
+### `reshard_after_forward` flag 
+`fully_shard` has a `reshard_after_forward` flag that enables all-gathered model weights to be freed immediately after the forward pass. This reduces peak GPU memory usage but increases the communication overhead between workers during the backward pass as parameters need to be all-gathered again. If unsharded model parameters are able to completely fit on each worker and don't pose a memory bottleneck, there's no need to enable `reshard_after_forward`.
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;"> 
@@ -313,22 +313,22 @@ Learn more about CPU offloading on the [PyTorch documentation](https://docs.pyto
 
 With `reshard_after_forward=True`, the memory allocated to model parameters drops after the forward step whereas it peaks when `reshard_after_forward=False`.
 
-### 3d. Mixed Precision
+### Mixed precision
 
 Enabling mixed precision accelerates training and reduces GPU memory usage with minimal accuracy impact.
 
-**Benefits of mixed precision with FSDP2:**
+**Benefits of mixed precision with FSDP2**
 - Reduced memory usage for activations and intermediate computations
 - Faster computation on modern GPUs
 - Maintained numerical stability through selective precision
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
-    <h3>Without Mixed Precision</h3>
+    <h3>Without mixed precision</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-fsdp/images/gpu_memory_profile.png" width="600"/>
   </div>
   <div style="text-align: center;">
-    <h3>With Mixed Precision</h3>
+    <h3>With mixed precision</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-fsdp/images/mixed_precision_profile.png" width="600"/>
   </div>
 </div>
@@ -337,7 +337,7 @@ With mixed precision enabled, the peak memory allocated to activations is halved
 
 Learn more about mixed precision configuration on the [PyTorch documentation](https://docs.pytorch.org/docs/stable/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.MixedPrecisionPolicy).
 
-### 3e. Combining Memory Strategies
+### Combining Memory Strategies
 
 The below diagram compares the GPU memory profile of default sharding to when all of the above strategies are enabled (CPU Offloading, Mixed Precision, `reshard_after_forward=True`).
 
@@ -415,9 +415,9 @@ def shard_model(model: torch.nn.Module):
 ```
 
 ## 4. Distributed Checkpointing
-This section walks through how to setup distributed checkpointing, load a distributed model from a checkpoint, save distributed model checkpoints, and save a model for inference. 
+This section sets up distributed checkpointing, loads a distributed model from a checkpoint, saves distributed model checkpoints, and saves a model for inference. 
 
-### 4a. Distributed Checkpoint Wrapper Setup
+### Distributed checkpoint wrapper setup
 
 This section creates a checkpointing wrapper using PyTorch's `Stateful` API to simplify distributed checkpoint management. From the PyTorch docs, this basic wrapper handles the complexities of saving and loading FSDP2 model states across multiple workers.
 
@@ -436,7 +436,7 @@ from torch.distributed.checkpoint.stateful import Stateful
 
 ```python
 class AppState(Stateful):
-    """This is a useful wrapper for checkpointing the Application State. Since this object is compliant
+    """This is a useful wrapper for checkpointing the Application State. Because this object is compliant
     with the Stateful protocol, PyTorch DCP automatically calls state_dict/load_state_dict as needed in the
     dcp.save/load APIs.
 
@@ -466,9 +466,9 @@ class AppState(Stateful):
         )
 ```
 
-### 4b. Loading Distributed Model from Checkpoint
+### Load distributed model from checkpoint
 
-Distributed checkpoints are loaded using `dcp.load`, which automatically handles resharding when the number of workers changes between training runs. This flexibility allows you to resume training with different resource configurations. 
+Load distributed checkpoints using `dcp.load`, which automatically handles resharding when the number of workers changes between training runs. This flexibility allows you to resume training with different resource configurations. 
 
 
 ```python
@@ -509,7 +509,7 @@ def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ck
         raise RuntimeError(f"Checkpoint loading failed: {e}") from e
 ```
 
-### 4c. Saving Model Checkpoints
+### Save model checkpoints
 
 The following function handles periodic checkpoint saving during training, combining metrics reporting with distributed checkpoint storage:
 
@@ -544,7 +544,7 @@ def report_metrics_and_save_fsdp_checkpoint(
     logger.info(f"Checkpoint saved successfully. Metrics: {metrics}")
 ```
 
-### 4d. Saving Model for Inference
+### Save the model for inference
 
 After training, it is often useful to consolidate sharded checkpoints into a single file for convenient sharing or inference. Unlike regular distributed checkpointing, this process produces a large artifact compatible with torch.load. To do so, the `get_model_state_dict` function all-gathers parameter shards to rank 0, reconstructs the full state dict, and then saves the consolidated checkpoint to cluster storage.
 
@@ -596,7 +596,7 @@ def save_model_for_inference(model: FSDPModule, world_rank: int) -> None:
         )
 ```
 
-## 5. Launching the Distributed Training Job
+## Launching the distributed training job
 
 This section configures and launches the distributed training job using Ray Train's TorchTrainer:
 
@@ -642,21 +642,21 @@ print("Training completed successfully!")
 
 ```
 
-## 6. GPU Memory Profiling
+## GPU memory profiling
 
-GPU memory profiling is an useful tool for monitoring and analyzing memory usage during model training. It helps identify bottlenecks, optimize resource allocation, and prevent out-of-memory errors. PyTorch's GPU memory profiler is configured within the training function.
+GPU memory profiling is a useful tool for monitoring and analyzing memory usage during model training. It helps identify bottlenecks, optimize resource allocation, and prevent OOM errors. PyTorch's GPU Memory Profiler is configured within the training function.
 
 In this demo, the profiler is configured to generate a profiling file for each worker accessible from cluster storage under the Anyscale Files tab. To inspect a worker's memory profile, download the corresponding HTML file and open it in your browser. The profiler configuration and export path can be customized within the training function.  For more details on PyTorch's memory profiler, see the [PyTorch blog](https://pytorch.org/blog/understanding-gpu-memory-1/).
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
-    <h3>Example Memory Profile</h3>
+    <h3>Example memory profile</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-fsdp/images/gpu_memory_profile.png" width="600"/>
   </div>
 </div>
 
 
-### Post Training Directory View
+### Post training directory view
 The Anyscale platform saves the checkpoint shards, full model, and memory profiling reports in cluster storage with the following layout:
 
 ```
