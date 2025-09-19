@@ -12,6 +12,7 @@ from ray.util.collective.types import (
     CommunicatorMetadata,
     TensorTransportMetadata,
 )
+import warnings
 
 try:
     import torch
@@ -114,6 +115,97 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     ), f"obj_id={obj_id} not found in GPU object store"
     gpu_object = gpu_object_store.get_object(obj_id)
     return gpu_object
+
+
+# Helper invoked on an actor process to report its current CUDA device id.
+# Returns -1 if CUDA is not available.
+def __ray_get_cuda_device__(self) -> int:
+    try:
+        import torch as _torch
+
+        if _torch.cuda.is_available():
+            return int(_torch.cuda.current_device())
+    except Exception:
+        pass
+    return -1
+
+
+def _extract_cuda_metadata(tensor: torch.Tensor):
+    storage = tensor._typed_storage()
+    (
+        storage_device,
+        storage_handle,
+        storage_size_bytes,
+        storage_offset_bytes,
+        ref_counter_handle,
+        ref_counter_offset,
+        event_handle,
+        event_sync_required,
+    ) = storage._share_cuda_()
+    return {
+        "tensor_cls": type(tensor),
+        "tensor_size": tensor.size(),
+        "tensor_stride": tensor.stride(),
+        "tensor_offset": tensor.storage_offset(),
+        "storage_cls": type(storage),
+        "dtype": tensor.dtype,
+        "storage_device": storage_device,
+        "storage_handle": storage_handle,
+        "storage_size_bytes": storage_size_bytes,
+        "storage_offset_bytes": storage_offset_bytes,
+        "requires_grad": tensor.requires_grad,
+        "ref_counter_handle": ref_counter_handle,
+        "ref_counter_offset": ref_counter_offset,
+        "event_handle": event_handle,
+        "event_sync_required": event_sync_required,
+    }
+
+
+# Export CUDA IPC handles for tensors stored under obj_id.
+# Only used when tensors are CUDA tensors and source/target actors reside on the same GPU.
+# Returns a list of metadata tuples per tensor.
+def __ray_cuda_ipc_export__(self, obj_id: str):
+    from ray._private.worker import global_worker
+
+    tensors = global_worker.gpu_object_manager.gpu_object_store.get_object(obj_id)
+
+    metas = []
+    for t in tensors:
+        tensor_meta = _extract_cuda_metadata(t)
+        metas.append(tensor_meta)
+
+    return metas
+
+
+# Import CUDA IPC handles and reconstruct tensors into the local GPU object store.
+# Expects the metadata returned by __ray_cuda_ipc_export__.
+def __ray_cuda_ipc_import__(self, obj_id: str, metas):
+    from torch.multiprocessing.reductions import rebuild_cuda_tensor
+
+    tensors = []
+    for i, meta in enumerate(metas):
+        try:
+            t = rebuild_cuda_tensor(**meta)
+            # Validate tensor is accessible by trying to get its device
+            # This will trigger an error if the memory is invalid
+            _ = t.device
+            tensors.append(t)
+        except (RuntimeError, OSError, Exception) as e:
+            warnings.warn(
+                f"Failed to import CUDA IPC tensor {i+1}/{len(metas)} for object {obj_id}. "
+                f"The source actor may have crashed or been terminated. "
+                f"Error: {str(e)}. "
+                f"Falling back to network transfer if possible."
+            )
+            raise RuntimeError(
+                f"CUDA IPC import failed for object {obj_id}. "
+                f"Source actor appears to be dead or memory is invalid. "
+                f"Original error: {e}"
+            ) from e
+
+    from ray._private.worker import global_worker
+
+    global_worker.gpu_object_manager.gpu_object_store.add_object(obj_id, tensors)
 
 
 @dataclass

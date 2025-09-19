@@ -2855,6 +2855,7 @@ def get(
     timeout: Optional[float] = None,
     _tensor_transport: Optional[str] = None,
 ) -> Union[Any, List[Any]]:
+    print("loc4")
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ref is
