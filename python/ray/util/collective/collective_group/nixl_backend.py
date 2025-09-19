@@ -25,6 +25,11 @@ class NixlBackend:
         agent_config = nixl_agent_config(backends=["UCX"])
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
+        if actor_id is None:
+            # If the actor id is None, it means the current process is a driver.
+            import uuid
+
+            actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
         self._nixl_agent = nixl_agent(actor_id, agent_config)
 
     @classmethod

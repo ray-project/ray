@@ -1,6 +1,6 @@
 import logging
 import time
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Deque, Dict, List, Optional, Set
 
@@ -79,7 +79,8 @@ class AutoscalingState:
         self._handle_requests: Dict[str, HandleMetricReport] = dict()
         # Map from replica ID to replica request metric report. Metrics
         # are removed from this dict when a replica is stopped.
-        self._replica_requests: Dict[ReplicaID, ReplicaMetricReport] = dict()
+        # Prometheus + Custom metrics from each replica are also included
+        self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
 
         self._deployment_info = None
         self._config = None
@@ -117,8 +118,8 @@ class AutoscalingState:
         return self.apply_bounds(target_num_replicas)
 
     def on_replica_stopped(self, replica_id: ReplicaID):
-        if replica_id in self._replica_requests:
-            del self._replica_requests[replica_id]
+        if replica_id in self._replica_metrics:
+            del self._replica_metrics[replica_id]
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -175,12 +176,13 @@ class AutoscalingState:
 
         replica_id = replica_metric_report.replica_id
         send_timestamp = replica_metric_report.timestamp
+
         if (
-            replica_id not in self._replica_requests
-            or send_timestamp > self._replica_requests[replica_id].timestamp
+            replica_id not in self._replica_metrics
+            or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
-            self._replica_requests[replica_id] = replica_metric_report
             self._latest_metrics_timestamp = send_timestamp
+            self._replica_metrics[replica_id] = replica_metric_report
 
     def record_request_metrics_for_handle(
         self,
@@ -312,9 +314,9 @@ class AutoscalingState:
         total_requests = 0
 
         for id in self._running_replicas:
-            if id in self._replica_requests:
-                total_requests += self._replica_requests[id].aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY
+            if id in self._replica_metrics:
+                total_requests += self._replica_metrics[id].aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY, 0
                 )
 
         metrics_collected_on_replicas = total_requests > 0
@@ -407,6 +409,19 @@ class AutoscalingState:
         """
         return self._cached_deployment_snapshot
 
+    def get_replica_metrics(self, agg_func: str) -> Dict[ReplicaID, List[Any]]:
+        """Get the raw replica metrics dict."""
+        # arcyleung TODO: pass agg_func from autoscaling policy https://github.com/ray-project/ray/pull/51905
+        # Dummy implementation of mean agg_func across all values of the same metrics key
+
+        metric_values = defaultdict(list)
+        for id in self._running_replicas:
+            if id in self._replica_metrics and self._replica_metrics[id].metrics:
+                for k, v in self._replica_metrics[id].metrics.items():
+                    metric_values[k].append(v)
+
+        return metric_values
+
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.
@@ -451,6 +466,16 @@ class AutoscalingStateManager:
     def get_metrics(self) -> Dict[DeploymentID, float]:
         return {
             deployment_id: self.get_total_num_requests(deployment_id)
+            for deployment_id in self._autoscaling_states
+        }
+
+    def get_all_metrics(
+        self, agg_func="mean"
+    ) -> Dict[DeploymentID, Dict[ReplicaID, List[Any]]]:
+        return {
+            deployment_id: self._autoscaling_states[deployment_id].get_replica_metrics(
+                agg_func
+            )
             for deployment_id in self._autoscaling_states
         }
 
