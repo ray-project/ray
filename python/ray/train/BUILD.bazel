@@ -429,17 +429,6 @@ py_test(
 )
 
 py_test(
-    name = "test_validation_manager",
-    size = "small",
-    srcs = ["tests/test_validation_manager.py"],
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [":train_lib"],
-)
-
-py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
