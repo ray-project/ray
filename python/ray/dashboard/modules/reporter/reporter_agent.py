@@ -1773,9 +1773,12 @@ class ReporterAgent(
             self._metrics_agent.clean_all_dead_worker_metrics()
 
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
-        for gpu in stats["gpus"]:
-            if isinstance(gpu.get("processes_pids"), dict):
-                gpu["processes_pids"] = list(gpu["processes_pids"].values())
+        # for gpu in stats["gpus"]:
+        #     if isinstance(gpu.get("processes_pids"), dict):
+        #         gpu["processes_pids"] = list(gpu["processes_pids"].values())
+
+        stats["networkf"] = stats["network"]
+        stats["network"] = None
 
         if StatsPayload is not None:
             stats_dict = dashboard_utils.to_google_style(recursive_asdict(stats))
