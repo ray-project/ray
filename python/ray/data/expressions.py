@@ -509,26 +509,29 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         func_or_class: Union[Callable[..., BatchColumn], Type[T]]
     ) -> Decorated:
         # Check if this is a callable class (has __call__ method defined)
-        if isinstance(func_or_class, type) and callable(func_or_class):
+        if isinstance(func_or_class, type) and issubclass(func_or_class, Callable):
             # This is a callable class - create a wrapper class
             class ExpressionAwareCallableClass(func_or_class):
                 def __init__(self, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    # Create the UDF callable for this instance using the existing helper
-                    self._udf_callable = _create_udf_callable(self, return_dtype)
+                    self._udf_cls = func_or_class
+                    self._ctor_args = args
+                    self._ctor_kwargs = kwargs
 
                 def __call__(self, *call_args, **call_kwargs):
-                    # Check if any argument is an expression
-                    has_expressions = any(
-                        isinstance(arg, Expr) for arg in call_args
-                    ) or any(isinstance(v, Expr) for v in call_kwargs.values())
+                    # Build a lazy callable that instantiates on the worker
+                    # the first time it's invoked during expression evaluation.
+                    def _lazy_impl(*args, **kwargs):
+                        # Running on task - create instance lazily as before
+                        if not hasattr(_lazy_impl, "_instance"):
+                            _lazy_impl._instance = self._udf_cls(
+                                *self._ctor_args, **self._ctor_kwargs
+                            )
+                        instance = _lazy_impl._instance
 
-                    if has_expressions:
-                        # Use the existing _create_udf_callable logic
-                        return self._udf_callable(*call_args, **call_kwargs)
-                    else:
-                        # Call the parent's __call__ method for non-expression usage
-                        return super().__call__(*call_args, **call_kwargs)
+                        return instance(*args, **kwargs)
+
+                    udf_callable = _create_udf_callable(_lazy_impl, return_dtype)
+                    return udf_callable(*call_args, **call_kwargs)
 
             # Preserve the original class name and module
             ExpressionAwareCallableClass.__name__ = func_or_class.__name__
@@ -537,7 +540,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
 
             return ExpressionAwareCallableClass
         else:
-            # This is a regular function
+            # Regular function
             return _create_udf_callable(func_or_class, return_dtype)
 
     return decorator

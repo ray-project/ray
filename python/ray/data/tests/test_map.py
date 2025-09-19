@@ -3180,7 +3180,9 @@ def test_with_column_filter_in_pipeline(ray_start_regular_shared):
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_udf_callable_class_in_complex_expressions(ray_start_regular_shared):
+def test_with_column_udf_callable_class_in_complex_expressions(
+    ray_start_regular_shared,
+):
     """Test callable class UDFs used within complex expressions."""
 
     # Define a callable class for testing
