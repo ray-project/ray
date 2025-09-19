@@ -23,7 +23,10 @@ steps:
     key: raydepsets_compile_llm_dependencies
     tags: always
     instance_type: small
-    command: ./ci/test_compile_llm_requirements.sh
+    commands:
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayllm.depsets.yaml --check
+      - chown -R 2000:100 /artifact-mount
+      - cp ./python/deplocks/llm/* /artifact-mount/
     job_env: manylinux
     depends_on: manylinux
 
