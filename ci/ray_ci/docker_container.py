@@ -21,17 +21,22 @@ PLATFORMS_RAY_ML = [
     "cpu",
     "cu12.1.1-cudnn8",
 ]
+PLATFORMS_RAY_LLM = ["cu12.8.1-cudnn"]
 GPU_PLATFORM = "cu12.1.1-cudnn8"
 
 PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11", "3.12"]
 PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10", "3.11"]
+PYTHON_VERSIONS_RAY_LLM = ["3.11"]
 ARCHITECTURES_RAY = ["x86_64", "aarch64"]
 ARCHITECTURES_RAY_ML = ["x86_64"]
+ARCHITECTURES_RAY_LLM = ["x86_64"]
 
 
 class RayType(str, Enum):
     RAY = "ray"
+    RAY_EXTRA = "ray-extra"
     RAY_ML = "ray-ml"
+    RAY_LLM = "ray-llm"
 
 
 class DockerContainer(LinuxContainer):
@@ -50,13 +55,19 @@ class DockerContainer(LinuxContainer):
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
 
-        assert python_version in PYTHON_VERSIONS_RAY
-        assert platform in PLATFORMS_RAY
-        assert architecture in ARCHITECTURES_RAY
         if image_type == RayType.RAY_ML:
             assert python_version in PYTHON_VERSIONS_RAY_ML
             assert platform in PLATFORMS_RAY_ML
             assert architecture in ARCHITECTURES_RAY_ML
+        elif image_type == RayType.RAY_LLM:
+            assert python_version in PYTHON_VERSIONS_RAY_LLM
+            assert platform in PLATFORMS_RAY_LLM
+            assert architecture in ARCHITECTURES_RAY_LLM
+        else:
+            # ray or ray-extra
+            assert python_version in PYTHON_VERSIONS_RAY
+            assert platform in PLATFORMS_RAY
+            assert architecture in ARCHITECTURES_RAY
 
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
         self.python_version = python_version
@@ -114,10 +125,10 @@ class DockerContainer(LinuxContainer):
         # e.g. sha-pyversion-platform
         return self.canonical_tag if self.canonical_tag else self._get_image_tags()[0]
 
-    def get_python_version_tag(self) -> str:
+    def _get_python_version_tag(self) -> str:
         return f"-py{self.python_version.replace('.', '')}"  # 3.x -> py3x
 
-    def get_platform_tag(self) -> str:
+    def _get_platform_tag(self) -> str:
         if self.platform == "cpu":
             return "-cpu"
         versions = self.platform.split(".")
@@ -138,8 +149,11 @@ class DockerContainer(LinuxContainer):
 
         versions = self._get_image_version_tags(external)
 
-        platforms = [self.get_platform_tag()]
-        if self.platform == "cpu" and self.image_type == RayType.RAY:
+        platforms = [self._get_platform_tag()]
+        if self.platform == "cpu" and self.image_type in [
+            RayType.RAY,
+            RayType.RAY_EXTRA,
+        ]:
             # no tag is alias to cpu for ray image
             platforms.append("")
         elif self.platform == GPU_PLATFORM:
@@ -149,17 +163,20 @@ class DockerContainer(LinuxContainer):
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
-        py_versions = [self.get_python_version_tag()]
+        py_versions = [self._get_python_version_tag()]
         if self.python_version == DEFAULT_PYTHON_VERSION:
             py_versions.append("")
+
+        variation = ""
+        if self.image_type == RayType.RAY_EXTRA:
+            variation = "-extra"
 
         tags = []
         for version in versions:
             for platform in platforms:
                 for py_version in py_versions:
-                    if self.architecture == DEFAULT_ARCHITECTURE:
-                        tag = f"{version}{py_version}{platform}"
-                    else:
-                        tag = f"{version}{py_version}{platform}-{self.architecture}"
+                    tag = f"{version}{variation}{py_version}{platform}"
+                    if self.architecture != DEFAULT_ARCHITECTURE:
+                        tag += f"-{self.architecture}"
                     tags.append(tag)
         return tags

@@ -23,7 +23,7 @@
 #include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
@@ -227,7 +227,7 @@ class TaskManagerTest : public ::testing::Test {
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
