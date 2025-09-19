@@ -28,16 +28,19 @@ class DynamicObjectRefGenerator:
 class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.
+
     The class is compatible with generator and
     async generator interface.
+
     The class is not thread-safe.
+
     Do not initialize the class and create an instance directly.
     The instance should be created by `.remote`.
+
     >>> gen = generator_task.remote()
     >>> next(gen)
     >>> await gen.__anext__()
     """
-
     def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
@@ -57,8 +60,10 @@ class ObjectRefGenerator:
 
     def __next__(self) -> ObjectRef:
         """Waits until a next ref is available and returns the object ref.
+
         Raises StopIteration if there's no more objects
         to generate.
+
         The object ref will contain an exception if the task fails.
         When the generator task returns N objects, it can return
         up to N + 1 objects (if there's a system failure, the
@@ -93,9 +98,12 @@ class ObjectRefGenerator:
     def completed(self) -> ObjectRef:
         """Returns an object ref that is ready when
         a generator task completes.
+
         If the task is failed unexpectedly (e.g., worker failure),
         the `ray.get(gen.completed())` raises an exception.
+
         The function returns immediately.
+
         >>> ray.get(gen.completed())
         """
         return self._generator_ref
@@ -103,8 +111,10 @@ class ObjectRefGenerator:
     def next_ready(self) -> bool:
         """If True, it means the output of next(gen) is ready and
         ray.get(next(gen)) returns immediately. False otherwise.
+
         It returns False when next(gen) raises a StopIteration
         (this condition should be checked using is_finished).
+
         The function returns immediately.
         """
         self.worker.check_connected()
@@ -113,25 +123,30 @@ class ObjectRefGenerator:
         if self.is_finished():
             return False
 
-        expected_ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(
+            self._generator_ref)
 
         if is_ready:
             return True
 
-        ready, _ = ray.wait([expected_ref], timeout=0, fetch_local=False)
+        ready, _ = ray.wait(
+            [expected_ref], timeout=0, fetch_local=False)
         return len(ready) > 0
 
     def is_finished(self) -> bool:
         """If True, it means the generator is finished
         and all output is taken. False otherwise.
+
         When True, if next(gen) is called, it will raise StopIteration
         or StopAsyncIteration
+
         The function returns immediately.
         """
         self.worker.check_connected()
         core_worker = self.worker.core_worker
 
-        finished = core_worker.is_object_ref_stream_finished(self._generator_ref)
+        finished = core_worker.is_object_ref_stream_finished(
+            self._generator_ref)
 
         if finished:
             if self._generator_task_exception:
@@ -158,25 +173,36 @@ class ObjectRefGenerator:
 
     def _get_next_ref(self) -> ObjectRef:
         """Return the next reference from a generator.
+
         Note that the ObjectID generated from a generator
         is always deterministic.
         """
         self.worker.check_connected()
         core_worker = self.worker.core_worker
-        return core_worker.peek_object_ref_stream(self._generator_ref)[0]
+        return core_worker.peek_object_ref_stream(
+            self._generator_ref)[0]
 
-    def _next_sync(self, timeout_s: Optional[int | float] = None) -> ObjectRef:
+    def _next_sync(
+        self,
+        timeout_s: Optional[int | float] = None
+    ) -> ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
+
         If an object is not available within the given timeout, it
         returns a nil object reference.
+
         If -1 timeout is provided, it means it waits infinitely.
+
         Waiting is implemented as busy waiting.
+
         Raises StopIteration if there's no more objects
         to generate.
+
         The object ref will contain an exception if the task fails.
         When the generator task returns N objects, it can return
         up to N + 1 objects (if there's a system failure, the
         last object will contain a system level exception).
+
         Args:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
@@ -184,15 +210,18 @@ class ObjectRefGenerator:
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
-        expected_ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(
+            self._generator_ref)
 
         if not is_ready:
-            _, unready = ray.wait([expected_ref], timeout=timeout_s, fetch_local=False)
+            _, unready = ray.wait(
+                [expected_ref], timeout=timeout_s, fetch_local=False)
             if len(unready) > 0:
                 return ObjectRef.nil()
 
         try:
-            ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
+            ref = core_worker.try_read_next_object_ref_stream(
+                self._generator_ref)
             assert not ref.is_nil()
         except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
@@ -222,21 +251,27 @@ class ObjectRefGenerator:
         except Exception:
             pass
 
-    async def _next_async(self, timeout_s: Optional[int | float] = None):
+    async def _next_async(
+            self,
+            timeout_s: Optional[int | float] = None
+    ):
         """Same API as _next_sync, but it is for async context."""
         core_worker = self.worker.core_worker
-        ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
+        ref, is_ready = core_worker.peek_object_ref_stream(
+            self._generator_ref)
 
         if not is_ready:
             # TODO(swang): Avoid fetching the value.
             ready, unready = await asyncio.wait(
-                [asyncio.create_task(self._suppress_exceptions(ref))], timeout=timeout_s
+                [asyncio.create_task(self._suppress_exceptions(ref))],
+                timeout=timeout_s
             )
             if len(unready) > 0:
                 return ObjectRef.nil()
 
         try:
-            ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
+            ref = core_worker.try_read_next_object_ref_stream(
+                self._generator_ref)
             assert not ref.is_nil()
         except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
@@ -268,5 +303,4 @@ class ObjectRefGenerator:
     def __getstate__(self):
         raise TypeError(
             "You cannot return or pass a generator to other task. "
-            "Serializing a ObjectRefGenerator is not allowed."
-        )
+            "Serializing a ObjectRefGenerator is not allowed.")
