@@ -4,14 +4,13 @@ import threading
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.annotations import OldAPIStack
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.numpy import (
     SMALL_NUMBER,
 )  # Assuming SMALL_NUMBER is a small float like 1e-8
+from ray.rllib.utils.serialization import _deserialize_ndarray, _serialize_ndarray
 from ray.rllib.utils.typing import TensorStructType
-from ray.rllib.utils.serialization import _serialize_ndarray, _deserialize_ndarray
-from ray._common.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,7 @@
 import gymnasium as gym
 import numpy as np
-from PIL import Image, ImageDraw
-
 from gymnasium.envs.classic_control.cartpole import CartPoleEnv
+from PIL import Image, ImageDraw
 
 from ray.rllib.utils.framework import try_import_torch
 

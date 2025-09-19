@@ -4,8 +4,7 @@ import pytest
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
-
-from ray._common.test_utils import check_library_usage_telemetry, TelemetryCallsite
+from ray._common.test_utils import TelemetryCallsite, check_library_usage_telemetry
 
 
 @pytest.fixture

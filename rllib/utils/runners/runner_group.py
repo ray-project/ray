@@ -1,19 +1,18 @@
 import abc
 import logging
-import ray
-
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
     Optional,
     Tuple,
-    TYPE_CHECKING,
     TypeVar,
     Union,
 )
 
+import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core import (

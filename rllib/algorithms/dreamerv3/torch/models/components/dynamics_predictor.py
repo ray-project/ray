@@ -5,10 +5,10 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.torch.models.components import (
     representation_layer,
 )
+from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
 from ray.rllib.utils.framework import try_import_torch
 

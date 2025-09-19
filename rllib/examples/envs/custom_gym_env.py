@@ -47,21 +47,19 @@ You should see results similar to the following in your console output:
 """
 # These tags allow extracting portions of this script on Anyscale.
 # ws-template-imports-start
-import gymnasium as gym
-from gymnasium.spaces import Discrete, Box
-import numpy as np
 import random
-
 from typing import Optional
 
-# ws-template-imports-end
+import gymnasium as gym
+import numpy as np
+from gymnasium.spaces import Box, Discrete
 
+# ws-template-imports-end
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env  # noqa
-
 
 parser = add_rllib_example_script_args(
     default_reward=0.9,

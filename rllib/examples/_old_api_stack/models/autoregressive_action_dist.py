@@ -1,5 +1,5 @@
 # @OldAPIStack
-from ray.rllib.models.tf.tf_action_dist import Categorical, ActionDistribution
+from ray.rllib.models.tf.tf_action_dist import ActionDistribution, Categorical
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDistributionWrapper,
