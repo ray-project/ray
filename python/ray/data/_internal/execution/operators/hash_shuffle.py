@@ -319,7 +319,7 @@ def _shuffle_block(
 
         logger.debug(
             f"Shuffled block (rows={original_block_metadata.num_rows}, "
-            f"bytes={original_block_metadata.size_bytes/MiB:.2f}MB) "
+            f"bytes={original_block_metadata.size_bytes/MiB:.1f}MB) "
             f"into {len(partition_shards_stats)} partitions ("
             f"quantiles={'/'.join(map(str, quantiles))}, "
             f"rows={'/'.join(map(str, num_rows_quantiles))}, "
@@ -524,6 +524,19 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # Cap number of aggregators to not exceed max configured
         num_aggregators = min(target_num_partitions, max_shuffle_aggregators)
 
+        # Target dataset size estimation is either derived from
+        #   - User input (``partition_size_hint`` overrides estimation if provided)
+        #   - Estimation (avg) of input ops output block size and total # of outputs
+        if partition_size_hint is not None:
+            estimated_dataset_bytes = partition_size_hint * num_partitions
+        else:
+            estimated_input_block_size = (
+                _estimate_output_block_byte_size(input_logical_ops) or
+                self.data_context.target_max_block_size or
+                DEFAULT_TARGET_MAX_BLOCK_SIZE
+            )
+            estimated_dataset_bytes = estimated_input_block_size * sum(estimated_num_input_blocks)
+
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=target_num_partitions,
             num_aggregators=num_aggregators,
@@ -534,13 +547,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     num_partitions=target_num_partitions,
                     num_aggregators=num_aggregators,
                     total_available_cluster_resources=total_available_cluster_resources,
-                    # Individual partition size hint is either derived from
-                    #   - User input
-                    #   - Estimation (avg) of input ops output block size
-                    partition_byte_size_estimate=(
-                        partition_size_hint
-                        or _estimate_output_block_byte_size(input_logical_ops)
-                    ),
+                    estimated_dataset_bytes=estimated_dataset_bytes,
                 )
             ),
             data_context=data_context,
@@ -1035,7 +1042,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         num_partitions: int,
         num_aggregators: int,
         total_available_cluster_resources: ExecutionResources,
-        partition_byte_size_estimate: Optional[int] = None,
+        estimated_dataset_bytes: Optional[int] = None,
     ):
         assert num_partitions >= num_aggregators
 
@@ -1044,11 +1051,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             num_partitions=num_partitions,
             # NOTE: If no partition size hint is provided we simply assume target
             #       max block size specified as the best partition size estimate
-            partition_byte_size_estimate=(
-                partition_byte_size_estimate
-                or self.data_context.target_max_block_size
-                or DEFAULT_TARGET_MAX_BLOCK_SIZE
-            ),
+            estimated_dataset_bytes=estimated_dataset_bytes,
         )
 
         remote_args = {
@@ -1124,7 +1127,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         *,
         num_aggregators: int,
         num_partitions: int,
-        partition_byte_size_estimate: int,
+        estimated_dataset_bytes: int,
     ) -> int:
         raise NotImplementedError()
 
@@ -1196,9 +1199,9 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         logger.debug(
             f"Estimated memory requirement for shuffling operator "
             f"(partitions={num_partitions}, aggregators={num_aggregators}): "
-            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
-            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
-            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.1f}GiB, "
+            f"output={output_object_store_memory_required / GiB:.1f}GiB, "
+            f"total={aggregator_total_memory_required / GiB:.1f}GiB, "
         )
 
         return aggregator_total_memory_required
@@ -1316,22 +1319,22 @@ class AggregatorPool:
             if required_memory > total_memory:
                 logger.warning(
                     f"Insufficient memory resources in cluster for hash shuffle operation. "
-                    f"Required: {required_memory / GiB:.2f} GiB for {self._num_aggregators} aggregators, "
-                    f"but cluster only has {total_memory / GiB:.2f} GiB total memory. "
+                    f"Required: {required_memory / GiB:.1f} GiB for {self._num_aggregators} aggregators, "
+                    f"but cluster only has {total_memory / GiB:.1f} GiB total memory. "
                     f"Consider reducing the number of partitions or increasing cluster size."
                 )
 
             if required_memory > available_memory:
                 logger.warning(
                     f"Limited available memory resources for hash shuffle operation. "
-                    f"Required: {required_memory / GiB:.2f} GiB, available: {available_memory / GiB:.2f} GiB. "
+                    f"Required: {required_memory / GiB:.1f} GiB, available: {available_memory / GiB:.1f} GiB. "
                     f"Aggregators may take longer to start due to resource contention."
                 )
 
             logger.debug(
                 f"Resource check passed for hash shuffle operation: "
                 f"required CPUs={required_cpus}, available CPUs={available_cpus}, "
-                f"required memory={required_memory / GiB:.2f} GiB, available memory={available_memory / GiB:.2f} GiB"
+                f"required memory={required_memory / GiB:.1f} GiB, available memory={available_memory / GiB:.1f} GiB"
             )
 
     @property
