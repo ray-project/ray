@@ -312,6 +312,7 @@ py_library(
         "//doc:deployment_serve_llm_example_configs",
         "//doc:example_configs",
         "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
+        "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
