@@ -1,9 +1,15 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
+from ray._private.arrow_utils import get_pyarrow_version
+from ray.air.util.transform_pyarrow import _is_pa_extension_type
 from ray.data import DataContext
-from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
+    MIN_PYARROW_VERSION_VIEW_TYPES,
+)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -12,6 +18,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import GiB
 from ray.data.block import Block
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
@@ -115,16 +124,66 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         )
 
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
-        joined = left_seq_partition.join(
-            right_seq_partition,
+
+        # Get supported columns
+        supported_l, unsupported_l = _split_unsupported_columns(left_seq_partition)
+        supported_r, unsupported_r = _split_unsupported_columns(right_seq_partition)
+
+        # Handle joins on unsupported columns
+        conflicting_columns: Set[str] = set(unsupported_l.column_names) & set(left_on)
+        if conflicting_columns:
+            raise ValueError(
+                f"Cannot join on columns with unjoinable types. "
+                f"Left join key columns {conflicting_columns} have unjoinable types "
+                f"(map, union, list, struct, etc.) which cannot be used for join operations."
+            )
+
+        conflicting_columns: Set[str] = set(unsupported_r.column_names) & set(right_on)
+        if conflicting_columns:
+            raise ValueError(
+                f"Cannot join on columns with unjoinable types. "
+                f"Right join key columns {conflicting_columns} have unjoinable types "
+                f"(map, union, list, struct, etc.) which cannot be used for join operations."
+            )
+
+        # Index if we have unsupported columns
+        should_index_l = self._should_index_side("left", supported_l, unsupported_l)
+        should_index_r = self._should_index_side("right", supported_r, unsupported_r)
+
+        # Add index columns for back-referencing if we have unsupported columns
+        # TODO: what are the chances of a collision with the index column?
+        index_name_l = "__ray_data_index_level_left__"
+        if should_index_l:
+            supported_l = _append_index_column(table=supported_l, col_name=index_name_l)
+        index_name_r = "__ray_data_index_level_right__"
+        if should_index_r:
+            supported_r = _append_index_column(table=supported_r, col_name=index_name_r)
+
+        # Perform the join on supported columns
+        supported = supported_l.join(
+            supported_r,
             join_type=arrow_join_type,
             keys=left_on,
             right_keys=right_on,
             left_suffix=self._left_columns_suffix,
             right_suffix=self._right_columns_suffix,
         )
+        # Add back unsupported columns (join type logic is in should_index_* variables)
+        if should_index_l:
+            supported = _add_back_unsupported_columns(
+                joined_table=supported,
+                unsupported_table=unsupported_l,
+                index_col_name=index_name_l,
+            )
 
-        return joined
+        if should_index_r:
+            supported = _add_back_unsupported_columns(
+                joined_table=supported,
+                unsupported_table=unsupported_r,
+                index_col_name=index_name_r,
+            )
+
+        return supported
 
     def clear(self, partition_id: int):
         self._left_input_seq_partition_builders.pop(partition_id)
@@ -140,6 +199,135 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"Unexpected inpt sequence id of '{input_seq_id}' (expected 0 or 1)"
             )
         return partition_builder
+
+    def _get_index_col_name(self, index: int) -> str:
+        return f"__index_level_{index}__"
+
+    def _should_index_side(
+        self, side: str, supported_table: "pa.Table", unsupported_table: "pa.Table"
+    ) -> bool:
+        """
+        Determine whether to create an index column for a given side of the join.
+
+        A column is "supported" if it is "joinable", and "unsupported" otherwise.
+        A supported_table is a table with only "supported" columns. Index columns are
+        needed when we have both supported and unsupported columns in a table, and
+        that table's columns will appear in the final result.
+
+        Args:
+            side: "left" or "right" to indicate which side of the join
+            supported_table: Table containing ONLY joinable columns
+            unsupported_table: Table containing ONLY unjoinable columns
+
+        Returns:
+            True if an index column should be created for this side
+        """
+        # Must have both supported and unsupported columns to need indexing.
+        # We cannot rely on row_count because it can return a non-zero row count
+        # for an empty-schema.
+        if not supported_table.schema or not unsupported_table.schema:
+            return False
+
+        # For semi/anti joins, only index the side that appears in the result
+        if side == "left":
+            # Left side appears in result for all joins except right_semi/right_anti
+            return self._join_type not in [JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI]
+        else:  # side == "right"
+            # Right side appears in result for all joins except left_semi/left_anti
+            return self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
+
+
+def _split_unsupported_columns(table: "pa.Table") -> Tuple["pa.Table", "pa.Table"]:
+    """
+    Split a PyArrow table into two tables based on column joinability.
+
+    Separates columns into supported types and unsupported types that cannot be
+    directly joined on but should be preserved in results.
+
+    Args:
+        table: Input PyArrow table to split
+
+    Returns:
+        Tuple of (supported_table, unsupported_table) where:
+        - supported_table contains columns with primitive/joinable types
+        - unsupported_table contains columns with complex/unjoinable types
+    """
+    supported, unsupported = [], []
+    for idx in range(len(table.columns)):
+        column: "pa.ChunkedArray" = table.column(idx)
+
+        col_type = column.type
+        if _is_pa_extension_type(column.type):
+            col_type = column.type.storage_type
+
+        if _is_pa_join_not_supported(col_type):
+            unsupported.append(idx)
+        else:
+            supported.append(idx)
+
+    return (table.select(supported), table.select(unsupported))
+
+
+def _add_back_unsupported_columns(
+    joined_table: "pa.Table",
+    unsupported_table: "pa.Table",
+    index_col_name: str,
+) -> "pa.Table":
+    # Extract the index column array and drop the column from the joined table
+    i = joined_table.schema.get_field_index(index_col_name)
+    indices = joined_table.column(i)
+    joined_table = joined_table.remove_column(i)
+
+    # Project the unsupported columns using the indices and combine with joined table
+    projected = ArrowBlockAccessor(unsupported_table).take(indices)
+    return ArrowBlockAccessor(joined_table).hstack(projected)
+
+
+def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
+    import numpy as np
+    import pyarrow as pa
+
+    index_col = pa.array(np.arange(table.num_rows))
+    return table.append_column(col_name, index_col)
+
+
+def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
+    """
+    The latest pyarrow versions do not support joins where the
+    tables contain the following types below (lists,
+    structs, maps, unions, extension types, etc.)
+
+    Args:
+        type: The input type of column.
+
+    Returns:
+        True if the type cannot be present (non join-key) during joins.
+        False if the type can be present.
+    """
+    import pyarrow as pa
+
+    pyarrow_version = get_pyarrow_version()
+    is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
+    is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
+
+    return (
+        pa.types.is_map(type)
+        or pa.types.is_union(type)
+        or pa.types.is_list(type)
+        or pa.types.is_struct(type)
+        or pa.types.is_null(type)
+        or pa.types.is_large_list(type)
+        or pa.types.is_fixed_size_list(type)
+        or (is_v12 and pa.types.is_run_end_encoded(type))
+        or (
+            is_v16
+            and (
+                pa.types.is_binary_view(type)
+                or pa.types.is_string_view(type)
+                or pa.types.is_list_view(type)
+            )
+        )
+    )
 
 
 class JoinOperator(HashShufflingOperatorBase):
