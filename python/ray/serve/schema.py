@@ -1178,6 +1178,7 @@ class Target(BaseModel, frozen=True):
     ip: str = Field(description="IP address of the target.")
     port: int = Field(description="Port of the target.")
     instance_id: str = Field(description="Instance ID of the target.")
+    name: Optional[str] = Field(description="Name of the target.")
 
 
 @PublicAPI(stability="alpha")
