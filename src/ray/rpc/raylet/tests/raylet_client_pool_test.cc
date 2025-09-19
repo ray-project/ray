@@ -101,8 +101,9 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
   std::unique_ptr<RayletClientPool> raylet_client_pool_;
 };
 
-bool CheckRayletClientPoolHasClient(const RayletClientPool &raylet_client_pool,
+bool CheckRayletClientPoolHasClient(RayletClientPool &raylet_client_pool,
                                     const NodeID &node_id) {
+  absl::MutexLock lock(&raylet_client_pool.mu_);
   return raylet_client_pool.client_map_.find(node_id) !=
          raylet_client_pool.client_map_.end();
 }

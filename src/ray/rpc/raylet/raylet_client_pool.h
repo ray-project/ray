@@ -32,7 +32,7 @@ namespace rpc {
 using RayletClientFactoryFn =
     std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
 class RayletClientPool {
-  friend bool CheckRayletClientPoolHasClient(const RayletClientPool &raylet_client_pool,
+  friend bool CheckRayletClientPoolHasClient(RayletClientPool &raylet_client_pool,
                                              const NodeID &node_id);
 
  public:
