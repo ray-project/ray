@@ -730,7 +730,8 @@ def get_group_handle(group_name: str = "default"):
     Returns:
         The collective group handle.
     """
-    _check_inside_actor()
+    if group_name != types.NIXL_GROUP_NAME:
+        _check_inside_actor()
     global _group_mgr
     if not is_group_initialized(group_name):
         # try loading from remote info store
