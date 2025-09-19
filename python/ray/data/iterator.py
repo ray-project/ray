@@ -9,7 +9,6 @@ from typing import (
     Iterable,
     Iterator,
     List,
-    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -44,7 +43,6 @@ if TYPE_CHECKING:
 
     from ray.data.dataset import (
         CollatedData,
-        DeviceLikeType,
         MaterializedDataset,
         Schema,
         TensorFlowTensorBatchType,
@@ -274,7 +272,7 @@ class DataIterator(abc.ABC):
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Union["DeviceLikeType", Literal["auto"]] = "auto",
+        device: str = "auto",
         collate_fn: Optional[
             Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
         ] = None,

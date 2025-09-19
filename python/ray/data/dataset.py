@@ -130,14 +130,11 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
+    import torch.utils.data
     from tensorflow_metadata.proto.v0 import schema_pb2
-
-    # alias of allowed device types by torch
-    DeviceLikeType = Union[str, torch.device, int]
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
-
 
 from ray.data.expressions import Expr
 
@@ -5050,7 +5047,7 @@ class Dataset:
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Union["DeviceLikeType", Literal["auto"]] = "auto",
+        device: str = "auto",
         collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
