@@ -10,7 +10,6 @@ import pyarrow.compute as pc
 
 from ray.data.block import DataBatch
 from ray.data.expressions import (
-    AliasExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
@@ -165,10 +164,6 @@ def _eval_expr_recursive(
             )
 
         return result
-
-    if isinstance(expr, AliasExpr):
-        # AliasExpr just evaluates its wrapped expression
-        return _eval_expr_recursive(expr.expr, batch, ops)
 
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 

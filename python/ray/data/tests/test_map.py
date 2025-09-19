@@ -3309,6 +3309,12 @@ def test_with_column_filter_in_pipeline(ray_start_regular_shared):
             "is_non_negative",
             [True, True, True, True, True],  # id >= 0
         ),
+        (
+            lambda: (col("id") + 1).alias("id"),
+            ["id"],  # Only one column since we're overwriting id
+            "id",
+            [1, 2, 3, 4, 5],  # id + 1 replaces original id
+        ),
     ],
     ids=[
         "col_alias",
@@ -3316,6 +3322,7 @@ def test_with_column_filter_in_pipeline(ray_start_regular_shared):
         "complex_alias",
         "literal_alias",
         "comparison_alias",
+        "overwrite_existing_column",
     ],
 )
 def test_with_column_alias_expressions(
@@ -3329,7 +3336,7 @@ def test_with_column_alias_expressions(
     expr = expr_factory()
 
     # Verify the alias name matches what we expect
-    assert expr.alias == alias_name
+    assert expr.output_name == alias_name
 
     # Apply the aliased expression
     ds = ray.data.range(5).with_column(alias_name, expr)
@@ -3346,7 +3353,7 @@ def test_with_column_alias_expressions(
     # Assert the entire DataFrame is equal
     pd.testing.assert_frame_equal(result_df, expected_df)
     # Verify the alias expression evaluates the same as the non-aliased version
-    non_aliased_expr = expr.expr
+    non_aliased_expr = expr
     ds_non_aliased = ray.data.range(5).with_column(alias_name, non_aliased_expr)
 
     non_aliased_df = ds_non_aliased.to_pandas()

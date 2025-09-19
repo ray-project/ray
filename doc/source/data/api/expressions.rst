@@ -36,6 +36,5 @@ instantiate them directly, but you may encounter them when working with expressi
     ColumnExpr
     LiteralExpr
     BinaryExpr
-    AliasExpr
     UnaryExpr
     UDFExpr

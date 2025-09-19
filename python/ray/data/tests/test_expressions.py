@@ -48,23 +48,19 @@ STRUCTURAL_EQUALITY_TEST_CASES = [
 ]
 
 
-# Parametrized test cases for alias functionality
-ALIAS_TEST_CASES = [
-    # (expression, alias_name, expected_alias, should_match_original)
-    (col("price"), "product_price", "product_price", True),
-    (lit(42), "answer", "answer", True),
-    (col("a") + col("b"), "sum", "sum", True),
-    ((col("price") * col("qty")) + lit(5), "total_with_fee", "total_with_fee", True),
-    (col("age") >= lit(18), "is_adult", "is_adult", True),
-]
-
-
 @pytest.mark.parametrize(
-    "expr, alias_name, expected_alias, should_match_original",
-    ALIAS_TEST_CASES,
+    "expr, alias_name, expected_alias",
+    [
+        # (expression, alias_name, expected_alias)
+        (col("price"), "product_price", "product_price"),
+        (lit(42), "answer", "answer"),
+        (col("a") + col("b"), "sum", "sum"),
+        ((col("price") * col("qty")) + lit(5), "total_with_fee", "total_with_fee"),
+        (col("age") >= lit(18), "is_adult", "is_adult"),
+    ],
     ids=["col_alias", "lit_alias", "binary_alias", "complex_alias", "comparison_alias"],
 )
-def test_alias_functionality(expr, alias_name, expected_alias, should_match_original):
+def test_alias_functionality(expr, alias_name, expected_alias):
     """Test alias functionality with various expression types."""
     import pandas as pd
 
@@ -80,27 +76,22 @@ def test_alias_functionality(expr, alias_name, expected_alias, should_match_orig
     # Test data type preservation
     assert aliased_expr.data_type == expr.data_type
 
-    # Test evaluation equivalence (if we can create test data)
-    if should_match_original:
-        test_data = pd.DataFrame(
-            {
-                "price": [10, 20],
-                "qty": [2, 3],
-                "a": [1, 2],
-                "b": [3, 4],
-                "age": [17, 25],
-            }
-        )
-        try:
-            original_result = eval_expr(expr, test_data)
-            aliased_result = eval_expr(aliased_expr, test_data)
-            if hasattr(original_result, "equals"):  # For pandas Series
-                assert original_result.equals(aliased_result)
-            else:  # For scalars
-                assert original_result == aliased_result
-        except (KeyError, TypeError):
-            # Skip evaluation test if columns don't exist in test data
-            pass
+    # Test evaluation equivalence
+    test_data = pd.DataFrame(
+        {
+            "price": [10, 20],
+            "qty": [2, 3],
+            "a": [1, 2],
+            "b": [3, 4],
+            "age": [17, 25],
+        }
+    )
+    original_result = eval_expr(expr, test_data)
+    aliased_result = eval_expr(aliased_expr, test_data)
+    if hasattr(original_result, "equals"):  # For pandas Series
+        assert original_result.equals(aliased_result)
+    else:  # For scalars
+        assert original_result == aliased_result
 
 
 @pytest.mark.parametrize(

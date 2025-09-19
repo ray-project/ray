@@ -131,17 +131,8 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
-                    # Handle AliasExpr: alias takes precedence over name
-                    from ray.data.expressions import AliasExpr
-
-                    if isinstance(expr, AliasExpr):
-                        actual_name = expr.alias
-                        actual_expr = expr.expr
-                    else:
-                        actual_name = name
-                        actual_expr = expr
-
-                    result = eval_expr(actual_expr, result_block)
+                    actual_name = expr.output_name or name
+                    result = eval_expr(expr, result_block)
                     result_block_accessor = BlockAccessor.for_block(result_block)
                     # Use fill_column for scalar values, upsert_column for arrays
                     if not isinstance(

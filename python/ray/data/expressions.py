@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -85,6 +85,8 @@ class Expr(ABC):
     """
 
     data_type: DataType
+    # output_name is used to rename the expression result when `alias()` is called. Not using `name` to avoid collision with ColumnExpr.name
+    output_name: Optional[str] = field(default=None, init=False)
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -208,7 +210,7 @@ class Expr(ABC):
             values = LiteralExpr(values)
         return self._bin(values, Operation.NOT_IN)
 
-    def alias(self, name: str) -> "AliasExpr":
+    def alias(self, name: str) -> "Expr":
         """Rename the expression.
 
         This method allows you to assign a new name to an expression result.
@@ -219,45 +221,16 @@ class Expr(ABC):
             name: The new name for the expression
 
         Returns:
-            An AliasExpr that wraps this expression with the specified name
+            An Expr that wraps this expression with the specified name
 
         Example:
             >>> from ray.data.expressions import col, lit
-            >>> # Create an aliased expression
+            >>> # Create an expression with a new aliased name
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(expr=self, alias=name, data_type=self.data_type)
-
-
-@DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
-class AliasExpr(Expr):
-    """Expression that represents renaming another expression.
-
-    This expression type wraps another expression and provides it with a new name.
-    When evaluated, it returns the same values as the wrapped expression but
-    allows the result to be assigned to a different column name.
-
-    Args:
-        expr: The expression to rename
-        alias: The new name for the expression
-
-    Example:
-        >>> from ray.data.expressions import col
-        >>> # Create an aliased expression
-        >>> expr = col("price").alias("product_price")
-    """
-
-    expr: Expr
-    alias: str
-
-    def structurally_equals(self, other: Any) -> bool:
-        return (
-            isinstance(other, AliasExpr)
-            and self.expr.structurally_equals(other.expr)
-            and self.alias == other.alias
-        )
+        object.__setattr__(self, "output_name", name)
+        return self
 
 
 @DeveloperAPI(stability="alpha")
@@ -654,7 +627,6 @@ __all__ = [
     "BinaryExpr",
     "UnaryExpr",
     "UDFExpr",
-    "AliasExpr",
     "DownloadExpr",
     "udf",
     "col",
