@@ -2907,21 +2907,15 @@ def get(
     if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_logged
         if not blocking_get_inside_async_logged:
-            from ray._private.ray_constants import (
-                DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC,
-                WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
-                env_bool,
-            )
-
             blocking_get_inside_async_text = (
                 "Using blocking ray.get inside async actor. "
                 "This blocks the event loop. Please use `await` "
                 "on object ref with asyncio.gather if you want to "
                 "yield execution to the event loop instead."
             )
-            if env_bool(
-                WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
-                DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC,
+            if ray_constants.env_bool(
+                ray_constants.WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+                ray_constants.DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC,
             ):
                 logger.warning(blocking_get_inside_async_text)
             else:
