@@ -68,10 +68,10 @@ The following table shows the basic syntax for label selector operator logic:
 | In | Label matches on of the provided values. | `{“key”: “in(val1,val2)”}`
 | Not in | Label matches none of the provided values. | `{“key”: “!in(val1,val2)”}`
 
-You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require a spot instance:
+You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require node id to be 123:
 
 ```python
-label_selector={"instance_type": "m5.16xlarge", “ray.io/market_type”: “spot”}  
+label_selector={"instance_type": "m5.16xlarge", “ray.io/node-id”: “123”}  
 ```
 
 ## Specify label requirements for Tasks & Actors
@@ -79,12 +79,32 @@ label_selector={"instance_type": "m5.16xlarge", “ray.io/market_type”: “spo
 Use the following syntax to add label selectors to tasks and actors:
 
 ```python
+# An example for specifing label_selector in task's @ray.remote annotation
 @ray.remote(label_selector={"label_name":"label_value"})
 def f():
     pass
-```
 
-<!-- INSERT ADDITIONAL EXAMPLES AS DESIRED -->
+# An example of specifying label_selector in actor's @ray.remote annotation
+@ray.remote(label_selector={"ray.io/accelerator-type": "nvidia-h100"})
+class Actor:
+    pass
+
+# An example of specifying label_selector in task's options
+@ray.remote
+def test_task_label_in_options():
+    pass
+
+test_task_label_in_options.options(label_selector={"test-lable-key": "test-label-value"}).remote()
+
+# An example of specifying label_selector in actor's options
+@ray.remote
+class Actor:
+    pass
+
+actor_1 = Actor.options(
+    label_selector={"ray.io/accelerator-type": "nvidia-h100"},
+).remote()
+```
 
 ## Specify label requirements for placement group bundles
 
@@ -103,6 +123,16 @@ ray.util.placement_group(
     bundle_label_selector=[{"ray.io/market-type": "spot"}] + [{"ray.io/accelerator-type": "H100"} * 2]
 )
 ```
+## Using labels with autoascaler
+Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up nodes to fulfill label requirements, you need to create multiple worker groups for different label requirement combinations and specify the all the corresponding labels in the `rayStartParams` field in the Ray cluster configuration. For example:
+
+```python
+    rayStartParams: {
+      labels: "region=me-central1,ray.io/accelerator-type=nvidia-h100"
+    }
+```
+
+In the future, Ray plans to support creating pods with default labels. This can help reduce the effort to create multiple worker groups and specifying the labels in the `rayStartParams`.
 
 <!-- Commenting out until code is provided
 
@@ -119,8 +149,19 @@ The Ray dashboard automatically shows the following information:
 <!-- ADD LINKS TO THE ABOVE WHEN AVAILABLE -->
 
 Within a task, you can programmatically obtain the node label from the RuntimeContextAPI using `ray.get_runtime_context().get_node_labels()`. This returns a Python dict.
+See the following examples:
+```python
+@ray.remote
+def test_task_label():
+   node_labels = ray.get_runtime_context().get_node_labels()
+   print(f"[test_task_label] node labels: {node_labels}")
 
-You can also access information about node label and label selector information using the state API.
+"""
+Example output:
+(test_task_label pid=68487) [test_task_label] node labels: {'test-label-1': 'test-value-1', 'test-label-key': 'test-label-value', 'test-label-2': 'test-value-2'}
+"""
+```
+You can also access information about node label and label selector information using the state API and state CLI.
 
 <!-- DJS: cannot figure out how to document this. -->
 
