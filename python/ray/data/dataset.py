@@ -1488,14 +1488,15 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """
-        # Ensure exactly one of fn or expr is provided
         # Ensure exactly one of fn, expr, or predicate is provided
         provided_params = sum([fn is not None, expr is not None, predicate is not None])
         if provided_params != 1:
             raise ValueError(
                 "Exactly one of 'fn', 'expr', or 'predicate' must be provided."
             )
-        if predicate is not None:
+
+        # Helper function to check for incompatible function parameters
+        def _check_fn_params_incompatible(param_type):
             if (
                 fn_args is not None
                 or fn_kwargs is not None
@@ -1503,8 +1504,11 @@ class Dataset:
                 or fn_constructor_kwargs is not None
             ):
                 raise ValueError(
-                    "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used."
+                    f"when '{param_type}' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used."
                 )
+
+        if predicate is not None:
+            _check_fn_params_incompatible("predicate")
             from ray.data._internal.compute import TaskPoolStrategy
 
             compute = TaskPoolStrategy(size=concurrency)
@@ -1517,15 +1521,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
         elif expr is not None:
-            if (
-                fn_args is not None
-                or fn_kwargs is not None
-                or fn_constructor_args is not None
-                or fn_constructor_kwargs is not None
-            ):
-                raise ValueError(
-                    "when 'expr' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' can not be used."
-                )
+            _check_fn_params_incompatible("expr")
             from ray.data._internal.compute import TaskPoolStrategy
             from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
                 ExpressionEvaluator,
@@ -1550,18 +1546,19 @@ class Dataset:
                 "Use 'expr' instead of 'fn' when possible for performant filters."
             )
 
-            if callable(fn):
-                compute = get_compute_strategy(
-                    fn=fn,
-                    fn_constructor_args=fn_constructor_args,
-                    compute=compute,
-                    concurrency=concurrency,
-                )
-            else:
+            if not callable(fn):
                 raise ValueError(
                     f"fn must be a UserDefinedFunction, but got "
                     f"{type(fn).__name__} instead."
                 )
+
+            compute = get_compute_strategy(
+                fn=fn,
+                fn_constructor_args=fn_constructor_args,
+                compute=compute,
+                concurrency=concurrency,
+            )
+
             # Create Filter operator with function
             filter_op = Filter(
                 input_op=self._logical_plan.dag,

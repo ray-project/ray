@@ -247,6 +247,7 @@ def plan_filter_op(
             except Exception as e:
                 _try_wrap_udf_exception(e)
 
+        init_fn = None
         transform_fn = BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(filter_block_fn),
             batch_size=None,

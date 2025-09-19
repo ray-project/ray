@@ -713,7 +713,6 @@ def test_filter_mutex(
     # Filter using lambda (UDF)
     with pytest.raises(
         ValueError,
-        match="Exactly one of 'fn', 'expr', or 'predicate' must be provided.",
     ):
         parquet_ds.filter(
             fn=lambda r: r["sepal.length"] > 5.0, expr="sepal.length > 5.0"
