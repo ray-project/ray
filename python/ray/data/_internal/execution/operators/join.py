@@ -10,6 +10,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
     MIN_PYARROW_VERSION_VIEW_TYPES,
 )
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -18,6 +19,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import GiB
 from ray.data.block import Block
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     import pyarrow as pa

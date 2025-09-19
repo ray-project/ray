@@ -1,15 +1,17 @@
 from collections import Counter, OrderedDict
 from functools import partial
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Hashable, List, Optional, Set
 
 import numpy as np
 import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
@@ -113,7 +115,7 @@ class OrdinalEncoder(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
             dataset, self.columns, encode_lists=self.encode_lists
         )
@@ -257,7 +259,7 @@ class OneHotEncoder(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
             dataset,
             self.columns,
@@ -405,7 +407,7 @@ class MultiHotEncoder(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
             dataset,
             self.columns,
@@ -509,7 +511,7 @@ class LabelEncoder(Preprocessor):
         self.label_column = label_column
         self.output_column = output_column or label_column
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
         return self
 
@@ -645,7 +647,7 @@ class Categorizer(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         columns_to_get = [
             column for column in self.columns if column not in set(self.dtypes)
         ]
@@ -675,7 +677,7 @@ class Categorizer(Preprocessor):
 
 
 def _get_unique_value_indices(
-    dataset: Dataset,
+    dataset: "Dataset",
     columns: List[str],
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",
