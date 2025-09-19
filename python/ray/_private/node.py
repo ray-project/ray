@@ -1185,8 +1185,9 @@ class Node:
             create_err=True,
         )
 
-        system_pids = self._get_system_processes_for_resource_isolation()
-        self.resource_isolation_config.add_system_pids(system_pids)
+        self.resource_isolation_config.add_system_pids(
+            self._get_system_processes_for_resource_isolation()
+        )
 
         process_info = ray._private.services.start_raylet(
             self.redis_address,
@@ -1431,7 +1432,12 @@ class Node:
         self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
 
     def _get_system_processes_for_resource_isolation(self) -> str:
-        """Returns a list of system processes that will be isolated by raylet."""
+        """Returns a list of system processes that will be isolated by raylet.
+
+        NOTE: If a new system process is started before the raylet starts up, it needs to be
+        added to self.all_processes so it can be moved into the raylet's managed cgroup
+        hierarchy.
+        """
         return ",".join(str(p[0].process.pid) for p in self.all_processes.values())
 
     def _kill_process_type(
