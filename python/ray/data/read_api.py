@@ -419,7 +419,7 @@ def read_datasource(
     )
 
     cur_pg = ray.util.get_current_placement_group()
-    requested_parallelism, _, inmemory_size = _autodetect_parallelism(
+    requested_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
         DataContext.get_current(),
