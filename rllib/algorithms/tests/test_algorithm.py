@@ -1,15 +1,16 @@
-import gymnasium as gym
-import numpy as np
 import os
+import unittest
 from pathlib import Path
 from random import choice
-import unittest
+
+import gymnasium as gym
+import numpy as np
 
 import ray
-from ray.rllib.algorithms.algorithm import Algorithm
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -615,7 +616,8 @@ class TestAlgorithm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

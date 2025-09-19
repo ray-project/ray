@@ -8,12 +8,11 @@ from ray.rllib.core.rl_module.apis import (
     TARGET_NETWORK_ACTION_DIST_INPUTS,
     TargetNetworkAPI,
 )
-from ray.rllib.utils.typing import NetworkType
-
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
+from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import DeveloperAPI
 
 

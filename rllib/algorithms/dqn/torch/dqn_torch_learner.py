@@ -3,18 +3,18 @@ from typing import Dict
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.dqn_learner import (
     ATOMS,
-    DQNLearner,
-    QF_LOSS_KEY,
     QF_LOGITS,
-    QF_MEAN_KEY,
+    QF_LOSS_KEY,
     QF_MAX_KEY,
+    QF_MEAN_KEY,
     QF_MIN_KEY,
     QF_NEXT_PREDS,
-    QF_TARGET_NEXT_PREDS,
-    QF_TARGET_NEXT_PROBS,
     QF_PREDS,
     QF_PROBS,
+    QF_TARGET_NEXT_PREDS,
+    QF_TARGET_NEXT_PROBS,
     TD_ERROR_MEAN_KEY,
+    DQNLearner,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
@@ -22,7 +22,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import TD_ERROR_KEY
 from ray.rllib.utils.typing import ModuleID, TensorType
-
 
 torch, nn = try_import_torch()
 

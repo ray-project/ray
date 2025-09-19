@@ -2,9 +2,9 @@
 import gymnasium as gym
 
 from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
+from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
-from ray.rllib.core.models.base import Model
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 

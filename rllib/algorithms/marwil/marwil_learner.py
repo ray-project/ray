@@ -1,7 +1,7 @@
 from typing import Dict, Optional
 
-from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn, TensorType

@@ -1,22 +1,19 @@
-from collections import defaultdict
 import concurrent
 import copy
-from datetime import datetime
 import functools
-import gymnasium as gym
 import importlib
 import importlib.metadata
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import pathlib
-import pyarrow.fs
 import re
 import tempfile
 import time
+from collections import defaultdict
+from datetime import datetime
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -27,26 +24,32 @@ from typing import (
     Set,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
+import gymnasium as gym
+import numpy as np
+import pyarrow.fs
 import tree  # pip install dm_tree
+from packaging import version
 
 import ray
-from ray.tune.result import TRAINING_ITERATION
+import ray.cloudpickle as pickle
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.tune import Checkpoint
-import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.algorithms.utils import (
     AggregatorActor,
     _get_env_runner_bundles,
-    _get_offline_eval_runner_bundles,
     _get_learner_bundles,
     _get_main_process_bundle,
+    _get_offline_eval_runner_bundles,
 )
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -63,11 +66,11 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
@@ -81,39 +84,34 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
-    OffPolicyEstimator,
-    ImportanceSampling,
-    WeightedImportanceSampling,
     DirectMethod,
     DoublyRobust,
+    ImportanceSampling,
+    OffPolicyEstimator,
+    WeightedImportanceSampling,
 )
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils import deep_update, FilterManager, force_list
+from ray.rllib.utils import FilterManager, deep_update, force_list
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager, RemoteCallResults
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
     OldAPIStack,
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
+    override,
 )
 from ray.rllib.utils.checkpoints import (
-    Checkpointable,
     CHECKPOINT_VERSION,
     CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
+    Checkpointable,
     get_checkpoint_info,
     try_import_msgpack,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray._common.deprecation import (
-    DEPRECATED_VALUE,
-    Deprecated,
-    deprecation_warning,
-)
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
@@ -136,9 +134,9 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
-    NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
@@ -149,19 +147,19 @@ from ray.rllib.utils.metrics import (
     RESTORE_ENV_RUNNERS_TIMER,
     RESTORE_EVAL_ENV_RUNNERS_TIMER,
     RESTORE_OFFLINE_EVAL_RUNNERS_TIMER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
     TRAINING_ITERATION_TIMER,
     TRAINING_STEP_TIMER,
-    STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.runners.runner_group import RunnerGroup
-from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
+from ray.rllib.utils.serialization import NOT_SERIALIZABLE, deserialize_type
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
@@ -184,15 +182,16 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.tune import Checkpoint
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.tune.registry import ENV_CREATOR, _global_registry, get_trainable_cls
 from ray.tune.resources import Resources
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
-from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
