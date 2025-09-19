@@ -833,9 +833,11 @@ def _wrap_transformer_with_limit(
     new_transform_fns = existing_transform_fns + [limit_transform_fn]
 
     # Create new transformer with the limit added
-    new_transformer = MapTransformer(new_transform_fns, map_transformer._init_fn)
-    if map_transformer._output_block_size_option:
-        new_transformer.set_target_max_block_size(map_transformer.target_max_block_size)
+    new_transformer = MapTransformer(
+        new_transform_fns,
+        init_fn=map_transformer._init_fn,
+        output_block_size_option_override=map_transformer._output_block_size_option_override,
+    )
 
     return new_transformer
 
