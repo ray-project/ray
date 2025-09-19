@@ -1,5 +1,6 @@
-import gymnasium as gym
 from typing import Dict, List, Union
+
+import gymnasium as gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import OldAPIStack, override
