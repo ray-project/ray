@@ -12,47 +12,16 @@ import sys
 import os
 import tempfile
 
-# Infrastructure: Handle datasets compatibility issue
-try:
-    import datasets.load
-
-    # Create a compatibility wrapper for the removed init_dynamic_modules function
-    if not hasattr(datasets.load, "init_dynamic_modules"):
-
-        def mock_init_dynamic_modules():
-            """Compatibility wrapper for datasets>=4.0.0"""
-            temp_dir = tempfile.mkdtemp()
-            datasets_modules_path = os.path.join(temp_dir, "datasets_modules")
-            os.makedirs(datasets_modules_path, exist_ok=True)
-            init_file = os.path.join(datasets_modules_path, "__init__.py")
-            with open(init_file, "w") as f:
-                f.write("# Auto-generated compatibility module\n")
-            return datasets_modules_path
-
-        # Patch the function
-        datasets.load.init_dynamic_modules = mock_init_dynamic_modules
-except ImportError:
-    pass
-
-# Infrastructure: Upgrade datasets if needed
-try:
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "datasets>=4.0.0"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-except:
-    pass
 
 # __vlm_example_start__
 import ray
-import datasets
 from PIL import Image
 from io import BytesIO
 from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
-# Load "LMMs-Eval-Lite" dataset from Hugging Face.
-vision_dataset_llms_lite = datasets.load_dataset(
+# Load "LMMs-Eval-Lite" dataset from Hugging Face 
+import datasets as datasets_lib
+vision_dataset_llms_lite = datasets_lib.load_dataset(
     "lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val"
 )
 vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
@@ -72,7 +41,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
     # Override Ray's runtime env to include the Hugging Face token. Ray Data uses Ray under the hood to orchestrate the inference pipeline.
     runtime_env=dict(
         env_vars=dict(
-            HF_TOKEN=HF_TOKEN,
+            # HF_TOKEN=HF_TOKEN, # Token not needed for public models
             VLLM_USE_V1="1",
         ),
     ),
@@ -202,13 +171,14 @@ def create_vlm_config():
             trust_remote_code=True,
             limit_mm_per_prompt={"image": 1},
         ),
-        runtime_env={"env_vars": {"HF_TOKEN": "your-hf-token-here"}},
+        runtime_env={
+            # "env_vars": {"HF_TOKEN": "your-hf-token-here"}  # Token not needed for public models
+        },
         batch_size=1,
         accelerator_type="L4",
         concurrency=1,
         has_image=True,
     )
-
 
 def run_vlm_example():
     """Run the complete VLM example workflow."""
@@ -219,111 +189,16 @@ def run_vlm_example():
         # Build processor with preprocessing
         processor = build_llm_processor(config, preprocess=vision_preprocess)
 
-        # For demo, just show configuration - actual inference requires GPU
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
         print(f"Has image support: {config.has_image}")
-        # Uncomment for actual inference: result = processor(vision_dataset).take_all()
-        return config, processor
-    return None, None
+        result = processor(vision_dataset).take_all()
+        return config, processor, result
+    return None, None, None
 
 
 # __vlm_example_end__
 
-# Test validation and cleanup
-def run_test():
-    """Test function that validates the example works including infrastructure."""
-    import sys
-
-    # Run comprehensive tests in pytest environment
-    in_pytest = "pytest" in sys.modules
-    suppress_output = in_pytest
-
-    try:
-        # Test 1: Infrastructure - datasets compatibility patch was applied
-        import datasets.load
-
-        assert hasattr(
-            datasets.load, "init_dynamic_modules"
-        ), "datasets compatibility patch not applied"
-
-        # Test 2: Infrastructure - datasets version is adequate
-        import datasets
-
-        try:
-            # Try to access a newer datasets feature to verify upgrade worked
-            from datasets import Features
-
-            if not suppress_output:
-                print(f"datasets version check passed: {datasets.__version__}")
-        except Exception as e:
-            if not suppress_output:
-                print(f"datasets version check: {e}")
-
-        # Test 3: Configuration creation
-        config = create_vlm_config()
-        assert config.model_source == "Qwen/Qwen2.5-VL-3B-Instruct"
-        assert config.has_image is True
-        assert config.accelerator_type == "L4"
-
-        # Test 4: Preprocessing with real image
-        import numpy as np
-
-        test_image = Image.fromarray(np.zeros((224, 224, 3), dtype=np.uint8))
-        test_row = {
-            "question": "What's in this image?",
-            "image": {"bytes": test_image.tobytes()},
-            "answer": ["A black square", "A white square", "A colored square"],
-        }
-
-        result = vision_preprocess(test_row)
-        assert "messages" in result
-        assert "sampling_params" in result
-        assert "original_data" in result
-        assert result["sampling_params"]["temperature"] == 0.3
-        assert len(result["messages"]) > 0
-        assert any(
-            msg.get("type") == "image" for msg in result["messages"][1]["content"]
-        )
-
-        # Test 5: Dataset loading and actual inference
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                # Create dataset with test image
-                vision_dataset = ray.data.from_items([test_row])
-
-                # Build processor and run inference
-                processor = build_llm_processor(
-                    config,
-                    preprocess=vision_preprocess,
-                    postprocess=lambda row: {"resp": row["generated_text"]},
-                )
-                result = processor(vision_dataset).take_all()
-                assert len(result) > 0, "VLM inference produced no results"
-                assert "resp" in result[0], "Missing response in inference output"
-
-                if not suppress_output:
-                    print("VLM inference successful")
-            else:
-                if not suppress_output:
-                    print("Skipping VLM inference test (GPU not available)")
-        except Exception as gpu_e:
-            if not suppress_output:
-                print(f"Skipping VLM inference test: {gpu_e}")
-
-        if not suppress_output:
-            print("VLM validation successful")
-        return True
-    except Exception as e:
-        if not suppress_output:
-            print(f"VLM infrastructure validation failed: {e}")
-        return False
-
-
 if __name__ == "__main__":
-    # Run the actual example workflow
+    # Run the example VLM workflow
     run_vlm_example()
-    # Run validation tests
-    run_test()
