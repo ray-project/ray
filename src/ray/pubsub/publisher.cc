@@ -255,6 +255,7 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
   case rpc::ChannelType::GCS_ACTOR_CHANNEL:
   case rpc::ChannelType::GCS_JOB_CHANNEL:
   case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
+  case rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL:
   case rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL:
     // Critical if messages are dropped.
     return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),

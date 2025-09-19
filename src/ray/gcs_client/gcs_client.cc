@@ -126,10 +126,12 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   auto subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/gcs_client_id_,
       /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-                                    rpc::ChannelType::GCS_JOB_CHANNEL,
-                                    rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+      std::vector<rpc::ChannelType>{
+          rpc::ChannelType::GCS_ACTOR_CHANNEL,
+          rpc::ChannelType::GCS_JOB_CHANNEL,
+          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+          rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
+          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
       [this](const rpc::Address &) {
