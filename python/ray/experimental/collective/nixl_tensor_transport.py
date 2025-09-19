@@ -30,8 +30,6 @@ class NixlTensorTransport(TensorTransportManager):
             self: "ray.actor.ActorHandle",
         ) -> bool:
             try:
-                from ray.util.collective.collective import get_group_handle
-
                 nixl_backend = get_group_handle(NIXL_GROUP_NAME)
                 return nixl_backend is not None
             except Exception:
