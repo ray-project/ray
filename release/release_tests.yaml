@@ -4309,7 +4309,6 @@
   cluster:
     byod:
       type: llm-cu128
-      post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
   run:
