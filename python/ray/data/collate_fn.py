@@ -226,7 +226,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[TorchDeviceType] = None,
+        device: Optional["TorchDeviceType"] = None,
         pin_memory: bool = False,
     ):
         """Initialize the collate function.
