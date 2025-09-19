@@ -20,7 +20,6 @@ namespace observability {
 RayActorLifecycleEvent::RayActorLifecycleEvent(
     const rpc::ActorTableData &data,
     rpc::events::ActorLifecycleEvent::State state,
-    const std::string &worker_id,
     const std::string &session_name)
     : RayEvent<rpc::events::ActorLifecycleEvent>(
           rpc::events::RayEvent::GCS,
@@ -38,7 +37,7 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(
     if (data.has_node_id()) {
       state_transition.set_node_id(data.node_id());
     }
-    state_transition.set_worker_id(worker_id);
+    state_transition.set_worker_id(data.address().worker_id());
   }
 
   if (state == rpc::events::ActorLifecycleEvent::DEAD) {
