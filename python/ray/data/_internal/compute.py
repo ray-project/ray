@@ -96,7 +96,7 @@ class ActorPoolStrategy(ComputeStrategy):
         """
         if size is not None:
             if size < 1:
-                raise ValueError("size must be >= 1", size)
+                raise ValueError(f"size must be >= 1, got: {size}")
             if max_size is not None or min_size is not None or initial_size is not None:
                 raise ValueError(
                     "min_size, max_size, and initial_size cannot be set at the same time as `size`"
@@ -105,19 +105,20 @@ class ActorPoolStrategy(ComputeStrategy):
             max_size = size
             initial_size = size
         if min_size is not None and min_size < 1:
-            raise ValueError("min_size must be >= 1", min_size)
+            raise ValueError(f"min_size must be >= 1, got: {min_size}")
         if max_size is not None:
             if min_size is None:
                 min_size = 1  # Legacy default.
             if min_size > max_size:
-                raise ValueError("min_size must be <= max_size", min_size, max_size)
+                raise ValueError(
+                    f"min_size ({min_size}) must be <= max_size ({max_size})"
+                )
         if (
             max_tasks_in_flight_per_actor is not None
             and max_tasks_in_flight_per_actor < 1
         ):
             raise ValueError(
-                "max_tasks_in_flight_per_actor must be >= 1, got: ",
-                max_tasks_in_flight_per_actor,
+                f"max_tasks_in_flight_per_actor must be >= 1, got: {max_tasks_in_flight_per_actor}"
             )
 
         self.min_size = min_size or 1

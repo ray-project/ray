@@ -109,6 +109,7 @@ class GroupedData:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -207,6 +208,11 @@ class GroupedData:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -308,6 +314,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
