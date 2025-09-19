@@ -37,3 +37,5 @@ instantiate them directly, but you may encounter them when working with expressi
     LiteralExpr
     BinaryExpr
     AliasExpr
+    UnaryExpr
+    UDFExpr
