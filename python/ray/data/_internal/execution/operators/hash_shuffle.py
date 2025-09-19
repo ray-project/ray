@@ -472,6 +472,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             data_context=data_context,
         )
 
+        assert partition_size_hint is None or partition_size_hint > 0
+
         if shuffle_progress_bar_name is None:
             shuffle_progress_bar_name = "Shuffle"
         if finalize_progress_bar_name is None:
@@ -536,7 +538,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     # Individual partition size hint is either derived from
                     #   - User input
                     #   - Estimation (avg) of input ops output block size
-                    partition_size_hint=(
+                    partition_byte_size_estimate=(
                         partition_size_hint or
                         _estimate_output_block_byte_size(input_logical_ops)
                     ),
@@ -1034,10 +1036,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         num_partitions: int,
         num_aggregators: int,
         total_available_cluster_resources: ExecutionResources,
-        partition_size_hint: Optional[int] = None,
+        partition_byte_size_estimate: Optional[int] = None,
     ):
         assert num_partitions >= num_aggregators
-        assert partition_size_hint is None or partition_size_hint > 0
 
         aggregator_total_memory_required = self._estimate_aggregator_memory_allocation(
             num_aggregators=num_aggregators,
@@ -1045,7 +1046,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # NOTE: If no partition size hint is provided we simply assume target
             #       max block size specified as the best partition size estimate
             partition_byte_size_estimate=(
-                partition_size_hint or
+                partition_byte_size_estimate or
                 self.data_context.target_max_block_size or
                 DEFAULT_TARGET_MAX_BLOCK_SIZE
             ),
