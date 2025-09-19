@@ -274,7 +274,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
+        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -1092,9 +1092,6 @@ class Dataset:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-
-        if not cols:
-            raise ValueError("select_columns requires at least one column to select.")
 
         if len(cols) != len(set(cols)):
             raise ValueError(
@@ -3406,7 +3403,7 @@ class Dataset:
 
         plan = self._plan.copy()
 
-        # NOTE: Project the dataset to avoid the need to carrying actual
+        # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
         count_op = Count(Project(self._logical_plan.dag, cols=[]))
         logical_plan = LogicalPlan(count_op, self.context)

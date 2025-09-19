@@ -1069,7 +1069,6 @@ class MissingValuePercentage(AggregateFnV2):
     def aggregate_block(self, block: Block) -> List[int]:
         column_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
 
-        # Use PyArrow compute for vectorized counting
         total_count = column_accessor.count(ignore_nulls=False)
 
         null_count = pc.sum(
