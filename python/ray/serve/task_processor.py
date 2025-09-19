@@ -341,7 +341,6 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             "loglevel": "info",
             "worker_pool": "threads",
             "worker_concurrency": self._config.adapter_config.worker_concurrency,
-            "task_default_queue": self._config.queue_name,
             # Store task results so they can be retrieved after completion
             "task_ignore_result": False,
             # Acknowledge tasks only after completion (not when received) for better reliability
