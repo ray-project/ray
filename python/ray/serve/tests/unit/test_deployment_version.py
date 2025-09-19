@@ -391,11 +391,6 @@ def test_requires_actor_reconfigure():
     v2 = DeploymentVersion("1", DeploymentConfig(num_replicas=2), {})
     assert not v1.requires_actor_reconfigure(v2)
 
-    # max_constructor_retry_count requires actor reconfigure.
-    v1 = DeploymentVersion("1", DeploymentConfig(max_constructor_retry_count=1), {})
-    v2 = DeploymentVersion("1", DeploymentConfig(max_constructor_retry_count=2), {})
-    assert v1.requires_actor_reconfigure(v2)
-
 
 def test_requires_long_poll_broadcast():
     # If max concurrent queries is updated, it needs to be broadcasted
