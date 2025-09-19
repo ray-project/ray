@@ -3535,6 +3535,7 @@ def remote(
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
     label_selector: Dict[str, str] = Undefined,
+    fallback_strategy: List[Dict[str, str]] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3661,6 +3662,10 @@ def remote(
         See :ref:`more info here <ray-pass-large-arg-by-value>`.
 
     Args:
+        *args: The function or class to make remote.
+        **kwargs: The options for the remote function or actor.
+
+    Remote Options:
         num_returns: This is only for *remote functions*. It specifies
             the number of object refs returned by the remote function
             invocation. The default value is 1.
@@ -3685,15 +3690,19 @@ def remote(
             for this task or for the lifetime of the actor.
             The default value is 0.
             See :ref:`Ray GPU support <gpu-support>` for more details.
-        resources (Dict[str, float]): The quantity of various
+        resources: The quantity of various
             :ref:`custom resources <custom-resources>`
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
-        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+        label_selector: [Experimental] If specified, the labels required for the node on
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+        fallback_strategy: If specified, expresses soft constraints
+                through a list of label selectors to fall back on when scheduling on a node.
+                The label selectors are evaluated in order during scheduling. The first satisfied
+                label selector is used.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.
@@ -3737,7 +3746,7 @@ def remote(
             or async actors, you can't set this to False. Defaults to True if you're
             using multi-threaded or async actors, and False otherwise. Actor task
             retries are always executed out of order.
-        runtime_env (Dict[str, Any]): Specifies the runtime environment for
+        runtime_env: Specifies the runtime environment for
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation.
         retry_exceptions: Only for *remote functions*. This specifies whether
