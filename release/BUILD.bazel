@@ -752,6 +752,10 @@ py_binary(
 py_binary(
     name = "custom_byod_build_init",
     srcs = ["ray_release/scripts/custom_byod_build_init.py"],
+    data = [
+        "release_data_tests.yaml",
+        "release_tests.yaml",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":ray_release",
