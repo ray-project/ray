@@ -1179,7 +1179,6 @@ python/ray/data/_internal/logical/operators/join_operator.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `Join.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Join.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [aggregator_ray_remote_args: Optional[Dict[str, Any]], join_type: str, left_columns_suffix: Optional[str], left_input_op: LogicalOperator, left_key_columns: Tuple[str], num_partitions: int, partition_size_hint: Optional[int], right_columns_suffix: Optional[str], right_input_op: LogicalOperator, right_key_columns: Tuple[str]].
 --------------------
 python/ray/data/_internal/logical/operators/map_operator.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
