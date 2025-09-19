@@ -14,6 +14,7 @@
 
 #include "ray/stats/metric.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "opencensus/stats/measure_registry.h"
@@ -98,6 +99,16 @@ Metric::Metric(const std::string &name,
           ". Metric names can only contain letters, numbers, _, and :. "
           "Metric names cannot start with numbers. Metric name cannot be "
           "empty.");
+  if (name_.find(':') != std::string::npos) {
+    RAY_LOG(WARNING) << "Metric name contains \":\", which will be no longer supported "
+                        "in the upcoming Ray release. "
+                        "Replacing with \"_\".";
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      // OpenTelemetry does not support ":" in metric names, so we replace it with "_"
+      // (https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/metrics/instrument_metadata_validator.cc#L22-L23)
+      std::replace(name_.begin(), name_.end(), ':', '_');
+    }
+  }
   for (const auto &key : tag_keys) {
     tag_keys_.push_back(opencensus::tags::TagKey::Register(key));
   }
