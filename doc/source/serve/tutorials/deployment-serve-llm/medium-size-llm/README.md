@@ -36,7 +36,7 @@ llm_config = LLMConfig(
         # Or unsloth/Meta-Llama-3.1-70B-Instruct for an ungated model
         model_source="meta-llama/Llama-3.1-70B-Instruct",
     ),
-    accelerator_type="A100-40G",
+    accelerator_type="A100-40G", # or L40S
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
@@ -121,7 +121,7 @@ from openai import OpenAI
 API_KEY = "FAKE_KEY"
 BASE_URL = "http://localhost:8000"
 
-client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 response = client.chat.completions.create(
     model="my-llama-3.1-70b",
@@ -260,9 +260,9 @@ applications:
 
 Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
-Example log:
+Example log for 8xL40S:
 ```console
-INFO 08-19 20:57:37 [kv_cache_utils.py:837] Maximum concurrency for 32,768 tokens per request: 13.02x
+INFO 08-19 20:57:37 [kv_cache_utils.py:837] Maximum concurrency for 32,768 tokens per request: 17.79x
 ```
 
 The following are a few ways to improve concurrency depending on your model and hardware:  
