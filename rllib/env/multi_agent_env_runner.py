@@ -363,9 +363,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Try stepping the environment.
             results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
-                logging.warning(
-                    f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner."
-                )
                 return self._sample(
                     num_timesteps=num_timesteps,
                     num_episodes=num_episodes,
