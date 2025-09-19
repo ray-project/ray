@@ -387,24 +387,21 @@ class JoinOperator(HashShufflingOperatorBase):
 
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
-        #
-        # NOTE: x2 due to 2 sequences involved in joins
         aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            2 * estimated_dataset_bytes / num_aggregators
+            estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to perform actual (in-memory) join
         # operation (inclusive of 50% overhead allocated for Pyarrow join
         # implementation)
         #
         # NOTE:
-        #   - x2 due to 2 partitions (from left/right sequences)
-        #   - x1.5 due to 50% overhead of in-memory join
-        join_memory_required: int = math.ceil(partition_byte_size_estimate * 3)
+        #   - 2x due to budgeted 100% overhead of Arrow's in-memory join
+        join_memory_required: int = math.ceil(partition_byte_size_estimate * 2)
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
         #
         # NOTE: x2 due to 2 sequences involved in joins
-        output_object_store_memory_required: int = 2 * partition_byte_size_estimate
+        output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
             # Inputs (object store)
