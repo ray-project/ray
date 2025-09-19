@@ -204,6 +204,7 @@ TEST_F(PullManagerWithAdmissionControlTest,
   AssertNumActiveRequestsEquals(1);
   AssertNumActiveBundlesEquals(1);
   ASSERT_TRUE(pull_manager_.IsObjectActive(oid_a));
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
 
   // Submit a GET request for objects {A, B}. B becomes pullable after this call when
   // its location/size is reported, which triggers admission logic that first
@@ -230,6 +231,7 @@ TEST_F(PullManagerWithAdmissionControlTest,
   ASSERT_TRUE(pull_manager_.IsObjectActive(oid_a));
   ASSERT_TRUE(pull_manager_.IsObjectActive(oid_b));
   ASSERT_EQ(num_abort_calls_[oid_a], 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 3);  // 2 new requests + 1 old request above.
 
   pull_manager_.CancelPull(get_req_id);
   pull_manager_.CancelPull(task_req_id);
