@@ -23,6 +23,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_client/rpc_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
 
@@ -30,7 +31,8 @@ namespace ray {
 
 class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  public:
-  GlobalStateAccessorTest() {
+  GlobalStateAccessorTest()
+      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
     if (GetParam()) {
       RayConfig::instance().gcs_storage() = "memory";
     } else {
@@ -64,7 +66,8 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     }
     io_service_.reset(new instrumented_io_context());
-    gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
+    gcs_server_.reset(
+        new gcs::GcsServer(config, *io_service_, *fake_dropped_events_counter_));
     gcs_server_->Start();
     work_ = std::make_unique<
         boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
@@ -117,6 +120,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
+
+  // Fake metric for testing.
+  std::unique_ptr<observability::FakeCounter> fake_dropped_events_counter_;
 
   std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 
