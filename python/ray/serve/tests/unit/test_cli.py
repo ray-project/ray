@@ -204,20 +204,18 @@ class TestDeploy:
 
 
 class TestValidateDeploymentConfig:
-    def empty_deploy_schema(self) -> ServeDeploySchema:
+    def empty_new_schema(self) -> ServeDeploySchema:
         return ServeDeploySchema(
             applications=[ServeApplicationSchema(import_path="dummy.module:dummy_app")]
         )
 
-    def deploy_schema_with_proxy(
-        self, proxy_location: ProxyLocation
-    ) -> ServeDeploySchema:
+    def new_schema_with_proxy(self, proxy_location: ProxyLocation) -> ServeDeploySchema:
         return ServeDeploySchema(
             proxy_location=proxy_location,
             applications=[ServeApplicationSchema(import_path="dummy.module:dummy_app")],
         )
 
-    def deploy_schema_with_http(
+    def new_schema_with_http(
         self, http_options: HTTPOptionsSchema
     ) -> ServeDeploySchema:
         return ServeDeploySchema(
@@ -225,12 +223,12 @@ class TestValidateDeploymentConfig:
             applications=[ServeApplicationSchema(import_path="dummy.module:dummy_app")],
         )
 
-    def empty_serve_details(self) -> ServeInstanceDetails:
+    def empty_existing_details(self) -> ServeInstanceDetails:
         return ServeInstanceDetails(
             controller_info=ServeActorDetails(), proxies={}, applications={}
         )
 
-    def serve_details_with_proxy(
+    def existing_details_with_proxy(
         self, proxy_location: ProxyLocation
     ) -> ServeInstanceDetails:
         return ServeInstanceDetails(
@@ -240,7 +238,7 @@ class TestValidateDeploymentConfig:
             applications={},
         )
 
-    def serve_details_with_http(
+    def existing_details_with_http(
         self, http_options: HTTPOptionsSchema
     ) -> ServeInstanceDetails:
         return ServeInstanceDetails(
@@ -253,55 +251,67 @@ class TestValidateDeploymentConfig:
     def test_wrong_params(self):
         with pytest.raises(
             AssertionError,
-            match="curr_serve_details must be ServeInstanceDetails, "
-            "got <class 'ray.serve.schema.ServeDeploySchema'>",
+            match="curr_serve_details must be `ServeInstanceDetails`, "
+            "got `ServeDeploySchema`",
         ):
             _validate_deployment_config(
-                self.empty_deploy_schema(),
-                self.empty_serve_details(),
+                self.empty_new_schema(),
+                self.empty_existing_details(),
             )
 
         with pytest.raises(
             AssertionError,
-            match="new_config must be ServeDeploySchema, "
-            "got <class 'ray.serve.schema.ServeInstanceDetails'>",
+            match="new_config must be `ServeDeploySchema`, "
+            "got `ServeInstanceDetails`",
         ):
             _validate_deployment_config(
-                self.empty_serve_details(),
-                self.empty_serve_details(),
+                self.empty_existing_details(),
+                self.empty_existing_details(),
             )
 
-    def test_no_existing_proxy_location_allows_any_new(self):
-        assert self.empty_serve_details().proxy_location is None
+        with pytest.raises(
+            AssertionError,
+            match="curr_serve_details must be `ServeInstanceDetails`, "
+            "got `NoneType`",
+        ):
+            _validate_deployment_config(None, self.empty_new_schema())
+
         _validate_deployment_config(
-            self.empty_serve_details(), self.empty_deploy_schema()
+            self.empty_existing_details(), self.empty_new_schema()
+        )
+
+    def test_no_existing_proxy_location_allows_any_new(self):
+        # happens when the deployment is served for the first time
+        assert self.empty_existing_details().proxy_location is None
+        _validate_deployment_config(
+            self.empty_existing_details(), self.empty_new_schema()
         )
 
         new_proxy_location = ProxyLocation.EveryNode
         _validate_deployment_config(
-            self.empty_serve_details(),
-            self.deploy_schema_with_proxy(new_proxy_location),
+            self.empty_existing_details(),
+            self.new_schema_with_proxy(new_proxy_location),
         )
 
         new_proxy_location = ProxyLocation.HeadOnly
         _validate_deployment_config(
-            self.empty_serve_details(),
-            self.deploy_schema_with_proxy(new_proxy_location),
+            self.empty_existing_details(),
+            self.new_schema_with_proxy(new_proxy_location),
         )
 
     def test_same_proxy_location_ok(self):
         curr_proxy_location = ProxyLocation.EveryNode
         new_proxy_location = ProxyLocation.EveryNode
         _validate_deployment_config(
-            self.serve_details_with_proxy(curr_proxy_location),
-            self.deploy_schema_with_proxy(new_proxy_location),
+            self.existing_details_with_proxy(curr_proxy_location),
+            self.new_schema_with_proxy(new_proxy_location),
         )
 
         curr_proxy_location = ProxyLocation.Disabled
         new_proxy_location = ProxyLocation.Disabled
         _validate_deployment_config(
-            self.serve_details_with_proxy(curr_proxy_location),
-            self.deploy_schema_with_proxy(new_proxy_location),
+            self.existing_details_with_proxy(curr_proxy_location),
+            self.new_schema_with_proxy(new_proxy_location),
         )
 
     def test_different_proxy_location_raises(self):
@@ -309,42 +319,48 @@ class TestValidateDeploymentConfig:
         new_proxy_location = ProxyLocation.HeadOnly
         with pytest.raises(RayServeException, match="from `EveryNode` to `HeadOnly`"):
             _validate_deployment_config(
-                self.serve_details_with_proxy(curr_proxy_location),
-                self.deploy_schema_with_proxy(new_proxy_location),
+                self.existing_details_with_proxy(curr_proxy_location),
+                self.new_schema_with_proxy(new_proxy_location),
             )
 
         curr_proxy_location = ProxyLocation.Disabled
         new_proxy_location = ProxyLocation.EveryNode
         with pytest.raises(RayServeException, match="from `Disabled` to `EveryNode`"):
             _validate_deployment_config(
-                self.serve_details_with_proxy(curr_proxy_location),
-                self.deploy_schema_with_proxy(new_proxy_location),
+                self.existing_details_with_proxy(curr_proxy_location),
+                self.new_schema_with_proxy(new_proxy_location),
             )
 
     def test_no_existing_http_options_skip_check(self):
-        assert self.empty_serve_details().http_options is None
+        # happens when the deployment is served for the first time
+        assert self.empty_existing_details().proxy_location is None
+        # happens when user doesn't specify `proxy_location`
+        assert (
+            self.empty_new_schema().dict(exclude_unset=True).get("proxy_location")
+            is None
+        )
         _validate_deployment_config(
-            self.empty_serve_details(), self.empty_deploy_schema()
+            self.empty_existing_details(), self.empty_new_schema()
         )
 
         new_http_options = HTTPOptionsSchema()
         _validate_deployment_config(
-            self.empty_serve_details(), self.deploy_schema_with_http(new_http_options)
+            self.empty_existing_details(), self.new_schema_with_http(new_http_options)
         )
 
     def test_same_http_options_ok(self):
         curr_http_options = HTTPOptionsSchema()
         new_http_options = HTTPOptionsSchema()
         _validate_deployment_config(
-            self.serve_details_with_http(curr_http_options),
-            self.deploy_schema_with_http(new_http_options),
+            self.existing_details_with_http(curr_http_options),
+            self.new_schema_with_http(new_http_options),
         )
 
         curr_http_options = HTTPOptionsSchema(port=8001)
         new_http_options = HTTPOptionsSchema(port=8001)
         _validate_deployment_config(
-            self.serve_details_with_http(curr_http_options),
-            self.deploy_schema_with_http(new_http_options),
+            self.existing_details_with_http(curr_http_options),
+            self.new_schema_with_http(new_http_options),
         )
 
     def test_changed_http_option_raises(self):
@@ -355,8 +371,8 @@ class TestValidateDeploymentConfig:
             match="Attempt to update `http_options` has been detected!",
         ):
             _validate_deployment_config(
-                self.serve_details_with_http(curr_http_options),
-                self.deploy_schema_with_http(new_http_options),
+                self.existing_details_with_http(curr_http_options),
+                self.new_schema_with_http(new_http_options),
             )
 
         curr_http_options = HTTPOptionsSchema(host="127.0.0.1", port=8000)
@@ -366,16 +382,16 @@ class TestValidateDeploymentConfig:
             match="Attempt to update `http_options` has been detected!",
         ):
             _validate_deployment_config(
-                self.serve_details_with_http(curr_http_options),
-                self.deploy_schema_with_http(new_http_options),
+                self.existing_details_with_http(curr_http_options),
+                self.new_schema_with_http(new_http_options),
             )
 
         curr_http_options = HTTPOptionsSchema(host="127.0.0.1", port=8000)
         new_http_options = HTTPOptionsSchema(host="0.0.0.0", port=8001)
         with pytest.raises(RayServeException) as ex:
             _validate_deployment_config(
-                self.serve_details_with_http(curr_http_options),
-                self.deploy_schema_with_http(new_http_options),
+                self.existing_details_with_http(curr_http_options),
+                self.new_schema_with_http(new_http_options),
             )
         msg = str(ex.value)
         assert "Attempt to update `http_options` has been detected!" in msg
