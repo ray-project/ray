@@ -750,13 +750,13 @@ def test_aggregate_validate_keys(ray_start_regular_shared_2_cpus):
     )
 
     ds_groupby_col1 = ds_named.groupby("col1").count()
-    assert ds_groupby_col1.take_all() == [
+    assert ds_groupby_col1.sort("col1").take_all() == [
         {"col1": 1, "count()": 2},
         {"col1": 2, "count()": 1},
         {"col1": 3, "count()": 1},
     ]
     ds_groupby_col2 = ds_named.groupby("col2").count()
-    assert ds_groupby_col2.take_all() == [
+    assert ds_groupby_col2.sort("col2").take_all() == [
         {"col2": "a", "count()": 1},
         {"col2": "b", "count()": 1},
         {"col2": "c", "count()": 2},
