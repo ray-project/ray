@@ -167,7 +167,7 @@ def test_report_get_all_reported_checkpoints():
 
 
 def test_report_checkpoint_upload_function(tmp_path):
-    def checkpoint_upload_function(checkpoint, full_checkpoint_dir):
+    def checkpoint_upload_function(checkpoint, full_checkpoint_dir, run_config):
         shutil.copytree(checkpoint.path, full_checkpoint_dir)
         return Checkpoint.from_directory(full_checkpoint_dir)
 

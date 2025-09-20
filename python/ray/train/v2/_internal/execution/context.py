@@ -222,7 +222,7 @@ class TrainContext:
         checkpoint: Optional["Checkpoint"] = None,
         delete_local_checkpoint_after_upload: bool = False,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], "Checkpoint"]
+            Callable[["Checkpoint", str, RunConfig], "Checkpoint"]
         ] = None,
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
@@ -232,8 +232,10 @@ class TrainContext:
             metrics: The metrics to report.
             checkpoint: The checkpoint to report.
             delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
-            checkpoint_upload_function: A user defined function that will be called with the
-                checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
+            checkpoint_upload_function: A user defined function that will be called with the local
+                checkpoint, the full remote checkpoint path e.g. `s3://bucket/path`, and the RunConfig.
+                Returns the persisted checkpoint.
+                If not provided, default to a pyarrow filesystem copy.
 
         Returns:
             The training result object containing the persisted checkpoint.
@@ -250,6 +252,7 @@ class TrainContext:
                     self.storage_context.build_checkpoint_path_from_name(
                         checkpoint_dir_name
                     ),
+                    self.train_run_context.run_config,
                 )
             else:
                 persisted_checkpoint = self.storage_context.persist_current_checkpoint(
@@ -309,7 +312,7 @@ class TrainContext:
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], "Checkpoint"]
+            Callable[["Checkpoint", str, RunConfig], "Checkpoint"]
         ] = None,
     ) -> None:
         """

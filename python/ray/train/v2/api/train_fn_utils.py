@@ -9,6 +9,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
+    from ray.train.v2.api.config import RunConfig
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -19,7 +20,9 @@ def report(
     checkpoint_dir_name: Optional[str] = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
-    checkpoint_upload_function: Optional[Callable[["Checkpoint", str], None]] = None,
+    checkpoint_upload_function: Optional[
+        Callable[["Checkpoint", str, "RunConfig"], "Checkpoint"]
+    ] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -96,8 +99,10 @@ def report(
             Defaults to uploading the checkpoint synchronously.
             This works when no checkpoint is provided but is not useful in that case.
         delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
-        checkpoint_upload_function: A user defined function that will be called with the
-            checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
+        checkpoint_upload_function: A user defined function that will be called with the local
+            checkpoint, the full remote checkpoint path e.g. `s3://bucket/path`, and the RunConfig.
+            Returns the persisted checkpoint.
+            If not provided, default to a pyarrow filesystem copy.
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
