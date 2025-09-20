@@ -298,7 +298,7 @@ Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
   // TODO(#54703): Add link to OSS documentation once available.
   RAY_CHECK(!s.IsNotFound()) << "Failed to move process " << pid << " into system cgroup "
                              << system_leaf_cgroup_
-                             << "because the cgroup was not found. "
+                             << " because the cgroup was not found. "
                                 "If resource isolation is enabled, Ray's cgroup "
                                 "hierarchy must not be modified "
                                 "while Ray is running.";

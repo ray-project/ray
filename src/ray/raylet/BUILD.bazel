@@ -303,6 +303,7 @@ ray_cc_binary(
         "//src/ray/util:stream_redirection_options",
         "//src/ray/util:time",
         "@com_github_gflags_gflags//:gflags",
+        "@com_google_absl//absl/strings",
         "@nlohmann_json",
     ],
 )
