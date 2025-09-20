@@ -58,7 +58,6 @@ ray_cc_library(
     deps = [
         ":subscriber_interface",
         "//src/ray/protobuf:pubsub_cc_proto",
-        "//src/ray/rpc:client_call",
     ],
 )
 
