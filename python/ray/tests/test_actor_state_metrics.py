@@ -98,9 +98,7 @@ def test_basic_states(shutdown_only):
     c.wait.remote()
     expected = {
         "ALIVE": 3,
-        "RUNNING_TASK": 1,
-        "RUNNING_IN_RAY_GET": 1,
-        "RUNNING_IN_RAY_WAIT": 1,
+        "RUNNING_TASKS": 3,
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
@@ -225,7 +223,7 @@ def test_async_actor(shutdown_only):
     a.sleep.remote()
     expected = {
         "ALIVE": 1,
-        "RUNNING_TASK": 1,
+        "RUNNING_TASKS": 1,
     }
     wait_for_condition(
         lambda: actors_by_state(info) == expected,
@@ -236,9 +234,10 @@ def test_async_actor(shutdown_only):
     # Test that this transitions the entire actor to reporting IN_RAY_GET state.
     a.do_get.remote()
     a.do_get.remote()
+    # This is will no longer be RUNNING_RAY_GET
     expected = {
         "ALIVE": 1,
-        "RUNNING_IN_RAY_GET": 1,
+        "RUNNING_TASKS": 1,
     }
     wait_for_condition(
         lambda: actors_by_state(info) == expected,

@@ -45,6 +45,9 @@ namespace stats {
 /// Actor stats, broken down by state.
 DECLARE_stats(actors);
 
+/// Actor running task counts broken down by state.
+DECLARE_stats(actor_tasks);
+
 /// Job stats.
 DECLARE_stats(running_jobs);
 DECLARE_stats(finished_jobs);
