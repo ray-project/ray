@@ -70,21 +70,18 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            /*record_stats=*/true,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
-      // NOTE: The raylet client server_unavailable_timeout_seconds is set to 0 because
-      // the gcs is notified when any node has died from the gcs node manager.
+      // NOTE: The raylet client server_unavailable_timeout_seconds is set to -1 because
+      // the gcs is notified when any node has died from the gcs node manager. Since we
+      // are on the gcs, we also don't need to deal with the dead node cache eviction race
+      // hence don't ever need to invoke the unavailable timeout callback.
       raylet_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<ray::rpc::RayletClient>(
             addr,
             this->client_call_manager_,
             /*raylet_unavailable_timeout_callback=*/
-            [this, addr]() {
-              const NodeID node_id = NodeID::FromBinary(addr.node_id());
-              auto alive_node = this->gcs_node_manager_->GetAliveNode(node_id);
-              if (!alive_node.has_value()) {
-                this->raylet_client_pool_.Disconnect(node_id);
-              }
-            },
-            0);
+            []() {},
+            -1,
+            false);
       }),
       worker_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(

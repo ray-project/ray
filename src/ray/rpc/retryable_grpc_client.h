@@ -134,7 +134,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       instrumented_io_context &io_context,
       uint64_t max_pending_requests_bytes,
       uint64_t check_channel_status_interval_milliseconds,
-      uint64_t server_unavailable_timeout_seconds,
+      int32_t server_unavailable_timeout_seconds,
+      bool server_call_unavailable_timeout_immediately,
       std::function<void()> server_unavailable_timeout_callback,
       std::string server_name) {
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
@@ -145,6 +146,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                                 max_pending_requests_bytes,
                                 check_channel_status_interval_milliseconds,
                                 server_unavailable_timeout_seconds,
+                                server_call_unavailable_timeout_immediately,
                                 std::move(server_unavailable_timeout_callback),
                                 std::move(server_name)));
   }
@@ -172,7 +174,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                       instrumented_io_context &io_context,
                       uint64_t max_pending_requests_bytes,
                       uint64_t check_channel_status_interval_milliseconds,
-                      uint64_t server_unavailable_timeout_seconds,
+                      int32_t server_unavailable_timeout_seconds,
+                      bool server_call_unavailable_timeout_immediately,
                       std::function<void()> server_unavailable_timeout_callback,
                       std::string server_name)
       : io_context_(io_context),
@@ -182,6 +185,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         check_channel_status_interval_milliseconds_(
             check_channel_status_interval_milliseconds),
         server_unavailable_timeout_seconds_(server_unavailable_timeout_seconds),
+        server_call_unavailable_timeout_immediately_(
+            server_call_unavailable_timeout_immediately),
         server_unavailable_timeout_callback_(
             std::move(server_unavailable_timeout_callback)),
         server_name_(std::move(server_name)) {}
@@ -201,7 +206,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // to prevent OOM.
   const uint64_t max_pending_requests_bytes_;
   const uint64_t check_channel_status_interval_milliseconds_;
-  const uint64_t server_unavailable_timeout_seconds_;
+  const int32_t server_unavailable_timeout_seconds_;
+  const bool server_call_unavailable_timeout_immediately_;
   // After the server is unavailable for server_unavailable_timeout_seconds_,
   // this callback will be called.
   std::function<void()> server_unavailable_timeout_callback_;

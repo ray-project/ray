@@ -50,7 +50,8 @@ class RayletClient : public RayletClientInterface {
   explicit RayletClient(const rpc::Address &address,
                         rpc::ClientCallManager &client_call_manager,
                         std::function<void()> raylet_unavailable_timeout_callback,
-                        int32_t server_unavailable_timeout_seconds);
+                        int32_t server_unavailable_timeout_seconds,
+                        bool server_call_unavailable_timeout_immediately);
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 

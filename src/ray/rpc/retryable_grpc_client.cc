@@ -81,7 +81,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   case GRPC_CHANNEL_CONNECTING: {
     if (server_unavailable_timeout_time_ < now) {
       server_unavailable_timeout_callback_();
-      if (server_unavailable_timeout_seconds_ == 0) {
+      if (server_unavailable_timeout_seconds_ == -1) {
         // For raylets, the gcs/gcs_node_manager will notify us when the node has died
         // hence we only need to check if the channel is available
         server_unavailable_timeout_time_ = absl::InfiniteFuture();
@@ -159,7 +159,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
-    if (server_unavailable_timeout_seconds_ == 0) {
+    if (server_call_unavailable_timeout_immediately_) {
       server_unavailable_timeout_time_ = now;
       CheckChannelStatus(true);
     } else {
