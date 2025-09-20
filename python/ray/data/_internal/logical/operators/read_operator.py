@@ -83,7 +83,9 @@ class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdow
         # number of input files being read (if any)
         if metadata.size_bytes is None or target_max_block_size is None:
             # NOTE: If there's no input files specified, return the count (could be 0)
-            return len(metadata.input_files) if metadata.input_files is not None else None
+            return (
+                len(metadata.input_files) if metadata.input_files is not None else None
+            )
 
         # Otherwise, estimate total number of blocks from estimated total
         # byte size
