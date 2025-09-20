@@ -17,6 +17,7 @@ from ray.data.block import BlockMetadata
 class JoinTestCase:
     # Expected outputs
     expected_ray_remote_args: Dict[str, Any]
+    expected_num_partitions: int
     expected_num_aggregators: int
 
     # Input dataset configurations
@@ -39,16 +40,17 @@ class JoinTestCase:
         # Branch 1: Auto-derived partitions with limited CPUs
         JoinTestCase(
             left_size_bytes=1 * GiB,
-            right_size_bytes=1 * GiB,
+            right_size_bytes=2 * GiB,
             left_num_blocks=10,
-            right_num_blocks=10,
-            target_num_partitions=None,  # Auto-derive to 10
+            right_num_blocks=5,
+            target_num_partitions=None,     # Auto-derive
             total_cpu=4.0,
-            expected_num_aggregators=4,  # min(10 partitions, 4 CPUs) = 4
+            expected_num_partitions=10,     # max(10, 5)
+            expected_num_aggregators=4,     # min(10 partitions, 4 CPUs) = 4
             expected_ray_remote_args={
-                "max_concurrency": 3,   # ceil(10 partitions / 4 aggregators)
-                "num_cpus": 0.25,       # 4 CPUs * 25% / 4 aggregators
-                "memory": 1181116013,
+                "max_concurrency": 3,       # ceil(10 partitions / 4 aggregators)
+                "num_cpus": 0.25,           # 4 CPUs * 25% / 4 aggregators
+                "memory": 1771674012,
                 "scheduling_strategy": "SPREAD",
             },
         ),
@@ -61,11 +63,12 @@ class JoinTestCase:
             right_num_blocks=10,
             target_num_partitions=1,
             total_cpu=4.0,
-            expected_num_aggregators=1,  # min(1 partition, 4 CPUs) = 1
+            expected_num_partitions=1,
+            expected_num_aggregators=1,     # min(1 partition, 4 CPUs) = 1
             expected_ray_remote_args={
                 "max_concurrency": 1,
-                "num_cpus": 1.0,  # 4 CPUs * 25% / 1 aggregator
-                "memory": 8589934640,
+                "num_cpus": 1.0,            # 4 CPUs * 25% / 1 aggregator
+                "memory": 8589934592,
                 "scheduling_strategy": "SPREAD",
             },
         ),
@@ -77,12 +80,13 @@ class JoinTestCase:
             left_num_blocks=20,
             right_num_blocks=20,
             target_num_partitions=40,
-            total_cpu=2.0,  # Only 2 CPUs available
-            expected_num_aggregators=2,  # min(40 partitions, 2 CPUs) = 2
+            total_cpu=2.0,                  # Only 2 CPUs available
+            expected_num_partitions=40,
+            expected_num_aggregators=2,     # min(40 partitions, 2 CPUs) = 2
             expected_ray_remote_args={
-                "max_concurrency": 8,   # min(ceil(40/2), 8) = 8
-                "num_cpus": 0.25,       # 2 CPUs * 25% / 2 aggregators
-                "memory": 2469606209,
+                "max_concurrency": 8,       # min(ceil(40/2), 8) = 8
+                "num_cpus": 0.25,           # 2 CPUs * 25% / 2 aggregators
+                "memory": 2469606197,
                 "scheduling_strategy": "SPREAD",
             }
         ),
@@ -95,11 +99,12 @@ class JoinTestCase:
             right_num_blocks=100,
             target_num_partitions=100,
             total_cpu=32.0,
+            expected_num_partitions=100,
             expected_num_aggregators=32,  # min(100 partitions, 32 CPUs)
             expected_ray_remote_args={
                 "max_concurrency": 4,   # ceil(100 / 32)
                 "num_cpus": 0.25,       # 32 CPUs * 25% / 32 aggregators
-                "memory": 1315333742,
+                "memory": 1315333735,
                 "scheduling_strategy": "SPREAD",
             },
         ),
@@ -112,6 +117,7 @@ class JoinTestCase:
             right_num_blocks=200,
             target_num_partitions=200,
             total_cpu=256.0,  # Many CPUs
+            expected_num_partitions=200,
             expected_num_aggregators=128,  # min(200, min(256, 128 default max))
             expected_ray_remote_args={
                 "max_concurrency": 2,   # ceil(200 / 128)
@@ -131,7 +137,6 @@ def test_join_aggregator_remote_args(
     for Aggregator actors based on dataset size estimates as well as cluster resources.
     """
 
-    # Create mock for left input
     left_logical_op_mock = MagicMock(LogicalOperator)
     left_logical_op_mock.infer_metadata.return_value = BlockMetadata(
         num_rows=None,
@@ -145,7 +150,6 @@ def test_join_aggregator_remote_args(
     left_op_mock._output_dependencies = []
     left_op_mock._logical_operators = [left_logical_op_mock]
 
-    # Create mock for right input
     right_logical_op_mock = MagicMock(LogicalOperator)
     right_logical_op_mock.infer_metadata.return_value = BlockMetadata(
         num_rows=None,
@@ -176,5 +180,7 @@ def test_join_aggregator_remote_args(
         )
 
         # Validate the estimations
+        assert op._num_partitions == tc.expected_num_partitions
+
         assert op._aggregator_pool.num_aggregators == tc.expected_num_aggregators
         assert op._aggregator_pool._aggregator_ray_remote_args == tc.expected_ray_remote_args
