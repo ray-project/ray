@@ -62,14 +62,7 @@ class TrainFnUtils(ABC):
                 Returns the persisted checkpoint.
                 If not provided, default to a pyarrow filesystem copy.
         """
-        return get_internal_train_context().report(
-            metrics,
-            checkpoint,
-            checkpoint_dir_name,
-            checkpoint_upload_mode,
-            delete_local_checkpoint_after_upload,
-            checkpoint_upload_function,
-        )
+        pass
 
     @abstractmethod
     def get_checkpoint(self) -> Optional["Checkpoint"]:
