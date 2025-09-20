@@ -50,6 +50,64 @@ steps:
       - corebuild
 
   # tests
+  - label: ":ray: core: test_task_metrics"
+    tags:
+      - python
+      - dashboard
+    instance_type: large
+    commands:
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics core
+        --install-mask all-ray-libraries
+    depends_on:
+      - corebuild
+
+  - label: ":ray: core: test_task_metrics_otel"
+    tags:
+      - python
+      - dashboard
+    instance_type: large
+    commands:
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_task_metrics_otel core
+        --install-mask all-ray-libraries
+    depends_on:
+      - corebuild
+
   - label: ":ray: core: python tests"
     tags:
       - python
