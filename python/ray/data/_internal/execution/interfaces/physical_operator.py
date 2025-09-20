@@ -115,19 +115,16 @@ class DataOpTask(OpTask):
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
 
+        self._has_completed = False
+        self._num_outputs_taken = 0
+
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
-        """Callback when data is ready to be read from the streaming generator.
-
-        Args:
-            max_bytes_to_read: Max bytes of blocks to read. If None, all available
-                will be read.
-        Returns: The number of blocks read.
-        """
+    def take_buffered_outputs(self) -> None:
+        """Take all of the blocks that Ray Core has buffered for this task."""
         bytes_read = 0
-        while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
+        while True:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
@@ -136,6 +133,7 @@ class DataOpTask(OpTask):
                     break
             except StopIteration:
                 self._task_done_callback(None)
+                self._has_completed = True
                 break
 
             try:
@@ -164,9 +162,18 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
-            bytes_read += meta.size_bytes
+            self._num_outputs_taken += 1
+            bytes_read += meta_with_schema.size_bytes
 
         return bytes_read
+
+    @property
+    def has_completed(self) -> bool:
+        return self._has_completed
+
+    @property
+    def num_outputs_taken(self) -> int:
+        return self._num_outputs_taken
 
 
 class MetadataOpTask(OpTask):

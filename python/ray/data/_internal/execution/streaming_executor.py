@@ -363,7 +363,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._update_max_bytes_to_read_metric(op, tags)
 
     def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
-        budget = self._resource_manager.get_budget(op)
+        budget = self._resource_manager.get_budget_for_scheduling(op)
         if budget is not None:
             # Convert inf to -1 to represent unlimited budget in metrics
             cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
@@ -435,8 +435,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # greater parallelism.
         num_errored_blocks = process_completed_tasks(
             topology,
-            self._backpressure_policies,
+            self._resource_manager,
             self._max_errored_blocks,
+            self._data_context._max_num_blocks_in_streaming_gen_buffer,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks

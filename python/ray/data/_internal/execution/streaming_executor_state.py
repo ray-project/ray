@@ -457,44 +457,29 @@ def build_streaming_topology(
 
 def process_completed_tasks(
     topology: Topology,
-    backpressure_policies: List[BackpressurePolicy],
+    resource_manager,
     max_errored_blocks: int,
+    max_num_blocks_in_streaming_gen_buffer: int,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
 
     Args:
         topology: The toplogy of operators.
-        backpressure_policies: The backpressure policies to use.
+        resource_manager: The resource manager to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
+        max_num_blocks_in_streaming_gen_buffer: The max number of blocks that can be
+            buffered at the streaming generator of each `DataOpTask`.
     Returns:
         The number of errored blocks.
     """
 
     # All active tasks, keyed by their waitables.
-    active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
-    for op, state in topology.items():
+    active_tasks: Dict[Waitable, Tuple[PhysicalOperator, OpTask]] = {}
+    for op in topology:
         for task in op.get_active_tasks():
-            active_tasks[task.get_waitable()] = (state, task)
-
-    max_bytes_to_read_per_op: Dict[OpState, int] = {}
-    for op, state in topology.items():
-        # Check all backpressure policies for max_task_output_bytes_to_read
-        # Use the minimum limit from all policies (most restrictive)
-        max_bytes_to_read = None
-        for policy in backpressure_policies:
-            policy_limit = policy.max_task_output_bytes_to_read(op)
-            if policy_limit is not None:
-                if max_bytes_to_read is None:
-                    max_bytes_to_read = policy_limit
-                else:
-                    max_bytes_to_read = min(max_bytes_to_read, policy_limit)
-
-        # If no policy provides a limit, there's no limit
-        op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
-        if max_bytes_to_read is not None:
-            max_bytes_to_read_per_op[state] = max_bytes_to_read
+            active_tasks[task.get_waitable()] = (op, task)
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -513,19 +498,29 @@ def process_completed_tasks(
         # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)
         for ref in ready:
-            state, task = active_tasks[ref]
-            ready_tasks_by_op[state].append(task)
+            op, task = active_tasks[ref]
+            ready_tasks_by_op[op].append(task)
 
-        for state, ready_tasks in ready_tasks_by_op.items():
+        for op, ready_tasks in ready_tasks_by_op.items():
+            object_store_memory_budget = resource_manager.get_budget_for_outputs(op)
+            if object_store_memory_budget is None:
+                object_store_memory_budget = float("inf")
+
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
+                    if object_store_memory_budget <= 0:
+                        continue
+
                     try:
-                        bytes_read = task.on_data_ready(
-                            max_bytes_to_read_per_op.get(state, None)
-                        )
-                        if state in max_bytes_to_read_per_op:
-                            max_bytes_to_read_per_op[state] -= bytes_read
+                        bytes_read = task.take_buffered_outputs()
+                        # NOTE: When you take outputs from a streaming generator, it
+                        #       immediately starts producing new data. To ensure we
+                        #       account for the new object store memory produced by the
+                        #       streaming generator, we assume the streaming generator
+                        #       produces an additional amount of data that is equal to
+                        #       the amount of data that was read.
+                        object_store_memory_budget -= bytes_read
                     except Exception as e:
                         num_errored_blocks += 1
                         should_ignore = (
@@ -534,7 +529,7 @@ def process_completed_tasks(
                         )
                         error_message = (
                             "An exception was raised from a task of "
-                            f'operator "{state.op.name}".'
+                            f'operator "{op.name}".'
                         )
                         if should_ignore:
                             remaining = (

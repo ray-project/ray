@@ -88,7 +88,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 return ActorPoolScalingRequest.no_op(
                     reason="operator exceeding resource quota"
                 )
-            budget = self._resource_manager.get_budget(op)
+            budget = self._resource_manager.get_budget_for_scheduling(op)
             if _get_max_scale_up(actor_pool, budget) == 0:
                 return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
 
