@@ -3,6 +3,11 @@ This file serves as a documentation example and CI test for basic LLM batch infe
 
 """
 
+# Dependency setup
+import subprocess
+import sys
+subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "transformers"])
+
 
 # __basic_llm_example_start__
 import ray
