@@ -191,6 +191,12 @@ def ray_deps_setup():
         sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     )
 
+    git_repository(
+        name = "benchmark",
+        remote = "https://github.com/google/benchmark",
+        tag = "v1.9.1",  # Release date: 2024/Nov/28
+    )
+
     auto_http_archive(
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",

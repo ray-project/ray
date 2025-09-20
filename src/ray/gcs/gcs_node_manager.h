@@ -83,6 +83,12 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get all node address and liveness rpc request (without labels).
+  void HandleGetAllNodeAddressAndLiveness(
+      rpc::GetAllNodeAddressAndLivenessRequest request,
+      rpc::GetAllNodeAddressAndLivenessReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle check alive request for GCS.
   void HandleCheckAlive(rpc::CheckAliveRequest request,
                         rpc::CheckAliveReply *reply,
@@ -195,6 +201,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
                             bool is_register_event) const;
+
+  void PublishNodeInfoToPubsub(const NodeID &node_id,
+                               const rpc::GcsNodeInfo &node_info) const;
 
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {
