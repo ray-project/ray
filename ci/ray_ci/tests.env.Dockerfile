@@ -23,7 +23,7 @@ RUN <<EOF
 
 set -euo pipefail
 
-if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
+if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   # Disables uploading cache when it is read-only.
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
