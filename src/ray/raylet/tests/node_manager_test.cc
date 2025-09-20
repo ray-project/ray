@@ -31,6 +31,7 @@
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
+#include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
@@ -864,6 +865,101 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   EXPECT_TRUE(callback_called);
   // With 6 used, total should remain 6
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
+}
+
+TEST_F(NodeManagerTest, AsyncGetOrWaitSkipsGetForWorkerWithoutLease) {
+  // Verifies AsyncGetOrWait drops stale GETs for workers whose lease was cleared,
+  // while leaving driver GETs unaffected.
+
+  // Prepare a mock worker returned by GetRegisteredWorker(client).
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  EXPECT_TRUE(worker->GetGrantedLeaseId().IsNil());
+
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
+      .WillRepeatedly(Return(worker));
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(0);
+
+  // Expect no pull to be registered on the ObjectManager for this GET.
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(0);
+
+  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
+  std::vector<ObjectID> object_ids;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
+  // Add one object and a corresponding (empty) owner address.
+  object_ids.push_back(ObjectID::FromRandom());
+  address_vec.push_back(protocol::CreateAddress(
+      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
+  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, fbb.CreateVector(address_vec));
+  fbb.Finish(message);
+
+  // Create a minimal client connection for ProcessClientMessage.
+  local_stream_socket fake_socket(io_service_);
+  auto client = ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      std::move(fake_socket),
+      "test-client",
+      std::vector<std::string>{});
+  node_manager_->ProcessClientMessage(
+      client,
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
+      fbb.GetBufferPointer());
+}
+
+TEST_F(NodeManagerTest, AsyncGetOrWaitRegistersGetForDriver) {
+  // A driver has no lease id; GET should still be registered.
+
+  // GetRegisteredWorker returns nullptr, driver is returned instead.
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
+      .WillRepeatedly(Return(nullptr));
+  auto driver = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(1)
+      .WillOnce(Return(driver));
+
+  // Expect a pull to be registered on the ObjectManager for this GET.
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1);
+
+  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
+  std::vector<ObjectID> object_ids;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
+  // Add one object and a corresponding (empty) owner address.
+  object_ids.push_back(ObjectID::FromRandom());
+  address_vec.push_back(protocol::CreateAddress(
+      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
+
+  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, fbb.CreateVector(address_vec));
+  fbb.Finish(message);
+
+  // Create a minimal client connection for ProcessClientMessage.
+  local_stream_socket fake_socket(io_service_);
+  auto client = ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      std::move(fake_socket),
+      "test-client",
+      std::vector<std::string>{});
+  node_manager_->ProcessClientMessage(
+      client,
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
+      fbb.GetBufferPointer());
 }
 
 class NodeManagerReturnWorkerLeaseIdempotentTest
