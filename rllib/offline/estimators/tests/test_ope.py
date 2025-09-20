@@ -1,20 +1,20 @@
+import copy
+import os
+import unittest
+from pathlib import Path
 from typing import TYPE_CHECKING, Tuple
 
-import copy
 import gymnasium as gym
 import numpy as np
-import os
 import pandas as pd
-from pathlib import Path
-import unittest
 
 import ray
 from ray.data import read_json
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
     CliffWalkingWallPolicy,
 )
+from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.offline.dataset_reader import DatasetReader
 from ray.rllib.offline.estimators import (
     DirectMethod,
@@ -327,7 +327,8 @@ class TestFQE(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

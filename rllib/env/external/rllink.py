@@ -1,9 +1,9 @@
 from enum import Enum
+
 from packaging.version import Version
 
 from ray.rllib.utils.checkpoints import try_import_msgpack
 from ray.util.annotations import DeveloperAPI
-
 
 msgpack = None
 

@@ -3,7 +3,6 @@
 import os
 import sys
 
-
 if __name__ == "__main__":
     # Do not import torch for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
