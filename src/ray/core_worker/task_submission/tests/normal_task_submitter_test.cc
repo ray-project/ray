@@ -22,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
@@ -31,6 +30,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/rpc/raylet/raylet_client_interface.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
