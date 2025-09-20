@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -16,22 +16,24 @@ from ray.data.context import DataContext
 
 
 @contextmanager
-def random_state_context(data_context: DataContext, op: RandomizeBlocks):
+def random_state_context(
+    random_state_key: str, data_context: DataContext, seed: Optional[int]
+):
 
     always_reset = data_context.always_reset_random_state_for_random_ops
 
-    if "random_state" in data_context._kv_configs and not always_reset:
+    if random_state_key in data_context._kv_configs and not always_reset:
         # Reuse the random state if it exists
-        random_state = data_context._kv_configs["random_state"]
+        random_state = data_context._kv_configs[random_state_key]
     else:
-        random_state = np.random.default_rng(op._seed)
+        random_state = np.random.default_rng(seed)
 
     yield random_state
 
     if always_reset:
-        data_context._kv_configs.pop("random_state", None)
+        data_context._kv_configs.pop(random_state_key, None)
     else:
-        data_context._kv_configs["random_state"] = random_state
+        data_context._kv_configs[random_state_key] = random_state
 
 
 def generate_randomize_blocks_fn(
@@ -56,11 +58,13 @@ def generate_randomize_blocks_fn(
         if len(blocks_with_metadata) == 0:
             return refs, {op._name: []}
         else:
-
             input_owned = all(b.owns_blocks for b in refs)
 
             nonlocal data_context
-            with random_state_context(data_context, op) as random_state:
+            # TODO: Use better random state key to avoid naming conflicts
+            with random_state_context(
+                "random_state", data_context, op._seed
+            ) as random_state:
                 random_state.shuffle(blocks_with_metadata)
 
             output = []
