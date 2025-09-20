@@ -21,8 +21,8 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray {
 namespace rpc {

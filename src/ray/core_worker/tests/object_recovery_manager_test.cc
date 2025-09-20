@@ -20,14 +20,14 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/pubsub/fake_subscriber.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/rpc/raylet/raylet_client_interface.h"
 
 namespace ray {
