@@ -80,6 +80,10 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY", 8
 )
 
+DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
+    "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 2 * GiB
+)
+
 
 class StatefulShuffleAggregation(abc.ABC):
     """Interface for a stateful aggregation to be used by hash-based shuffling
@@ -423,23 +427,6 @@ def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources)
     )
 
 
-def _estimate_output_bytes_fallback(
-    op: LogicalOperator, data_context: DataContext
-) -> int:
-    """This util provide very coarse-grained estimate for the ``LogicalOperator``s
-    output byte size based on
-
-        1. Number of expected blocks produced
-        2. Configured target max-block size (or system's default)
-    """
-
-    estimated_num_outputs: int = op.estimated_num_outputs() or DEFAULT_MIN_PARALLELISM
-
-    return estimated_num_outputs * (
-        data_context.target_max_block_size or DEFAULT_TARGET_MAX_BLOCK_SIZE
-    )
-
-
 class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
@@ -535,15 +522,12 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - User input (``partition_size_hint`` overrides estimation if provided)
         #   - Estimation (avg) of input ops output byte-size
         if partition_size_hint is not None:
+            # TODO replace with dataset-byte-size hint
             estimated_dataset_bytes = partition_size_hint * target_num_partitions
         else:
-            estimated_input_bytes = [
-                op.infer_metadata().size_bytes
-                or _estimate_output_bytes_fallback(op, data_context)
-                for op in input_logical_ops
-            ]
-
-            estimated_dataset_bytes = sum(estimated_input_bytes)
+            estimated_dataset_bytes = _try_estimate_output_bytes(
+                input_logical_ops,
+            )
 
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=target_num_partitions,
@@ -1050,17 +1034,26 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         num_partitions: int,
         num_aggregators: int,
         total_available_cluster_resources: ExecutionResources,
-        estimated_dataset_bytes: int,
+        estimated_dataset_bytes: Optional[int],
     ):
         assert num_partitions >= num_aggregators
 
-        estimated_aggregator_memory_required = self._estimate_aggregator_memory_allocation(
-            num_aggregators=num_aggregators,
-            num_partitions=num_partitions,
-            # NOTE: If no partition size hint is provided we simply assume target
-            #       max block size specified as the best partition size estimate
-            estimated_dataset_bytes=estimated_dataset_bytes,
-        )
+        if estimated_dataset_bytes is not None:
+            estimated_aggregator_memory_required = self._estimate_aggregator_memory_allocation(
+                num_aggregators=num_aggregators,
+                num_partitions=num_partitions,
+                # NOTE: If no partition size hint is provided we simply assume target
+                #       max block size specified as the best partition size estimate
+                estimated_dataset_bytes=estimated_dataset_bytes,
+            )
+        else:
+            # NOTE: In cases when we're unable to estimate dataset size,
+            #       we simply fallback to request
+            #       ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` worth of
+            #       memory for every Aggregator
+            estimated_aggregator_memory_required = (
+                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION
+            )
 
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
@@ -1528,3 +1521,21 @@ def _get_total_cluster_resources() -> ExecutionResources:
         ray._private.state.state.get_max_resources_from_cluster_config()
         or ray.cluster_resources()
     )
+
+
+def _try_estimate_output_bytes(
+    input_logical_ops: List[LogicalOperator],
+) -> Optional[int]:
+    inferred_op_output_bytes = [
+        op.infer_metadata().size_bytes
+        for op in input_logical_ops
+    ]
+
+    # Return sum of input ops estimated output byte sizes,
+    # if all are well defined
+    if all(bs is not None for bs in inferred_op_output_bytes):
+        return sum(inferred_op_output_bytes)
+
+    # TODO estimate based on expected outputs
+
+    return None
