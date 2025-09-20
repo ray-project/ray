@@ -2217,7 +2217,6 @@ cdef execute_task_with_cancellation_handler(
         actor_id = core_worker.get_actor_id()
         print("runnning 2.2", file=sys.stderr)
         actor = actor_class.__new__(actor_class)
-        print("runnning 2.3", file=sys.stderr)
         worker.actors[actor_id] = actor
 
         # Record the actor class via :actor_name: magic token in the log.
@@ -2315,9 +2314,7 @@ cdef execute_task_with_cancellation_handler(
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
             if omp_num_threads_overriden:
                 # Reset the OMP_NUM_THREADS environ if it was set.
-                print("pop omp start", file=sys.stderr)
                 os.environ.pop("OMP_NUM_THREADS", None)
-                print("pop omp end", file=sys.stderr)
 
 
     if execution_info.max_calls != 0:
