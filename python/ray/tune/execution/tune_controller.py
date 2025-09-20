@@ -1551,10 +1551,12 @@ class TuneController:
                     # ignore all results that came after that.
                     break
 
-    def _process_trial_result(self, trial, result):
+    def _process_trial_result(self, trial: Trial, result: dict[str, Any]):
         result.update(trial_id=trial.trial_id)
         is_duplicate = RESULT_DUPLICATE in result
-        force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
+        # Never checkpoint on duplicate results, recheck after callbacks
+        force_checkpoint = False
+
         # TrialScheduler and SearchAlgorithm still receive a
         # notification because there may be special handling for
         # the `on_trial_complete` hook.
@@ -1583,15 +1585,16 @@ class TuneController:
                 self._search_alg.on_trial_result(trial.trial_id, flat_result)
 
         # If this is not a duplicate result, the callbacks should
-        # be informed about the result.
+        # be informed about the result and allow its manipulation.
         if not is_duplicate:
             with warn_if_slow("callbacks.on_trial_result"):
                 self._callbacks.on_trial_result(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
-                    result=result.copy(),
+                    result=result,
                 )
+            force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             trial.update_last_result(result)
             # Include in next experiment checkpoint
             self._mark_trial_to_checkpoint(trial)

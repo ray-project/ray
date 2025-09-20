@@ -60,6 +60,8 @@ You can also implement checkpoint/restore using the Trainable Class API:
 
 You can checkpoint with three different mechanisms: manually, periodically, and at termination.
 
+.. _tune-class-trainable-checkpointing_manual-checkpointing:
+
 Manual Checkpointing
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -97,6 +99,24 @@ If you want a checkpoint to be created at the end of a trial, you can additional
     :start-after: __class_api_end_checkpointing_start__
     :end-before: __class_api_end_checkpointing_end__
 
+.. _tune-callback-checkpointing:
+
+Manual Checkpointing by Callback
+--------------------------------
+
+Similar to :ref:`tune-class-trainable-checkpointing_manual-checkpointing`,
+you can also trigger checkpointing through :class:`Tuner <ray.tune.Tuner>` :class:`Callback <ray.tune.callback.Callback>` methods
+by setting the ``result["should_checkpoint"] = True`` (or ``result[tune.result.SHOULD_CHECKPOINT] = True``) flag
+within the :meth:`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback.
+In contrast to checkpointing within the Trainable Class API, this approach decouples checkpointing logic from
+the training logic, and provides access to all :class:`Trial <ray.tune.Trial>` instances allowing for more
+complex checkpointing strategies.
+
+.. literalinclude:: /tune/doc_code/trial_checkpoint.py
+    :language: python
+    :start-after: __callback_api_checkpointing_start__
+    :end-before: __callback_api_checkpointing_end__
+
 
 Configurations
 --------------
@@ -110,21 +130,29 @@ is determined manually within the user-defined training loop. See the compatibil
    * -
      - Class API
      - Function API
+     - Callback API
    * - ``num_to_keep``
+     - ✅
      - ✅
      - ✅
    * - ``checkpoint_score_attribute``
      - ✅
      - ✅
+     - ✅*
    * - ``checkpoint_score_order``
      - ✅
      - ✅
+     - ✅*
    * - ``checkpoint_frequency``
      - ✅
      - ❌
+     - ✅*
    * - ``checkpoint_at_end``
      - ✅
      - ❌
+     - ✅*
+
+.. [*] Manual behavior must be implemented for the Callback API
 
 
 
