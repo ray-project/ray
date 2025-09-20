@@ -9,7 +9,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
     StatefulShuffleAggregation,
 )
-from ray.data._internal.util import GiB
+from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
@@ -154,13 +154,14 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         *,
         num_aggregators: int,
         num_partitions: int,
-        partition_byte_size_estimate: int,
+        estimated_dataset_bytes: int,
     ) -> int:
-        dataset_size = num_partitions * partition_byte_size_estimate
+        partition_byte_size_estimate = math.ceil(estimated_dataset_bytes / num_partitions)
+
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
         aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            dataset_size / num_aggregators
+            estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
@@ -174,12 +175,14 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             output_object_store_memory_required
         )
 
-        logger.debug(
-            f"Estimated memory requirement for aggregating operator "
-            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
-            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
-            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
-            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+        logger.info(
+            f"Estimated memory requirement for aggregating aggregator "
+            f"(partitions={num_partitions}, "
+            f"aggregators={num_aggregators}, "
+            f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
+            f"output={output_object_store_memory_required / MiB:.1f}MiB, "
+            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
         )
 
         return aggregator_total_memory_required
