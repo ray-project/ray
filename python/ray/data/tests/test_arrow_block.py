@@ -396,9 +396,7 @@ def test_register_arrow_types(tmp_path):
     ds.write_parquet(tmp_file)
 
     ds = ray.data.read_parquet(tmp_file)
-    schema = (
-        "Column  Type\n------  ----\nitem    numpy.ndarray(shape=(8, 8), dtype=int64)"
-    )
+    schema = "Column  Type\n------  ----\nitem    ArrowTensorTypeV2(shape=(8, 8), dtype=int64)"
     assert str(ds.schema()) == schema
 
     # Also run in driver script to eliminate existing imports.
