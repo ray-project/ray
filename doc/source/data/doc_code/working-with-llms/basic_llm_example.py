@@ -98,19 +98,6 @@ config = vLLMEngineProcessorConfig(
 )
 # __runai_config_example_end__
 
-# __s3_config_example_start__
-# S3 hosted model configuration
-s3_config = vLLMEngineProcessorConfig(
-    model_source="s3://your-bucket/your-model-path/",
-    engine_kwargs={
-        "load_format": "runai_streamer",
-        "max_model_len": 16384,
-    },
-    concurrency=1,
-    batch_size=64,
-)
-# __s3_config_example_end__
-
 # __lora_config_example_start__
 # Multi-LoRA configuration
 config = vLLMEngineProcessorConfig(
