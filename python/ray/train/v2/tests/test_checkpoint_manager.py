@@ -98,7 +98,7 @@ async def test_save_load_state_equivalence(
 
     # Register the training results into checkpoint manager
     for i, tr in enumerate(training_results):
-        checkpoint_manager.register_checkpoint(tr, None)
+        checkpoint_manager.register_checkpoint(tr, False)
         assert checkpoint_manager._current_report_index == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
@@ -149,7 +149,7 @@ async def test_before_init_train_context(tmp_path):
 
     # Assert with a checkpoint
     latest_checkpoint_result = create_dummy_training_results(1, storage_context)[0]
-    checkpoint_manager.register_checkpoint(latest_checkpoint_result, None)
+    checkpoint_manager.register_checkpoint(latest_checkpoint_result, False)
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
     }
