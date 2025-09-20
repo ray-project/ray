@@ -181,6 +181,21 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_raylet_client",
+    hdrs = [
+        "raylet/fake_raylet_client.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":raylet_client_interface",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common/scheduling:scheduling_ids",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "core_worker_client",
     srcs = [
         "worker/core_worker_client.cc",
@@ -201,6 +216,18 @@ ray_cc_library(
         "//src/ray/util:logging",
         "//src/ray/util:network_util",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_core_worker_client",
+    hdrs = [
+        "worker/fake_core_worker_client.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_worker_client",
         "@com_google_absl//absl/synchronization",
     ],
 )

@@ -54,14 +54,6 @@ void DrainServerCallExecutor();
 /// because they are global.
 void ResetServerCallExecutor();
 
-/// Represents the callback function to be called when a `ServiceHandler` finishes
-/// handling a request.
-/// \param status The status would be returned to client.
-/// \param success Success callback which will be invoked when the reply is successfully
-/// sent to the client.
-/// \param failure Failure callback which will be invoked when the reply fails to be
-/// sent to the client.
-
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
   /// The call is created and waiting for an incoming request.

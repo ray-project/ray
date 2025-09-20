@@ -21,6 +21,13 @@
 namespace ray {
 namespace rpc {
 
+/// Represents the callback function to be called when a `ServiceHandler` finishes
+/// handling a request.
+/// \param status The status would be returned to client.
+/// \param success Success callback which will be invoked when the reply is successfully
+/// sent to the client.
+/// \param failure Failure callback which will be invoked when the reply fails to be
+/// sent to the client.
 using SendReplyCallback = std::function<void(
     Status status, std::function<void()> success, std::function<void()> failure)>;
 

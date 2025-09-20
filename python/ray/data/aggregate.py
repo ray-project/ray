@@ -9,7 +9,7 @@ from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data import Schema
+    from ray.data.dataset import Schema
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
