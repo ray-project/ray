@@ -371,7 +371,6 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
         "target_replicas",
         "min_replicas",
         "max_replicas",
-        "metrics",
         "metrics_health",
         "decisions",
         "policy_name",
@@ -388,9 +387,8 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
         assert p["deployment"] == DEPLOY_NAME
         assert p["min_replicas"] == autoscaling_config["min_replicas"]  # 1
         assert p["max_replicas"] == autoscaling_config["max_replicas"]  # 2
-        assert isinstance(p["metrics"], dict)
-        assert p["metrics"].get("queued_requests") == 0.0
-        assert p["metrics"].get("total_requests") == 0.0
+        assert p["queued_requests"] == 0.0
+        assert p["total_requests"] == 0.0
         assert p["policy_name"] == (
             "ray.serve.autoscaling_policy:default_autoscaling_policy"
         )

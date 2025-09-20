@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from pydantic import BaseModel
 from starlette.types import Scope
 
 import ray
@@ -765,25 +766,14 @@ class AutoscalingStatus(str, Enum):
     STABLE = "AUTOSCALING_STABLE"
 
 
-@dataclass
-class DecisionRecord:
+class DecisionRecord(BaseModel):
     timestamp_str: str
-    curr_num_replicas: int
+    current_num_replicas: int
     target_num_replicas: int
     reason: str
-    policy_name: Optional[str] = None
-
-    def to_log_dict(self) -> Dict[str, Any]:
-        return {
-            "timestamp_str": self.timestamp_str,
-            "current_num_replicas": self.curr_num_replicas,
-            "target_num_replicas": self.target_num_replicas,
-            "reason": self.reason,
-        }
 
 
-@dataclass(frozen=True)
-class DeploymentSnapshot:
+class DeploymentSnapshot(BaseModel):
     timestamp_str: str
     app: str
     deployment: str
@@ -799,27 +789,6 @@ class DeploymentSnapshot:
     metrics_health: str
     errors: List[str]
     decisions: List[DecisionRecord]
-
-    def to_log_dict(self) -> Dict[str, object]:
-        return {
-            "timestamp_str": self.timestamp_str,
-            "app": self.app,
-            "deployment": self.deployment,
-            "current_replicas": self.current_replicas,
-            "target_replicas": self.target_replicas,
-            "min_replicas": self.min_replicas,
-            "max_replicas": self.max_replicas,
-            "scaling_status": self.scaling_status,
-            "policy_name": self.policy_name,
-            "look_back_period_s": self.look_back_period_s,
-            "metrics": {
-                "queued_requests": self.queued_requests,
-                "total_requests": self.total_requests,
-            },
-            "metrics_health": self.metrics_health,
-            "errors": self.errors,
-            "decisions": [d.to_log_dict() for d in self.decisions],
-        }
 
     @staticmethod
     def format_scaling_status(trigger: AutoscalingStatus) -> str:

@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import pickle
@@ -439,11 +438,8 @@ class ServeController:
             if last is not None and last.is_scaling_equivalent(deployment_snapshot):
                 continue
 
-            payload = deployment_snapshot.to_log_dict()
-            logger.info(
-                "serve_autoscaling_snapshot "
-                + json.dumps(payload, separators=(",", ":"))
-            )
+            log_json = deployment_snapshot.model_dump_json(exclude_none=True)
+            logger.info("serve_autoscaling_snapshot " + log_json)
             self._last_autoscaling_snapshots[key] = deployment_snapshot
 
     async def run_control_loop(self) -> None:
