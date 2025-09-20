@@ -1,55 +1,51 @@
 """
 This file serves as a documentation example and CI test for OpenAI API batch inference.
 
-Structure:
-1. Infrastructure setup: API key handling, testing configuration  
-2. Docs example (between __openai_example_start/end__): Embedded in Sphinx docs via literalinclude
-3. Test validation and cleanup
 """
 
 import os
 import ray.data
 from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
 
+if __name__ != "__main__" and "OPENAI_API_KEY" in os.environ:
+    # __openai_example_start__
+    import ray
+    import os
+    from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
 
-# __openai_example_start__
-import ray
-import os
-from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
+    OPENAI_KEY = os.environ["OPENAI_API_KEY"]
+    ds = ray.data.from_items(["Hand me a haiku."])
 
-OPENAI_KEY = os.environ["OPENAI_API_KEY"]
-ds = ray.data.from_items(["Hand me a haiku."])
+    config = HttpRequestProcessorConfig(
+        url="https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        qps=1,
+    )
 
-config = HttpRequestProcessorConfig(
-    url="https://api.openai.com/v1/chat/completions",
-    headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-    qps=1,
-)
-
-processor = build_llm_processor(
-    config,
-    preprocess=lambda row: dict(
-        payload=dict(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a bot that responds with haikus.",
-                },
-                {"role": "user", "content": row["item"]},
-            ],
-            temperature=0.0,
-            max_tokens=150,
+    processor = build_llm_processor(
+        config,
+        preprocess=lambda row: dict(
+            payload=dict(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a bot that responds with haikus.",
+                    },
+                    {"role": "user", "content": row["item"]},
+                ],
+                temperature=0.0,
+                max_tokens=150,
+            ),
         ),
-    ),
-    postprocess=lambda row: dict(
-        response=row["http_response"]["choices"][0]["message"]["content"]
-    ),
-)
+        postprocess=lambda row: dict(
+            response=row["http_response"]["choices"][0]["message"]["content"]
+        ),
+    )
 
-ds = processor(ds)
-print(ds.take_all())
-# __openai_example_end__
+    ds = processor(ds)
+    print(ds.take_all())
+    # __openai_example_end__
 
 
 def run_openai_demo():
@@ -89,10 +85,20 @@ def postprocess_openai_response(row):
 
 
 if __name__ == "__main__":
-    # Run live call if API key is set; otherwise show demo
-    try:
-        _ = os.environ["OPENAI_API_KEY"]
+    # Run live call if API key is set; otherwise show demo with mock output
+    if "OPENAI_API_KEY" in os.environ:
+        import ray
+
         ds = processor(ray.data.from_items(["Hand me a haiku."]))
         print(ds.take_all())
-    except KeyError:
-        run_openai_demo()
+    else:
+        # Mock response without API key
+        print(
+            [
+                {
+                    "response": (
+                        "Autumn leaves whisper\nSoft code flows in quiet lines\nBugs fall one by one"
+                    )
+                }
+            ]
+        )

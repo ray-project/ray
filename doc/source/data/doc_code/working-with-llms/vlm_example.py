@@ -15,7 +15,10 @@ import tempfile
 # Dependency setup
 import subprocess
 import sys
-subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "transformers"])
+
+subprocess.check_call(
+    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
+)
 
 
 # __vlm_example_start__
