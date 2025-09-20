@@ -63,9 +63,8 @@ from ray.data.context import (
     DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
     DEFAULT_MIN_PARALLELISM,
     DEFAULT_TARGET_MAX_BLOCK_SIZE,
+    DataContext,
 )
-from ray.data.context import DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS, \
-    DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 
 logger = logging.getLogger(__name__)
 
