@@ -18,15 +18,16 @@
 
 import argparse
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import yaml
 
 import ray
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.debug.memory import check_memory_leaks
-from ray._common.deprecation import deprecation_warning
 from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
