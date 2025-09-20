@@ -1,12 +1,11 @@
 import uuid
-from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from unittest.mock import create_autospec
 
 import pytest
 
 import ray
-from ray.train import Checkpoint, CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
@@ -14,6 +13,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.tests.util import create_dummy_training_results
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -21,24 +21,6 @@ def ray_start_4_cpus():
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
-
-
-def _create_dummy_training_results(
-    num_results: int,
-    storage_context: StorageContext,
-) -> List[_TrainingResult]:
-    return [
-        _TrainingResult(
-            checkpoint=Checkpoint(
-                path=Path(
-                    storage_context.experiment_fs_path, f"checkpoint_{i}"
-                ).as_posix(),
-                filesystem=storage_context.storage_filesystem,
-            ),
-            metrics={"score": i},
-        )
-        for i in range(num_results)
-    ]
 
 
 def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -> bool:
@@ -110,13 +92,13 @@ async def test_save_load_state_equivalence(
         storage_context=storage_context,
         checkpoint_config=checkpoint_config,
     )
-    training_results = _create_dummy_training_results(
+    training_results = create_dummy_training_results(
         num_results=3, storage_context=storage_context
     )
 
     # Register the training results into checkpoint manager
     for i, tr in enumerate(training_results):
-        checkpoint_manager.register_checkpoint(tr)
+        checkpoint_manager.register_checkpoint(tr, False)
         assert checkpoint_manager._current_report_index == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
@@ -166,11 +148,51 @@ async def test_before_init_train_context(tmp_path):
     }
 
     # Assert with a checkpoint
-    latest_checkpoint_result = _create_dummy_training_results(1, storage_context)[0]
-    checkpoint_manager.register_checkpoint(latest_checkpoint_result)
+    latest_checkpoint_result = create_dummy_training_results(1, storage_context)[0]
+    checkpoint_manager.register_checkpoint(latest_checkpoint_result, False)
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
     }
+
+
+async def test_pending_checkpoint_management(tmp_path):
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="checkpoint_validation_management_experiment",
+    )
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=1,
+        checkpoint_score_attribute="score",
+        checkpoint_score_order="max",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=checkpoint_config,
+    )
+    training_results = create_dummy_training_results(
+        num_results=3, storage_context=storage_context
+    )
+
+    # Register pending/final checkpoints and verify their storage
+    checkpoint_manager.register_checkpoint(training_results[0], True)
+    checkpoint_manager.register_checkpoint(training_results[2], False)
+    checkpoint_manager.register_checkpoint(training_results[1], True)
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[0],
+        training_results[1],
+        training_results[2],
+    ]
+
+    # Assert checkpoint state after all tasks are done
+    checkpoint_manager.update_checkpoints_with_metrics(
+        {
+            training_results[0].checkpoint: {"score": 100},
+            training_results[1].checkpoint: {"score": 200},
+        }
+    )
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[1],
+    ]
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ def _insert_into_sorted_list(list: List[Any], item: Any, key: Callable[[Any], An
         >>> list
         [{'a': 1, 'b': 0}, {'a': 1, 'b': 3}, {'a': 3, 'b': 1}, {'a': 4, 'b': 2}]
     """
+    # TODO: optimize this with sortedlist, batching, etc
     i = 0
     while i < len(list):
         # Insert to the right of all duplicates.

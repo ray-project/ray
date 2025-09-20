@@ -6,6 +6,7 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.training_report import _ValidationSpec
 from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.callback import UserCallback
 
@@ -26,7 +27,10 @@ class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
     # --------------------------
 
     def after_report(
-        self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
+        self,
+        metrics: List[Dict[str, Any]],
+        checkpoint: Optional[Checkpoint],
+        validation_spec: Optional[_ValidationSpec],
     ):
         for user_callback in self._user_callbacks:
             user_callback.after_report(

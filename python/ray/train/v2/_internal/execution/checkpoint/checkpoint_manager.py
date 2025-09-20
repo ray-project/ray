@@ -16,6 +16,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
+from ray.train.v2._internal.execution.training_report import _ValidationSpec
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -88,12 +89,20 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # for the current worker group.
         self._current_report_index = 0
 
+        # Map from checkpoint to training result
+        self._pending_training_results = {}
+
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
+        # TODO: consider restarting validations on death?
         self._maybe_load_state_from_storage()
 
-    def register_checkpoint(self, checkpoint_result: _TrainingResult):
+    def register_checkpoint(
+        self,
+        checkpoint_result: _TrainingResult,
+        is_result_pending: bool,
+    ):
         """Register new checkpoint and add to bookkeeping.
 
         This method will register a new checkpoint and add it to the internal
@@ -102,7 +111,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         checkpoints should be deleted.
 
         Args:
-            checkpoint: Tracked checkpoint object to add to bookkeeping.
+            checkpoint_result: Tracked checkpoint and associated metrics to add to bookkeeping.
+            is_result_pending: Whether the result is pending or fully ready.
         """
         self._latest_checkpoint_result = checkpoint_result
 
@@ -118,14 +128,51 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
+        if is_result_pending:
+            self._pending_training_results[
+                checkpoint_result.checkpoint
+            ] = checkpoint_result
+
+        self._save_state_and_delete_old_checkpoints()
+
+        self._current_report_index += 1
+
+        async def async_notify():
+            async with self._condition:
+                self._condition.notify_all()
+
+        asyncio.create_task(async_notify())
+
+    def update_checkpoints_with_metrics(
+        self, checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]]
+    ):
+        """Update the checkpoints with the metrics."""
+        for checkpoint, metrics in checkpoint_to_metrics.items():
+            checkpoint_result = self._pending_training_results[checkpoint]
+            checkpoint_result.metrics.update(metrics)
+            self._checkpoint_results.remove(checkpoint_result)
+            _insert_into_sorted_list(
+                self._checkpoint_results,
+                checkpoint_result,
+                key=self._get_checkpoint_score,
+            )
+            self._pending_training_results.pop(checkpoint)
+        self._save_state_and_delete_old_checkpoints()
+
+    def _save_state_and_delete_old_checkpoints(self):
+        """Delete the old checkpoints."""
+        # Get checkpoints to delete
         results_to_delete = {}
         if self._checkpoint_config.num_to_keep is not None:
             # Delete the bottom (N - K) checkpoints
             worst_results = set(
                 self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
             )
-            # Except for the latest checkpoint.
+            # Except for the latest checkpoint and pending checkpoints
             results_to_delete = worst_results - {self._latest_checkpoint_result}
+            results_to_delete = results_to_delete - set(
+                self._pending_training_results.values()
+            )
 
             # Update internal state before actually deleting them.
             self._checkpoint_results = [
@@ -146,14 +193,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             checkpoint = checkpoint_result.checkpoint
             logger.debug("Deleting checkpoint: ", checkpoint)
             delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
-
-        self._current_report_index += 1
-
-        async def async_notify():
-            async with self._condition:
-                self._condition.notify_all()
-
-        asyncio.create_task(async_notify())
 
     # --------------------------
     # CheckpointManager state
@@ -280,7 +319,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     # --------------------------
 
     def after_report(
-        self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
+        self,
+        metrics: List[Dict[str, Any]],
+        checkpoint: Optional[Checkpoint],
+        validation_spec: Optional[_ValidationSpec],
     ):
         if not checkpoint:
             self._current_report_index += 1
@@ -288,7 +330,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         rank_0_metrics = metrics[0]
         self.register_checkpoint(
-            _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics)
+            _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics),
+            bool(validation_spec),
         )
 
     # --------------------------
