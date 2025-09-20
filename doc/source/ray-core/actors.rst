@@ -414,7 +414,7 @@ Example:
     counter: ActorProxy[Counter] = CounterActor.remote()
 
     # Type checkers and IDEs will now provide type hints for remote methods
-    obj_ref = counter.increment.remote()
+    obj_ref: ray.ObjectRef[int] = counter.increment.remote()
     print(ray.get(obj_ref))
 
 For more details and advanced patterns, see :doc:`Type hints in Ray <ray-core/type-hint>`.
