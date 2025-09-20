@@ -448,6 +448,11 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        always_reset_random_state_for_random_ops: Whether to reset the random state given
+            a seed for random operations. Default to True. Set it to False to initialize
+            the random state only once during lifetime of the Dataset, which is useful for
+            model training with Ray Train. For example, setting it to False with a seed will
+            not reset the random state for each epoch.
     """
 
     # `None` means the block size is infinite.
@@ -581,6 +586,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    always_reset_random_state_for_random_ops: bool = True
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
