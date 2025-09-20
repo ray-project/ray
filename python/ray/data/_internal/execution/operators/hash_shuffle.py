@@ -60,8 +60,8 @@ from ray.data.block import (
 )
 from ray.data.context import (
     DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
-    DEFAULT_TARGET_MAX_BLOCK_SIZE,
     DEFAULT_MIN_PARALLELISM,
+    DEFAULT_TARGET_MAX_BLOCK_SIZE,
 )
 
 logger = logging.getLogger(__name__)
@@ -421,7 +421,9 @@ def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources)
     )
 
 
-def _estimate_output_bytes_fallback(op: LogicalOperator, data_context: DataContext) -> int:
+def _estimate_output_bytes_fallback(
+    op: LogicalOperator, data_context: DataContext
+) -> int:
     """This util provide very coarse-grained estimate for the ``LogicalOperator``s
     output byte size based on
 
@@ -432,8 +434,7 @@ def _estimate_output_bytes_fallback(op: LogicalOperator, data_context: DataConte
     estimated_num_outputs: int = op.estimated_num_outputs() or DEFAULT_MIN_PARALLELISM
 
     return estimated_num_outputs * (
-        data_context.target_max_block_size or
-        DEFAULT_TARGET_MAX_BLOCK_SIZE
+        data_context.target_max_block_size or DEFAULT_TARGET_MAX_BLOCK_SIZE
     )
 
 
@@ -477,8 +478,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         ]
 
         estimated_input_blocks = [
-            input_op.estimated_num_outputs()
-            for input_op in input_logical_ops
+            input_op.estimated_num_outputs() for input_op in input_logical_ops
         ]
 
         # Derive target num partitions as either of
@@ -487,11 +487,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - Default configured hash-shuffle parallelism (200)
         target_num_partitions: int = (
             num_partitions
-            or (
-                max(estimated_input_blocks)
-                if all(estimated_input_blocks)
-                else None
-            )
+            or (max(estimated_input_blocks) if all(estimated_input_blocks) else None)
             or data_context.default_hash_shuffle_parallelism
         )
 
@@ -540,7 +536,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             estimated_dataset_bytes = partition_size_hint * target_num_partitions
         else:
             estimated_input_bytes = [
-                op.infer_metadata().size_bytes or _estimate_output_bytes_fallback(op, data_context)
+                op.infer_metadata().size_bytes
+                or _estimate_output_bytes_fallback(op, data_context)
                 for op in input_logical_ops
             ]
 
@@ -1187,7 +1184,9 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
-        partition_byte_size_estimate = math.ceil(estimated_dataset_bytes / num_partitions)
+        partition_byte_size_estimate = math.ceil(
+            estimated_dataset_bytes / num_partitions
+        )
 
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
