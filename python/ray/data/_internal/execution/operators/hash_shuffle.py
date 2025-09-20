@@ -61,8 +61,6 @@ from ray.data.block import (
 )
 from ray.data.context import (
     DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
-    DEFAULT_MIN_PARALLELISM,
-    DEFAULT_TARGET_MAX_BLOCK_SIZE,
     DataContext,
 )
 
@@ -1525,8 +1523,7 @@ def _try_estimate_output_bytes(
     input_logical_ops: List[LogicalOperator],
 ) -> Optional[int]:
     inferred_op_output_bytes = [
-        op.infer_metadata().size_bytes
-        for op in input_logical_ops
+        op.infer_metadata().size_bytes for op in input_logical_ops
     ]
 
     # Return sum of input ops estimated output byte sizes,

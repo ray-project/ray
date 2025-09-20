@@ -429,7 +429,6 @@ def test_hash_aggregate_operator_remote_args(
             },
         ),
         # Case 4: No dataset size estimate inferred (fallback to default memory request)
-
         HashOperatorTestCase(
             input_size_bytes=None,
             input_num_blocks=None,
