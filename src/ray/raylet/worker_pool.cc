@@ -692,7 +692,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-    if (CheckPortFree(*port)) {
+    if (CheckPortFree(IsIPv6(node_address_) ? AF_INET6 : AF_INET, *port)) {
       return Status::OK();
     }
     // Return to pool to check later.

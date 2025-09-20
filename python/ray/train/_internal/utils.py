@@ -3,6 +3,7 @@ import functools
 import inspect
 import logging
 import os
+import socket
 from pathlib import Path
 from typing import (
     Any,
@@ -17,6 +18,7 @@ from typing import (
 )
 
 import ray
+from ray._common.network_utils import is_ipv6
 from ray.actor import ActorHandle
 from ray.air._internal.util import (
     StartTraceback,
@@ -72,8 +74,7 @@ def check_for_failure(
 def get_address_and_port() -> Tuple[str, int]:
     """Returns the IP address and a free port on this node."""
     addr = ray.util.get_node_ip_address()
-    port = find_free_port()
-
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
     return addr, port
 
 
