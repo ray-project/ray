@@ -394,7 +394,6 @@ pkg_zip(
         ":gcs_server_files",
         ":raylet_files",
         ":raylet_so_files",
-        ":redis_files",
     ] + select({
         ":jemalloc": [":jemalloc_files"],
         "//conditions:default": [],
@@ -481,6 +480,26 @@ genrule(
         echo "$${PWD}" > $@
     """,
     local = 1,
+)
+
+pkg_zip(
+    name = "ray_redis_zip",
+    srcs = [
+        ":redis_files",
+    ],
+    out = "ray_redis.zip",
+)
+
+py_binary(
+    name = "gen_redis_pkg",
+    srcs = ["gen_redis_pkg.py"],
+    data = [
+        ":ray_redis_zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
 )
 
 py_binary(
