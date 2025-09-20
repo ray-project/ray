@@ -13,9 +13,6 @@ import os
 import tempfile
 
 # Dependency setup
-import subprocess
-import sys
-
 subprocess.check_call(
     [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
 )
@@ -136,9 +133,6 @@ vision_processor = build_llm_processor(
     postprocess=vision_postprocess,
 )
 
-if __name__ != "__main__":
-    vision_processed_ds = vision_processor(vision_dataset).materialize()
-    vision_processed_ds.show(3)
 
 
 def load_vision_dataset():
