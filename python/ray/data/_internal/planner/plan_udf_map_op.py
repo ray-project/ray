@@ -130,10 +130,22 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
+                    actual_name = expr.output_name or name
                     result = eval_expr(expr, result_block)
                     result_block_accessor = BlockAccessor.for_block(result_block)
-                    result_block = result_block_accessor.upsert_column(name, result)
-
+                    # Use fill_column for scalar values, upsert_column for arrays
+                    if not isinstance(
+                        result, (pa.Array, pa.ChunkedArray, pd.Series, np.ndarray)
+                    ):
+                        # Scalar value - use fill_column to broadcast it
+                        result_block = result_block_accessor.fill_column(
+                            actual_name, result
+                        )
+                    else:
+                        # Array value - use upsert_column
+                        result_block = result_block_accessor.upsert_column(
+                            actual_name, result
+                        )
                 block = result_block
 
             # 2. (optional) column projection
