@@ -29,7 +29,9 @@ from ray.serve._private.constants import (
 )
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
+    HTTPOptionsSchema,
     LoggingConfig,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -269,6 +271,86 @@ def _generate_config_from_file_or_import_path(
     return config
 
 
+def _validate_deployment_config(
+    curr_serve_details: ServeInstanceDetails, new_config: ServeDeploySchema
+) -> None:
+    """Verify that immutable Serve options (`proxy_location`, `http_options`) are unchanged.
+
+    Rationale:
+        These options are only set when Serve first starts. Changing them later would
+        require a full Serve restart. The REST endpoint (PUT /api/serve/applications/)
+        ignores modifications to these fields (logging it to dashboard_ServeHead.log).
+        For the CLI (`serve deploy`), we fail fast to make this explicit.
+
+    Parameters:
+        curr_serve_details: Current `ServeInstanceDetails` fetched from the running cluster.
+        new_config: Proposed `ServeDeploySchema` to validate before deployment.
+
+    Raises:
+        RayServeException: If `proxy_location` differs or if any provided `http_options`
+            field value differs from the currently running configuration.
+
+    Returns:
+        None
+    """
+
+    def check_proxy_location(
+        curr_proxy_location: Optional[ProxyLocation],
+        new_proxy_location: Optional[ProxyLocation],
+    ) -> None:
+        # `curr_proxy_location is None` means `serve deploy` is triggered for the first time - no errors
+        # `new_proxy_location is None` means it's not specified in the deployment config - no errors
+        if curr_proxy_location is None or new_proxy_location is None:
+            return
+
+        if new_proxy_location != curr_proxy_location:
+            raise RayServeException(
+                f"Attempt to update `proxy_location` from `{curr_proxy_location}` "
+                f"to `{new_proxy_location}` has been detected! "
+                "Proxy config is global to your Ray cluster, and you can't update it during runtime. "
+                "Please restart Ray Serve to apply the change."
+            )
+
+    def check_http_options(
+        curr_http_options: Optional[HTTPOptionsSchema],
+        new_http_options: HTTPOptionsSchema,
+    ) -> None:
+        # `curr_http_options is None` means `serve deploy` is triggered for the first time - no errors
+        # `new_http_options is None` means it's not specified in the deployment config - no errors
+        #     it's not possible according to the current types in `ServeDeploySchema`,
+        #     verify it just in case
+        if curr_http_options is None or new_http_options is None:
+            return
+
+        diff_http_options = {}
+        for option, new_value in new_http_options.dict(exclude_unset=True).items():
+            prev_value = getattr(curr_http_options, option)
+            if prev_value != new_value:
+                diff_http_options[option] = {"previous": prev_value, "new": new_value}
+        if diff_http_options:
+            raise RayServeException(
+                "Attempt to update `http_options` has been detected! "
+                f"Attempted updates: {diff_http_options}. "
+                "HTTP config is global to your Ray cluster, and you can't update it during runtime. "
+                "Please restart Ray Serve to apply the change."
+            )
+
+    assert isinstance(
+        curr_serve_details, ServeInstanceDetails
+    ), f"curr_serve_details must be `{ServeInstanceDetails.__name__}`, got `{type(curr_serve_details).__name__}`"
+    assert isinstance(
+        new_config, ServeDeploySchema
+    ), f"new_config must be `{ServeDeploySchema.__name__}`, got `{type(new_config).__name__}`"
+
+    curr_proxy_location = curr_serve_details.proxy_location
+    new_proxy_location = new_config.dict(exclude_unset=True).get("proxy_location")
+    check_proxy_location(curr_proxy_location, new_proxy_location)
+
+    curr_http_options = curr_serve_details.http_options
+    new_http_options = new_config.http_options
+    check_http_options(curr_http_options, new_http_options)
+
+
 @cli.command(
     short_help="Deploy an application or group of applications.",
     help=(
@@ -353,7 +435,11 @@ def deploy(
         runtime_env=final_runtime_env,
     )
 
-    ServeSubmissionClient(address).deploy_applications(
+    submission_client = ServeSubmissionClient(address)
+    serve_details = ServeInstanceDetails(**submission_client.get_serve_details())
+    _validate_deployment_config(serve_details, config)
+
+    submission_client.deploy_applications(
         config.dict(exclude_unset=True),
     )
     cli_logger.success(
