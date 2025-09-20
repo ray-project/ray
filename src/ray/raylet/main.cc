@@ -29,7 +29,6 @@
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/node_config.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
@@ -256,7 +255,6 @@ int main(int argc, char *argv[]) {
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
 
-  ray::NodeConfig::Instance().SetNodeIpAddress(node_ip_address);
   gflags::ShutDownCommandLineFlags();
 
   std::unique_ptr<ray::CgroupManager> cgroup_manager;

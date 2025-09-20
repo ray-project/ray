@@ -216,7 +216,6 @@ ray_cc_library(
     deps = [
         ":filesystem",
         ":string_utils",
-        "//src/ray/common:node_config",
         "@boost//:asio",
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/container:flat_hash_map",

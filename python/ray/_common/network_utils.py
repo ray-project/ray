@@ -50,16 +50,16 @@ def node_ip_address_from_perspective(address: Optional[str] = None) -> str:
     return _node_ip_address_from_perspective(address)
 
 
-def is_ipv6(address: str) -> bool:
-    """Check if an address is IPv6 format or resolves to IPv6.
+def is_ipv6(host: str) -> bool:
+    """Check if a host is resolved to IPv6.
 
     Args:
-        address: The IP or domain name to check (must be without port).
+        host: The IP or domain name to check (must be without port).
 
     Returns:
-        True if the address is or resolves to IPv6, False if IPv4.
+        True if the host is resolved to IPv6, False if IPv4.
     """
-    return _is_ipv6(address)
+    return _is_ipv6(host)
 
 
 @lru_cache(maxsize=1)
@@ -74,7 +74,7 @@ def get_localhost_ip() -> str:
             "localhost", None, socket.AF_UNSPEC, socket.SOCK_STREAM
         )
         return dns_result[0][4][0]
-    except socket.gaierror:
+    except Exception:
         # Final fallback to IPv4 loopback
         return "127.0.0.1"
 

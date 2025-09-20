@@ -37,7 +37,6 @@
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
-#include "ray/common/node_config.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
@@ -47,24 +46,25 @@ using boost::asio::ip::tcp;
 
 namespace ray {
 
-bool IsIPv6(const std::string &address) {
+bool IsIPv6(const std::string &host) {
   boost::system::error_code ec;
-  auto addr = boost::asio::ip::make_address(address, ec);
+  auto addr = boost::asio::ip::make_address(host, ec);
   if (!ec) {
     return addr.is_v6();
   }
 
-  // address is domain name.
+  // host is domain name.
   try {
     boost::asio::io_service io_service;
     boost::asio::ip::tcp::resolver resolver(io_service);
-    boost::asio::ip::tcp::resolver::query query(address, "");
+    boost::asio::ip::tcp::resolver::query query(host, "");
     auto endpoints = resolver.resolve(query);
 
     for (const auto &endpoint : endpoints) {
       return endpoint.endpoint().address().is_v6();
     }
-  } catch (const std::exception &) {
+  } catch (const std::exception &ex) {
+    RAY_LOG(WARNING) << "Failed to resolve hostname '" << host << "': " << ex.what();
     return false;
   }
 
@@ -72,7 +72,7 @@ bool IsIPv6(const std::string &address) {
 }
 
 std::string BuildAddress(const std::string &host, const std::string &port) {
-  if (IsIPv6(host)) {
+  if (host.find(':') != std::string::npos) {
     // IPv6 address
     return absl::StrFormat("[%s]:%s", host, port);
   } else {
@@ -107,16 +107,13 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
   return std::array<std::string, 2>{host, port};
 }
 
-bool CheckPortFree(int port) {
+bool CheckPortFree(int family, int port) {
   io_context io_service;
-
-  std::string node_ip = ray::NodeConfig::Instance().GetNodeIpAddress();
-  bool is_ipv6 = IsIPv6(node_ip);
 
   std::unique_ptr<boost::asio::ip::tcp::socket> socket;
   boost::system::error_code ec;
 
-  if (is_ipv6) {
+  if (family == AF_INET6) {
     socket = std::make_unique<boost::asio::ip::tcp::socket>(io_service,
                                                             boost::asio::ip::tcp::v6());
     socket->bind(tcp::endpoint(tcp::v6(), port), ec);
@@ -129,6 +126,7 @@ bool CheckPortFree(int port) {
   socket->close();
   return !ec.failed();
 }
+
 std::string EndpointToUrl(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
     bool include_scheme) {
@@ -281,7 +279,7 @@ std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &ad
       socket.connect(ep);
       boost::asio::ip::address local_addr = socket.local_endpoint().address();
       return local_addr.to_string();
-    } catch (const std::exception &) {
+    } catch (const std::exception &ex) {
       // Continue to next address/protocol combination
       continue;
     }
@@ -311,6 +309,7 @@ std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &ad
   }
 
   // Final fallback
+  RAY_LOG(WARNING) << "Unable to detect local IP address. Defaulting to 127.0.0.1";
   return "127.0.0.1";
 }
 

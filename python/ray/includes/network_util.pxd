@@ -9,4 +9,4 @@ cdef extern from "ray/util/network_util.h" namespace "ray":
     string BuildAddress(const string &host, const string &port)
     optional[array_string_2] ParseAddress(const string &address)
     string GetNodeIpAddressFromPerspective(const optional[string] &address)
-    bool IsIPv6(const string &address)
+    bool IsIPv6(const string &host)

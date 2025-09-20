@@ -59,16 +59,17 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
 std::string GetNodeIpAddressFromPerspective(
     const std::optional<std::string> &address = std::nullopt);
 
-/// Check if an address is IPv6 format or resolves to IPv6.
-/// \param address The IP or domain name to check (must be without port).
-/// \return true if the address is or resolves to IPv6, false if IPv4.
-bool IsIPv6(const std::string &address);
+/// Check if a host is resolved to IPv6.
+/// \param host The IP or domain name to check (must be without port).
+/// \return true if the host is resolved to IPv6, false if IPv4.
+bool IsIPv6(const std::string &host);
 
-/// Check whether the given port is available, via attempt to bind a socket to the port.
+/// Check whether the given port is available for the specified address family.
 /// Notice, the check could be non-authentic if there're concurrent port assignments.
+/// \param family The address family to check (AF_INET for IPv4, AF_INET6 for IPv6).
 /// \param port The port number to check.
 /// \return true if the port is available, false otherwise.
-bool CheckPortFree(int port);
+bool CheckPortFree(int family, int port);
 
 /// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
 /// \param include_scheme Whether to include the scheme prefix (such as tcp://).
