@@ -8,15 +8,9 @@ Slurm usage with Ray can be a little bit unintuitive.
 * SLURM requires multiple copies of the same program are submitted multiple times to the same cluster to do cluster programming. This is particularly well-suited for MPI-based workloads.
 * Ray, on the other hand, expects a head-worker architecture with a single point of entry. That is, you'll need to start a Ray head node, multiple Ray worker nodes, and run your Ray script on the head node.
 
-.. warning::
+To bridge this gap, Ray 2.49 and above introduces ``ray symmetric-run`` command, which will start a Ray cluster on all nodes with given CPU and GPU resources and run your entrypoint script ONLY the head node.
 
-    SLURM support is still a work in progress. SLURM users should be aware
-    of current limitations regarding networking.
-    See :ref:`here <slurm-network-ray>` for more explanations.
-
-    SLURM support is community-maintained. Maintainer GitHub handle: tupui.
-
-This document aims to clarify how to run Ray on SLURM.
+Below, we provide a walkthrough using ``ray symmetric-run`` to run Ray on SLURM.
 
 .. contents::
   :local:
@@ -107,46 +101,27 @@ Next, we'll want to obtain a hostname and a node IP address for the head node. T
    :start-after: __doc_head_address_start__
    :end-before: __doc_head_address_end__
 
+.. note:: In Ray 2.49 and above, you can use IPv6 addresses/hostnames.
 
 
-Starting the Ray head node
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Starting Ray and executing your script
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-After detecting the head node hostname and head node IP, we'll want to create
-a Ray head node runtime. We'll do this by using ``srun`` as a background task
-as a single task/node (recall that ``tasks-per-node=1``).
+.. note:: `ray symmetric-run` is available in Ray 2.49 and above. Check older versions of the documentation if you are using a older version of Ray.
+
+Now, we'll use `ray symmetric-run` to start Ray on all nodes with given CPU and GPU resources and run your entrypoint script ONLY the head node.
 
 Below, you'll see that we explicitly specify the number of CPUs (``num-cpus``)
 and number of GPUs (``num-gpus``) to Ray, as this will prevent Ray from using
 more resources than allocated. We also need to explicitly
-indicate the ``node-ip-address`` for the Ray head runtime:
+indicate the ``address`` parameter for the head node to identify itself and other nodes to connect to:
 
 .. literalinclude:: /cluster/doc_code/slurm-basic.sh
    :language: bash
-   :start-after: __doc_head_ray_start__
-   :end-before: __doc_head_ray_end__
+   :start-after: __doc_symmetric_run_start__
+   :end-before: __doc_symmetric_run_end__
 
-By backgrounding the above srun task, we can proceed to start the Ray worker runtimes.
-
-Starting the Ray worker nodes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Below, we do the same thing, but for each worker. Make sure the Ray head and Ray worker processes are not started on the same node.
-
-.. literalinclude:: /cluster/doc_code/slurm-basic.sh
-   :language: bash
-   :start-after: __doc_worker_ray_start__
-   :end-before: __doc_worker_ray_end__
-
-Submitting your script
-~~~~~~~~~~~~~~~~~~~~~~
-
-Finally, you can invoke your Python script:
-
-.. literalinclude:: /cluster/doc_code/slurm-basic.sh
-   :language: bash
-   :start-after: __doc_script_start__
-
+After the training job is completed, the Ray cluster will be stopped automatically.
 
 .. note:: The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument is not included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
 
@@ -192,29 +167,31 @@ seen above to:
   # same as above
   ...
   srun --nodes=1 --ntasks=1 -w "$head_node" \
-      ray start --head --node-ip-address="$head_node_ip" \
-          --port=6379 \
+      ray symmetric-run --address "$ip_head" \
           --node-manager-port=6700 \
           --object-manager-port=6701 \
           --ray-client-server-port=10001 \
           --redis-shard-ports=6702 \
           --min-worker-port=10002 \
           --max-worker-port=19999 \
-          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" --block &
+          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" \
+          -- \
+          python -u your_script.py
 
   # user 2
   # same as above
   ...
   srun --nodes=1 --ntasks=1 -w "$head_node" \
-      ray start --head --node-ip-address="$head_node_ip" \
-          --port=6380 \
+      ray symmetric-run --address "$ip_head" \
           --node-manager-port=6800 \
           --object-manager-port=6801 \
           --ray-client-server-port=20001 \
           --redis-shard-ports=6802 \
           --min-worker-port=20002 \
           --max-worker-port=29999 \
-          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" --block &
+          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" \
+          -- \
+          python -u your_script.py
 
 As for the IP binding, on some cluster architecture the network interfaces
 do not allow to use external IPs between nodes. Instead, there are internal

@@ -84,7 +84,7 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
 
 USAGE:
 
-    python -m ray.scripts.symmetric_run --address ADDRESS
+    ray symmetric-run --address ADDRESS
 [--min-nodes NUM_NODES] [RAY_START_OPTIONS] -- [ENTRYPOINT_COMMAND]
 
 DESCRIPTION:
@@ -100,15 +100,15 @@ EXAMPLES:
 
     # Start Ray with default settings and run a Python script
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
+    ray symmetric-run --address 127.0.0.1:6379 -- python my_script.py
 
     # Start Ray with specific head node and run a command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
+    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
 
     # Start Ray and run a multi-word command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
+    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
 
 RAY START OPTIONS:
 
