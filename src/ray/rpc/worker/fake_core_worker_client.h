@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <list>
+#include <utility>
+
 #include "absl/synchronization/mutex.h"
 #include "ray/rpc/worker/core_worker_client.h"
 

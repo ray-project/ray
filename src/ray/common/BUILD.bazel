@@ -290,6 +290,18 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_periodical_runner",
+    hdrs = [
+        "asio/fake_periodical_runner.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":asio",
+        "@boost//:asio",
+    ],
+)
+
+ray_cc_library(
     name = "event_stats",
     srcs = [
         "event_stats.cc",

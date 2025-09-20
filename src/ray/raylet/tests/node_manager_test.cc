@@ -21,9 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -35,10 +32,13 @@
 #include "ray/common/buffer.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray::raylet {
 using ::testing::_;
