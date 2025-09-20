@@ -7,6 +7,7 @@ This file serves as a documentation example and CI test for basic LLM batch infe
 import subprocess
 import sys
 
+subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
 subprocess.check_call(
     [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
 )

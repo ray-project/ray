@@ -19,6 +19,7 @@ import sys
 subprocess.check_call(
     [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
 )
+subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
 
 
 # __vlm_example_start__

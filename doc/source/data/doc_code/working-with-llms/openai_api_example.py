@@ -89,7 +89,37 @@ if __name__ == "__main__":
     if "OPENAI_API_KEY" in os.environ:
         import ray
 
-        ds = processor(ray.data.from_items(["Hand me a haiku."]))
+        OPENAI_KEY = os.environ["OPENAI_API_KEY"]
+        ds = ray.data.from_items(["Hand me a haiku."])
+
+        config = HttpRequestProcessorConfig(
+            url="https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+            qps=1,
+        )
+
+        processor = build_llm_processor(
+            config,
+            preprocess=lambda row: dict(
+                payload=dict(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a bot that responds with haikus.",
+                        },
+                        {"role": "user", "content": row["item"]},
+                    ],
+                    temperature=0.0,
+                    max_tokens=150,
+                ),
+            ),
+            postprocess=lambda row: dict(
+                response=row["http_response"]["choices"][0]["message"]["content"]
+            ),
+        )
+
+        ds = processor(ds)
         print(ds.take_all())
     else:
         # Mock response without API key
