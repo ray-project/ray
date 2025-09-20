@@ -134,7 +134,6 @@ vision_processor = build_llm_processor(
 )
 
 
-
 def load_vision_dataset():
     """
     Load vision dataset from Hugging Face.

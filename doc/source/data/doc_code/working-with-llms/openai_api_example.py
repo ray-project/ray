@@ -7,11 +7,10 @@ import os
 import ray.data
 from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
 
-if __name__ != "__main__" and "OPENAI_API_KEY" in os.environ:
+
+def run_openai_example():
     # __openai_example_start__
     import ray
-    import os
-    from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
 
     OPENAI_KEY = os.environ["OPENAI_API_KEY"]
     ds = ray.data.from_items(["Hand me a haiku."])
@@ -87,40 +86,7 @@ def postprocess_openai_response(row):
 if __name__ == "__main__":
     # Run live call if API key is set; otherwise show demo with mock output
     if "OPENAI_API_KEY" in os.environ:
-        import ray
-
-        OPENAI_KEY = os.environ["OPENAI_API_KEY"]
-        ds = ray.data.from_items(["Hand me a haiku."])
-
-        config = HttpRequestProcessorConfig(
-            url="https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-            qps=1,
-        )
-
-        processor = build_llm_processor(
-            config,
-            preprocess=lambda row: dict(
-                payload=dict(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a bot that responds with haikus.",
-                        },
-                        {"role": "user", "content": row["item"]},
-                    ],
-                    temperature=0.0,
-                    max_tokens=150,
-                ),
-            ),
-            postprocess=lambda row: dict(
-                response=row["http_response"]["choices"][0]["message"]["content"]
-            ),
-        )
-
-        ds = processor(ds)
-        print(ds.take_all())
+        run_openai_example()
     else:
         # Mock response without API key
         print(
