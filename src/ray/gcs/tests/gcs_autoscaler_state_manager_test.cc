@@ -25,7 +25,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs/gcs_actor_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_placement_group_manager.h"
@@ -38,6 +37,7 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray {
 
