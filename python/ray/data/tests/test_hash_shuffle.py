@@ -34,10 +34,9 @@ class JoinTestCase:
     total_memory: int = 32 * GiB
 
 
-
 @pytest.mark.parametrize(
     "tc", [
-        # Branch 1: Auto-derived partitions with limited CPUs
+        # Case 1: Auto-derived partitions with limited CPUs
         JoinTestCase(
             left_size_bytes=1 * GiB,
             right_size_bytes=2 * GiB,
@@ -55,7 +54,7 @@ class JoinTestCase:
             },
         ),
 
-        # Branch 2: Single partition (much higher memory overhead)
+        # Case 2: Single partition (much higher memory overhead)
         JoinTestCase(
             left_size_bytes=1 * GiB,
             right_size_bytes=1 * GiB,
@@ -73,7 +72,7 @@ class JoinTestCase:
             },
         ),
 
-        # Branch 3: Limited CPU resources affecting num_cpus calculation
+        # Case 3: Limited CPU resources affecting num_cpus calculation
         JoinTestCase(
             left_size_bytes=2 * GiB,
             right_size_bytes=2 * GiB,
@@ -91,7 +90,7 @@ class JoinTestCase:
             }
         ),
 
-        # Branch 4: Testing with many CPUs and partitions
+        # Case 4: Testing with many CPUs and partitions
         JoinTestCase(
             left_size_bytes=10 * GiB,
             right_size_bytes=10 * GiB,
@@ -100,34 +99,51 @@ class JoinTestCase:
             target_num_partitions=100,
             total_cpu=32.0,
             expected_num_partitions=100,
-            expected_num_aggregators=32,  # min(100 partitions, 32 CPUs)
+            expected_num_aggregators=32,    # min(100 partitions, 32 CPUs)
             expected_ray_remote_args={
-                "max_concurrency": 4,   # ceil(100 / 32)
-                "num_cpus": 0.25,       # 32 CPUs * 25% / 32 aggregators
+                "max_concurrency": 4,       # ceil(100 / 32)
+                "num_cpus": 0.25,           # 32 CPUs * 25% / 32 aggregators
                 "memory": 1315333735,
                 "scheduling_strategy": "SPREAD",
             },
         ),
 
-        # Branch 5: Testing max aggregators cap (128 default)
+        # Case 5: Testing max aggregators cap (128 default)
         JoinTestCase(
             left_size_bytes=50 * GiB,
             right_size_bytes=50 * GiB,
             left_num_blocks=200,
             right_num_blocks=200,
             target_num_partitions=200,
-            total_cpu=256.0,  # Many CPUs
+            total_cpu=256.0,                # Many CPUs
             expected_num_partitions=200,
-            expected_num_aggregators=128,  # min(200, min(256, 128 default max))
+            expected_num_aggregators=128,   # min(200, min(256, 128 (default max))
             expected_ray_remote_args={
-                "max_concurrency": 2,   # ceil(200 / 128)
-                "num_cpus": 0.5,        # 256 CPUs * 25% / 128 aggregators
+                "max_concurrency": 2,       # ceil(200 / 128)
+                "num_cpus": 0.5,            # 256 CPUs * 25% / 128 aggregators
+                "memory": 2449473536,
+                "scheduling_strategy": "SPREAD",
+            },
+        ),
+
+        # Case 6: Testing max aggregators cap (128 default)
+        JoinTestCase(
+            left_size_bytes=50 * GiB,
+            right_size_bytes=50 * GiB,
+            left_num_blocks=200,
+            right_num_blocks=200,
+            target_num_partitions=None,
+            total_cpu=1024,                 # Many CPUs
+            expected_num_partitions=200,
+            expected_num_aggregators=128,   # min(200, min(1000, 128 (default max))
+            expected_ray_remote_args={
+                "max_concurrency": 2,       # ceil(200 / 128)
+                "num_cpus": 0.57031,        # ~2.5Gb / 4Gb = ~0.57
                 "memory": 2449473536,
                 "scheduling_strategy": "SPREAD",
             },
         ),
     ],
-    ids=lambda tc: str(tc)
 )
 def test_join_aggregator_remote_args(
     ray_start_regular,
