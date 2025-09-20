@@ -142,7 +142,6 @@ class JoinTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 7: No dataset byte size is inferred, but num outputs is known
         JoinTestCase(
             left_size_bytes=None,
@@ -163,7 +162,6 @@ class JoinTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 8: No dataset size estimates available (fallback to default memory request)
         JoinTestCase(
             left_size_bytes=None,
@@ -278,7 +276,6 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 2: Single partition produced
         HashOperatorTestCase(
             input_size_bytes=512 * MiB,
@@ -294,7 +291,6 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 3: Many CPUs
         HashOperatorTestCase(
             input_size_bytes=16 * GiB,
@@ -310,7 +306,6 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 4: Testing num_cpus derived from memory allocation
         HashOperatorTestCase(
             input_size_bytes=50 * GiB,
@@ -326,7 +321,6 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 5: No dataset size estimate inferred (fallback to default memory request)
         HashOperatorTestCase(
             input_size_bytes=None,
@@ -342,7 +336,6 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 6: No dataset size estimate inferred (fallback to default memory request)
         HashOperatorTestCase(
             input_size_bytes=None,
@@ -424,7 +417,6 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 2: Single partition produced
         HashOperatorTestCase(
             input_size_bytes=512 * MiB,
@@ -440,7 +432,6 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 3: Many CPUs
         HashOperatorTestCase(
             input_size_bytes=16 * GiB,
@@ -456,7 +447,6 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 4: Testing num_cpus derived from memory allocation
         HashOperatorTestCase(
             input_size_bytes=50 * GiB,
@@ -472,7 +462,6 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         HashOperatorTestCase(
             input_size_bytes=None,
             input_num_blocks=16,
@@ -487,7 +476,6 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
-
         # Case 5: No dataset size estimate inferred (fallback to default memory request)
         HashOperatorTestCase(
             input_size_bytes=None,
