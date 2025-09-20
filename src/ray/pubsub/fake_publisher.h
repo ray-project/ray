@@ -14,12 +14,14 @@
 
 #pragma once
 
-#include "ray/pubsub/publisher.h"
+#include <string>
+
+#include "ray/pubsub/publisher_interface.h"
 
 namespace ray {
 namespace pubsub {
 
-class FakePublisher : public Publisher {
+class FakePublisher : public PublisherInterface {
  public:
   void RegisterSubscription(const rpc::ChannelType channel_type,
                             const UniqueID &subscriber_id,
