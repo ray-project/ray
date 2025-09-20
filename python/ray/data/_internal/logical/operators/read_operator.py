@@ -17,6 +17,7 @@ from ray.data.datasource.datasource import Datasource, Reader
 class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdown):
     """Logical operator for read."""
 
+    # TODO: make this a frozen dataclass. https://github.com/ray-project/ray/issues/55747
     def __init__(
         self,
         datasource: Datasource,
@@ -86,6 +87,9 @@ class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdow
 
         if all(meta.num_rows is not None for meta in metadata):
             num_rows = sum(meta.num_rows for meta in metadata)
+            # Apply per-block limit if set
+            if self._per_block_limit is not None:
+                num_rows = min(num_rows, self._per_block_limit)
         else:
             num_rows = None
 
