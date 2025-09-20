@@ -57,11 +57,16 @@ py_test(
     name = "test_validation_manager",
     size = "small",
     srcs = ["tests/test_validation_manager.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
-    deps = [":train_lib"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
