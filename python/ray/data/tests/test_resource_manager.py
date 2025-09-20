@@ -10,10 +10,10 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
@@ -63,19 +63,16 @@ def mock_union_op(
     return op
 
 
-def mock_join_op(
+def mock_zip_op(
     left_input_op,
     right_input_op,
     incremental_resource_usage=None,
 ):
-    op = JoinOperator(
-        DataContext.get_current(),
+    # Wire in mocks instead of logical ops (required by Join)
+    op = ZipOperator(
         left_input_op,
         right_input_op,
-        ("id",),
-        ("id",),
-        "inner",
-        num_partitions=1,
+        DataContext.get_current(),
     )
 
     op.start = MagicMock(side_effect=lambda _: None)
@@ -810,7 +807,7 @@ class TestReservationOpResourceAllocator:
         assert len(ops_to_exclude) == 2
         assert set(ops_to_exclude) == {o2, o3}
 
-    def test_get_ineligible_ops_with_usage_complex_graph(self, restore_data_context):
+    def test_get_ineligible_ops_with_usage_complex_graph(self, ray_start_regular_shared, restore_data_context):
         """
         o1 (InputDataBuffer)
                 |
@@ -829,7 +826,7 @@ class TestReservationOpResourceAllocator:
                 o6 (UnionOperator) <--
                 |
                 v
-                o8 (JoinOperator) <-- o7 (InputDataBuffer, completed)
+                o8 (ZipOperator) <-- o7 (InputDataBuffer, completed)
         """
         DataContext.get_current().op_resource_reservation_enabled = True
 
@@ -844,7 +841,7 @@ class TestReservationOpResourceAllocator:
         )
         o6 = mock_union_op([o3, o5])
         o7 = InputDataBuffer(DataContext.get_current(), [])
-        o8 = mock_join_op(o7, o6)
+        o8 = mock_zip_op(o7, o6)
 
         o1.mark_execution_finished()
         o2.mark_execution_finished()
@@ -940,7 +937,7 @@ class TestReservationOpResourceAllocator:
                 o6 (UnionOperator) <--
                 |
                 v
-                o8 (JoinOperator) <-- o7 (InputDataBuffer, completed)
+                o8 (ZipOperator) <-- o7 (InputDataBuffer, completed)
         """
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
@@ -954,7 +951,7 @@ class TestReservationOpResourceAllocator:
             [o3, o5], incremental_resource_usage=ExecutionResources(1, 0, 20)
         )
         o7 = InputDataBuffer(DataContext.get_current(), [])
-        o8 = mock_join_op(
+        o8 = mock_zip_op(
             o7, o6, incremental_resource_usage=ExecutionResources(1, 0, 30)
         )
 
