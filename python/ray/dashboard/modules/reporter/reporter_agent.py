@@ -1774,7 +1774,6 @@ class ReporterAgent(
 
         return self._generate_stats_payload(stats)
 
-
     def _generate_stats_payload(self, stats: dict) -> str:
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
         for gpu in stats["gpus"]:
