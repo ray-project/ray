@@ -47,7 +47,7 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray._private.state.actors()
+    actor_table = ray._common.state.actors()
     assert len(actor_table) == 1
 
     (actor_info,) = actor_table.values()
