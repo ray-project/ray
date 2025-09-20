@@ -8,12 +8,16 @@ import pyarrow.fs
 import pytest
 
 import ray
+from ray._private.ray_constants import WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
-from ray.train.v2._internal.constants import is_v2_enabled
+from ray.train.v2._internal.constants import (
+    DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
+    is_v2_enabled,
+)
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.result import Result
@@ -303,6 +307,20 @@ def test_sigint_abort(ray_start_4_cpus, spam_sigint):
             time.sleep(1)
             os.kill(process.pid, signal.SIGINT)
     process.join()
+
+
+@pytest.mark.parametrize("env_var_set", [True, False])
+def test_set_default_env_vars(env_var_set, monkeypatch):
+    if env_var_set:
+        monkeypatch.setenv(WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR, "1")
+    DataParallelTrainer(lambda: "not used")
+    if env_var_set:
+        assert os.environ[WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR] == "1"
+    else:
+        assert (
+            os.environ[WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR]
+            == DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE
+        )
 
 
 if __name__ == "__main__":
