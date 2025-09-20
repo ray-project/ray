@@ -51,7 +51,7 @@ RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData
 
 std::string RayDriverJobDefinitionEvent::GetEntityId() const { return data_.job_id(); }
 
-void RayDriverJobDefinitionEvent::MergeData(
+void RayDriverJobDefinitionEvent::MergeSortedData(
     RayEvent<rpc::events::DriverJobDefinitionEvent> &&other) {
   RAY_LOG(WARNING) << "Merge should not be called for driver job definition event.";
   return;

@@ -26,6 +26,7 @@ message NodeLifecycleEvent {
   enum State {
     ALIVE = 0;
     DEAD = 1;
+    DRAINING = 2;
   }
 
   message DeathInfo {

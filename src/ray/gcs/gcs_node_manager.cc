@@ -563,6 +563,9 @@ void GcsNodeManager::UpdateAliveNode(
   }
   if (resource_view_sync_message.is_draining()) {
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    // Write the export event for the draining state. Note that we explicitly do not
+    // write IDLE and ACTIVE events as they have very high cardinality.
+    WriteNodeExportEvent(*maybe_node_info.value(), /*is_register_event*/ false);
   }
 }
 

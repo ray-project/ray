@@ -39,6 +39,11 @@ class RayEventInterface {
   // Merge with another data point to form a time series. Merge is meant as an
   // optimization for the data size.
   //
+  // This function assumes that:
+  // 1. The two events have the same type and entity ID.
+  // 2. The "other" event is the later event.
+  // 3. Data points in both events are sorted by timestamp in ascending order.
+  //
   // For example, given three events:
   //
   // 1. event 1: {entity_id: "1", type: "task", state_transitions: [("started", 1000)]}
@@ -52,7 +57,7 @@ class RayEventInterface {
   // ("completed", 1002)]}
   //
   // This function assumes that the two events have the same type and entity ID.
-  virtual void Merge(RayEventInterface &&other) = 0;
+  virtual void MergeSorted(RayEventInterface &&other) = 0;
 
   // Serialize the event data to a RayEvent proto.
   virtual ray::rpc::events::RayEvent Serialize() && = 0;

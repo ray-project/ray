@@ -30,7 +30,7 @@ class RayNodeDefinitionEvent : public RayEvent<rpc::events::NodeDefinitionEvent>
   std::string GetEntityId() const override;
 
  protected:
-  void MergeData(RayEvent<rpc::events::NodeDefinitionEvent> &&other) override;
+  void MergeSortedData(RayEvent<rpc::events::NodeDefinitionEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() && override;
 };
 

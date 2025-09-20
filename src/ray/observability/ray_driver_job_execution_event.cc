@@ -38,7 +38,7 @@ RayDriverJobExecutionEvent::RayDriverJobExecutionEvent(
 
 std::string RayDriverJobExecutionEvent::GetEntityId() const { return data_.job_id(); }
 
-void RayDriverJobExecutionEvent::MergeData(
+void RayDriverJobExecutionEvent::MergeSortedData(
     RayEvent<rpc::events::DriverJobExecutionEvent> &&other) {
   auto &&other_event = static_cast<RayDriverJobExecutionEvent &&>(other);
   for (auto &state : *other_event.data_.mutable_states()) {
