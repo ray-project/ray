@@ -380,6 +380,46 @@ If you instantiate an actor, you can pass the handle around to various tasks.
             }
 
 
+Type hints and static typing for actors
+---------------------------------------
+
+Ray supports Python type hints for both remote functions and actors, enabling better IDE support and static type checking. However, to get the best type inference and pass type checkers when working with actors, you should follow these patterns:
+
+- **Prefer `ray.remote(MyClass)` over `@ray.remote` for actors**:
+  Instead of decorating your class with `@ray.remote`, use `ActorClass = ray.remote(MyClass)`. This preserves the original class type and allows type checkers and IDEs to infer the correct types.
+
+- **Use `@ray.method` for actor methods**:
+  Decorate actor methods with `@ray.method` to enable type hints for remote method calls on actor handles.
+
+- **Use the `ActorClass` and `ActorProxy` types**:
+  When you instantiate an actor, annotate the handle as `ActorProxy[MyClass]` to get type hints for remote methods.
+
+Example:
+
+.. testcode::
+
+    import ray
+    from ray.actor import ActorClass, ActorProxy
+
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        @ray.method
+        def increment(self) -> int:
+            self.value += 1
+            return self.value
+
+    CounterActor: ActorClass[Counter] = ray.remote(Counter)
+    counter: ActorProxy[Counter] = CounterActor.remote()
+
+    # Type checkers and IDEs will now provide type hints for remote methods
+    obj_ref = counter.increment.remote()
+    print(ray.get(obj_ref))
+
+For more details and advanced patterns, see :doc:`Type hints in Ray <ray-core/type-hint>`.
+
+
 
 Generators
 ----------
