@@ -141,7 +141,7 @@ class Preprocessor(abc.ABC):
             transform_batch_size: [experimental] The maximum number of rows to return.
             transform_concurrency: [experimental] The maximum number of Ray workers to use concurrently.
             transform_resources: [experimental] Custom resources to reserve for each
-                transform worker (for example, ``{"worker_group": 1}``).
+                transform worker (for example, ``{"cpu_pool": 1}``).
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
@@ -175,7 +175,7 @@ class Preprocessor(abc.ABC):
             memory: [experimental] The heap memory in bytes to reserve for each parallel map worker.
             concurrency: [experimental] The maximum number of Ray workers to use concurrently.
             resources: [experimental] Custom resources to reserve for each transform
-                worker (for example, ``{"worker_group": 1}``).
+                worker (for example, ``{"cpu_pool": 1}``).
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
