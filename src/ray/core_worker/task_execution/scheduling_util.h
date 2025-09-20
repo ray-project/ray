@@ -19,7 +19,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_types.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {

@@ -12,6 +12,7 @@ ray_cc_library(
     hdrs = ["client_call.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":rpc_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -94,6 +95,7 @@ ray_cc_library(
     hdrs = ["server_call.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":rpc_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -227,5 +229,14 @@ ray_cc_library(
     deps = [
         ":core_worker_client",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "rpc_types",
+    hdrs = ["rpc_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
     ],
 )

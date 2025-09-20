@@ -21,6 +21,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 namespace gcs {

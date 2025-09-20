@@ -139,6 +139,7 @@ ray_cc_library(
     srcs = ["pubsub_handler.cc"],
     hdrs = ["pubsub_handler.h"],
     deps = [
+        "//src/ray/common:asio",
         "//src/ray/gcs:grpc_service_interfaces",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/pubsub:gcs_publisher",
@@ -349,7 +350,7 @@ ray_cc_library(
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:server_call",
+        "//src/ray/rpc:rpc_types",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
