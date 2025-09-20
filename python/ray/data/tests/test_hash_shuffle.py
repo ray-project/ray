@@ -142,7 +142,7 @@ class JoinTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-        # Case 7: No dataset size estimate inferred
+        # Case 7: No dataset size estimate inferred (fallback to default memory request)
         JoinTestCase(
             left_size_bytes=None,
             right_size_bytes=None,
@@ -155,7 +155,7 @@ class JoinTestCase:
             expected_ray_remote_args={
                 "max_concurrency": 7,  # ceil(200 / 32)
                 "num_cpus": 0.25,  # 32 * 25% / 32
-                "memory": 2483027968,  # Fallback estimate based on
+                "memory": 2147483648,  # Fallback estimate based on
                 #   - Default parallelism (200)
                 #   - Configured (or default) target max-block size (128Mb)
                 "scheduling_strategy": "SPREAD",
@@ -302,7 +302,7 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-        # Case 4: No dataset size estimate inferred
+        # Case 4: No dataset size estimate inferred (fallback to default memory request)
         HashOperatorTestCase(
             input_size_bytes=None,
             input_num_blocks=None,
@@ -312,8 +312,8 @@ class HashOperatorTestCase:
             expected_num_aggregators=128,
             expected_ray_remote_args={
                 "max_concurrency": 2,
-                "num_cpus": 0.08,
-                "memory": 343932928,
+                "num_cpus": 0.5,
+                "memory": 2147483648,
                 "scheduling_strategy": "SPREAD",
             },
         ),
@@ -428,7 +428,8 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
-        # Case 4: No dataset size estimate inferred
+        # Case 4: No dataset size estimate inferred (fallback to default memory request)
+
         HashOperatorTestCase(
             input_size_bytes=None,
             input_num_blocks=None,
@@ -438,8 +439,8 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=128,
             expected_ray_remote_args={
                 "max_concurrency": 2,
-                "num_cpus": 0.08,
-                "memory": 343932928,
+                "num_cpus": 0.5,
+                "memory": 2147483648,
                 "scheduling_strategy": "SPREAD",
             },
         ),
