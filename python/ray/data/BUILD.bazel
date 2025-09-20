@@ -589,6 +589,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "medium",
     srcs = ["tests/test_hudi.py"],
