@@ -7,16 +7,6 @@ from typing import Any, Callable, List, Optional
 logger = logging.getLogger(__name__)
 
 
-COMMON_RETRYABLE_TOKENS = (
-    "SLOW_DOWN",
-    "THROTTLING",
-    "REQUEST_TIMEOUT",
-    "INTERNAL_ERROR",
-    "SERVICE_UNAVAILABLE",
-    "NETWORK_CONNECTION",
-)
-
-
 def call_with_retry(
     f: Callable,
     description: str,

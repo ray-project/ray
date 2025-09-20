@@ -8,11 +8,12 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
-from ray._common.retry import COMMON_RETRYABLE_TOKENS, retry
+from ray._common.retry import retry
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
+from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.util import (
@@ -217,9 +218,7 @@ class TrainContext:
         )
 
     # TODO: make retry configurable
-    @retry(
-        description="upload checkpoint", max_attempts=3, match=COMMON_RETRYABLE_TOKENS
-    )
+    @retry(description="upload checkpoint", max_attempts=3, match=AWS_RETRYABLE_TOKENS)
     def _upload_checkpoint(
         self,
         checkpoint_dir_name: str,
