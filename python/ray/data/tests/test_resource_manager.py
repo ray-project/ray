@@ -14,7 +14,6 @@ from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
@@ -72,7 +71,9 @@ def mock_join_op(
     left_input_op._logical_operators = [(MagicMock())]
     right_input_op._logical_operators = [(MagicMock())]
 
-    with patch("ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources") as mock:
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
+    ) as mock:
         mock.return_value = ExecutionResources(cpu=1)
 
         op = JoinOperator(

@@ -383,7 +383,9 @@ class JoinOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
-        partition_byte_size_estimate = math.ceil(estimated_dataset_bytes / num_partitions)
+        partition_byte_size_estimate = math.ceil(
+            estimated_dataset_bytes / num_partitions
+        )
 
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
