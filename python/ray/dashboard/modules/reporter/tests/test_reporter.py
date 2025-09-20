@@ -323,12 +323,14 @@ def test_report_stats():
         }
     }
 
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    # Use a deep copy to avoid modifying the global template
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    records = agent._to_records(stats, cluster_stats)
     for record in records:
         name = record.gauge.name
         val = record.value
         if name == "node_mem_shared_bytes":
-            assert val == STATS_TEMPLATE["shm"]
+            assert val == stats["shm"]
         print(record.gauge.name)
         print(record)
     assert len(records) == 41
@@ -340,15 +342,15 @@ def test_report_stats():
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
-    STATS_TEMPLATE["raylet"] = {}
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    stats["raylet"] = {}
+    records = agent._to_records(stats, cluster_stats)
     assert len(records) == 37
     # Test stats with gpus
-    STATS_TEMPLATE["gpus"] = [
+    stats["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     # Test stats with tpus
-    STATS_TEMPLATE["tpus"] = [
+    stats["tpus"] = [
         {
             "index": 0,
             "name": "foo",
@@ -361,14 +363,14 @@ def test_report_stats():
             "memory_total": 2000,
         }
     ]
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(stats, cluster_stats)
     assert len(records) == 46
     # Test stats without autoscaler report
     cluster_stats = {}
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(stats, cluster_stats)
     assert len(records) == 44
 
-    stats_payload = agent._generate_stats_payload(STATS_TEMPLATE)
+    stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None
     assert isinstance(stats_payload, str)
 
@@ -390,7 +392,9 @@ def test_report_stats_gpu():
     'processes': []}
     """
     GPU_MEMORY = 22731
-    STATS_TEMPLATE["gpus"] = [
+    # Use a deep copy to avoid modifying the global template
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
         {
             "index": 0,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
@@ -443,7 +447,7 @@ def test_report_stats_gpu():
         "node_gram_used": 0,
         "node_gram_available": 0,
     }
-    records = agent._to_records(STATS_TEMPLATE, {})
+    records = agent._to_records(stats, {})
     # If index is not available, we don't emit metrics.
     num_gpu_records = 0
     for record in records:
@@ -451,7 +455,7 @@ def test_report_stats_gpu():
             num_gpu_records += 1
     assert num_gpu_records == 16
 
-    ip = STATS_TEMPLATE["ip"]
+    ip = stats["ip"]
     gpu_records = defaultdict(list)
     for record in records:
         if record.gauge.name in gpu_metrics_aggregatd:
@@ -493,7 +497,7 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gram_used"] == 6
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
 
-    stats_payload = agent._generate_stats_payload(STATS_TEMPLATE)
+    stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None
     assert isinstance(stats_payload, str)
 
