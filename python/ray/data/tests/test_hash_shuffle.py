@@ -129,7 +129,7 @@ class JoinTestCase:
             },
         ),
 
-        # Case 6: Testing num_cpus deriver from memory allocation
+        # Case 6: Testing num_cpus derived from memory allocation
         JoinTestCase(
             left_size_bytes=50 * GiB,
             right_size_bytes=50 * GiB,
@@ -244,12 +244,12 @@ class HashOperatorTestCase:
 @pytest.mark.parametrize(
     "tc",
     [
+        # Case 1: Auto-derived partitions with limited CPUs
         HashOperatorTestCase(
             input_size_bytes=2 * GiB,
             input_num_blocks=16,
             target_num_partitions=None,
             total_cpu=4.0,
-            total_memory=8 * GiB,
             expected_num_partitions=16,
             expected_num_aggregators=4,
             expected_ray_remote_args={
@@ -259,12 +259,13 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
+
+        # Case 2: Single partition produced
         HashOperatorTestCase(
             input_size_bytes=512 * MiB,
             input_num_blocks=8,
             target_num_partitions=1,
             total_cpu=8.0,
-            total_memory=16 * GiB,
             expected_num_partitions=1,
             expected_num_aggregators=1,
             expected_ray_remote_args={
@@ -274,48 +275,51 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-        HashOperatorTestCase(
-            input_size_bytes=1 * GiB,
-            input_num_blocks=32,
-            target_num_partitions=8,
-            total_cpu=32.0,
-            total_memory=32 * GiB,
-            expected_num_partitions=8,
-            expected_num_aggregators=8,
-            expected_ray_remote_args={
-                "max_concurrency": 1,
-                "num_cpus": 0.0625,
-                "memory": 268435456,
-                "scheduling_strategy": "SPREAD",
-            },
-        ),
-        HashOperatorTestCase(
-            input_size_bytes=1 * GiB,
-            input_num_blocks=64,
-            target_num_partitions=16,
-            total_cpu=2.0,
-            total_memory=4 * GiB,
-            expected_num_partitions=16,
-            expected_num_aggregators=2,
-            expected_ray_remote_args={
-                "max_concurrency": 8,
-                "num_cpus": 0.14062,
-                "memory": 603979776,
-                "scheduling_strategy": "SPREAD",
-            },
-        ),
+
+        # Case 3: Many CPUs
         HashOperatorTestCase(
             input_size_bytes=16 * GiB,
             input_num_blocks=128,
             target_num_partitions=32,
-            total_cpu=64.0,
-            total_memory=64 * GiB,
+            total_cpu=256.0,
             expected_num_partitions=32,
             expected_num_aggregators=32,
             expected_ray_remote_args={
                 "max_concurrency": 1,
                 "num_cpus": 0.25,
                 "memory": 1073741824,
+                "scheduling_strategy": "SPREAD",
+            },
+        ),
+
+        # Case 4: Testing num_cpus derived from memory allocation
+        HashOperatorTestCase(
+            input_size_bytes=50 * GiB,
+            input_num_blocks=200,
+            target_num_partitions=None,
+            total_cpu=1024,                 # Many CPUs
+            expected_num_partitions=200,
+            expected_num_aggregators=128,   # min(200, min(1000, 128 (default max))
+            expected_ray_remote_args={
+                "max_concurrency": 2,       # ceil(200 / 128)
+                "num_cpus": 0.16016,        # ~0.6Gb / 4Gb = ~0.16
+                "memory": 687865856,
+                "scheduling_strategy": "SPREAD",
+            },
+        ),
+
+        # Case 4: No dataset size estimate inferred
+        HashOperatorTestCase(
+            input_size_bytes=None,
+            input_num_blocks=None,
+            target_num_partitions=None,
+            total_cpu=256.0,
+            expected_num_partitions=200,
+            expected_num_aggregators=128,
+            expected_ray_remote_args={
+                "max_concurrency": 2,
+                "num_cpus": 0.08008,
+                "memory": 343932928,
                 "scheduling_strategy": "SPREAD",
             },
         ),
@@ -349,37 +353,30 @@ def test_hash_aggregate_operator_remote_args(
         'ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources',
         return_value={"CPU": tc.total_cpu, "memory": tc.total_memory}
     ):
-        with patch(
-            'ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources'
-        ) as mock_resources:
-            mock_resources.return_value = ExecutionResources(
-                cpu=tc.total_cpu, memory=tc.total_memory
-            )
+        # Create the hash aggregate operator
+        op = HashAggregateOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            aggregation_fns=agg_fns,
+            key_columns=("id",),
+            num_partitions=tc.target_num_partitions,
+        )
 
-            # Create the hash aggregate operator
-            op = HashAggregateOperator(
-                input_op=op_mock,
-                data_context=DataContext.get_current(),
-                aggregation_fns=agg_fns,
-                key_columns=("id",),
-                num_partitions=tc.target_num_partitions,
-            )
-
-            # Validate the estimations
-            assert op._num_partitions == tc.expected_num_partitions
-            assert op._aggregator_pool.num_aggregators == tc.expected_num_aggregators
-            assert op._aggregator_pool._aggregator_ray_remote_args == tc.expected_ray_remote_args
+        # Validate the estimations
+        assert op._num_partitions == tc.expected_num_partitions
+        assert op._aggregator_pool.num_aggregators == tc.expected_num_aggregators
+        assert op._aggregator_pool._aggregator_ray_remote_args == tc.expected_ray_remote_args
 
 
 @pytest.mark.parametrize(
     "tc",
     [
+        # Case 1: Auto-derived partitions with limited CPUs
         HashOperatorTestCase(
             input_size_bytes=2 * GiB,
             input_num_blocks=16,
             target_num_partitions=None,
             total_cpu=4.0,
-            total_memory=8 * GiB,
             expected_num_partitions=16,
             expected_num_aggregators=4,
             expected_ray_remote_args={
@@ -389,12 +386,13 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
+
+        # Case 2: Single partition produced
         HashOperatorTestCase(
             input_size_bytes=512 * MiB,
             input_num_blocks=8,
             target_num_partitions=1,
             total_cpu=8.0,
-            total_memory=16 * GiB,
             expected_num_partitions=1,
             expected_num_aggregators=1,
             expected_ray_remote_args={
@@ -404,48 +402,51 @@ def test_hash_aggregate_operator_remote_args(
                 "scheduling_strategy": "SPREAD",
             },
         ),
-        HashOperatorTestCase(
-            input_size_bytes=1 * GiB,
-            input_num_blocks=32,
-            target_num_partitions=8,
-            total_cpu=32.0,
-            total_memory=32 * GiB,
-            expected_num_partitions=8,
-            expected_num_aggregators=8,
-            expected_ray_remote_args={
-                "max_concurrency": 1,
-                "num_cpus": 0.0625,
-                "memory": 268435456,
-                "scheduling_strategy": "SPREAD",
-            },
-        ),
-        HashOperatorTestCase(
-            input_size_bytes=1 * GiB,
-            input_num_blocks=64,
-            target_num_partitions=16,
-            total_cpu=2.0,
-            total_memory=4 * GiB,
-            expected_num_partitions=16,
-            expected_num_aggregators=2,
-            expected_ray_remote_args={
-                "max_concurrency": 8,
-                "num_cpus": 0.14062,
-                "memory": 603979776,
-                "scheduling_strategy": "SPREAD",
-            },
-        ),
+
+        # Case 3: Many CPUs
         HashOperatorTestCase(
             input_size_bytes=16 * GiB,
             input_num_blocks=128,
             target_num_partitions=32,
-            total_cpu=64.0,
-            total_memory=64 * GiB,
+            total_cpu=256.0,
             expected_num_partitions=32,
             expected_num_aggregators=32,
             expected_ray_remote_args={
                 "max_concurrency": 1,
                 "num_cpus": 0.25,
                 "memory": 1073741824,
+                "scheduling_strategy": "SPREAD",
+            },
+        ),
+
+        # Case 4: Testing num_cpus derived from memory allocation
+        HashOperatorTestCase(
+            input_size_bytes=50 * GiB,
+            input_num_blocks=200,
+            target_num_partitions=None,
+            total_cpu=1024,                 # Many CPUs
+            expected_num_partitions=200,
+            expected_num_aggregators=128,   # min(200, min(1000, 128 (default max))
+            expected_ray_remote_args={
+                "max_concurrency": 2,       # ceil(200 / 128)
+                "num_cpus": 0.16016,        # ~0.6Gb / 4Gb = ~0.16
+                "memory": 687865856,
+                "scheduling_strategy": "SPREAD",
+            },
+        ),
+
+        # Case 4: No dataset size estimate inferred
+        HashOperatorTestCase(
+            input_size_bytes=None,
+            input_num_blocks=None,
+            target_num_partitions=None,
+            total_cpu=256.0,
+            expected_num_partitions=200,
+            expected_num_aggregators=128,
+            expected_ray_remote_args={
+                "max_concurrency": 2,
+                "num_cpus": 0.08008,
+                "memory": 343932928,
                 "scheduling_strategy": "SPREAD",
             },
         ),
