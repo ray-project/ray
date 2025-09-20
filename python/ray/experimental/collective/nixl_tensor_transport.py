@@ -4,7 +4,6 @@ import ray
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
 )
-from ray.util.collective.collective import get_group_handle
 from ray.util.collective.types import (
     NIXL_GROUP_NAME,
     Backend,
@@ -30,6 +29,8 @@ class NixlTensorTransport(TensorTransportManager):
             self: "ray.actor.ActorHandle",
         ) -> bool:
             try:
+                from ray.util.collective.collective import get_group_handle
+
                 nixl_backend = get_group_handle(NIXL_GROUP_NAME)
                 return nixl_backend is not None
             except Exception:
@@ -45,6 +46,7 @@ class NixlTensorTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         gpu_object: List["torch.Tensor"],
     ) -> NixlTransportMetadata:
+        from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
         from ray.util.collective.types import NixlTransportMetadata
 
