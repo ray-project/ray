@@ -55,6 +55,8 @@ steps:
     parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name data9build
         --only-tags data_non_parallel
     depends_on: data9build
@@ -82,6 +84,8 @@ steps:
     parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name datalbuild
         --only-tags data_non_parallel
     depends_on: datalbuild
