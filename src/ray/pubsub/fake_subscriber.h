@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "ray/pubsub/subscriber_interface.h"
 
 namespace ray {
