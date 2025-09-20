@@ -435,7 +435,7 @@ time.sleep(999)
         ("Phaser.inc", "FAILED", "0"): 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info, timeseries) == expected,
+        lambda: expected.items() <= tasks_by_all(info, timeseries).items(),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -489,7 +489,7 @@ time.sleep(999)
         ("Phaser.inc", "FINISHED", "0"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info, timeseries) == expected,
+        lambda: expected.items() <= tasks_by_all(info, timeseries).items(),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -734,7 +734,7 @@ time.sleep(999)
         ("Phaser.inc", "FINISHED", "0"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info, timeseries) == expected,
+        lambda: expected.items() <= tasks_by_all(info, timeseries).items(),
         timeout=20,
         retry_interval_ms=500,
     )

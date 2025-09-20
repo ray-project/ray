@@ -95,6 +95,10 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
           meter_provider_));
 }
 
+void OpenTelemetryMetricRecorder::ForceFlush() {
+  meter_provider_->ForceFlush();
+}
+
 void OpenTelemetryMetricRecorder::Shutdown() {
   bool expected = false;
   if (!is_shutdown_.compare_exchange_strong(expected, true)) {
