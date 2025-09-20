@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.data import DataContext, ExecutionResources
+from ray.data._internal.execution.operators.join import JoinOperator
+from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data.aggregate import AggregateFn, Sum, Count
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_aggregate import HashAggregateOperator
