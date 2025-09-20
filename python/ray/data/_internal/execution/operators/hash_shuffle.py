@@ -1125,7 +1125,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #
         cap = min(4.0, total_available_cluster_resources.cpu * 0.25 / num_aggregators)
 
-        target_num_cpus = min(cap, estimated_aggregator_memory_required / 4 * GiB)
+        target_num_cpus = min(cap, estimated_aggregator_memory_required / (4 * GiB))
 
         # Round resource to 5th decimal point (Ray's fractional granularity)
         return round(target_num_cpus, 5)
