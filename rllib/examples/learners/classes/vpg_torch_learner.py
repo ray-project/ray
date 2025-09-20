@@ -1,7 +1,7 @@
-import torch
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 import numpy as np
+import torch
 
 from ray.rllib.connectors.learner import ComputeReturnsToGo
 from ray.rllib.core.columns import Columns

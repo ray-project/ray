@@ -35,18 +35,17 @@ import numpy as np
 import torch
 
 import ray
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
+from ray.rllib.env.utils import try_import_open_spiel, try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.multi_agent.utils import (
-    ask_user_for_action,
     SelfPlayLeagueBasedCallback,
     SelfPlayLeagueBasedCallbackOldAPIStack,
+    ask_user_for_action,
 )
-from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
@@ -55,13 +54,13 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.result import TRAINING_ITERATION
 
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
 
 # Import after try_import_open_spiel, so we can error out with hints
 from open_spiel.python.rl_environment import Environment  # noqa: E402
-
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(

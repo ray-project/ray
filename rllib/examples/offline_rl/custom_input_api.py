@@ -17,7 +17,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
+from ray.rllib.offline import InputReader, IOContext, JsonReader, ShuffledInput
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
