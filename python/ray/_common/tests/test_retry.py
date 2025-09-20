@@ -49,7 +49,7 @@ def test_retry_last_attempt_successful_with_appropriate_wait_time(
 
     args = ["func", [pattern], 4, 6]
     if use_decorator:
-        retry(*args)(func)() == "success"
+        assert retry(*args)(func)() == "success"
     else:
         assert call_with_retry(func, *args) == "success"
     assert sleep_total == 12  # 2 + 4 + 6
