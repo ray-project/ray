@@ -62,6 +62,7 @@ from ray.data.block import (
 from ray.data.context import (
     DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
     DEFAULT_TARGET_MAX_BLOCK_SIZE,
+    DEFAULT_MIN_PARALLELISM,
 )
 from ray.data.context import DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS, \
     DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
@@ -423,23 +424,20 @@ def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources)
     )
 
 
-def _estimate_output_block_byte_size(ops: List[LogicalOperator]) -> Optional[int]:
-    block_size_estimates = [
-        math.ceil(op.infer_metadata().size_bytes / op.estimated_num_outputs())
-        for op in ops
-        if (
-            op.infer_metadata().size_bytes is not None
-            and op.estimated_num_outputs()  # not null and not 0
-        )
-    ]
+def _estimate_output_bytes_fallback(op: LogicalOperator, data_context: DataContext) -> int:
+    """This util provide very coarse-grained estimate for the ``LogicalOperator``s
+    output byte size based on
 
-    input_block_bytes_estimate = math.ceil(
-        np.average(block_size_estimates, axis=0) if block_size_estimates else None
+        1. Number of expected blocks produced
+        2. Configured target max-block size (or system's default)
+    """
+
+    estimated_num_outputs: int = op.estimated_num_outputs() or DEFAULT_MIN_PARALLELISM
+
+    return estimated_num_outputs * (
+        data_context.target_max_block_size or
+        DEFAULT_TARGET_MAX_BLOCK_SIZE
     )
-
-    logger.info(f"Estimated input block byte size at {input_block_bytes_estimate / MiB:.1f}MiB")
-
-    return input_block_bytes_estimate
 
 
 class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
@@ -481,8 +479,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             input_physical_op._logical_operators[0] for input_physical_op in input_ops
         ]
 
-        estimated_num_input_blocks = [
-            input_op.estimated_num_outputs() for input_op in input_logical_ops
+        estimated_input_blocks = [
+            input_op.estimated_num_outputs()
+            for input_op in input_logical_ops
         ]
 
         # Derive target num partitions as either of
@@ -491,7 +490,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - Default configured hash-shuffle parallelism (200)
         target_num_partitions: int = (
             num_partitions
-            or (max(estimated_num_input_blocks) if estimated_num_input_blocks else None)
+            or (
+                max(estimated_input_blocks)
+                if all(estimated_input_blocks)
+                else None
+            )
             or data_context.default_hash_shuffle_parallelism
         )
 
@@ -535,16 +538,16 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
         # Target dataset size estimation is either derived from
         #   - User input (``partition_size_hint`` overrides estimation if provided)
-        #   - Estimation (avg) of input ops output block size and total # of outputs
+        #   - Estimation (avg) of input ops output byte-size
         if partition_size_hint is not None:
-            estimated_dataset_bytes = partition_size_hint * num_partitions
+            estimated_dataset_bytes = partition_size_hint * target_num_partitions
         else:
-            estimated_input_block_size = (
-                _estimate_output_block_byte_size(input_logical_ops) or
-                self.data_context.target_max_block_size or
-                DEFAULT_TARGET_MAX_BLOCK_SIZE
-            )
-            estimated_dataset_bytes = estimated_input_block_size * sum(estimated_num_input_blocks)
+            estimated_input_bytes = [
+                op.infer_metadata().size_bytes or _estimate_output_bytes_fallback(op, data_context)
+                for op in input_logical_ops
+            ]
+
+            estimated_dataset_bytes = sum(estimated_input_bytes)
 
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=target_num_partitions,
@@ -1051,7 +1054,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         num_partitions: int,
         num_aggregators: int,
         total_available_cluster_resources: ExecutionResources,
-        estimated_dataset_bytes: Optional[int] = None,
+        estimated_dataset_bytes: int,
     ):
         assert num_partitions >= num_aggregators
 
