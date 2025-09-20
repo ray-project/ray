@@ -518,16 +518,14 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # Cap number of aggregators to not exceed max configured
         num_aggregators = min(target_num_partitions, max_shuffle_aggregators)
 
-        # Target dataset size estimation is either derived from
-        #   - User input (``partition_size_hint`` overrides estimation if provided)
-        #   - Estimation (avg) of input ops output byte-size
+        # Target dataset's size estimated as either of
+        #   1. ``partition_size_hint`` multiplied by target number of partitions
+        #   2. Estimation of input ops' outputs bytes
         if partition_size_hint is not None:
             # TODO replace with dataset-byte-size hint
             estimated_dataset_bytes = partition_size_hint * target_num_partitions
         else:
-            estimated_dataset_bytes = _try_estimate_output_bytes(
-                input_logical_ops,
-            )
+            estimated_dataset_bytes = _try_estimate_output_bytes(input_logical_ops)
 
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=target_num_partitions,
