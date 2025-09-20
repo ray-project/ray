@@ -1,5 +1,5 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "py_test_module_list", "py_test_module_list_with_env_variants")
 
 py_library(
     name = "conftest",
@@ -317,17 +317,44 @@ py_test(
 
 # ----- TEST FEATURE FLAGS -----
 
-# Test autoscaling with metrics collected from replica instead of handle.
-py_test(
-    name = "test_autoscaling_policy_with_metr_disab",
+# Test autoscaling with different metric collection configurations
+py_test_module_list_with_env_variants(
     size = "large",
-    srcs = ["test_autoscaling_policy.py"],
-    env = {
-        "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-        # Make sure queued metrics are cleared out quickly.
-        "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S": "0.1",
+    env_variants = {
+        "with_metr_disab": {
+            "env": {
+                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                # Make sure queued metrics are cleared out quickly.
+                "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+            },
+            "name_suffix": "_with_metr_disab",
+        },
+        "with_metr_agg_at_controller": {
+            "env": {
+                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+                # Make sure queued metrics are cleared out quickly.
+                "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+            },
+            "name_suffix": "_with_metr_agg_at_controller",
+        },
+        "with_metr_agg_at_controller_and_metr_on_replicas": {
+            "env": {
+                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                # Make sure queued metrics are cleared out quickly.
+                "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+            },
+            "name_suffix": "_with_metr_agg_at_controller_and_metr_on_replicas",
+        },
     },
-    main = "test_autoscaling_policy.py",
+    files = [
+        "test_autoscaling_policy.py",
+        "test_cluster.py",
+        "test_deploy.py",
+        "test_deployment_scheduler.py",
+        "test_standalone_3.py",
+        "test_target_capacity.py",
+    ],
     tags = [
         "autoscaling",
         "exclusive",
