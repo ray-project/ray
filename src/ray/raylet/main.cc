@@ -635,13 +635,18 @@ int main(int argc, char *argv[]) {
                   addr));
         });
 
+    // NOTE: The raylet client server_unavailable_timeout_seconds is set to 0 because the
+    // raylet is notified when remote nodes have died from the GCS. Hence we only need to
+    // call the unavailable timeout once to handle the case where the dead node was
+    // evicted from the cache prior subscription.
     raylet_client_pool =
         std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
           return std::make_shared<ray::rpc::RayletClient>(
               addr,
               *client_call_manager,
               ray::rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
-                  gcs_client.get(), raylet_client_pool.get(), addr));
+                  gcs_client.get(), raylet_client_pool.get(), addr),
+              0);
         });
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(

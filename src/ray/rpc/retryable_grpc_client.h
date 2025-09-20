@@ -189,7 +189,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // Set up the timer to run CheckChannelStatus.
   void SetupCheckTimer();
 
-  void CheckChannelStatus(bool reset_timer = true);
+  void CheckChannelStatus(bool reset_timer);
 
   instrumented_io_context &io_context_;
   boost::asio::deadline_timer timer_;
