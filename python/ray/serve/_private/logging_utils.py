@@ -412,6 +412,42 @@ def configure_component_logger(
     logger.addHandler(memory_handler)
 
 
+# Configure a dedicated rotating file logger for autoscaling snapshots.
+def configure_snapshot_logger(
+    *, component_id: str, logging_config: LoggingConfig
+) -> logging.Logger:
+    """Configure a dedicated logger for autoscaling snapshots.
+
+    - Writes to `autoscaling_snapshot_<pid>.log` under the Serve logs dir.
+    """
+    logger_obj = logging.getLogger(f"{SERVE_LOGGER_NAME}.snapshot")
+    logger_obj.propagate = False
+    logger_obj.setLevel(logging_config.log_level)
+    logger_obj.handlers.clear()
+
+    logs_dir = logging_config.logs_dir or get_serve_logs_dir()
+    os.makedirs(logs_dir, exist_ok=True)
+
+    max_bytes = ray._private.worker._global_node.max_bytes
+    backup_count = ray._private.worker._global_node.backup_count
+
+    file_name = get_component_file_name(
+        component_name="autoscaling_snapshot",
+        component_id=component_id,
+        component_type=None,
+        suffix=".log",
+    )
+    file_path = os.path.join(logs_dir, file_name)
+
+    handler = logging.handlers.RotatingFileHandler(
+        file_path, maxBytes=max_bytes, backupCount=backup_count
+    )
+    handler.setFormatter(ServeFormatter("autoscaling_snapshot", component_id))
+
+    logger_obj.addHandler(handler)
+    return logger_obj
+
+
 def configure_default_serve_logger():
     """Helper function to configure the default Serve logger that's used outside of
     individual Serve components."""

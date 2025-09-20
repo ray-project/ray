@@ -55,6 +55,7 @@ from ray.serve._private.http_util import (
 from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
+    configure_snapshot_logger,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
@@ -263,6 +264,11 @@ class ServeController:
             logging_config=global_logging_config,
         )
 
+        self._autoscaling_logger = configure_snapshot_logger(
+            component_id=str(os.getpid()),
+            logging_config=global_logging_config,
+        )
+
         logger.info(
             f"Controller starting (version='{ray.__version__}').",
             extra={"log_to_stderr": False},
@@ -439,7 +445,7 @@ class ServeController:
                 continue
 
             log_json = deployment_snapshot.model_dump_json(exclude_none=True)
-            logger.info("serve_autoscaling_snapshot " + log_json)
+            self._autoscaling_logger.info("serve_autoscaling_snapshot " + log_json)
             self._last_autoscaling_snapshots[key] = deployment_snapshot
 
     async def run_control_loop(self) -> None:

@@ -315,9 +315,10 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     if os.path.exists(log_path):
         candidate_paths.append(log_path)
 
-    # Also consider any controller logs in the session logs dir.
-    controller_glob = os.path.join(base_logs_dir, "serve", "controller_*.log")
-    for p in glob.glob(controller_glob):
+    autoscaling_glob = os.path.join(
+        base_logs_dir, "serve", "autoscaling_snapshot_*.log"
+    )
+    for p in glob.glob(autoscaling_glob):
         if p not in candidate_paths:
             candidate_paths.append(p)
 
@@ -438,8 +439,10 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
     if os.path.exists(log_path):
         candidate_paths.append(log_path)
 
-    controller_glob = os.path.join(base_logs_dir, "serve", "controller_*.log")
-    for p in glob.glob(controller_glob):
+    autoscaling_glob = os.path.join(
+        base_logs_dir, "serve", "autoscaling_snapshot_*.log"
+    )
+    for p in glob.glob(autoscaling_glob):
         if p not in candidate_paths:
             candidate_paths.append(p)
 
