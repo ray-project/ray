@@ -21,10 +21,10 @@ class JoinTestCase:
     expected_num_aggregators: int
 
     # Input dataset configurations
-    left_size_bytes: int
-    right_size_bytes: int
-    left_num_blocks: int
-    right_num_blocks: int
+    left_size_bytes: Optional[int]
+    right_size_bytes: Optional[int]
+    left_num_blocks: Optional[int]
+    right_num_blocks: Optional[int]
 
     # Join configuration
     target_num_partitions: Optional[int]
@@ -126,7 +126,7 @@ class JoinTestCase:
             },
         ),
 
-        # Case 6: Testing max aggregators cap (128 default)
+        # Case 6: Testing num_cpus deriver from memory allocation
         JoinTestCase(
             left_size_bytes=50 * GiB,
             right_size_bytes=50 * GiB,
@@ -140,6 +140,26 @@ class JoinTestCase:
                 "max_concurrency": 2,       # ceil(200 / 128)
                 "num_cpus": 0.57031,        # ~2.5Gb / 4Gb = ~0.57
                 "memory": 2449473536,
+                "scheduling_strategy": "SPREAD",
+            },
+        ),
+
+        # Case 7: No dataset size estimate inferred
+        JoinTestCase(
+            left_size_bytes=None,
+            right_size_bytes=None,
+            left_num_blocks=None,
+            right_num_blocks=None,
+            target_num_partitions=None,
+            total_cpu=32,
+            expected_num_partitions=200,   # default parallelism
+            expected_num_aggregators=32,   # min(200, min(1000, 128 (default max))
+            expected_ray_remote_args={
+                "max_concurrency": 7,       # ceil(200 / 32)
+                "num_cpus": 0.25,           # 32 * 25% / 32
+                "memory": 2483027968,       # Fallback estimate based on
+                                            #   - Default parallelism (200)
+                                            #   - Configured (or default) target max-block size (128Mb)
                 "scheduling_strategy": "SPREAD",
             },
         ),
