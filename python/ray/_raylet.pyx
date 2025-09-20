@@ -2212,8 +2212,10 @@ cdef execute_task_with_cancellation_handler(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        print("runnning 2", file=sys.stderr)
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
+        print("runnning 2.2", file=sys.stderr)
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
 
@@ -2302,6 +2304,7 @@ cdef execute_task_with_cancellation_handler(
                 # cancel tasks to fail.
                 NULL)
     finally:
+        print("runnning 9", file=sys.stderr)
         with current_task_id_lock:
             current_task_id = None
 
