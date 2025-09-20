@@ -236,12 +236,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         except Exception as e:
             self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
 
-            # @OldAPIStack (config.restart_failed_sub_environments)
             if self.config.restart_failed_sub_environments:
                 if not isinstance(e, StepFailedRecreateEnvError):
                     logger.exception(
-                        "Stepping the env resulted in an error! The original error "
-                        f"is: {e}"
+                        f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner. The original error is: {e}"
                     )
                 # Recreate the env.
                 self.make_env()
