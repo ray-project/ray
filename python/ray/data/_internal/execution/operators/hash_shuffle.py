@@ -403,7 +403,10 @@ class HashShuffleProgressBarMixin(abc.ABC):
         self.reduce_bar.close()
 
 
-def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources) -> int:
+def _derive_max_shuffle_aggregators(
+    total_cluster_resources: ExecutionResources,
+    data_context: DataContext,
+) -> int:
     # Motivation for derivation of max # of shuffle aggregators is based on the
     # following observations:
     #
@@ -421,7 +424,8 @@ def _derive_max_shuffle_aggregators(total_cluster_resources: ExecutionResources)
     #   while avoiding thrashing these due to over-allocation)
     #   - Should be capped at fixed size (128 by default)
     return min(
-        math.ceil(total_cluster_resources.cpu), DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+        math.ceil(total_cluster_resources.cpu),
+        data_context.max_hash_shuffle_aggregators or DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
     )
 
 
@@ -505,13 +509,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # Determine max number of shuffle aggregators (defaults to
         # `DataContext.min_parallelism`)
         total_available_cluster_resources = _get_total_cluster_resources()
-
-        if data_context.max_hash_shuffle_aggregators is not None:
-            max_shuffle_aggregators = data_context.max_hash_shuffle_aggregators
-        else:
-            max_shuffle_aggregators = _derive_max_shuffle_aggregators(
-                total_available_cluster_resources
-            )
+        max_shuffle_aggregators = _derive_max_shuffle_aggregators(
+            total_available_cluster_resources, data_context
+        )
 
         # Cap number of aggregators to not exceed max configured
         num_aggregators = min(target_num_partitions, max_shuffle_aggregators)
