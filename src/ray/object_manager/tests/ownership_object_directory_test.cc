@@ -21,13 +21,13 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs_client/accessor.h"
 #include "ray/gcs_client/gcs_client.h"
+#include "ray/pubsub/fake_subscriber.h"
 
 namespace ray {
 
