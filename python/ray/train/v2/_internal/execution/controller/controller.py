@@ -145,11 +145,10 @@ class TrainController:
         )
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_callbacks = (
-            [self._scaling_policy]
-            + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
-            + [self._validation_manager]
-        )
+        self._controller_callbacks = [
+            self._scaling_policy,
+            self._validation_manager,
+        ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (

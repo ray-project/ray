@@ -270,10 +270,13 @@ def create_dummy_train_context() -> TrainContext:
 
 
 def create_dummy_training_results(
-    num_results: int, storage_context: StorageContext
+    num_results: int,
+    storage_context: StorageContext,
+    include_metrics: bool = True,
 ) -> List[_TrainingResult]:
     training_results = []
     for i in range(num_results):
+        metrics = {"score": i} if include_metrics else {}
         checkpoint_path = os.path.join(
             storage_context.experiment_fs_path, f"checkpoint_{i}"
         )
@@ -284,7 +287,7 @@ def create_dummy_training_results(
                     path=Path(checkpoint_path).as_posix(),
                     filesystem=storage_context.storage_filesystem,
                 ),
-                metrics={"score": i},
+                metrics=metrics,
             )
         )
     return training_results

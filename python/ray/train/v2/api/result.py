@@ -8,7 +8,7 @@ import pyarrow
 import ray
 from ray.air.result import Result as ResultV1
 from ray.train.v2.api.exceptions import TrainingFailedError
-from ray.train.v2.api.validation_info import ValidationInfo
+from ray.train.v2.api.validation_failure import ValidationFailure
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class Result(ResultV1):
     best_checkpoints: Optional[
         List[Tuple["ray.train.Checkpoint", Dict[str, Any]]]
     ] = None
-    failed_validations: Optional[List[ValidationInfo]] = None
+    failed_validations: Optional[List[ValidationFailure]] = None
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(

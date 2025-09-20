@@ -169,29 +169,36 @@ async def test_pending_checkpoint_management(tmp_path):
         storage_context=storage_context,
         checkpoint_config=checkpoint_config,
     )
-    training_results = create_dummy_training_results(
-        num_results=3, storage_context=storage_context
-    )
+    (
+        low_initial_high_final_training_result,
+        high_initial_low_final_training_result,
+        final_training_result,
+    ) = create_dummy_training_results(num_results=3, storage_context=storage_context)
+    scoreless_training_result = create_dummy_training_results(
+        num_results=1, storage_context=storage_context, include_metrics=False
+    )[0]
 
-    # Register pending/final checkpoints and verify their storage
-    checkpoint_manager.register_checkpoint(training_results[0], True)
-    checkpoint_manager.register_checkpoint(training_results[2], False)
-    checkpoint_manager.register_checkpoint(training_results[1], True)
+    # Register pending/final/unknown checkpoints and verify their storage
+    checkpoint_manager.register_checkpoint(low_initial_high_final_training_result, True)
+    checkpoint_manager.register_checkpoint(final_training_result, False)
+    checkpoint_manager.register_checkpoint(scoreless_training_result, False)
+    checkpoint_manager.register_checkpoint(high_initial_low_final_training_result, True)
     assert checkpoint_manager._checkpoint_results == [
-        training_results[0],
-        training_results[1],
-        training_results[2],
+        low_initial_high_final_training_result,  # keep pending
+        high_initial_low_final_training_result,  # keep pending/latest
+        final_training_result,  # keep highest final score so far
     ]
 
     # Assert checkpoint state after all tasks are done
     checkpoint_manager.update_checkpoints_with_metrics(
         {
-            training_results[0].checkpoint: {"score": 100},
-            training_results[1].checkpoint: {"score": 200},
+            low_initial_high_final_training_result.checkpoint: {"score": 200},
+            high_initial_low_final_training_result.checkpoint: {"score": 100},
         }
     )
     assert checkpoint_manager._checkpoint_results == [
-        training_results[1],
+        high_initial_low_final_training_result,  # keep latest checkpoint
+        low_initial_high_final_training_result,  # keep highest score checkpoint
     ]
 
 

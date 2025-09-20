@@ -95,7 +95,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
-        # TODO: consider restarting validations on death?
         self._maybe_load_state_from_storage()
 
     def register_checkpoint(
