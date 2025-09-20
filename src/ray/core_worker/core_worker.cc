@@ -575,7 +575,6 @@ void CoreWorker::Disconnect(
   }
 
   opencensus::stats::StatsExporter::ExportNow();
-  ray::observability::OpenTelemetryMetricRecorder::GetInstance().ForceFlush();
   if (connected_) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     connected_ = false;
