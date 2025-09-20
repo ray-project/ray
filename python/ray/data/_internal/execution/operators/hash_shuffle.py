@@ -523,7 +523,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # TODO replace with dataset-byte-size hint
             estimated_dataset_bytes = partition_size_hint * target_num_partitions
         else:
-            estimated_dataset_bytes = _try_estimate_output_bytes(input_logical_ops)
+            estimated_dataset_bytes = _try_estimate_output_bytes(
+                input_logical_ops,
+                target_max_block_size=data_context.target_max_block_size
+            )
 
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=target_num_partitions,
@@ -1519,8 +1522,10 @@ def _get_total_cluster_resources() -> ExecutionResources:
     )
 
 
+# TODO rebase on generic operator output estimation
 def _try_estimate_output_bytes(
     input_logical_ops: List[LogicalOperator],
+    target_max_block_size: Optional[int],
 ) -> Optional[int]:
     inferred_op_output_bytes = [
         op.infer_metadata().size_bytes for op in input_logical_ops
@@ -1528,9 +1533,23 @@ def _try_estimate_output_bytes(
 
     # Return sum of input ops estimated output byte sizes,
     # if all are well defined
-    if all(bs is not None for bs in inferred_op_output_bytes):
+    if all(nbs is not None for nbs in inferred_op_output_bytes):
         return sum(inferred_op_output_bytes)
 
-    # TODO estimate based on expected outputs
+    inferred_op_num_outputs = [
+        op.estimated_num_outputs() for op in input_logical_ops
+    ]
+
+    # In case, when we can't estimate dataset size but can estimate
+    # number of outputs produced by all input operators, we conservatively
+    # estimate dataset size as:
+    #
+    #   Number of outputs x Target max-block-size
+    #
+    if all(nos is not None for nos in inferred_op_num_outputs) and target_max_block_size:
+        return sum([
+            nos * target_max_block_size
+            for nos in inferred_op_num_outputs
+        ])
 
     return None
