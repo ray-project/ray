@@ -3,10 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import numpy as np
 
-from ray.data._internal.util import (
-    _check_import,
-    call_with_retry,
-)
+from ray._common.retry import call_with_retry
+from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
