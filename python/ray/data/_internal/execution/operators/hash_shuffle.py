@@ -1127,8 +1127,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
         target_num_cpus = min(cap, estimated_aggregator_memory_required / (4 * GiB))
 
-        # Round resource to 5th decimal point (Ray's fractional granularity)
-        return round(target_num_cpus, 5)
+        # Round resource to 2d decimal point (for readability)
+        return round(target_num_cpus, 2)
 
     @classmethod
     def _estimate_aggregator_memory_allocation(

@@ -141,7 +141,7 @@ class JoinTestCase:
             expected_num_aggregators=128,   # min(200, min(1000, 128 (default max))
             expected_ray_remote_args={
                 "max_concurrency": 2,       # ceil(200 / 128)
-                "num_cpus": 0.57031,        # ~2.5Gb / 4Gb = ~0.57
+                "num_cpus": 0.57,           # ~2.5Gb / 4Gb = ~0.57
                 "memory": 2449473536,
                 "scheduling_strategy": "SPREAD",
             },
@@ -254,7 +254,7 @@ class HashOperatorTestCase:
             expected_num_aggregators=4,
             expected_ray_remote_args={
                 "max_concurrency": 4,
-                "num_cpus": 0.15625,
+                "num_cpus": 0.16,
                 "memory": 671088640,
                 "scheduling_strategy": "SPREAD",
             },
@@ -302,7 +302,7 @@ class HashOperatorTestCase:
             expected_num_aggregators=128,   # min(200, min(1000, 128 (default max))
             expected_ray_remote_args={
                 "max_concurrency": 2,       # ceil(200 / 128)
-                "num_cpus": 0.16016,        # ~0.6Gb / 4Gb = ~0.16
+                "num_cpus": 0.16,        # ~0.6Gb / 4Gb = ~0.16
                 "memory": 687865856,
                 "scheduling_strategy": "SPREAD",
             },
@@ -318,7 +318,7 @@ class HashOperatorTestCase:
             expected_num_aggregators=128,
             expected_ray_remote_args={
                 "max_concurrency": 2,
-                "num_cpus": 0.08008,
+                "num_cpus": 0.08,
                 "memory": 343932928,
                 "scheduling_strategy": "SPREAD",
             },
@@ -381,7 +381,7 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=4,
             expected_ray_remote_args={
                 "max_concurrency": 4,
-                "num_cpus": 0.15625,
+                "num_cpus": 0.16,
                 "memory": 671088640,
                 "scheduling_strategy": "SPREAD",
             },
@@ -429,7 +429,7 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=128,   # min(200, min(1000, 128 (default max))
             expected_ray_remote_args={
                 "max_concurrency": 2,       # ceil(200 / 128)
-                "num_cpus": 0.16016,        # ~0.6Gb / 4Gb = ~0.16
+                "num_cpus": 0.16,        # ~0.6Gb / 4Gb = ~0.16
                 "memory": 687865856,
                 "scheduling_strategy": "SPREAD",
             },
@@ -445,7 +445,7 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=128,
             expected_ray_remote_args={
                 "max_concurrency": 2,
-                "num_cpus": 0.08008,
+                "num_cpus": 0.08,
                 "memory": 343932928,
                 "scheduling_strategy": "SPREAD",
             },
