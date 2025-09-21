@@ -9,14 +9,13 @@ Structure:
 
 import subprocess
 import sys
-import os
-import tempfile
 
 # Dependency setup
 subprocess.check_call(
-    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
+    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers", "datasets"]
 )
 subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
+subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
 
 
 # __vlm_example_start__

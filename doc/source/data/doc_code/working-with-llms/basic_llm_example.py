@@ -11,6 +11,7 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray
 subprocess.check_call(
     [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
 )
+subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
 
 
 # __basic_llm_example_start__

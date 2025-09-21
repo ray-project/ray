@@ -4,7 +4,6 @@ This file serves as a documentation example and CI test for OpenAI API batch inf
 """
 
 import os
-import ray.data
 from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
 
 
