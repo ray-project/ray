@@ -34,6 +34,7 @@ from ray.data.dataset import Dataset
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
+from ray.data.operation_options import OperatorOptions
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
@@ -3246,6 +3247,70 @@ def test_with_column_filter_in_pipeline(ray_start_regular_shared):
     )
 
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+def test_operator_options_parameter(ray_start_regular_shared):
+    """Test that operator_options parameter is accepted by all transformation methods."""
+
+    ds = ray.data.from_items(
+        [
+            {"id": 1, "name": "Alice", "score": 85},
+            {"id": 2, "name": "Bob", "score": 90},
+            {"id": 3, "name": "Charlie", "score": 78},
+        ]
+    )
+
+    operator_options = OperatorOptions(disable_fusion=True)
+
+    # Test map
+    result_map = ds.map(
+        lambda x: {"id": x["id"], "double_score": x["score"] * 2},
+        operator_options=operator_options,
+    )
+    assert result_map.count() == 3
+
+    # Test map_batches
+    result_map_batches = ds.map_batches(
+        lambda batch: batch, operator_options=operator_options
+    )
+    assert result_map_batches.count() == 3
+
+    # Test filter
+    result_filter = ds.filter(
+        lambda x: x["score"] > 80, operator_options=operator_options
+    )
+    assert result_filter.count() == 2
+
+    # Test flat_map
+    result_flat_map = ds.flat_map(
+        lambda x: [x, x], operator_options=operator_options  # Duplicate each row
+    )
+    assert result_flat_map.count() == 6
+
+    # Test add_column
+    result_add_column = ds.add_column(
+        "grade",
+        lambda batch: ["A" if score >= 85 else "B" for score in batch["score"]],
+        operator_options=operator_options,
+    )
+    assert "grade" in result_add_column.schema().names
+
+    # Test drop_columns
+    result_drop_columns = ds.drop_columns(["score"], operator_options=operator_options)
+    assert "score" not in result_drop_columns.schema().names
+
+    # Test select_columns
+    result_select_columns = ds.select_columns(
+        ["id", "name"], operator_options=operator_options
+    )
+    assert result_select_columns.schema().names == ["id", "name"]
+
+    # Test rename_columns
+    result_rename_columns = ds.rename_columns(
+        {"name": "student_name"}, operator_options=operator_options
+    )
+    assert "student_name" in result_rename_columns.schema().names
+    assert "name" not in result_rename_columns.schema().names
 
 
 if __name__ == "__main__":

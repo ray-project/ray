@@ -30,6 +30,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
+from ray.data.operation_options import OperatorOptions
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
@@ -729,3 +730,137 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BatchMapTransformFn,
         ],
     )
+
+
+def _check_valid_plan_and_result(
+    ds,
+    expected_physical_plan_ops=None,
+):
+    expected_physical_plan_ops = expected_physical_plan_ops or []
+    for op in expected_physical_plan_ops:
+        assert op in ds.stats(), f"Operator {op} not found: {ds.stats()}"
+
+
+def test_map_fusion_disabled_with_operator_options(ray_start_regular_shared_2_cpus):
+    ds = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+
+    mapped_ds = ds.map_batches(lambda x: x)
+
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # All Map ops are fused with Read
+    assert (
+        "ReadParquet->MapBatches(<lambda>)" in actual_plan_str
+    ), f"Expected fusion not found in plan: {actual_plan_str}"
+
+    ds = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+
+    mapped_ds = ds.map_batches(
+        lambda x: x, operator_options=OperatorOptions(disable_fusion=True)
+    )
+
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # Map ops should not be fused with Read
+    assert (
+        "ReadParquet->MapBatches(<lambda>)" not in actual_plan_str
+    ), f"UnExpected fusion found in plan: {actual_plan_str}"
+
+
+def test_filter_fusion_disabled_with_operator_options(ray_start_regular_shared_2_cpus):
+    ds = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+
+    filtered_ds = ds.filter(lambda x: x["id"] % 2 == 0)
+
+    physical_plan = get_execution_plan(filtered_ds._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # All Filter ops are fused with Read
+    assert (
+        "ReadParquet->Filter(<lambda>)" in actual_plan_str
+    ), f"Expected fusion not found in plan: {actual_plan_str}"
+
+    ds_1 = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+
+    filtered_ds_1 = ds_1.filter(
+        lambda x: x["id"] % 2 == 0,
+        operator_options=OperatorOptions(disable_fusion=True),
+    )
+
+    physical_plan = get_execution_plan(filtered_ds_1._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # Filter ops should not be fused with Read
+    assert (
+        "ReadParquet->Filter(<lambda>)" not in actual_plan_str
+    ), f"UnExpected fusion found in plan: {actual_plan_str}"
+
+
+def test_select_fusion_disabled_with_operator_options(ray_start_regular_shared_2_cpus):
+    ds = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+    ds = ds.map_batches(lambda x: x)
+    selected_ds = ds.select_columns(["sepal.length", "sepal.width"])
+
+    physical_plan = get_execution_plan(selected_ds._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # # Select ops are fused with Map
+    assert (
+        "ReadParquet->MapBatches(<lambda>)->Project" in actual_plan_str
+    ), f"Expected fusion not found in plan: {actual_plan_str}"
+
+    ds_1 = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+    ds_1 = ds_1.map_batches(lambda x: x)
+    selected_ds_1 = ds_1.select_columns(
+        ["sepal.length", "sepal.width"],
+        operator_options=OperatorOptions(disable_fusion=True),
+    )
+
+    physical_plan = get_execution_plan(selected_ds_1._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # Map ops should not be fused with Read
+    assert (
+        "ReadParquet->MapBatches(<lambda>)->Project" not in actual_plan_str
+    ), f"UnExpected fusion found in plan: {actual_plan_str}"
+
+
+def test_rename_fusion_disabled_with_operator_options(ray_start_regular_shared_2_cpus):
+    ds = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+    ds = ds.map_batches(lambda x: x)
+    selected_ds = ds.rename_columns(
+        {"sepal.length": "sepal_length", "sepal.width": "sepal_width"}
+    )
+
+    physical_plan = get_execution_plan(selected_ds._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # # Select ops are fused with Map
+    assert (
+        "ReadParquet->MapBatches(<lambda>)->Project" in actual_plan_str
+    ), f"Expected fusion not found in plan: {actual_plan_str}"
+
+    ds_1 = ray.data.read_parquet("example://iris.parquet", parallelism=1)
+    ds_1 = ds_1.map_batches(lambda x: x)
+    selected_ds_1 = ds_1.rename_columns(
+        {"sepal.length": "sepal_length", "sepal.width": "sepal_width"},
+        operator_options=OperatorOptions(disable_fusion=True),
+    )
+
+    physical_plan = get_execution_plan(selected_ds_1._logical_plan)
+    physical_op = physical_plan.dag
+
+    actual_plan_str = physical_op.dag_str
+    # Map ops should not be fused with Read
+    assert (
+        "ReadParquet->MapBatches(<lambda>)->Project" not in actual_plan_str
+    ), f"UnExpected fusion found in plan: {actual_plan_str}"

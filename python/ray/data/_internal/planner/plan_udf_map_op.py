@@ -165,6 +165,7 @@ def plan_project_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        operator_options=op._operator_options,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
@@ -259,6 +260,7 @@ def plan_filter_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        operator_options=op._operator_options,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
@@ -316,7 +318,6 @@ def plan_udf_map_op(
         )
 
     map_transformer = MapTransformer([transform_fn], init_fn=init_fn)
-
     return MapOperator.create(
         map_transformer,
         input_physical_dag,

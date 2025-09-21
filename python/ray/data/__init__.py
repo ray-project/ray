@@ -71,7 +71,7 @@ from ray.data.read_api import (  # noqa: F401
     read_videos,
     read_webdataset,
 )
-from operation_options import OperatorOptions
+from ray.data.operation_options import OperatorOptions
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
