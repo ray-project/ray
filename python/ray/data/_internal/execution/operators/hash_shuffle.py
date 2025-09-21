@@ -1263,6 +1263,11 @@ class AggregatorPool:
         # Check cluster resources before starting aggregators
         self._check_cluster_resources()
 
+        logger.debug(
+            f"Starting {self._num_aggregators} shuffle aggregators with remote "
+            f"args: {self._aggregator_ray_remote_args}"
+        )
+
         for aggregator_id in range(self._num_aggregators):
             target_partition_ids = self._aggregator_partition_map[aggregator_id]
 
@@ -1401,8 +1406,6 @@ class AggregatorPool:
             "max_concurrency": max_concurrency,
             **aggregator_ray_remote_args,
         }
-
-        logger.debug(f"Shuffle aggregator's remote args: {finalized_remote_args}")
 
         return finalized_remote_args
 
