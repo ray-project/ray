@@ -5,11 +5,14 @@ FROM "$BASE_IMAGE"
 
 ARG BUILD_TYPE
 ARG BUILDKITE_CACHE_READONLY
+ARG RAY_DISABLE_EXTRA_CPP=1
 ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
 ENV CXX=clang++-12
-ENV RAY_DISABLE_EXTRA_CPP=1
+# Disabling C++ API build to speed up CI
+# Only needed for java tests where we override this.
+ENV RAY_DISABLE_EXTRA_CPP=${RAY_DISABLE_EXTRA_CPP}
 
 RUN mkdir /rayci
 WORKDIR /rayci

@@ -168,7 +168,6 @@ class ReplicaMetricsManager:
         self._deployment_id = replica_id.deployment_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
-        self.user_callable_wrapper = user_callable_wrapper
         self._ingress = ingress
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
@@ -178,9 +177,10 @@ class ReplicaMetricsManager:
         self._event_loop = event_loop or asyncio.get_event_loop()
 
         # Cache user_callable_wrapper initialization state to avoid repeated runtime checks
-        self._user_autoscaling_stats_available = False
-        # On first call to _record_autoscaling_stats_safe. Failing validation disables _user_autoscaling_stats_available
-        self._user_autoscaling_stats_validated = False
+        self._custom_metrics_enabled = False
+        # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
+        self._checked_custom_metrics = False
+        self._record_autoscaling_stats_fn = None
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -281,32 +281,46 @@ class ReplicaMetricsManager:
 
         await self._metrics_pusher.graceful_shutdown()
 
-    def should_collect_metrics(self) -> bool:
-        return self._autoscaling_config is not None
+    def start_metrics_pusher(self):
+        self._metrics_pusher.start()
+
+        # Push autoscaling metrics to the controller periodically.
+        self._metrics_pusher.register_or_update_task(
+            self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+            self._push_autoscaling_metrics,
+            self._autoscaling_config.metrics_interval_s,
+        )
+        # Collect autoscaling metrics locally periodically.
+        self._metrics_pusher.register_or_update_task(
+            self.RECORD_METRICS_TASK_NAME,
+            self._add_autoscaling_metrics_point_async,
+            min(
+                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
+                self._autoscaling_config.metrics_interval_s,
+            ),
+        )
+
+    def should_collect_ongoing_requests(self) -> bool:
+        return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if self.should_collect_metrics():
-            self._metrics_pusher.start()
+        if self._autoscaling_config and self.should_collect_ongoing_requests():
+            self.start_metrics_pusher()
 
-            # Push autoscaling metrics to the controller periodically.
-            self._metrics_pusher.register_or_update_task(
-                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                self._push_autoscaling_metrics,
-                self._autoscaling_config.metrics_interval_s,
-            )
-            # Collect autoscaling metrics locally periodically.
-            self._metrics_pusher.register_or_update_task(
-                self.RECORD_METRICS_TASK_NAME,
-                self._add_autoscaling_metrics_point_async,
-                min(
-                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                    self._autoscaling_config.metrics_interval_s,
-                ),
-            )
+    def enable_custom_autoscaling_metrics(
+        self,
+        custom_metrics_enabled: bool,
+        record_autoscaling_stats_fn: Callable[[], Optional[concurrent.futures.Future]],
+    ):
+        """Runs after the user callable wrapper is initialized to enable autoscaling metrics collection."""
+        if custom_metrics_enabled:
+            self._custom_metrics_enabled = custom_metrics_enabled
+            self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
+            self.start_metrics_pusher()
 
     def update_user_autoscaling_stats_availability(self):
         """Runs after the user callable wrapper is initialized to enable autoscaling metrics collection."""
@@ -354,7 +368,7 @@ class ReplicaMetricsManager:
         new_aggregated_metrics = {}
         new_metrics = {**self._metrics_store.data}
 
-        if not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+        if self.should_collect_ongoing_requests():
             # Keep the legacy window_avg ongoing requests in the merged metrics dict
             window_avg = (
                 self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
@@ -371,27 +385,24 @@ class ReplicaMetricsManager:
             replica_metric_report
         )
 
-    def _replica_ongoing_requests(self) -> Dict[ReplicaID, int]:
-        return {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
-
-    async def _record_autoscaling_stats_safe(
+    async def _fetch_custom_autoscaling_metrics(
         self,
     ) -> Optional[Dict[str, Union[int, float]]]:
         try:
             res = await asyncio.wait_for(
-                self.user_callable_wrapper.call_record_autoscaling_stats(),
+                self._record_autoscaling_stats_fn(),
                 timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
             )
 
             # Perform validation only first call
-            if not self._user_autoscaling_stats_validated:
+            if not self._checked_custom_metrics:
                 # Enforce return type to be Dict[str, Union[int, float]]
                 if not isinstance(res, dict):
                     logger.error(
                         f"User autoscaling stats method returned {type(res).__name__}, "
                         f"expected Dict[str, Union[int, float]]. Disabling autoscaling stats."
                     )
-                    self._user_autoscaling_stats_available = False
+                    self._custom_metrics_enabled = False
                     return None
 
                 for key, value in res.items():
@@ -401,10 +412,10 @@ class ReplicaMetricsManager:
                             f"{type(value).__name__} for key '{key}', expected int or float. "
                             f"Disabling autoscaling stats."
                         )
-                        self._user_autoscaling_stats_available = False
+                        self._custom_metrics_enabled = False
                         return None
 
-                self._user_autoscaling_stats_validated = True
+                self._checked_custom_metrics = True
 
             return res
         except asyncio.TimeoutError as timeout_err:
@@ -432,16 +443,15 @@ class ReplicaMetricsManager:
         return None
 
     async def _add_autoscaling_metrics_point_async(self) -> None:
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            metrics_dict = {}
-        else:
-            metrics_dict = self._replica_ongoing_requests()
+        metrics_dict = {}
+        if self.should_collect_ongoing_requests():
+            metrics_dict = {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
 
         # Use cached availability flag to avoid repeated runtime checks
-        if self._user_autoscaling_stats_available:
-            new_metrics = await self._record_autoscaling_stats_safe()
-            if new_metrics:
-                metrics_dict.update(new_metrics)
+        if self._custom_metrics_enabled:
+            custom_metrics = await self._fetch_custom_autoscaling_metrics()
+            if custom_metrics:
+                metrics_dict.update(custom_metrics)
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
@@ -857,6 +867,20 @@ class ReplicaBase(ABC):
                     await self._on_initialized()
                     self._user_callable_initialized = True
                     self._metrics_manager.update_user_autoscaling_stats_availability()
+
+                    if self._user_callable_wrapper is not None:
+                        initialized = (
+                            hasattr(
+                                self._user_callable_wrapper, "_user_autoscaling_stats"
+                            )
+                            and self._user_callable_wrapper._user_autoscaling_stats
+                            is not None
+                        )
+
+                        self._metrics_manager.enable_custom_autoscaling_metrics(
+                            custom_metrics_enabled=initialized,
+                            record_autoscaling_stats_fn=self._user_callable_wrapper.call_record_autoscaling_stats,
+                        )
 
                 if deployment_config:
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(

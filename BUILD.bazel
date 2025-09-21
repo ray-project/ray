@@ -118,19 +118,8 @@ ray_cc_library(
             "src/mock/ray/common/ray_syncer/ray_syncer.h",
         ],
     ),
-)
-
-ray_cc_library(
-    name = "ray_fakes",
-    # NOTE(edoakes): we are moving towards fine-grained mock and fake targets.
-    # Do not include new files in this target, instead make a BUILD.bazel file
-    # in the subdirectory and exclude it here.
-    hdrs = glob(
-        ["src/fakes/**/*.h"],
-    ),
     deps = [
-        "//src/ray/common:asio",
-        "//src/ray/rpc:raylet_client_interface",
+        "//src/ray/observability:fake_ray_event_recorder",
     ],
 )
 
