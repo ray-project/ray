@@ -156,7 +156,7 @@ class JoinTestCase:
                 "max_concurrency": 7,  # ceil(200 / 32)
                 "num_cpus": 0.25,  # 32 * 25% / 32
                 # Default fallback of 2Gb
-                "memory": 2147483648,
+                "memory": 1073741824,
                 "scheduling_strategy": "SPREAD",
             },
         ),
@@ -312,7 +312,7 @@ class HashOperatorTestCase:
             expected_ray_remote_args={
                 "max_concurrency": 7,
                 "num_cpus": 0.25,
-                "memory": 2147483648,
+                "memory": 1073741824,
                 "scheduling_strategy": "SPREAD",
             },
         ),
@@ -438,7 +438,7 @@ def test_hash_aggregate_operator_remote_args(
             expected_ray_remote_args={
                 "max_concurrency": 7,
                 "num_cpus": 0.25,
-                "memory": 2147483648,
+                "memory": 1073741824,
                 "scheduling_strategy": "SPREAD",
             },
         ),
