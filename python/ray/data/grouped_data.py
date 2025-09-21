@@ -208,11 +208,14 @@ class GroupedData:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
-            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
-                send to a single actor worker. Increasing this will increase
-                opportunities for pipelining task dependency prefetching with
-                computation and avoiding actor startup delays, but will also increase
-                queueing delay.
+            max_tasks_in_flight_per_actor: Max number of tasks that could be submitted
+                for execution to individual actor at the same time. Note that only up to
+                `max_concurrency` number of these tasks will be executing concurrently
+                while remaining ones will be waiting in the Actor's queue. Buffering
+                tasks in the queue allows us to overlap pulling of the blocks (which are
+                tasks arguments) with the execution of the prior tasks maximizing
+                individual Actor's utilization. Allows to override this parameter from the
+                :class:`~ray.data.DataContext`
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
