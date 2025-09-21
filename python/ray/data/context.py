@@ -83,11 +83,11 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 )
 
 DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
-    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.HASH_SHUFFLE
 )
 
 DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
-    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 64
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
@@ -477,11 +477,13 @@ class DataContext:
     # provided explicitly)
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
-    # Max number of aggregating actors that could be provisioned
+    # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
     #
-    # When unset defaults to `DataContext.min_parallelism`
-    max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    # When unset defaults to the smaller of
+    #   - Total # of CPUs available in the cluster * 2
+    #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
+    max_hash_shuffle_aggregators: Optional[int] = None
 
     min_hash_shuffle_aggregator_wait_time_in_s: int = (
         DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S
@@ -499,9 +501,11 @@ class DataContext:
     # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
     max_hash_shuffle_finalization_batch_size: Optional[int] = None
 
-    join_operator_actor_num_cpus_per_partition_override: float = None
-    hash_shuffle_operator_actor_num_cpus_per_partition_override: float = None
-    hash_aggregate_operator_actor_num_cpus_per_partition_override: float = None
+    # (Advanced) Following configuration allows to override `num_cpus` allocation for the
+    # Join/Aggregate/Shuffle workers (utilizing hash-shuffle)
+    join_operator_actor_num_cpus_override: float = None
+    hash_shuffle_operator_actor_num_cpus_override: float = None
+    hash_aggregate_operator_actor_num_cpus_override: float = None
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
