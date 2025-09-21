@@ -94,6 +94,8 @@ class GPUObjectManager:
         self._unmonitored_transfers: Queue[TransferMetadata] = Queue()
         # Background thread to poll on the transfer operation.
         self._monitor_failures_thread = None
+        # Event to signal the monitor_failures thread to shutdown
+        self._monitor_failures_shutdown_event = threading.Event()
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -106,6 +108,16 @@ class GPUObjectManager:
                 self._gpu_object_store = GPUObjectStore()
         return self._gpu_object_store
 
+    def shutdown(self):
+        """
+        Interrupt and join the monitor_failures thread.
+        """
+        if self._monitor_failures_thread:
+            self._monitor_failures_shutdown_event.set()
+            self._monitor_failures_thread.join()
+            self._monitor_failures_shutdown_event.clear()
+            self._monitor_failures_thread = None
+
     def _monitor_failures(self):
         """
         Monitor the refs from send and recv tasks and abort the transfers
@@ -114,7 +126,7 @@ class GPUObjectManager:
         not_done = []
         done = []
         ref_info_map = {}
-        while True:
+        while not self._monitor_failures_shutdown_event.is_set():
             while not self._unmonitored_transfers.empty():
                 ref_info = self._unmonitored_transfers.get()
                 if ref_info.send_ref:
@@ -122,7 +134,6 @@ class GPUObjectManager:
                     ref_info_map[ref_info.send_ref.hex()] = ref_info
                 not_done.append(ref_info.recv_ref)
                 ref_info_map[ref_info.recv_ref.hex()] = ref_info
-
             if len(not_done) > 0:
                 done, not_done = ray.wait(not_done, num_returns=1, timeout=1)
             if len(done) > 0:
@@ -136,6 +147,7 @@ class GPUObjectManager:
             # so can just check the timeout of the first
             while (
                 len(not_done) > 0
+                and not_done[0].hex() in ref_info_map
                 and ref_info_map[not_done[0].hex()].timeout < time.time()
             ):
                 self._abort_transport(
@@ -145,8 +157,7 @@ class GPUObjectManager:
                         f"RDT transfer failed after {ray.constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
                     ),
                 )
-
-            time.sleep(1)
+            self._monitor_failures_shutdown_event.wait(1)
 
     def _abort_transport(
         self,

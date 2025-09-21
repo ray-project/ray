@@ -1,4 +1,6 @@
+import logging
 import random
+import re
 import sys
 import threading
 import time
@@ -937,7 +939,7 @@ def test_send_actor_dies(ray_start_regular):
         ray.get(result_ref)
 
 
-def test_recv_actor_dies(ray_start_regular):
+def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
     actors = [ErrorActor.remote() for _ in range(2)]
     create_collective_group(actors, backend="torch_gloo")
 
@@ -951,7 +953,21 @@ def test_recv_actor_dies(ray_start_regular):
     with pytest.raises(ray.exceptions.ActorDiedError):
         ray.get(result_ref)
     with pytest.raises(ray.exceptions.ActorDiedError):
-        ray.get(actors[0].send.remote(torch.randn((100, 100))))
+        ray.get(actors[0].recv.remote(1))
+
+    def check_logs():
+        records = caplog.records
+        return any(
+            record.levelno == logging.ERROR
+            and re.search(r"RDT transfer with.*failed", record.message)
+            for record in records
+        ) and any(
+            record.levelno == logging.ERROR
+            and "Destroyed collective group" in record.message
+            for record in records
+        )
+
+    wait_for_condition(check_logs)
 
 
 if __name__ == "__main__":
