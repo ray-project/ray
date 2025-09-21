@@ -22,6 +22,8 @@ namespace rpc {
 
 class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
  public:
+  MOCK_METHOD(const Address &, Addr, (), (const, override));
+  MOCK_METHOD(bool, IsIdleAfterRPCs, (), (const, override));
   MOCK_METHOD(void,
               PushActorTask,
               (std::unique_ptr<PushTaskRequest> request,
@@ -127,6 +129,31 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               AssignObjectOwner,
               (const AssignObjectOwnerRequest &request,
                const ClientCallback<AssignObjectOwnerReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              ReportGeneratorItemReturns,
+              (ReportGeneratorItemReturnsRequest && request,
+               const ClientCallback<ReportGeneratorItemReturnsReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              RegisterMutableObjectReader,
+              (const RegisterMutableObjectReaderRequest &request,
+               const ClientCallback<RegisterMutableObjectReaderReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              DeleteObjects,
+              (const DeleteObjectsRequest &request,
+               const ClientCallback<DeleteObjectsReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              RayletNotifyGCSRestart,
+              (const RayletNotifyGCSRestartRequest &request,
+               const ClientCallback<RayletNotifyGCSRestartReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              FreeActorObject,
+              (const FreeActorObjectRequest &request,
+               const ClientCallback<FreeActorObjectReply> &callback),
               (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
