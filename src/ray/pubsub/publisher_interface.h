@@ -19,7 +19,7 @@
 #include <string>
 
 #include "ray/common/id.h"
-#include "ray/rpc/rpc_types.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {

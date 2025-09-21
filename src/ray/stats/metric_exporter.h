@@ -21,7 +21,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/rpc/metrics_agent_client.h"
-#include "ray/rpc/rpc_types.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
 #include "ray/util/logging.h"
 

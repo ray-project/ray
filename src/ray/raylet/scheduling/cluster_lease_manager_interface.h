@@ -18,7 +18,7 @@
 #include <string>
 
 #include "ray/raylet/scheduling/internal.h"
-#include "ray/rpc/rpc_types.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {

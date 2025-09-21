@@ -25,7 +25,7 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/rpc/rpc_types.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"

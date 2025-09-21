@@ -78,7 +78,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:rpc_types",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 

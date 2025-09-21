@@ -27,7 +27,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/rpc/rpc_types.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
 

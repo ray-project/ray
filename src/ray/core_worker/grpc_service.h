@@ -33,7 +33,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
-#include "ray/rpc/rpc_types.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 

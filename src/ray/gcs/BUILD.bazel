@@ -350,7 +350,7 @@ ray_cc_library(
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:rpc_types",
+        "//src/ray/rpc:rpc_callback_types",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )

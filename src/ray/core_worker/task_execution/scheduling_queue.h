@@ -15,7 +15,7 @@
 #pragma once
 
 #include "ray/common/task/task_spec.h"
-#include "ray/rpc/rpc_types.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace core {
