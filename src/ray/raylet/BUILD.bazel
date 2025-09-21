@@ -236,7 +236,7 @@ ray_cc_library(
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet/scheduling:scheduler",
-        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:core_worker_client_pool",
         "//src/ray/rpc:node_manager_server",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:cmd_line_utils",
