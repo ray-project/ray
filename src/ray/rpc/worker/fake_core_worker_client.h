@@ -18,7 +18,7 @@
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 
 namespace ray {
 

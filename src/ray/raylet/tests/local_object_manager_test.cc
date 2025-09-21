@@ -34,7 +34,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"

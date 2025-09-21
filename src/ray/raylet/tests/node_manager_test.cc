@@ -39,6 +39,7 @@
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray::raylet {
 using ::testing::_;

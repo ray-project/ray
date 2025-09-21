@@ -15,8 +15,7 @@
 #pragma once
 
 #include "gmock/gmock.h"
-#include "ray/pubsub/subscriber_interface.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 
 namespace ray {
 namespace rpc {

@@ -32,7 +32,7 @@
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
 

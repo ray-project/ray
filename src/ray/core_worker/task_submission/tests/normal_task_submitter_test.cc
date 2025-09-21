@@ -32,7 +32,8 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
 namespace core {
