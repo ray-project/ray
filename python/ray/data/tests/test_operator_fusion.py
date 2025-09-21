@@ -291,7 +291,6 @@ def test_read_with_map_batches_fused_successfully(
                     get_read_tasks=lambda _: [MagicMock()]
                 ),
                 parallelism=1,
-                mem_size=1,
             ),
             False,
         ),

@@ -107,6 +107,8 @@ class SetReadParallelismRule(Rule):
         return plan
 
     def _apply(self, op: PhysicalOperator, logical_op: Read):
+        estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
+
         (
             detected_parallelism,
             reason,
@@ -115,7 +117,7 @@ class SetReadParallelismRule(Rule):
         ) = compute_additional_split_factor(
             logical_op._datasource_or_legacy_reader,
             logical_op._parallelism,
-            logical_op._mem_size,
+            estimated_in_mem_bytes,
             op.target_max_block_size_override or op.data_context.target_max_block_size,
             op._additional_split_factor,
         )

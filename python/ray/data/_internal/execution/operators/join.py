@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.transform_pyarrow import _is_pa_extension_type
@@ -15,7 +15,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     StatefulShuffleAggregation,
 )
 from ray.data._internal.logical.operators.join_operator import JoinType
-from ray.data._internal.util import GiB
+from ray.data._internal.util import GiB, MiB
 from ray.data.block import Block
 from ray.data.context import DataContext
 
@@ -340,32 +340,23 @@ class JoinOperator(HashShufflingOperatorBase):
         right_key_columns: Tuple[str],
         join_type: JoinType,
         *,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         left_columns_suffix: Optional[str] = None,
         right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
-        shuffle_aggregation_type: Optional[Type[StatefulShuffleAggregation]] = None,
     ):
-        # Runtime validation (still recommended even with type hints)
-        if shuffle_aggregation_type is not None:
-            if not issubclass(shuffle_aggregation_type, StatefulShuffleAggregation):
-                raise TypeError(
-                    f"shuffle_aggregation_type must be a subclass of StatefulShuffleAggregation, "
-                    f"got {shuffle_aggregation_type}"
-                )
-
-        aggregation_class = shuffle_aggregation_type or JoiningShuffleAggregation
-
         super().__init__(
-            name=f"Join(num_partitions={num_partitions})",
+            name_factory=(
+                lambda num_partitions: f"Join(num_partitions={num_partitions})"
+            ),
             input_ops=[left_input_op, right_input_op],
             data_context=data_context,
             key_columns=[left_key_columns, right_key_columns],
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
             partition_aggregation_factory=(
-                lambda aggregator_id, target_partition_ids: aggregation_class(
+                lambda aggregator_id, target_partition_ids: JoiningShuffleAggregation(
                     aggregator_id=aggregator_id,
                     join_type=join_type,
                     left_key_col_names=left_key_columns,
@@ -381,23 +372,8 @@ class JoinOperator(HashShufflingOperatorBase):
             finalize_progress_bar_name="Join",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> int:
-        """
-        CPU allocation for aggregating actors of Join operator is calculated as:
-        num_cpus (per partition) = CPU budget / # partitions
-
-        Assuming:
-        - Default number of partitions: 64
-        - Total operator's CPU budget with default settings: 8 cores
-        - Number of CPUs per partition: 8 / 64 = 0.125
-
-        These CPU budgets are derived such that Ray Data pipeline could run on a
-        single node (using the default settings).
-        """
-        return 0.125
-
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
-        return self.data_context.join_operator_actor_num_cpus_per_partition_override
+    def _get_operator_num_cpus_override(self) -> float:
+        return self.data_context.join_operator_actor_num_cpus_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -405,29 +381,29 @@ class JoinOperator(HashShufflingOperatorBase):
         *,
         num_aggregators: int,
         num_partitions: int,
-        partition_byte_size_estimate: int,
+        estimated_dataset_bytes: int,
     ) -> int:
-        dataset_size = num_partitions * partition_byte_size_estimate
+        partition_byte_size_estimate = math.ceil(
+            estimated_dataset_bytes / num_partitions
+        )
+
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
-        #
-        # NOTE: x2 due to 2 sequences involved in joins
         aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            2 * dataset_size / num_aggregators
+            estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to perform actual (in-memory) join
         # operation (inclusive of 50% overhead allocated for Pyarrow join
         # implementation)
         #
         # NOTE:
-        #   - x2 due to 2 partitions (from left/right sequences)
-        #   - x1.5 due to 50% overhead of in-memory join
-        join_memory_required: int = math.ceil(partition_byte_size_estimate * 3)
+        #   - 2x due to budgeted 100% overhead of Arrow's in-memory join
+        join_memory_required: int = math.ceil(partition_byte_size_estimate * 2)
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
         #
         # NOTE: x2 due to 2 sequences involved in joins
-        output_object_store_memory_required: int = 2 * partition_byte_size_estimate
+        output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
             # Inputs (object store)
@@ -440,13 +416,15 @@ class JoinOperator(HashShufflingOperatorBase):
             output_object_store_memory_required
         )
 
-        logger.debug(
+        logger.info(
             f"Estimated memory requirement for joining aggregator "
-            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
-            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
-            f"joining={join_memory_required / GiB:.2f}GiB, "
-            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
-            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+            f"(partitions={num_partitions}, "
+            f"aggregators={num_aggregators}, "
+            f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
+            f"joining={join_memory_required / MiB:.1f}MiB, "
+            f"output={output_object_store_memory_required / MiB:.1f}MiB, "
+            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
         )
 
         return aggregator_total_memory_required
