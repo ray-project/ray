@@ -22,7 +22,7 @@ def mock_image():
 @pytest.fixture
 def mock_http_connection():
     with patch(
-        "ray.llm._internal.batch.stages.prepare_image_stage.HTTPConnection"
+        "ray.llm._internal.batch.stages._util.HTTPConnection"
     ) as mock:
         connection = MagicMock()
         connection.async_get_bytes = AsyncMock()
