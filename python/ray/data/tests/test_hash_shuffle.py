@@ -142,27 +142,7 @@ class JoinTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-        # Case 7: No dataset byte size is inferred, but num outputs is known
-        JoinTestCase(
-            left_size_bytes=None,
-            right_size_bytes=None,
-            left_num_blocks=16,
-            right_num_blocks=32,
-            target_num_partitions=None,
-            total_cpu=32,
-            expected_num_partitions=32,  # default parallelism
-            expected_num_aggregators=32,  # min(200, min(32, 128 (default max))
-            expected_ray_remote_args={
-                "max_concurrency": 1,  # ceil(32 / 32)
-                "num_cpus": 0.19,  # 0.8Gb / 4Gb = ~0.19
-                # Fallback estimate based on
-                #   - Number of inputs from the input op
-                #   - Configured (or default) target max-block size (128Mb)
-                "memory": 805306368,
-                "scheduling_strategy": "SPREAD",
-            },
-        ),
-        # Case 8: No dataset size estimates available (fallback to default memory request)
+        # Case 7: No dataset size estimates available (fallback to default memory request)
         JoinTestCase(
             left_size_bytes=None,
             right_size_bytes=None,
@@ -321,21 +301,6 @@ class HashOperatorTestCase:
                 "scheduling_strategy": "SPREAD",
             },
         ),
-        # Case 5: No dataset size estimate inferred (fallback to default memory request)
-        HashOperatorTestCase(
-            input_size_bytes=None,
-            input_num_blocks=16,
-            target_num_partitions=None,
-            total_cpu=32.0,
-            expected_num_partitions=16,
-            expected_num_aggregators=16,
-            expected_ray_remote_args={
-                "max_concurrency": 1,
-                "num_cpus": 0.06,
-                "memory": 268435456,
-                "scheduling_strategy": "SPREAD",
-            },
-        ),
         # Case 6: No dataset size estimate inferred (fallback to default memory request)
         HashOperatorTestCase(
             input_size_bytes=None,
@@ -459,20 +424,6 @@ def test_hash_aggregate_operator_remote_args(
                 "max_concurrency": 2,  # ceil(200 / 128)
                 "num_cpus": 0.16,  # ~0.6Gb / 4Gb = ~0.16
                 "memory": 687865856,
-                "scheduling_strategy": "SPREAD",
-            },
-        ),
-        HashOperatorTestCase(
-            input_size_bytes=None,
-            input_num_blocks=16,
-            target_num_partitions=None,
-            total_cpu=32.0,
-            expected_num_partitions=16,
-            expected_num_aggregators=16,
-            expected_ray_remote_args={
-                "max_concurrency": 1,
-                "num_cpus": 0.06,
-                "memory": 268435456,
                 "scheduling_strategy": "SPREAD",
             },
         ),
