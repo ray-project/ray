@@ -34,7 +34,6 @@ from ray.data.dataset import Dataset
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
-from ray.data.operation_options import OperatorOptions
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
