@@ -8,8 +8,8 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr
-from ray.data.preprocessor import Preprocessor
 from ray.data.operation_options import OperatorOptions
+from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     import pyarrow as pa

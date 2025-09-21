@@ -38,9 +38,9 @@ from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.operation_options import OperatorOptions
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
-from ray.data.operation_options import OperatorOptions
 
 logger = logging.getLogger(__name__)
 
