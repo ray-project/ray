@@ -241,6 +241,7 @@ class Filter(AbstractUDFMap):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         filter_expr: Optional["pa.dataset.Expression"] = None,
         compute: Optional[ComputeStrategy] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -258,6 +259,7 @@ class Filter(AbstractUDFMap):
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -278,6 +280,7 @@ class Project(AbstractMap):
             Dict[str, "Expr"]
         ] = None,  # TODO Remove cols and cols_rename and replace them with corresponding exprs
         compute: Optional[ComputeStrategy] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -285,6 +288,7 @@ class Project(AbstractMap):
             input_op=input_op,
             ray_remote_args=ray_remote_args,
             compute=compute,
+            operator_options=operator_options,
         )
         self._batch_size = None
         self._cols = cols
@@ -329,6 +333,7 @@ class FlatMap(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[ComputeStrategy] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -341,6 +346,7 @@ class FlatMap(AbstractUDFMap):
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )

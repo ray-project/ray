@@ -885,6 +885,7 @@ class Dataset:
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
+        operator_options: Optional[OperatorOptions] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Add the given column to the dataset.
@@ -925,6 +926,9 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            operator_options: Options for configuring the operator. See
+                :class:`~ray.data.operation_options.OperatorOptions` for more
+                details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -985,6 +989,7 @@ class Dataset:
             batch_format=batch_format,
             compute=compute,
             concurrency=concurrency,
+            operator_options=operator_options,
             zero_copy_batch=False,
             **ray_remote_args,
         )
@@ -996,6 +1001,7 @@ class Dataset:
         *,
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
+        operator_options: Optional[OperatorOptions] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Drop one or more columns from the dataset.
@@ -1027,6 +1033,9 @@ class Dataset:
                 an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            operator_options: Options for configuring the operator. See
+                :class:`~ray.data.operation_options.OperatorOptions` for more
+                details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1044,6 +1053,7 @@ class Dataset:
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
+            operator_options=operator_options,
             **ray_remote_args,
         )
 
@@ -1054,6 +1064,7 @@ class Dataset:
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[int] = None,
+        operator_options: Optional[OperatorOptions] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Select one or more columns from the dataset.
@@ -1090,6 +1101,9 @@ class Dataset:
                 dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            operator_options: Options for configuring the operator. See
+                :class:`~ray.data.operation_options.OperatorOptions` for more
+                details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1123,6 +1137,7 @@ class Dataset:
             cols=cols,
             cols_rename=None,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
@@ -1134,6 +1149,7 @@ class Dataset:
         names: Union[List[str], Dict[str, str]],
         *,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        operator_options: Optional[OperatorOptions] = None,
         **ray_remote_args,
     ):
         """Rename columns in the dataset.
@@ -1179,6 +1195,9 @@ class Dataset:
             names: A dictionary that maps old column names to new column names, or a
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
+            operator_options: Options for configuring the operator. See
+                :class:`~ray.data.operation_options.OperatorOptions` for more
+                details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1249,6 +1268,7 @@ class Dataset:
             cols=None,
             cols_rename=cols_rename,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
@@ -1268,6 +1288,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1354,6 +1375,9 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            operator_options: Options for configuring the operator. See
+                :class:`~ray.data.operation_options.OperatorOptions` for more
+                details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1394,6 +1418,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -1415,6 +1440,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1481,6 +1507,9 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            operator_options: Options for configuring the operator. See
+                :class:`~ray.data.operation_options.OperatorOptions` for more
+                details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1550,6 +1579,7 @@ class Dataset:
             fn_constructor_kwargs=fn_constructor_kwargs,
             filter_expr=resolved_expr,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
