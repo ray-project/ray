@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class OperatorOptions:
     """Options for configuring individual operators."""
