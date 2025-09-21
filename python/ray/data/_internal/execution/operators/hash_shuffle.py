@@ -79,7 +79,7 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
 )
 
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
-    "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 2 * GiB
+    "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 1 * GiB
 )
 
 
@@ -1024,7 +1024,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         return (
             math.ceil(block_metadata.size_bytes * 1.25)
             if block_metadata.size_bytes
-            else 2 * GiB
+            else 1 * GiB
         )
 
     def _get_default_aggregator_ray_remote_args(
