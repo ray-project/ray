@@ -155,7 +155,7 @@ TorchBatchType = Union[Dict[str, "torch.Tensor"], CollatedData]
 TorchDeviceType = Union[str, "torch.device", int]
 """
 A device identifier, which can be a string (e.g. 'cpu', 'cuda:0'),
-a torch.device object, or other types supported by torch.
+a torch.device object, or an integer (e.g. 0 for 'cuda:0').
 """
 
 BT_API_GROUP = "Basic Transformations"
