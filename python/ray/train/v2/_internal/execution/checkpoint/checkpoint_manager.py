@@ -147,9 +147,20 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     ):
         """Update the checkpoints with the metrics."""
         for checkpoint, metrics in checkpoint_to_metrics.items():
+            if checkpoint not in self._pending_training_results:
+                logger.warning(
+                    f"Checkpoint {checkpoint} not found in pending training results. "
+                )
+                continue
             checkpoint_result = self._pending_training_results[checkpoint]
             checkpoint_result.metrics.update(metrics)
-            self._checkpoint_results.remove(checkpoint_result)
+            try:
+                self._checkpoint_results.remove(checkpoint_result)
+            except ValueError:
+                logger.warning(
+                    f"Checkpoint {checkpoint} not found in checkpoint results. "
+                )
+                continue
             _insert_into_sorted_list(
                 self._checkpoint_results,
                 checkpoint_result,
