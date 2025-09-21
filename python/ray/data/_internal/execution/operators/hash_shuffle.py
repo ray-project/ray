@@ -61,7 +61,7 @@ from ray.data.block import (
 )
 from ray.data.context import (
     DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
-    DataContext,
+    DataContext, DEFAULT_TARGET_MAX_BLOCK_SIZE,
 )
 
 logger = logging.getLogger(__name__)
@@ -625,7 +625,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # Compose shuffling task resource bundle
             shuffle_task_resource_bundle = {
                 "num_cpus": 0.5,
-                "memory": self._estimate_shuffling_memory_req(block_metadata),
+                "memory": self._estimate_shuffling_memory_req(
+                    block_metadata,
+                    target_max_block_size=(
+                        self._data_context.target_max_block_size or
+                        DEFAULT_TARGET_MAX_BLOCK_SIZE
+                    )
+                ),
             }
 
             cur_shuffle_task_idx = self._next_shuffle_tasks_idx
@@ -1020,12 +1026,18 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         }
 
     @classmethod
-    def _estimate_shuffling_memory_req(cls, block_metadata: BlockMetadata):
-        return (
-            math.ceil(block_metadata.size_bytes * 1.25)
-            if block_metadata.size_bytes
-            else 1 * GiB
+    def _estimate_shuffling_memory_req(
+        cls,
+        block_metadata: BlockMetadata,
+        target_max_block_size: int,
+    ):
+        estimated_block_bytes = (
+            block_metadata.size_bytes
+            if block_metadata.size_bytes is not None
+            else target_max_block_size
         )
+
+        return estimated_block_bytes * 2
 
     def _get_default_aggregator_ray_remote_args(
         self,
