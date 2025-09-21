@@ -1255,7 +1255,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
 
 
 def test_union(ray_start_regular_shared):
-    ds = ray.data.range(20, override_num_blocks=10)
+    ds = ray.data.range(20, override_num_blocks=10).materialize()
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
