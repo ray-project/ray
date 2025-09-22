@@ -1177,8 +1177,15 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
       if (!ray::IsEnvTrue(kDisableOutputErrorLogIfStillRetryEnv)) {
-        std::string num_retries_left_str =
-            num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+        std::string num_retries_left_str;
+        if (task_failed_due_to_oom) {
+          num_retries_left_str = num_oom_retries_left == -1
+                                     ? "infinite"
+                                     : std::to_string(num_oom_retries_left);
+        } else {
+          num_retries_left_str =
+              num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+        }
         auto error_message = "Task " + spec.FunctionDescriptor()->CallString() +
                              " failed. There are " + num_retries_left_str +
                              " retries remaining, so the task will be retried. Error: " +
