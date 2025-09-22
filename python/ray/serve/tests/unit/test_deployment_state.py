@@ -53,6 +53,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.util.placement_group import validate_placement_group
+from ray._raylet import NodeID
 
 # Global variable that is fetched during controller recovery that
 # marks (simulates) which replicas have died since controller first
@@ -365,7 +366,7 @@ def mock_deployment_state_manager(
     ):
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        cluster_node_info_cache.add_node("node-id")
+        cluster_node_info_cache.add_node(NodeID.from_random().hex())
         autoscaling_state_manager = AutoscalingStateManager()
 
         def create_deployment_state_manager(
