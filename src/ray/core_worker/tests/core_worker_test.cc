@@ -26,12 +26,9 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
-#include "fakes/ray/common/asio/fake_periodical_runner.h"
-#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/plasma/client.h"
+#include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_creator.h"
@@ -47,8 +44,11 @@
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/ipc/fake_raylet_ipc_client.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
@@ -289,7 +289,7 @@ class CoreWorkerTest : public ::testing::Test {
   pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts
