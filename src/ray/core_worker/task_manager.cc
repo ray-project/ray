@@ -25,6 +25,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/util/env.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -37,6 +38,11 @@ constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 
 // Throttle task failure logs to once this interval.
 constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
+
+// Environment variable to disable the feature of outputting error log if the task is
+// still retryable.
+constexpr char kDisableOutputErrorLogIfStillRetryEnv[] =
+    "RAY_DISABLE_OUTPUT_ERROR_LOG_IF_STILL_RETRY";
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
@@ -1170,21 +1176,22 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
-      std::string num_retries_left_str =
-          num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-      auto error_message = "Task " + spec.FunctionDescriptor()->CallString() +
-                          " failed. There are " + num_retries_left_str +
-                          " retries remaining, so the task will be retried. Error: " +
-                          error_info.error_message();
-      Status push_error_status =
-          push_error_callback_(task_entry.spec_.JobId(),
-                               rpc::ErrorType_Name(error_info.error_type()),
-                               error_message,
-                               current_time_ms());
-      if (!push_error_status.ok()) {
-        RAY_LOG(ERROR) << "Failed to push error to driver for task " << spec.TaskId();
+      if (!ray::IsEnvTrue(kDisableOutputErrorLogIfStillRetryEnv)) {
+        std::string num_retries_left_str =
+            num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+        auto error_message = "Task " + spec.FunctionDescriptor()->CallString() +
+                             " failed. There are " + num_retries_left_str +
+                             " retries remaining, so the task will be retried. Error: " +
+                             error_info.error_message();
+        Status push_error_status =
+            push_error_callback_(task_entry.spec_.JobId(),
+                                 rpc::ErrorType_Name(error_info.error_type()),
+                                 error_message,
+                                 current_time_ms());
+        if (!push_error_status.ok()) {
+          RAY_LOG(ERROR) << "Failed to push error to driver for task " << spec.TaskId();
+        }
       }
-
       // Mark the new status and also include task spec info for the new attempt.
       SetTaskStatus(task_entry,
                     rpc::TaskStatus::PENDING_ARGS_AVAIL,

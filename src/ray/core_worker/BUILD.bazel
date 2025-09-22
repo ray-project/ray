@@ -288,6 +288,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
+        "//src/ray/util:env",
         "//src/ray/util:exponential_backoff",
         "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
