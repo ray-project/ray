@@ -206,9 +206,9 @@ class AggregatorAgent(
             )
         try:
             await asyncio.gather(
-            self._http_endpoint_publisher.run_forever(),
-            self._gcs_publisher.run_forever(),
-        )
+                self._http_endpoint_publisher.run_forever(),
+                self._gcs_publisher.run_forever(),
+            )
         finally:
             self._executor.shutdown()
 
