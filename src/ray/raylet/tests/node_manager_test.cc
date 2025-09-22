@@ -21,23 +21,27 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
-#include "mock/ray/object_manager/plasma/client.h"
 #include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
+#include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/object_manager/plasma/client.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/rpc/utils.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -93,94 +97,6 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
  private:
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-};
-
-class FakePlasmaClient : public plasma::PlasmaClientInterface {
- public:
-  Status Connect(const std::string &store_socket_name,
-                 const std::string &manager_socket_name = "",
-                 int num_retries = -1) override {
-    return Status::OK();
-  };
-
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address,
-                                bool is_mutable,
-                                int64_t data_size,
-                                const uint8_t *metadata,
-                                int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                plasma::flatbuf::ObjectSource source,
-                                int device_num = 0) override {
-    return TryCreateImmediately(
-        object_id, owner_address, data_size, metadata, metadata_size, data, source);
-  }
-
-  Status TryCreateImmediately(const ObjectID &object_id,
-                              const ray::rpc::Address &owner_address,
-                              int64_t data_size,
-                              const uint8_t *metadata,
-                              int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data,
-                              plasma::flatbuf::ObjectSource source,
-                              int device_num = 0) override {
-    objects_ids_in_plasma_.emplace(object_id);
-    objects_in_plasma_.emplace(
-        object_id, std::make_pair(std::vector<uint8_t>{}, std::vector<uint8_t>{}));
-    return Status::OK();
-  }
-
-  Status Get(const std::vector<ObjectID> &object_ids,
-             int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers) override {
-    for (const auto &id : object_ids) {
-      auto &buffers = objects_in_plasma_[id];
-      plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
-                                          buffers.first.data(), buffers.first.size()),
-                                      std::make_shared<SharedMemoryBuffer>(
-                                          buffers.second.data(), buffers.second.size())};
-      object_buffers->emplace_back(shm_buffer);
-    }
-    return Status::OK();
-  }
-
-  Status GetExperimentalMutableObject(
-      const ObjectID &object_id,
-      std::unique_ptr<plasma::MutableObject> *mutable_object) override {
-    return Status::OK();
-  }
-
-  Status Release(const ObjectID &object_id) override {
-    objects_ids_in_plasma_.erase(object_id);
-    return Status::OK();
-  }
-
-  Status Contains(const ObjectID &object_id, bool *has_object) override {
-    *has_object = objects_ids_in_plasma_.find(object_id) != objects_ids_in_plasma_.end();
-    return Status::OK();
-  }
-
-  Status Abort(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Seal(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Delete(const std::vector<ObjectID> &object_ids) override {
-    for (const auto &id : object_ids) {
-      objects_ids_in_plasma_.erase(id);
-    }
-    return Status::OK();
-  }
-
-  Status Disconnect() override { return Status::OK(); };
-
-  std::string DebugString() { return ""; }
-
-  int64_t store_capacity() { return 1; }
-
- private:
-  absl::flat_hash_set<ObjectID> objects_ids_in_plasma_;
-  absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
-      objects_in_plasma_;
 };
 
 LeaseSpecification BuildLeaseSpec(
@@ -383,7 +299,7 @@ class NodeManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
         raylet_client_pool_(
-            [](const auto &) { return std::make_shared<FakeRayletClient>(); }) {
+            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }) {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
@@ -395,6 +311,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
+    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -418,8 +335,8 @@ class NodeManagerTest : public ::testing::Test {
     local_object_manager_ =
         std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
-    lease_dependency_manager_ =
-        std::make_unique<LeaseDependencyManager>(*mock_object_manager_);
+    lease_dependency_manager_ = std::make_unique<LeaseDependencyManager>(
+        *mock_object_manager_, fake_task_by_state_counter_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
@@ -479,28 +396,30 @@ class NodeManagerTest : public ::testing::Test {
         [](const ray::RayLease &lease) {},
         *local_lease_manager_);
 
-    node_manager_ = std::make_unique<NodeManager>(io_service_,
-                                                  raylet_node_id_,
-                                                  "test_node_name",
-                                                  node_manager_config,
-                                                  *mock_gcs_client_,
-                                                  client_call_manager_,
-                                                  worker_rpc_pool_,
-                                                  raylet_client_pool_,
-                                                  *core_worker_subscriber_,
-                                                  *cluster_resource_scheduler_,
-                                                  *local_lease_manager_,
-                                                  *cluster_lease_manager_,
-                                                  *mock_object_directory_,
-                                                  *mock_object_manager_,
-                                                  *local_object_manager_,
-                                                  *lease_dependency_manager_,
-                                                  mock_worker_pool_,
-                                                  leased_workers_,
-                                                  *mock_store_client_,
-                                                  std::move(mutable_object_provider),
-                                                  /*shutdown_raylet_gracefully=*/
-                                                  [](const auto &) {});
+    node_manager_ = std::make_unique<NodeManager>(
+        io_service_,
+        raylet_node_id_,
+        "test_node_name",
+        node_manager_config,
+        *mock_gcs_client_,
+        client_call_manager_,
+        worker_rpc_pool_,
+        raylet_client_pool_,
+        *core_worker_subscriber_,
+        *cluster_resource_scheduler_,
+        *local_lease_manager_,
+        *cluster_lease_manager_,
+        *mock_object_directory_,
+        *mock_object_manager_,
+        *local_object_manager_,
+        *lease_dependency_manager_,
+        mock_worker_pool_,
+        leased_workers_,
+        *mock_store_client_,
+        std::move(mutable_object_provider),
+        /*shutdown_raylet_gracefully=*/
+        [](const auto &) {},
+        std::move(cgroup_manager_));
   }
 
   instrumented_io_context io_service_;
@@ -519,14 +438,16 @@ class NodeManagerTest : public ::testing::Test {
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
   std::unique_ptr<MockObjectManager> mock_object_manager_;
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
-      std::make_shared<FakePlasmaClient>();
+      std::make_shared<plasma::FakePlasmaClient>();
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -948,6 +869,101 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
 
+TEST_F(NodeManagerTest, AsyncGetOrWaitSkipsGetForWorkerWithoutLease) {
+  // Verifies AsyncGetOrWait drops stale GETs for workers whose lease was cleared,
+  // while leaving driver GETs unaffected.
+
+  // Prepare a mock worker returned by GetRegisteredWorker(client).
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  EXPECT_TRUE(worker->GetGrantedLeaseId().IsNil());
+
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
+      .WillRepeatedly(Return(worker));
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(0);
+
+  // Expect no pull to be registered on the ObjectManager for this GET.
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(0);
+
+  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
+  std::vector<ObjectID> object_ids;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
+  // Add one object and a corresponding (empty) owner address.
+  object_ids.push_back(ObjectID::FromRandom());
+  address_vec.push_back(protocol::CreateAddress(
+      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
+  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, fbb.CreateVector(address_vec));
+  fbb.Finish(message);
+
+  // Create a minimal client connection for ProcessClientMessage.
+  local_stream_socket fake_socket(io_service_);
+  auto client = ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      std::move(fake_socket),
+      "test-client",
+      std::vector<std::string>{});
+  node_manager_->ProcessClientMessage(
+      client,
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
+      fbb.GetBufferPointer());
+}
+
+TEST_F(NodeManagerTest, AsyncGetOrWaitRegistersGetForDriver) {
+  // A driver has no lease id; GET should still be registered.
+
+  // GetRegisteredWorker returns nullptr, driver is returned instead.
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
+      .WillRepeatedly(Return(nullptr));
+  auto driver = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(1)
+      .WillOnce(Return(driver));
+
+  // Expect a pull to be registered on the ObjectManager for this GET.
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1);
+
+  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
+  std::vector<ObjectID> object_ids;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
+  // Add one object and a corresponding (empty) owner address.
+  object_ids.push_back(ObjectID::FromRandom());
+  address_vec.push_back(protocol::CreateAddress(
+      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
+
+  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, fbb.CreateVector(address_vec));
+  fbb.Finish(message);
+
+  // Create a minimal client connection for ProcessClientMessage.
+  local_stream_socket fake_socket(io_service_);
+  auto client = ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      std::move(fake_socket),
+      "test-client",
+      std::vector<std::string>{});
+  node_manager_->ProcessClientMessage(
+      client,
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
+      fbb.GetBufferPointer());
+}
+
 class NodeManagerReturnWorkerLeaseIdempotentTest
     : public NodeManagerTest,
       public testing::WithParamInterface<std::tuple<bool, bool>> {};
@@ -998,6 +1014,86 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
+
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .Times(1)
+      .WillOnce([&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+        pop_worker_callback = callback;
+      });
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),
+            WorkerID::FromBinary(reply1.worker_address().worker_id()));
+  ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
+}
+
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
+  auto lease_spec = BuildLeaseSpec({{"CPU", 1}});
+  lease_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_soft(false);  // Hard constraint
+
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.canceled(), true);
+  ASSERT_EQ(reply1.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.canceled(), reply2.canceled());
+  ASSERT_EQ(reply1.failure_type(), reply2.failure_type());
+  ASSERT_EQ(reply1.scheduling_failure_message(), reply2.scheduling_failure_message());
+}
 
 size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) {
   return local_lease_manager.waiting_lease_queue_.size() +
@@ -1072,6 +1168,58 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   ASSERT_EQ(reply1.success(), false);
   ASSERT_EQ(reply2.success(), false);
 }
+
+class PinObjectIDsIdempotencyTest : public NodeManagerTest,
+                                    public ::testing::WithParamInterface<bool> {};
+
+TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
+  // object_exists: determines whether we add an object to the plasma store which is used
+  // for pinning.
+  // object_exists == true: an object is added to the plasma store and PinObjectIDs is
+  // expected to succeed. A true boolean value is inserted at the index of the object
+  // in reply.successes.
+  // object_exists == false: an object is not added to the plasma store. PinObjectIDs will
+  // still succeed and not return an error when trying to pin a non-existent object, but
+  // will instead at the index of the object in reply.successes insert a false
+  // boolean value.
+  const bool object_exists = GetParam();
+  ObjectID id = ObjectID::FromRandom();
+
+  if (object_exists) {
+    rpc::Address owner_addr;
+    plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+    RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+
+  rpc::PinObjectIDsReply reply1;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  int64_t primary_bytes = local_object_manager_->GetPrimaryBytes();
+  rpc::PinObjectIDsReply reply2;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  // For each invocation of HandlePinObjectIDs, we expect the size of reply.successes and
+  // the boolean values it contains to not change.
+  EXPECT_EQ(reply1.successes_size(), 1);
+  EXPECT_EQ(reply1.successes(0), object_exists);
+  EXPECT_EQ(reply2.successes_size(), 1);
+  EXPECT_EQ(reply2.successes(0), object_exists);
+  EXPECT_EQ(local_object_manager_->GetPrimaryBytes(), primary_bytes);
+}
+
+INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
+                         PinObjectIDsIdempotencyTest,
+                         testing::Bool());
 
 }  // namespace ray::raylet
 

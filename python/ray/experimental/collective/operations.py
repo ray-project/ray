@@ -6,14 +6,14 @@ from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
 from ray.dag.constants import (
     BIND_INDEX_KEY,
     COLLECTIVE_OPERATION_KEY,
-    PARENT_CLASS_NODE_KEY,
     IS_CLASS_METHOD_OUTPUT_KEY,
+    PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
-    ReduceOp,
     AllGatherOp,
     AllReduceOp,
+    ReduceOp,
     ReduceScatterOp,
     _CollectiveOp,
 )

@@ -31,7 +31,7 @@
 #include "ray/core_worker/task_submission/dependency_resolver.h"
 #include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
 namespace core {
@@ -254,14 +254,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status_(std::move(status)),
           timeout_error_info_(std::move(timeout_error_info)) {}
   };
-  /// A helper function to get task manager without holding mu_
-  /// We should use this function when access
-  /// - FailOrRetryPendingTask
-  /// - FailPendingTask
-  TaskManagerInterface &GetTaskManagerWithoutMu() {
-    mu_.AssertNotHeld();
-    return task_manager_;
-  }
 
   struct ClientQueue {
     ClientQueue(bool allow_out_of_order_execution,
@@ -294,9 +286,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     int64_t num_restarts_due_to_lineage_reconstructions_ = 0;
     /// Whether this actor exits by spot preemption.
     bool preempted_ = false;
-    /// The RPC client. We use shared_ptr to enable shared_from_this for
-    /// pending client callbacks.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_ = nullptr;
+    /// The RPC client address.
+    std::optional<rpc::Address> client_address_;
     /// The intended worker ID of the actor.
     std::string worker_id_;
     /// The actor is out of scope but the death info is not published

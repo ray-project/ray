@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -570,6 +570,172 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
                 assert os.path.exists(file_path)
 
     print("Finished checking application details.")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
+    """
+    Test the api_type query parameter for filtering applications by API type.
+    Tests both declarative and imperative applications.
+    """
+    # First, deploy declarative applications
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    declarative_config = {
+        "applications": [
+            {
+                "name": "declarative_app1",
+                "route_prefix": "/declarative1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "declarative_app2",
+                "route_prefix": "/declarative2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+
+    deploy_config_multi_app(declarative_config, SERVE_HEAD_URL)
+
+    # Wait for declarative apps to be running
+    def declarative_apps_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return len(serve_details.applications) == 2 and all(
+            app.status == ApplicationStatus.RUNNING
+            for app in serve_details.applications.values()
+        )
+
+    wait_for_condition(declarative_apps_running, timeout=15)
+    print("Declarative applications are running.")
+
+    # Deploy imperative applications using subprocess
+    deploy = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent / "deploy_imperative_serve_apps.py"),
+        ],
+        capture_output=True,
+        universal_newlines=True,
+    )
+    assert deploy.returncode == 0
+
+    # Wait for imperative apps to be running
+    def all_apps_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return len(
+            serve_details.applications
+        ) == 4 and all(  # 2 declarative + 2 imperative
+            app.status == ApplicationStatus.RUNNING
+            for app in serve_details.applications.values()
+        )
+
+    wait_for_condition(all_apps_running, timeout=15)
+    print("All applications (declarative + imperative) are running.")
+
+    # Test 1: No api_type parameter - should return all applications
+    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 4
+    app_names = set(serve_details.applications.keys())
+    assert app_names == {"declarative_app1", "declarative_app2", "app1", "app2"}
+
+    # Test 2: Filter by declarative applications
+    response = requests.get(SERVE_HEAD_URL + "?api_type=declarative", timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 2
+    app_names = set(serve_details.applications.keys())
+    assert app_names == {"declarative_app1", "declarative_app2"}
+    for app in serve_details.applications.values():
+        assert app.source == "declarative"
+
+    # Test 3: Filter by imperative applications
+    response = requests.get(SERVE_HEAD_URL + "?api_type=imperative", timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 2
+    app_names = set(serve_details.applications.keys())
+    assert app_names == {"app1", "app2"}
+    for app in serve_details.applications.values():
+        assert app.source == "imperative"
+
+    # Test 4: Filter by unknown - should return 400 error (unknown is not a valid user input)
+    response = requests.get(SERVE_HEAD_URL + "?api_type=unknown", timeout=15)
+    assert response.status_code == 400
+    assert "Invalid 'api_type' value" in response.text
+    assert "Must be one of: imperative, declarative" in response.text
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_invalid_api_type(ray_start_stop):
+    """
+    Test that invalid api_type values return appropriate error responses.
+    """
+    # Test with invalid api_type value
+    response = requests.get(SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15)
+    assert response.status_code == 400
+    assert "Invalid 'api_type' value" in response.text
+    assert "Must be one of: imperative, declarative" in response.text
+
+    # Test with another invalid value
+    response = requests.get(SERVE_HEAD_URL + "?api_type=python", timeout=15)
+    assert response.status_code == 400
+    assert "Invalid 'api_type' value" in response.text
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
+    """
+    Test that api_type parameter is case insensitive.
+    """
+    # Deploy a declarative application
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    config = {
+        "applications": [
+            {
+                "name": "test_app",
+                "route_prefix": "/test",
+                "import_path": world_import_path,
+            }
+        ],
+    }
+
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+
+    def app_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            len(serve_details.applications) == 1
+            and serve_details.applications["test_app"].status
+            == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(app_running, timeout=15)
+
+    # Test case insensitive filtering
+    test_cases = ["DECLARATIVE", "Declarative", "declarative", "DeClArAtIvE"]
+
+    for api_type_value in test_cases:
+        response = requests.get(
+            f"{SERVE_HEAD_URL}?api_type={api_type_value}", timeout=15
+        )
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        assert len(serve_details.applications) == 1
+        assert "test_app" in serve_details.applications
 
 
 if __name__ == "__main__":

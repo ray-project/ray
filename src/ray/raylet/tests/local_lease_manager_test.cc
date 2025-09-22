@@ -25,12 +25,13 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
 
@@ -316,7 +317,8 @@ class LocalLeaseManagerTest : public ::testing::Test {
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
         object_manager_(),
-        lease_dependency_manager_(object_manager_),
+        fake_task_by_state_counter_(),
+        lease_dependency_manager_(object_manager_, fake_task_by_state_counter_),
         local_lease_manager_(std::make_shared<LocalLeaseManager>(
             id_,
             *scheduler_,
@@ -373,6 +375,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockObjectManager object_manager_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
   LeaseDependencyManager lease_dependency_manager_;
   std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };

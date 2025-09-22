@@ -5,10 +5,14 @@ FROM "$BASE_IMAGE"
 
 ARG BUILD_TYPE
 ARG BUILDKITE_CACHE_READONLY
+ARG RAY_DISABLE_EXTRA_CPP=1
 ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
 ENV CXX=clang++-12
+# Disabling C++ API build to speed up CI
+# Only needed for java tests where we override this.
+ENV RAY_DISABLE_EXTRA_CPP=${RAY_DISABLE_EXTRA_CPP}
 
 RUN mkdir /rayci
 WORKDIR /rayci
@@ -19,7 +23,7 @@ RUN <<EOF
 
 set -euo pipefail
 
-if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
+if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   # Disables uploading cache when it is read-only.
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi

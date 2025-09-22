@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
 from ray.autoscaler.batching_node_provider import (
@@ -22,7 +23,6 @@ from ray.autoscaler.tags import (
     STATUS_UPDATE_FAILED,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray._common.network_utils import build_address
 
 # Key for KubeRay label that identifies a Ray pod as head or worker.
 KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
@@ -334,6 +334,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             url,
             json.dumps(payload),
             headers={**headers, "Content-type": "application/json-patch+json"},
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
         )
         if not result.status_code == 200:

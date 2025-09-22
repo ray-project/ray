@@ -6,7 +6,7 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.air.util.object_extensions.pandas
-from ray._private.serialization import pickle_dumps
+from ray._common.serialization import pickle_dumps
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
@@ -80,6 +80,10 @@ class ArrowPythonObjectScalar(pa.ExtensionScalar):
     """Scalar class for ArrowPythonObjectType"""
 
     def as_py(self, **kwargs) -> typing.Any:
+        # Handle None/null values
+        if self.value is None:
+            return None
+
         if not isinstance(self.value, pa.LargeBinaryScalar):
             raise RuntimeError(
                 f"{type(self.value)} is not the expected LargeBinaryScalar"
