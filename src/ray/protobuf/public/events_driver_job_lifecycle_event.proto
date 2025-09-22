@@ -40,3 +40,4 @@ message DriverJobLifecycleEvent {
   // concatenate these intervals over the node’s lifetime to reconstruct the complete
   // state transition time series.
   repeated StateTransition state_transitions = 2;
+}

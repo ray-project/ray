@@ -15,24 +15,24 @@
 #include "ray/common/grpc_util.h"
 #include "ray/observability/ray_event.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/public/events_driver_job_execution_event.pb.h"
+#include "src/ray/protobuf/public/events_driver_job_lifecycle_event.pb.h"
 
 namespace ray {
 namespace observability {
 
-template class RayEvent<rpc::events::DriverJobExecutionEvent>;
+template class RayEvent<rpc::events::DriverJobLifecycleEvent>;
 
-class RayDriverJobExecutionEvent : public RayEvent<rpc::events::DriverJobExecutionEvent> {
+class RayDriverJobLifecycleEvent : public RayEvent<rpc::events::DriverJobLifecycleEvent> {
  public:
-  RayDriverJobExecutionEvent(const rpc::JobTableData &data,
-                             rpc::events::DriverJobExecutionEvent::State state,
+  RayDriverJobLifecycleEvent(const rpc::JobTableData &data,
+                             rpc::events::DriverJobLifecycleEvent::State state,
                              const std::string &session_name);
 
   std::string GetEntityId() const override;
 
  protected:
   ray::rpc::events::RayEvent SerializeData() && override;
-  void MergeData(RayEvent<rpc::events::DriverJobExecutionEvent> &&other) override;
+  void MergeData(RayEvent<rpc::events::DriverJobLifecycleEvent> &&other) override;
 };
 
 }  // namespace observability

@@ -104,7 +104,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   void OnNodeDead(const NodeID &node_id);
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data,
-                                 rpc::events::DriverJobExecutionEvent::State state) const;
+                                 rpc::events::DriverJobLifecycleEvent::State state) const;
 
   // Verify if export events should be written for EXPORT_DRIVER_JOB source types
   bool IsExportAPIEnabledDriverJob() const {

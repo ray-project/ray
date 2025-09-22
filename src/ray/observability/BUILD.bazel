@@ -74,16 +74,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "ray_driver_job_execution_event",
+    name = "ray_driver_job_lifecycle_event",
     srcs = [
-        "ray_driver_job_execution_event.cc",
+        "ray_driver_job_lifecycle_event.cc",
     ],
     hdrs = [
-        "ray_driver_job_execution_event.h",
+        "ray_driver_job_lifecycle_event.h",
     ],
     deps = [
         ":ray_event",
-        "//src/ray/protobuf/public:events_driver_job_execution_event_cc_proto",
+        "//src/ray/protobuf/public:events_driver_job_lifecycle_event_cc_proto",
     ],
 )
 
