@@ -22,10 +22,10 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/observability/ray_actor_definition_event.h"
-#include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/observability/ray_actor_definition_event.h"
+#include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/observability/ray_driver_job_definition_event.h"
 #include "ray/observability/ray_driver_job_execution_event.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -120,11 +120,8 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
       data2, rpc::events::DriverJobExecutionEvent::FINISHED, "test_session_name_2"));
   events.push_back(
       std::make_unique<RayActorDefinitionEvent>(actor_def_data, "test_session_name_3"));
-  events.push_back(
-      std::make_unique<RayActorLifecycleEvent>(actor_life_data,
-                                               rpc::events::ActorLifecycleEvent::ALIVE,
-                                               "worker-1",
-                                               "test_session_name_4"));
+  events.push_back(std::make_unique<RayActorLifecycleEvent>(
+      actor_life_data, rpc::events::ActorLifecycleEvent::ALIVE, "test_session_name_4"));
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
 
@@ -174,7 +171,7 @@ TEST_F(RayEventRecorderTest, TestDropEvents) {
 
   // Add more events than the buffer size
   std::vector<std::unique_ptr<RayEventInterface>> events_01;
-  for (int i = 0; i < max_buffer_size_ + 1; i++) {
+  for (size_t i = 0; i < max_buffer_size_ + 1; i++) {
     rpc::JobTableData data;
     data.set_job_id("test_job_id");
     events_01.push_back(
@@ -184,7 +181,7 @@ TEST_F(RayEventRecorderTest, TestDropEvents) {
 
   // The buffer is full now, add more events to test the overflow handling
   std::vector<std::unique_ptr<RayEventInterface>> events_02;
-  for (int i = 0; i < expected_num_dropped_events - 1; i++) {
+  for (size_t i = 0; i < expected_num_dropped_events - 1; i++) {
     rpc::JobTableData data;
     data.set_job_id("test_job_id_" + std::to_string(i));
     events_02.push_back(
