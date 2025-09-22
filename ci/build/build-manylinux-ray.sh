@@ -2,7 +2,7 @@
 set -exuo pipefail
 
 # Do not upload results to remote cache for pull requests
-if [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" ]]; then
+if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
 

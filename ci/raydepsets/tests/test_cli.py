@@ -1,9 +1,11 @@
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 import runfiles
@@ -752,6 +754,16 @@ class TestCli(unittest.TestCase):
                 "Dependency set expand_imported_depset__py312_cpu compiled successfully"
                 in result.output
             )
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_execute_pre_hook(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_pre_hook("pre-hook-test.sh test")
+            stdout = mock_stdout.getvalue()
+            assert "Pre-hook test\n" in stdout
+            assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
 
 
 if __name__ == "__main__":
