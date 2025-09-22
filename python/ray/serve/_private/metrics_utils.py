@@ -3,9 +3,10 @@ import bisect
 import logging
 import statistics
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import chain
 from typing import (
+    Awaitable,
     Callable,
     DefaultDict,
     Dict,
@@ -14,8 +15,10 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 
+from ray.serve._private.common import TimeStampedValue
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -28,7 +31,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @dataclass
 class _MetricsTask:
-    task_func: Callable
+    task_func: Union[Callable, Callable[[], Awaitable]]
     interval_s: float
 
 
@@ -62,6 +65,7 @@ class MetricsPusher:
         """Periodically runs `task_func` every `interval_s` until `stop_event` is set.
 
         If `task_func` raises an error, an exception will be logged.
+        Supports both sync and async task functions.
         """
 
         wait_for_stop_event = asyncio.create_task(self.stop_event.wait())
@@ -70,7 +74,12 @@ class MetricsPusher:
                 return
 
             try:
-                self._tasks[name].task_func()
+                task_func = self._tasks[name].task_func
+                # Check if the function is a coroutine function
+                if asyncio.iscoroutinefunction(task_func):
+                    await task_func()
+                else:
+                    task_func()
             except Exception as e:
                 logger.exception(f"Failed to run metrics task '{name}': {e}")
 
@@ -88,13 +97,18 @@ class MetricsPusher:
     def register_or_update_task(
         self,
         name: str,
-        task_func: Callable,
+        task_func: Union[Callable, Callable[[], Awaitable]],
         interval_s: int,
     ) -> None:
-        """Register a task under the provided name, or update it.
+        """Register a sync or async task under the provided name, or update it.
 
         This method is idempotent - if a task is already registered with
         the specified name, it will update it with the most recent info.
+
+        Args:
+            name: Unique name for the task.
+            task_func: Either a sync function or async function (coroutine function).
+            interval_s: Interval in seconds between task executions.
         """
 
         self._tasks[name] = _MetricsTask(task_func, interval_s)
@@ -123,12 +137,6 @@ class MetricsPusher:
         self._async_tasks.clear()
 
 
-@dataclass(order=True)
-class TimeStampedValue:
-    timestamp: float
-    value: float = field(compare=False)
-
-
 class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
@@ -145,6 +153,7 @@ class InMemoryMetricsStore:
             timestamp: the unix epoch timestamp the metrics are
               collected at.
         """
+
         for name, value in data_points.items():
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))

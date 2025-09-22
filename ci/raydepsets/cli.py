@@ -1,5 +1,6 @@
 import difflib
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,7 +17,6 @@ from ci.raydepsets.workspace import Depset, Workspace
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --unsafe-package ray
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
@@ -149,21 +149,31 @@ class DependencySetManager:
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
-                    depset.name, operation="compile", depset=depset
+                    depset.name, operation="compile", depset=depset, node_type="depset"
                 )
             elif depset.operation == "subset":
                 self.build_graph.add_node(
-                    depset.name, operation="subset", depset=depset
+                    depset.name, operation="subset", depset=depset, node_type="depset"
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
                 self.build_graph.add_node(
-                    depset.name, operation="expand", depset=depset
+                    depset.name, operation="expand", depset=depset, node_type="depset"
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
+            if depset.pre_hooks:
+                for ind, hook in enumerate(depset.pre_hooks):
+                    hook_name = f"{depset.name}_pre_hook_{ind+1}"
+                    self.build_graph.add_node(
+                        hook_name,
+                        operation="pre_hook",
+                        pre_hook=hook,
+                        node_type="pre_hook",
+                    )
+                    self.build_graph.add_edge(hook_name, depset.name)
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
@@ -177,8 +187,13 @@ class DependencySetManager:
             self.subgraph_dependency_nodes(single_depset_name)
 
         for node in topological_sort(self.build_graph):
-            depset = self.build_graph.nodes[node]["depset"]
-            self.execute_single(depset)
+            node_type = self.build_graph.nodes[node]["node_type"]
+            if node_type == "pre_hook":
+                pre_hook = self.build_graph.nodes[node]["pre_hook"]
+                self.execute_pre_hook(pre_hook)
+            elif node_type == "depset":
+                depset = self.build_graph.nodes[node]["depset"]
+                self.execute_depset(depset)
 
     def exec_uv_cmd(
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
@@ -190,7 +205,21 @@ class DependencySetManager:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
 
-    def execute_single(self, depset: Depset):
+    def execute_pre_hook(self, pre_hook: str):
+        status = subprocess.run(
+            shlex.split(pre_hook),
+            cwd=self.workspace.dir,
+            capture_output=True,
+            text=True,
+        )
+        if status.returncode != 0:
+            raise RuntimeError(
+                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
+            )
+        click.echo(f"{status.stdout}")
+        click.echo(f"Executed pre_hook {pre_hook} successfully")
+
+    def execute_depset(self, depset: Depset):
         if depset.operation == "compile":
             self.compile(
                 constraints=depset.constraints,

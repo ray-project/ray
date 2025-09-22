@@ -1,9 +1,11 @@
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 import runfiles
@@ -111,7 +113,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.8.10" in result.stdout.decode("utf-8")
+        assert "uv 0.8.17" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
@@ -352,8 +354,6 @@ class TestCli(unittest.TestCase):
     def test_override_uv_flag_multiple_flags(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
         expected_flags.remove("--unsafe-package")
-        expected_flags.remove("ray")
-        expected_flags.remove("--unsafe-package")
         expected_flags.remove("setuptools")
         expected_flags.extend(["--unsafe-package", "dummy"])
         assert (
@@ -387,8 +387,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 6
-            assert len(manager.build_graph.edges()) == 3
+            assert len(manager.build_graph.nodes()) == 8
+            assert len(manager.build_graph.edges()) == 4
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -581,6 +581,28 @@ class TestCli(unittest.TestCase):
             with self.assertRaises(KeyError):
                 _get_depset(manager.config.depsets, "build_args_test_depset_py311")
 
+    def test_execute_single_pre_hook(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_pre_hook("pre-hook-test.sh")
+
+    def test_execute_single_invalid_pre_hook(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(RuntimeError):
+                manager.execute_pre_hook("pre-hook-error-test.sh")
+
+    def test_execute_pre_hooks_failure_in_middle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(RuntimeError):
+                manager.execute_pre_hook("pre-hook-test.sh")
+                manager.execute_pre_hook("pre-hook-error-test.sh")
+                manager.execute_pre_hook("pre-hook-test.sh")
+
     def test_copy_lock_files_to_temp_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
@@ -702,6 +724,16 @@ class TestCli(unittest.TestCase):
             output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_execute_pre_hook(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_pre_hook("pre-hook-test.sh test")
+            stdout = mock_stdout.getvalue()
+            assert "Pre-hook test\n" in stdout
+            assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
 
 
 if __name__ == "__main__":
