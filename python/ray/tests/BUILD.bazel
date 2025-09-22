@@ -88,6 +88,7 @@ py_test_module_list(
     files = [
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
+        "test_task_metrics.py",
     ],
     name_suffix = "_otel",
     tags = [
@@ -750,6 +751,7 @@ py_test_module_list(
     files = [
         "test_autoscaler_gcp.py",
         "test_autoscaler_util.py",
+        "test_azure_path_serialization.py",
     ],
     tags = [
         "exclusive",

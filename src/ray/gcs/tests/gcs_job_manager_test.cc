@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
 
