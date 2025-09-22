@@ -210,7 +210,7 @@ async def test_asyncio_double_await(ray_start_regular_shared):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "ray_start_regular_shared",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 async def test_asyncio_exit_actor(ray_start_regular_shared):

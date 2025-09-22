@@ -21,6 +21,15 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_actors, list_placement_groups
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
 def test_placement_group_no_resource(ray_start_cluster):
     @ray.remote(num_cpus=1)
     class Actor(object):

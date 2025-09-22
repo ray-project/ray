@@ -150,7 +150,7 @@ def test_add_remove_cluster_resources(ray_start_cluster_head):
 
 @pytest.mark.parametrize(
     "ray_start_regular",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 def test_global_state_actor_table(ray_start_regular):
@@ -194,7 +194,7 @@ def test_global_state_worker_table(ray_start_regular):
 
 @pytest.mark.parametrize(
     "ray_start_regular",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 def test_global_state_actor_entry(ray_start_regular):

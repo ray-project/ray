@@ -157,7 +157,7 @@ def test_equal_split_balanced_grid(ray_start_regular_shared_2_cpus):
 
 @pytest.mark.parametrize(
     "ray_start_regular_shared_2_cpus",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 def test_split_small(ray_start_regular_shared_2_cpus):
@@ -373,7 +373,7 @@ def test_split(ray_start_regular_shared_2_cpus):
 
 @pytest.mark.parametrize(
     "ray_start_regular_shared_2_cpus",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 def test_split_hints(ray_start_regular_shared_2_cpus):

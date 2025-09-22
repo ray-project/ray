@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.parametrize(
     "shutdown_only",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 def test_global_state_api(shutdown_only):
@@ -57,7 +57,7 @@ def test_global_state_api(shutdown_only):
     )  # should be using this API now for fetching actors
     assert len(actor_table) == 1
 
-    (actor_info,) = actor_table.values()
+    actor_info = actor_table[0]
     assert actor_info.job_id == job_id.hex()
     assert actor_info.name == "test_actor"
 

@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.util.actor_group import ActorGroup
+from ray.util.state import list_actors
 
 
 class DummyActor:
@@ -44,7 +45,7 @@ def test_actor_creation_num_cpus(ray_start_2_cpus):
 
 @pytest.mark.parametrize(
     "ray_start_2_cpus",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 def test_actor_shutdown(ray_start_2_cpus):
@@ -53,7 +54,7 @@ def test_actor_shutdown(ray_start_2_cpus):
     time.sleep(1)
     assert "CPU" not in ray.available_resources()
 
-    assert len(ray.util.state.list_actors()) == 2
+    assert len(list_actors()) == 2
     ag.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2

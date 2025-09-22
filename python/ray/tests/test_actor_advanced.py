@@ -12,7 +12,6 @@ import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray._private.test_utils import (
-    convert_actor_state,
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
     run_string_as_driver,
@@ -528,7 +527,7 @@ ray.get(actor.ping.remote())
 
 @pytest.mark.parametrize(
     "ray_start_regular",
-    [{"num_cpus": 1, "include_dashboard": True}],
+    [{"include_dashboard": True}],
     indirect=True,
 )
 def test_detached_actor_cleanup(ray_start_regular):
@@ -554,8 +553,9 @@ def test_detached_actor_cleanup(ray_start_regular):
         actor_status = ray.util.state.get_actor(id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status.state != convert_actor_state(gcs_utils.ActorTableData.DEAD):
+        while actor_status.state != "DEAD":
             actor_status = ray.util.state.get_actor(id=detached_actor._actor_id.hex())
+            print(f"actor status is {actor_status}")
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -575,28 +575,45 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import time
 from ray._private.test_utils import convert_actor_state
-ray.init(address="{}", namespace="default_test_namespace")
+import traceback
 
-@ray.remote
-class DetachedActor:
-    def ping(self):
-        return "pong"
 
-# Make sure same name is creatable after killing it.
-detached_actor = DetachedActor.options(lifetime="detached", name="{}").remote()
-assert ray.get(detached_actor.ping.remote()) == "pong"
-ray.kill(detached_actor)
-# Wait until actor dies.
-actor_status = ray.util.state.get_actor(id=detached_actor._actor_id.hex())
-max_wait_time = 10
-wait_time = 0
-while actor_status.state != convert_actor_state(gcs_utils.ActorTableData.DEAD): # noqa
-    actor_status = ray.util.state.get_actor(id=detached_actor._actor_id.hex())
-    time.sleep(1.0)
-    wait_time += 1
-    if wait_time >= max_wait_time:
-        assert None, (
-            "It took too much time to kill an actor")
+try:
+
+    def _load_state_api():
+        try:
+            from ray.util import state as state_api
+            return state_api
+        except Exception:
+            pass
+
+        raise ImportError("No usable Ray State API found")
+
+    ray.init(address="{}", namespace="default_test_namespace")
+
+    @ray.remote
+    class DetachedActor:
+        def ping(self):
+            return "pong"
+
+    # Make sure same name is creatable after killing it.
+    detached_actor = DetachedActor.options(lifetime="detached", name="{}").remote()
+    assert ray.get(detached_actor.ping.remote()) == "pong"
+    ray.kill(detached_actor)
+    # Wait until actor dies.
+    actor_status = _load_state_api().get_actor(id=detached_actor._actor_id.hex())
+    max_wait_time = 10
+    wait_time = 0
+    while actor_status.state != "DEAD": # noqa
+        actor_status = _load_state_api().get_actor(id=detached_actor._actor_id.hex())
+        time.sleep(1.0)
+        wait_time += 1
+        if wait_time >= max_wait_time:
+            assert None, (
+                "It took too much time to kill an actor")
+except Exception:
+    traceback.print_exc()
+    raise
 """.format(
         address, dup_actor_name
     )
@@ -672,9 +689,7 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
         actor_status = ray.util.state.get_actor(id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["state"] != convert_actor_state(
-            gcs_utils.ActorTableData.DEAD
-        ):
+        while actor_status.state != "DEAD":
             actor_status = ray.util.state.get_actor(id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
@@ -1311,7 +1326,7 @@ actors = [A.remote() for _ in range(10)]
 ray.get([actor.ready.remote() for actor in actors])
 alive_actors = 0
 for a in list_actors():
-    if a["state"] == "ALIVE":
+    if a.state == "ALIVE":
         alive_actors += 1
 assert alive_actors == 10
 """
