@@ -978,27 +978,29 @@ int main(int argc, char *argv[]) {
     raylet->Start();
 
 #if !defined(_WIN32)
-    // Watch stdin (pipe from parent). If it closes (EOF), trigger graceful shutdown.
-    std::thread([shutdown_raylet_gracefully]() {
-      char buffer[1024];
-      // Read until EOF or unrecoverable error.
-      for (;;) {
-        ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
-        if (n == 0) {
-          break;  // EOF => parent likely exited
-        }
-        if (n < 0) {
-          if (errno == EINTR) {
-            continue;
+    // Optionally watch stdin (pipe from parent). If it closes (EOF), trigger shutdown.
+    const char *pipe_stdin_env = std::getenv("RAY_ENABLE_RAYLET_PIPE_STDIN");
+    if (pipe_stdin_env != nullptr && std::string(pipe_stdin_env) == "1") {
+      std::thread([shutdown_raylet_gracefully]() {
+        char buffer[1024];
+        for (;;) {
+          ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
+          if (n == 0) {
+            break;  // EOF => parent likely exited
           }
-          break;
+          if (n < 0) {
+            if (errno == EINTR) {
+              continue;
+            }
+            break;
+          }
         }
-      }
-      ray::rpc::NodeDeathInfo node_death_info;
-      node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-      node_death_info.set_reason_message("stdin closed (parent exited)");
-      shutdown_raylet_gracefully(node_death_info);
-    }).detach();
+        ray::rpc::NodeDeathInfo node_death_info;
+        node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+        node_death_info.set_reason_message("stdin closed (parent exited)");
+        shutdown_raylet_gracefully(node_death_info);
+      }).detach();
+    }
 #endif
   });
 
