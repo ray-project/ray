@@ -18,9 +18,7 @@ def assert_invalid_node_id(node_id_value):
         "#node-information for more details."
     )
     with pytest.raises(ValueError, match=expected_msg):
-        NodeAffinitySchedulingStrategy(
-            node_id=node_id_value, soft=False
-        )
+        NodeAffinitySchedulingStrategy(node_id=node_id_value, soft=False)
 
 
 def test_node_affinity_scheduling_strategy_invalid_attributes():

@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._raylet import NodeID
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -53,7 +54,6 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.util.placement_group import validate_placement_group
-from ray._raylet import NodeID
 
 # Global variable that is fetched during controller recovery that
 # marks (simulates) which replicas have died since controller first
