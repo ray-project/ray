@@ -12,8 +12,8 @@ from sqlglot import exp
 
 import ray.data
 import ray.data.aggregate as agg_module
-from ..compiler.expressions import ExpressionCompiler
-from ..registry.base import TableRegistry
+from ray.data.sql.compiler.expressions import ExpressionCompiler
+from ray.data.sql.registry.base import TableRegistry
 from ray.data import Dataset
 
 

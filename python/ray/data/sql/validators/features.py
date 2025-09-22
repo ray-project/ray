@@ -7,7 +7,7 @@ from typing import Set
 
 from sqlglot import exp
 
-from .base import SQLValidator
+from ray.data.sql.validators.base import SQLValidator
 
 
 class FeatureValidator(SQLValidator):
