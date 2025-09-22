@@ -192,12 +192,11 @@ Compared to the :ref:`Gloo example <direct-transport-gloo>`, the main code diffe
 
 1. The :func:`@ray.method <ray.method>` uses ``tensor_transport="nixl"`` instead of ``tensor_transport="gloo"``.
 2. No collective group is needed.
-3. It supports :func:`ray.put <ray.put>` and :func:`ray.get <ray.get>` with NIXL.
 
-ray.get with NIXL
+ray.put and ray.get with NIXL
 ^^^^^^^^^^^^^^^^^
 
-Unlike the collective-based tensor transports (Gloo and NCCL), the :func:`ray.get <ray.get>` function can use NIXL or the Ray object store to retrieve a copy of the result.
+Unlike the collective-based tensor transports (Gloo and NCCL), the :func:`ray.get <ray.get>` function can use NIXL to retrieve a copy of the result.
 By default, the tensor transport for :func:`ray.get <ray.get>` will be the one specified in the :func:`@ray.method <ray.method>` decorator.
 
 .. literalinclude:: doc_code/direct_transport_nixl.py
@@ -205,7 +204,7 @@ By default, the tensor transport for :func:`ray.get <ray.get>` will be the one s
    :start-after: __nixl_get_start__
    :end-before: __nixl_get_end__
 
-It can also use NIXL to retrieve the result from references created by :func:`ray.put <ray.put>`.
+You can also use NIXL to retrieve the result from references created by :func:`ray.put <ray.put>`.
 
 .. literalinclude:: doc_code/direct_transport_nixl.py
    :language: python

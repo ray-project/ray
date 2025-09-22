@@ -21,7 +21,7 @@ class MyActor:
         return refs
 
     def consume_with_nixl(self, refs):
-        # The :func:`ray.get <ray.get>` function will also use NIXL to retrieve the
+        # ray.get will also use NIXL to retrieve the
         # result.
         tensors = [ray.get(ref) for ref in refs]
         sum = 0
@@ -43,7 +43,7 @@ ray.get(result)
 # __nixl_full_example_end__
 
 # __nixl_get_start__
-# The :func:`ray.get <ray.get>` function will also use NIXL to retrieve the
+# ray.get will also use NIXL to retrieve the
 # result.
 print(ray.get(tensor))
 # torch.Tensor(...)
