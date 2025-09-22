@@ -20,11 +20,13 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
 )
 
+import aiohttp
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
@@ -56,6 +58,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -322,14 +325,6 @@ class ReplicaMetricsManager:
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
             self.start_metrics_pusher()
 
-    def update_user_autoscaling_stats_availability(self):
-        """Runs after the user callable wrapper is initialized to enable autoscaling metrics collection."""
-        if self.user_callable_wrapper is not None:
-            self._user_autoscaling_stats_available = (
-                hasattr(self.user_callable_wrapper, "_user_autoscaling_stats")
-                and self.user_callable_wrapper._user_autoscaling_stats is not None
-            )
-
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
@@ -384,6 +379,93 @@ class ReplicaMetricsManager:
         self._controller_handle.record_autoscaling_metrics_from_replica.remote(
             replica_metric_report
         )
+
+    async def _fetch_prometheus_metrics(
+        self, prometheus_metrics: List[Tuple[str, Optional[str]]]
+    ) -> Dict[str, Any]:
+        """
+        Fetch metrics from the prometheus exporter endpoint, given a list of (metric_name, optional[promql_expression]) tuples.
+        The promql_expression parameter is ignored for now.
+        """
+
+        metrics_result = {}
+        logger.info(
+            f"Fetching prometheus metrics {prometheus_metrics}",
+            extra={"log_to_stderr": False},
+        )
+
+        try:
+            prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
+
+            logger.debug(f"Fetching metrics from prometheus exporter at {prom_addr}")
+
+            timeout = aiohttp.ClientTimeout(total=self._autoscaling_metrics_timeout_s)
+
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(f"{prom_addr}/metrics") as response:
+                    if response.status == 200:
+                        metrics_text = await response.text()
+
+                        # Parse the prometheus metrics text format
+                        try:
+                            from prometheus_client.parser import (
+                                text_string_to_metric_families,
+                            )
+
+                            # Parse metrics and create a lookup by metric name
+                            metric_samples_by_name = {}
+                            for metric in text_string_to_metric_families(metrics_text):
+                                for sample in metric.samples:
+                                    if sample.name not in metric_samples_by_name:
+                                        metric_samples_by_name[sample.name] = []
+                                    metric_samples_by_name[sample.name].append(sample)
+
+                            # Extract requested metrics
+                            for metric_name, promql_expression in prometheus_metrics:
+                                if metric_name in metric_samples_by_name:
+                                    # Get the latest sample for this metric
+                                    samples = metric_samples_by_name[metric_name]
+                                    if samples:
+                                        # Use the last sample's value
+                                        latest_sample = samples[-1]
+                                        metrics_result[metric_name] = float(
+                                            latest_sample.value
+                                        )
+                                    else:
+                                        metrics_result[metric_name] = 0.0
+                                else:
+                                    logger.debug(
+                                        f"Metric {metric_name} not found in exporter response"
+                                    )
+                                    metrics_result[metric_name] = 0.0
+
+                        except ImportError:
+                            logger.error(
+                                "prometheus_client not available for parsing metrics"
+                            )
+                            # Fallback: set all metrics to 0.0
+                            for metric_name, promql_expression in prometheus_metrics:
+                                metrics_result[metric_name] = 0.0
+                        except Exception as e:
+                            logger.error(f"Error parsing prometheus metrics: {e}")
+                            # Fallback: set all metrics to 0.0
+                            for metric_name, promql_expression in prometheus_metrics:
+                                metrics_result[metric_name] = 0.0
+                    else:
+                        logger.error(
+                            f"Failed to fetch metrics from prometheus exporter: HTTP {response.status}"
+                        )
+                        # Fallback: set all metrics to 0.0
+                        for metric_name, promql_expression in prometheus_metrics:
+                            metrics_result[metric_name] = 0.0
+
+        except Exception as e:
+            logger.error(f"Error fetching prometheus metrics: {e}")
+            # Fallback: set all metrics to 0.0
+            for metric_name, promql_expression in prometheus_metrics:
+                metrics_result[metric_name] = 0.0
+
+        return metrics_result
 
     async def _fetch_custom_autoscaling_metrics(
         self,
@@ -452,6 +534,11 @@ class ReplicaMetricsManager:
             custom_metrics = await self._fetch_custom_autoscaling_metrics()
             if custom_metrics:
                 metrics_dict.update(custom_metrics)
+
+        if self._prometheus_metrics_enabled:
+            prom_metrics = await self._fetch_prometheus_metrics()
+            if prom_metrics:
+                metrics_dict.update(prom_metrics)
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
@@ -866,7 +953,6 @@ class ReplicaBase(ABC):
                         )
                     await self._on_initialized()
                     self._user_callable_initialized = True
-                    self._metrics_manager.update_user_autoscaling_stats_availability()
 
                     if self._user_callable_wrapper is not None:
                         initialized = (
