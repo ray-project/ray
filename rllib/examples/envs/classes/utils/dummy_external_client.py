@@ -21,7 +21,7 @@ from ray.rllib.utils.numpy import softmax
 torch, _ = try_import_torch()
 
 
-def _dummy_external_client(port: int = 5556):
+def _dummy_external_client(client_id: int, port: int = 5556):
     """A dummy client that runs CartPole and acts as a testing external env."""
 
     def _set_state(msg_body, rl_module):
@@ -59,6 +59,8 @@ def _dummy_external_client(port: int = 5556):
     _set_state(msg_body["state"], rl_module)
 
     env_steps_per_sample = config.get_rollout_fragment_length()
+
+    print(f"Setup completed for client {client_id} with server on port {port}")
 
     # Start actual env loop.
     env = gym.make("CartPole-v1")

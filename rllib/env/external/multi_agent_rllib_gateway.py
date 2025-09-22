@@ -3,30 +3,38 @@ import pickle
 import socket
 import threading
 import time
+from collections import defaultdict
 from pathlib import Path
 
+import gymnasium as gym
 import numpy as np
+import tree
+
+from ray.rllib.algorithms import AlgorithmConfig, Algorithm
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
-
 from ray.rllib.core import Columns, COMPONENT_RL_MODULE, COMPONENT_ENV_RUNNER, \
     COMPONENT_ENV_TO_MODULE_CONNECTOR, COMPONENT_LEARNER, \
     COMPONENT_MODULE_TO_ENV_CONNECTOR, COMPONENT_LEARNER_GROUP
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module import MultiRLModule
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.external.rllink import (
     get_rllink_message,
     send_rllink_message,
     RLlink,
 )
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.metrics import WEIGHTS_SEQ_NO
+from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger("ray.rllib")
 
 
 @DeveloperAPI
-class SingleAgentRLlibGateway:
+class MultiAgentRLlibGateway:
+    # TODO: update docstring
     """Gateway class for external, for ex. non-python, simulators to connect to RLlib.
 
     As long as there is a path to bind python code into your simulator's language, for
@@ -93,7 +101,8 @@ class SingleAgentRLlibGateway:
                         );
                     }
                     catch (const py::error_already_set& e) {
-                        std::cerr << "[Python error in get_action (episode done)]\n" << e.what() << std::endl;
+                        std::cerr << "[Python error in get_action (episode done)]\n"
+                                  << e.what() << std::endl;
                         break;
                     }
                     // Reset episode to start a new one.
@@ -132,6 +141,7 @@ class SingleAgentRLlibGateway:
         self,
         address: str = "localhost",
         port: int = 5556,
+        socket_timeout: float = 60.0,
         inference_only: bool = False,
         checkpoint_path: str | None = None,
     ):
@@ -146,7 +156,7 @@ class SingleAgentRLlibGateway:
             checkpoint_path: Path to checkpoint to load for inference. Only used
                 with inference_only=True.
         """
-        # RLlib SingleAgentEpisode collection buckets.
+        # RLlib MultiAgentEpisode collection buckets.
         self._episodes = []
 
         self._prev_action = None
@@ -166,7 +176,7 @@ class SingleAgentRLlibGateway:
                 checkpoint_path / COMPONENT_ENV_RUNNER /
                 COMPONENT_ENV_TO_MODULE_CONNECTOR
             )
-            self._rl_module = RLModule.from_checkpoint(
+            self._rl_module = MultiRLModule.from_checkpoint(
                 checkpoint_path / COMPONENT_LEARNER_GROUP /
                 COMPONENT_LEARNER / COMPONENT_RL_MODULE
             )
@@ -174,6 +184,7 @@ class SingleAgentRLlibGateway:
                 checkpoint_path / COMPONENT_ENV_RUNNER /
                 COMPONENT_MODULE_TO_ENV_CONNECTOR
             )
+            self._config = Algorithm.from_checkpoint(str(checkpoint_path)).config
             self._is_initialized = True
         else:
             # The open socket connection to an RLlib EnvRunner.
@@ -192,6 +203,7 @@ class SingleAgentRLlibGateway:
             # The client thread running in the background and communicating
             # with an RLlib EnvRunner.
             self._client_thread = None
+            self._socket_timeout = socket_timeout
 
             threading.Thread(
                 target=self._connect_to_server_thread_func,
@@ -203,10 +215,22 @@ class SingleAgentRLlibGateway:
         """Returns True, if this Gateway has an RLModule and connectors."""
         return self._is_initialized
 
+    def _get_agent_to_module_ids(
+        self, episode: MultiAgentEpisode
+    ) -> dict[AgentID, ModuleID]:
+        assert self._config is not None and self._config.policy_mapping_fn
+
+        return {
+            aid: self._config.policy_mapping_fn(aid, episode)
+            for aid in self._config.action_space
+        }
+
     def get_action(
         self,
         prev_reward,
         prev_observation,
+        terminated,
+        truncated,
     ):
         """Computes and returns a new action, given an observation.
 
@@ -220,94 +244,6 @@ class SingleAgentRLlibGateway:
                 connector creates the inference forward batch for the RLModule based on
                 this running episode.
         """
-        return self._step_helper(prev_reward, prev_observation)
-
-    def episode_done(self, final_reward, final_observation, truncated: bool):
-        """Logs the last step in an episode and starts a new one.
-
-        Args:
-            final_reward: The final reward received in the episode.
-            final_observation: The final observation in the episode.
-            truncated: Whether the episode is truncated. If True,
-                `final_observation` is the observation right before the truncation point
-                and `final_reward` is the last reward that the agent receives in the
-                episode. A truncated episode's final observation should still be used to
-                compute value function estimates at the truncation point.
-        """
-        # Forward to `self.get_action()` with the correct terminated/truncated args.
-        self._step_helper(
-            final_reward,
-            final_observation,
-            terminated=not truncated,
-            truncated=truncated,
-        )
-
-    def _connect_to_server_thread_func(self, address, port):
-        # Try initializing the Gateway.
-        while True:
-            # Try connecting to (RLlib) server.
-            while True:
-                try:
-                    logger.info(f"Trying to connect to {address}:{port} ...")
-                    self._sock = socket.socket(
-                        socket.AF_INET,
-                        socket.SOCK_STREAM,
-                    )
-                    self._sock.settimeout(120.0)
-                    self._sock.connect((address, port))
-                    break
-                except ConnectionRefusedError:
-                    time.sleep(5)
-
-            logger.info(f"Connected to server at {address}:{port} ...")
-
-            # Send ping-pong.
-            msg_type, msg_body = self._try_send_receive_rllink_msg(
-                {"type": RLlink.PING.name},
-            )
-            # Error -> Retry connecting to server.
-            if msg_type != RLlink.PONG:
-                continue
-            logger.info("\tPING/PONG ok ...")
-
-            # Request config.
-            msg_type, msg_body = self._try_send_receive_rllink_msg(
-                {"type": RLlink.GET_CONFIG.name}
-            )
-            # Error -> Retry connecting to server.
-            if msg_type != RLlink.SET_CONFIG:
-                continue
-            # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
-            #  Checkpointable with a pickle-independent state.
-            self._config = pickle.loads(msg_body["config"])
-            # Create the RLModule and connector pipelines.
-            self._env_to_module = self._config.build_env_to_module_connector()
-            rl_module_spec = self._config.get_rl_module_spec()
-            self._rl_module = rl_module_spec.build()
-            self._module_to_env = self._config.build_module_to_env_connector()
-            logger.info("\tGET_CONFIG ok (built connectors and module) ...")
-
-            # Request EnvRunner state (incl. model weights).
-            msg_type, msg_body = self._try_send_receive_rllink_msg(
-                {"type": RLlink.GET_STATE.name}
-            )
-            # Error -> Retry connecting to server.
-            if msg_type != RLlink.SET_STATE:
-                continue
-            self._set_state(msg_body["state"])
-            logger.info("\tSET_STATE ok ...")
-
-            # Set this Gateway to `initialized` and return from the thread.
-            self._is_initialized = True
-            return
-
-    def _step_helper(
-        self,
-        prev_reward,
-        prev_observation,
-        terminated: bool = False,
-        truncated: bool = False,
-    ):
         # Block until we are initialized (no RLModule and no action space to
         # compute anything).
         while not self.is_initialized:
@@ -315,21 +251,32 @@ class SingleAgentRLlibGateway:
 
         # C++ may send observation tensors as std::vector<float> (which get translated
         # into python lists).
-        if isinstance(prev_observation, list):
-            prev_observation = np.array(prev_observation, np.float32)
+        def _ensure_array(obs):
+            if isinstance(obs, list):
+                return np.array(obs, np.float32)
+            else:
+                return obs
+        prev_observation = tree.map_structure(_ensure_array, prev_observation)
 
         # Episode logging.
         if len(self._episodes) == 0 or self._episodes[-1].is_done:
-            self._episodes.append(SingleAgentEpisode())
-            self._episodes[-1].add_env_reset(observation=prev_observation)
+            self._episodes.append(
+                MultiAgentEpisode(
+                    observation_space=self._config.observation_space,
+                    action_space=self._config.action_space,
+                )
+            )
+            agent_module_ids = self._get_agent_to_module_ids(self._episodes[-1])
+            self._episodes[-1]._agent_to_module_mapping = agent_module_ids
+            self._episodes[-1].add_env_reset(observations=prev_observation)
         else:
             # Log timestep to current episode.
             self._episodes[-1].add_env_step(
-                observation=prev_observation,
-                action=self._prev_action,
-                reward=prev_reward,
-                terminated=terminated,
-                truncated=truncated,
+                observations=prev_observation,
+                actions=self._prev_action,
+                rewards=prev_reward,
+                terminateds=terminated,
+                truncateds=truncated,
                 extra_model_outputs=self._prev_extra_model_outputs,
             )
             self._timesteps += 1
@@ -339,44 +286,7 @@ class SingleAgentRLlibGateway:
                 not self._inference_only
                 and self._timesteps == self._config.get_rollout_fragment_length()
             ):
-                assert sum(map(len, self._episodes)) == (
-                    self._config.get_rollout_fragment_length()
-                )
-
-                # Send the data to the server.
-                # On-policy: Block until response received back from server. Note that
-                # this may halt the simulation calling this function (`get_action`) for
-                # a while.
-                if True:  # force_on_policy:
-                    msg_type, msg_body = self._try_send_receive_rllink_msg(
-                        {
-                            "type": RLlink.EPISODES_AND_GET_STATE.name,
-                            "episodes": [e.get_state() for e in
-                                         self._episodes],
-                            "timesteps": self._timesteps,
-                        },
-                    )
-                    # We are forced to sample on-policy. Have to wait for a response
-                    # with the state (weights) in it.
-                    if msg_type != RLlink.SET_STATE:
-                        logger.warning(
-                            "Can't SET_STATE! Connection error to RLlib "
-                            f"server. {msg_body}"
-                        )
-                    else:
-                        self._set_state(msg_body["state"])
-
-                # Sampling doesn't have to be on-policy -> continue collecting
-                # samples.
-                else:
-                    raise NotImplementedError
-
-                self._timesteps = 0
-                self._episodes = [
-                    eps.cut(len_lookback_buffer=1)
-                    for eps in self._episodes
-                    if not eps.is_done
-                ]
+                self._send_episode_data_to_server()
                 # early out if all episodes were done because action doesn't matter
                 if not self._episodes:
                     return self._prev_action
@@ -404,15 +314,147 @@ class SingleAgentRLlibGateway:
         action_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, self._prev_action)[0]
         self._prev_action = self._prev_action[0]
 
-        extra_model_output = {k: v[0] for k, v in to_env.items()}
-        if not self._inference_only:
-            extra_model_output[WEIGHTS_SEQ_NO] = self._weights_seq_no
+        extra_model_outputs = defaultdict(dict)
+        # `to_env` returns a dictionary with column keys and
+        # (AgentID, value) tuple values.
+        for col, ma_dict_list in to_env.items():
+            ma_dict = ma_dict_list[0]
+            for agent_id, val in ma_dict.items():
+                extra_model_outputs[agent_id][col] = val
+                extra_model_outputs[agent_id][
+                    WEIGHTS_SEQ_NO
+                ] = self._weights_seq_no
+        extra_model_outputs = dict(extra_model_outputs)
 
         # Store action for next timestep's logging into the episode.
-        self._prev_extra_model_outputs = extra_model_output
+        self._prev_extra_model_outputs = extra_model_outputs
 
         # And return the action.
         return action_for_env
+
+    def _send_episode_data_to_server(self):
+        assert sum(map(len, self._episodes)) == (
+            self._config.get_rollout_fragment_length()
+        )
+
+        ongoing_episodes_continuations = [
+            eps.cut(len_lookback_buffer=self._config.episode_lookback_horizon)
+            for eps in self._episodes if not eps.is_done
+        ]
+
+        for eps in self._episodes:
+            # Just started Episodes do not have to be returned. There is no data
+            # in them anyway.
+            if eps.env_t == 0:
+                continue
+            eps.validate()
+
+            MultiAgentEnvRunner._prune_zero_len_sa_episodes(eps)
+
+        # Send the data to the server.
+        # On-policy: Block until response received back from server.
+        if True:  # force_on_policy:
+            episode_states = [
+                e.get_state(exclude_agent_to_module_mapping_fn=True)
+                for e in self._episodes
+            ]
+            msg_type, msg_body = self._try_send_receive_rllink_msg(
+                {
+                    "type": RLlink.EPISODES_AND_GET_STATE.name,
+                    "episodes": episode_states,
+                    "timesteps": self._timesteps,
+                },
+            )
+            # We are forced to sample on-policy. Have to wait for a response
+            # with the state (weights) in it.
+            if msg_type != RLlink.SET_STATE:
+                logger.warning(
+                    "Can't SET_STATE! Connection error to RLlib "
+                    f"server. {msg_body}"
+                )
+            else:
+                self._set_state(msg_body["state"])
+
+        # Sampling doesn't have to be on-policy -> continue collecting
+        # samples.
+        else:
+            raise NotImplementedError
+
+        self._timesteps = 0
+        # Continue collecting into the cut Episode chunks.
+        self._episodes = ongoing_episodes_continuations
+
+    def _connect_to_server_thread_func(self, address, port):
+        # Try initializing the Gateway.
+        while True:
+            # Try connecting to (RLlib) server.
+            while True:
+                try:
+                    logger.info(f"Trying to connect to {address}:{port} ...")
+                    self._sock = socket.socket(
+                        socket.AF_INET,
+                        socket.SOCK_STREAM,
+                    )
+                    self._sock.settimeout(self._socket_timeout)
+                    self._sock.connect((address, port))
+                    break
+                except ConnectionRefusedError:
+                    time.sleep(5)
+
+            logger.info(f"Connected to server at {address}:{port} ...")
+
+            # Send ping-pong.
+            msg_type, msg_body = self._try_send_receive_rllink_msg(
+                {"type": RLlink.PING.name},
+            )
+            # Error -> Retry connecting to server.
+            if msg_type != RLlink.PONG:
+                continue
+            logger.info("\tPING/PONG ok ...")
+
+            # Request config.
+            msg_type, msg_body = self._try_send_receive_rllink_msg(
+                {"type": RLlink.GET_CONFIG.name}
+            )
+            # Error -> Retry connecting to server.
+            if msg_type != RLlink.SET_CONFIG:
+                continue
+            # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
+            #  Checkpointable with a pickle-independent state.
+            self._config = AlgorithmConfig.from_state(pickle.loads(msg_body["config"]))
+            # Create the RLModule and connector pipelines.
+            self._env_to_module = self._config.build_env_to_module_connector()
+            rl_module_spec = self._config.get_multi_rl_module_spec(
+                spaces=self._get_spaces(), inference_only=True
+            )
+            self._rl_module = rl_module_spec.build()
+            self._module_to_env = self._config.build_module_to_env_connector()
+            logger.info("\tGET_CONFIG ok (built connectors and module) ...")
+
+            # Request EnvRunner state (incl. model weights).
+            msg_type, msg_body = self._try_send_receive_rllink_msg(
+                {"type": RLlink.GET_STATE.name}
+            )
+            # Error -> Retry connecting to server.
+            if msg_type != RLlink.SET_STATE:
+                continue
+            self._set_state(msg_body["state"])
+            logger.info("\tSET_STATE ok ...")
+
+            # Set this Gateway to `initialized` and return from the thread.
+            self._is_initialized = True
+            return
+
+    def _get_spaces(self) -> dict[str, tuple[gym.Space, gym.Space]]:
+        assert self._env_to_module is not None and self._config is not None
+        return {
+            INPUT_ENV_SPACES: (self._config.observation_space, self._config.action_space),
+            **{
+                mid: (o, self._env_to_module.action_space[mid])
+                for mid, o in
+                self._env_to_module.observation_space.spaces.items()
+            },
+        }
 
     def _set_state(self, msg_body):
         # TODO (sven): Add once our EnvRunner publishes these (right now, it doesn't

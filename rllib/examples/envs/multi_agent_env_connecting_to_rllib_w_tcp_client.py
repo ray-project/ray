@@ -62,17 +62,15 @@ ConnectionError: Error receiving message from peer on socket ...
 """
 import threading
 
-import gymnasium as gym
-import numpy as np
 from gymnasium.spaces import Dict
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
-from rllib.env.external.multi_agent_env_runner_server_for_external_inference import (
+from ray.rllib.env.external.multi_agent_env_runner_server_for_external_inference import (
     MultiAgentEnvRunnerServerForExternalInference,
 )
-from rllib.examples.envs.classes.utils.dummy_multi_agent_external_client import (
+from ray.rllib.examples.envs.classes.utils.dummy_multi_agent_external_client import (
     _dummy_multi_agent_external_client, policy_mapping_fn,
 )
 from ray.rllib.utils.test_utils import (
@@ -82,10 +80,11 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(
-    default_reward=600.0, default_iters=200, default_timesteps=100000
+    default_reward=600.0, default_iters=200, default_timesteps=500000
 )
 parser.set_defaults(
-    num_env_runners=1,
+    num_env_runners=2,
+    num_envs_per_env_runner=2,
     num_agents=2,
 )
 parser.add_argument(
@@ -108,15 +107,14 @@ if __name__ == "__main__":
 
     # Start the dummy CartPole "simulation".
     if args.use_dummy_client:
-        threading.Thread(
-            target=_dummy_multi_agent_external_client,
-            args=(
-                # Connect to the first remote EnvRunner, or - if there is no remote one -
-                # to the local EnvRunner.
-                args.port
-                + (args.num_env_runners if args.num_env_runners is not None else 1),
-            ),
-        ).start()
+        num_clients = args.num_envs_per_env_runner * args.num_env_runners
+        first_worker_index = 1 if args.num_env_runners > 0 else 0
+        for i in range(num_clients):
+            port_offset = i // args.num_envs_per_env_runner + first_worker_index
+            threading.Thread(
+                target=_dummy_multi_agent_external_client,
+                args=(i, args.port + port_offset),
+            ).start()
 
     env_to_access_spaces = MultiAgentCartPole(config={"num_agents": args.num_agents})
 
@@ -133,6 +131,7 @@ if __name__ == "__main__":
         .env_runners(
             # Point RLlib to the custom EnvRunner to be used here.
             env_runner_cls=MultiAgentEnvRunnerServerForExternalInference,
+            create_local_env_runner=False,
         )
         .training(
             num_epochs=10,
