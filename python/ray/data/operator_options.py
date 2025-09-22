@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from ray.util.annotations import PublicAPI
 
+
 @PublicAPI(stability="alpha")
 @dataclass
 class OperatorOptions:
