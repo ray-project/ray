@@ -37,6 +37,8 @@
 #include "ray/ipc/raylet_ipc_client.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/rpc/raylet/raylet_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/container_util.h"
