@@ -499,7 +499,7 @@ class AutoscalingStateManager:
     ) -> Dict[DeploymentID, int]:
         return self._app_autoscaling_states[app_name].get_scaling_decisions(deployments)
 
-    def should_autoscale_deployment(self, deplyment_id):
+    def should_autoscale_deployment(self, deployment_id):
         """
         Determine whether the current deployment should be autoscaled.
 
@@ -510,8 +510,8 @@ class AutoscalingStateManager:
         Returns False otherwise.
         """
         return (
-            deplyment_id in self._deployment_autoscaling_states
-            and not self.has_application_level_autoscaling(deplyment_id)
+            deployment_id in self._deployment_autoscaling_states
+            and not self.has_application_level_autoscaling(deployment_id)
         )
 
     def has_application_level_autoscaling(self, deployment_id: DeploymentID):
