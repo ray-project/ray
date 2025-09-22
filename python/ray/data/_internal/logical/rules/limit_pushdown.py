@@ -154,8 +154,6 @@ class LimitPushdownRule(Rule):
             recreated_op = self._recreate_operator_with_new_input(
                 op_to_recreate, result_op
             )
-            # Apply per-block limit to map operators
-            self._apply_per_block_limit_if_supported(recreated_op, limit_op._limit)
             result_op = recreated_op
 
         return result_op
