@@ -33,7 +33,7 @@ from ray.llm._internal.batch.stages.prepare_video_stage import (
 @pytest.fixture
 def mock_http_connection_bytes():
     with patch(
-        "ray.llm._internal.batch.stages._util.HTTPConnection",
+        "ray.llm._internal.batch.stages.prepare_video_stage.HTTPConnection",
     ) as mock:
         conn = MagicMock()
         conn.download_bytes_chunked = MagicMock(return_value=b"FAKE-MP4")
@@ -150,38 +150,36 @@ async def test_num_frames_sampling_exact(mock_http_connection_bytes, mock_pyav_o
 async def test_data_uri_handling(mock_pyav_open):
     # No HTTP needed; provide a tiny fake data URI
     # This will be base64 but our av mock doesn't actually parse bytes; we just need the flow to hit BytesIO
-    with patch("ray.llm._internal.batch.stages._util.HTTPConnection"):
-        udf = PrepareVideoUDF(
-            data_column="__data",
-            expected_input_keys=["messages"],
-            sampling={"fps": 1},
-            output_format="pil",
-            cache_mode="memory",
-        )
-        data_uri = "data:video/mp4;base64,AAAA"
-        batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": data_uri}]}]}]}
-        outs = []
-        async for out in udf(batch):
-            outs.append(out["__data"][0])
-        assert "video" in outs[0]
+    udf = PrepareVideoUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        sampling={"fps": 1},
+        output_format="pil",
+        cache_mode="memory",
+    )
+    data_uri = "data:video/mp4;base64,AAAA"
+    batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": data_uri}]}]}]}
+    outs = []
+    async for out in udf(batch):
+        outs.append(out["__data"][0])
+    assert "video" in outs[0]
 
 
 @pytest.mark.asyncio
 async def test_local_file_path_handling(mock_pyav_open, tmp_path):
     local = tmp_path / "x.mp4"
     local.write_bytes(b"fake")
-    with patch("ray.llm._internal.batch.stages._util.HTTPConnection"):
-        udf = PrepareVideoUDF(
-            data_column="__data",
-            expected_input_keys=["messages"],
-            sampling={"fps": 1},
-            output_format="pil",
-        )
-        batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": str(local)}]}]}]}
-        outs = []
-        async for out in udf(batch):
-            outs.append(out["__data"][0])
-        assert outs[0]["video_meta"][0]["failed"] is False
+    udf = PrepareVideoUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        sampling={"fps": 1},
+        output_format="pil",
+    )
+    batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": str(local)}]}]}]}
+    outs = []
+    async for out in udf(batch):
+        outs.append(out["__data"][0])
+    assert outs[0]["video_meta"][0]["failed"] is False
 
 
 @pytest.mark.asyncio
