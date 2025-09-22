@@ -50,6 +50,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/worker/fake_core_worker_client.h"
 
 namespace ray {
 namespace core {
@@ -99,15 +100,15 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto core_worker_client_pool =
         std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
-          return std::make_shared<rpc::CoreWorkerClientInterface>();
+          return std::make_shared<rpc::FakeCoreWorkerClient>();
         });
 
     auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
-        [](const rpc::Address &) { return std::make_shared<FakeRayletClient>(); });
+        [](const rpc::Address &) { return std::make_shared<rpc::FakeRayletClient>(); });
 
     auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
 
-    auto fake_local_raylet_rpc_client = std::make_shared<FakeRayletClient>();
+    auto fake_local_raylet_rpc_client = std::make_shared<rpc::FakeRayletClient>();
 
     auto fake_raylet_ipc_client = std::make_shared<ipc::FakeRayletIpcClient>();
 
@@ -181,7 +182,7 @@ class CoreWorkerTest : public ::testing::Test {
         RayConfig::instance().max_lineage_bytes(),
         *task_event_buffer,
         [](const ActorID &actor_id) {
-          return std::make_shared<rpc::CoreWorkerClientInterface>();
+          return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
         mock_gcs_client,
         fake_task_by_state_counter_);
