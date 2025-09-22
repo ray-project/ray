@@ -318,11 +318,12 @@ def _configure_key_pair(config):
             private_key_path, ssh_user
         )
 
-    config["auth"]["ssh_private_key"] = private_key_path
-    config["auth"]["ssh_public_key"] = public_key_path
+    # Convert Path objects to strings to ensure JSON serialization works
+    config["auth"]["ssh_private_key"] = str(private_key_path)
+    config["auth"]["ssh_public_key"] = str(public_key_path)
     if "file_mounts" not in config:
         config["file_mounts"] = {}
-    config["file_mounts"]["~/.ssh/id_rsa.pub"] = public_key_path
+    config["file_mounts"]["~/.ssh/id_rsa.pub"] = str(public_key_path)
 
     for node_type in config["available_node_types"].values():
         azure_arm_parameters = node_type["node_config"].setdefault(
