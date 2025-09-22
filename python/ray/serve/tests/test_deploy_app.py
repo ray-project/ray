@@ -902,6 +902,7 @@ def app_level_custom_autoscaling_policy(ctxs: Dict[str, AutoscalingContext]):
 )
 def test_application_autoscaling_policy_config(serve_instance_with_signal, policy):
     client, signal = serve_instance_with_signal
+
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.get_signal.app",
         "autoscaling_policy": policy,
@@ -912,44 +913,74 @@ def test_application_autoscaling_policy_config(serve_instance_with_signal, polic
                     "target_ongoing_requests": 1,
                     "min_replicas": 1,
                     "max_replicas": 10,
-                    "metrics_interval_s": 15,
+                    "metrics_interval_s": 1,
                     "upscale_delay_s": 0.5,
                     "downscale_delay_s": 0.5,
                     "look_back_period_s": 2,
                 },
                 "graceful_shutdown_timeout_s": 1,
-            }
+            },
+            {
+                "name": "B",
+                "autoscaling_config": {
+                    "target_ongoing_requests": 2,
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "metrics_interval_s": 1,
+                    "upscale_delay_s": 0.5,
+                    "downscale_delay_s": 0.5,
+                    "look_back_period_s": 2,
+                },
+                "graceful_shutdown_timeout_s": 1,
+            },
         ],
     }
 
-    print(time.ctime(), "Deploying pid application.")
+    print(time.ctime(), "Deploying application with deployments A and B.")
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
     print(time.ctime(), "Application is RUNNING.")
 
-    print(time.ctime(), "Sending 1 initial unblocked request.")
-    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    # Get handles for both deployments
+    hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+    hB = serve.get_deployment_handle("B", app_name=SERVE_DEFAULT_APP_NAME)
+
+    # Warm-up requests
+    print(time.ctime(), "Sending initial unblocked requests to A and B.")
     signal.send.remote()
-    h.remote().result()
+    hA.remote().result()
+    signal.send.remote()
+    hB.remote().result()
 
-    print(time.ctime(), "Sending 40 blocked requests. Deployment should NOT scale up.")
+    # ---- Deployment A ----
+    print(time.ctime(), "[A] Sending 40 blocked requests. Should NOT scale up.")
     signal.send.remote(clear=True)
-    [h.remote() for _ in range(40)]
-    with pytest.raises(RuntimeError, match="timeout"):
-        wait_for_condition(check_num_replicas_gte, name="A", target=2)
+    [hA.remote() for _ in range(40)]
+    wait_for_condition(check_num_replicas_gte, name="A", target=2)
 
-    print(time.ctime(), "Sending 70 blocked requests. Deployment should scale up.")
+    print(time.ctime(), "[A] Sending 70 blocked requests. Should scale up.")
     signal.send.remote(clear=True)
-    [h.remote() for _ in range(70)]
-    with pytest.raises(RuntimeError, match="timeout"):
-        wait_for_condition(check_num_replicas_gte, name="A", target=4)
+    [hA.remote() for _ in range(70)]
+    wait_for_condition(check_num_replicas_gte, name="A", target=4)
 
+    # ---- Deployment B ----
     print(
-        time.ctime(),
-        "Wait for 5 seconds. Deployment should scale down to minimum replicas.",
+        time.ctime(), "[B] Sending 50 blocked requests. Should NOT scale up (target=2)."
     )
+    signal.send.remote(clear=True)
+    [hB.remote() for _ in range(50)]
+    wait_for_condition(check_num_replicas_gte, name="B", target=2)
+
+    print(time.ctime(), "[B] Sending 120 blocked requests. Should scale up.")
+    signal.send.remote(clear=True)
+    [hB.remote() for _ in range(120)]
+    wait_for_condition(check_num_replicas_gte, name="B", target=4)
+
+    # ---- Scale down for both ----
+    print(time.ctime(), "Waiting 5s. Both A and B should scale down to min=1.")
     time.sleep(5)
     wait_for_condition(check_num_replicas_gte, name="A", target=1)
+    wait_for_condition(check_num_replicas_gte, name="B", target=1)
 
 
 if __name__ == "__main__":

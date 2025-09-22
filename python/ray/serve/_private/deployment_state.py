@@ -1774,14 +1774,15 @@ class DeploymentState:
 
     def should_autoscale(self) -> bool:
         """
-        Check if the deployment is under autoscaling
+        Check whether this deployment requires an autoscaling action.
+
+        Delegates to the autoscaling state manager, which evaluates current
+        metrics and policies to decide if scaling is needed.
+
+        Returns:
+            bool: True if autoscaling should be triggered, False otherwise.
         """
-        return (
-            self._id in self._autoscaling_state_manager._deployment_autoscaling_states
-            and not self._autoscaling_state_manager.is_part_of_autoscaling_application(
-                self._id
-            )
-        )
+        return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -2141,24 +2142,15 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self, target_num_replicas=None) -> bool:
+    def autoscale(self) -> bool:
         """
-        Autoscale the deployment based on metrics or an externally provided target number of replica count.
+        Compute a scaling decision from the autoscaling manager and apply it.
 
-        If `target_num_replicas` is provided, it overrides the internal autoscaling
-        decision logic and is used directly—typically for application-level autoscaling.
-        If `target_num_replicas` is None, deployment-level autoscaling metrics are used
-        to determine the target number of replicas.
-
-        Args:
-            target_num_replicas (int, optional): External target number of replicas to scale to.
-                Used only when application-level autoscaling decisions are applied.
-                Defaults to None.
+        No-op if the deployment is deleting.
 
         Returns:
-            Whether the target state has changed.
+            bool: True if the target replica count was updated, False otherwise.
         """
-
         if self._target_state.deleting:
             return False
 
@@ -2167,9 +2159,26 @@ class DeploymentState:
                 deployment_id=self._id,
                 curr_target_num_replicas=self._target_state.target_num_replicas,
             )
-            if target_num_replicas is None
-            else target_num_replicas
         )
+
+        return self.scale(decision_num_replicas)
+
+    def scale(self, decision_num_replicas: Optional[int] = None) -> bool:
+        """
+        Apply the given scaling decision by updating the target replica count.
+
+        Skips if deleting, if `decision_num_replicas` is None, or matches the
+        current target. Otherwise updates the state and logs an up/down scaling.
+
+        Args:
+            decision_num_replicas (Optional[int]): Target replica count to apply.
+
+        Returns:
+            bool: True if the target state was updated, False if no change occurred.
+        """
+
+        if self._target_state.deleting:
+            return False
 
         if (
             decision_num_replicas is None
@@ -3387,7 +3396,7 @@ class DeploymentStateManager:
     def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
         if deployment_id not in self._deployment_states:
             return False
-        return self._deployment_states[deployment_id].autoscale(
+        return self._deployment_states[deployment_id].scale(
             target_num_replicas=target_num_replicas
         )
 
