@@ -56,6 +56,27 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_subscriber",
+    hdrs = ["fake_subscriber.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":subscriber_interface",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "//src/ray/rpc:client_call",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_publisher",
+    hdrs = ["fake_publisher.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":publisher_interface",
+        "//src/ray/common:asio",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_publisher",
     srcs = ["gcs_publisher.cc"],
     hdrs = ["gcs_publisher.h"],

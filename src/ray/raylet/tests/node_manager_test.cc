@@ -21,9 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -35,10 +32,13 @@
 #include "ray/common/buffer.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -308,7 +308,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
-    fake_task_by_state_counter_ = ray::observability::FakeMetric();
+    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -444,7 +444,7 @@ class NodeManagerTest : public ::testing::Test {
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
