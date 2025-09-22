@@ -82,7 +82,7 @@ config = vLLMEngineProcessorConfig(
     },
     concurrency=1,
     batch_size=32,
-    accelerator_type="L4",
+    # accelerator_type="L4",
 )
 # __parallel_config_example_end__
 

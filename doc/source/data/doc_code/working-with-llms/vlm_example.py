@@ -52,7 +52,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
         ),
     ),
     batch_size=16,
-    accelerator_type="L4",
+    # accelerator_type="L4",
     concurrency=1,
     has_image=True,
 )
@@ -177,7 +177,7 @@ def create_vlm_config():
             # "env_vars": {"HF_TOKEN": "your-hf-token-here"}  # Token not needed for public models
         },
         batch_size=1,
-        accelerator_type="L4",
+        # accelerator_type="L4",
         concurrency=1,
         has_image=True,
     )
