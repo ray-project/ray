@@ -1,6 +1,5 @@
 # Python requirements to run release tests from anyscale byod (cpu type)
 
--c requirements_compiled.txt
 ale-py
 boto3
 cmake
