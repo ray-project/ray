@@ -15,10 +15,11 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
+#include "ray/common/status.h"
+#include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
 namespace ray {

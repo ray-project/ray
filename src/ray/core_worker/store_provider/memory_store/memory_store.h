@@ -28,6 +28,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/rpc/utils.h"
 
 namespace ray {
 namespace core {

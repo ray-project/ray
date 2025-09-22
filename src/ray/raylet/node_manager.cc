@@ -45,6 +45,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
