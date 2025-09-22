@@ -275,6 +275,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// Cluster ID to be shared with clients when connecting.
   const ClusterID cluster_id_;
   observability::RayEventRecorderInterface &ray_event_recorder_;
+  bool drain_event_exported_ = false;
   std::string session_name_;
 
   // Debug info.
