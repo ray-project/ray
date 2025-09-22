@@ -54,6 +54,10 @@
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
+#if !defined(_WIN32)
+#include <errno.h>
+#include <unistd.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -972,6 +976,30 @@ int main(int argc, char *argv[]) {
     };
 
     raylet->Start();
+
+#if !defined(_WIN32)
+    // Watch stdin (pipe from parent). If it closes (EOF), trigger graceful shutdown.
+    std::thread([shutdown_raylet_gracefully]() {
+      char buffer[1024];
+      // Read until EOF or unrecoverable error.
+      for (;;) {
+        ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
+        if (n == 0) {
+          break;  // EOF => parent likely exited
+        }
+        if (n < 0) {
+          if (errno == EINTR) {
+            continue;
+          }
+          break;
+        }
+      }
+      ray::rpc::NodeDeathInfo node_death_info;
+      node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+      node_death_info.set_reason_message("stdin closed (parent exited)");
+      shutdown_raylet_gracefully(node_death_info);
+    }).detach();
+#endif
   });
 
   auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](

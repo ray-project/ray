@@ -354,7 +354,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/util",
+        "//src/ray/util:process",
         "@com_google_googletest//:gtest_main",
     ],
 )

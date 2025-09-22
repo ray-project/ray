@@ -1956,6 +1956,8 @@ def start_raylet(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
+        # Provide a pipe on stdin so the raylet can detect parent death by EOF.
+        pipe_stdin=True,
         env_updates=env_updates,
     )
     return process_info
