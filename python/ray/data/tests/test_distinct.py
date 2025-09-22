@@ -54,6 +54,39 @@ def test_distinct_subset():
     assert set(a_values) == {1, 2, 3, 4}
 
 
+def test_distinct_empty_keys():
+    ds = ray.data.from_arrow(
+        pa.table({"a": [1, 1, 2, 3, 2, 4], "b": ["x", "y", "y", "z", "w", "foo"]})
+    )
+    # Test that empty keys list raises an error
+    with pytest.raises(ValueError, match="keys cannot be an empty list"):
+        ds.distinct(keys=[])
+
+
+def test_distinct_invalid_keys():
+    ds = ray.data.from_arrow(
+        pa.table({"a": [1, 1, 2, 3, 2, 4], "b": ["x", "y", "y", "z", "w", "foo"]})
+    )
+    # Test that invalid keys raise an error
+    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
+        ds.distinct(keys=["c", "d"])
+
+    # Test partial invalid keys
+    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
+        ds.distinct(keys=["a", "c"])
+
+
+def test_distinct_empty_dataset():
+    # Test that empty dataset returns itself
+    ds = ray.data.from_arrow(pa.table({"a": [], "b": []}))
+    result = ds.distinct()
+    assert result.take_all() == []
+
+    # Test that empty dataset with keys also returns itself
+    result_with_keys = ds.distinct(keys=["a"])
+    assert result_with_keys.take_all() == []
+
+
 if __name__ == "__main__":
     import sys
 

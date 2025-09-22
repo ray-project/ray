@@ -1045,10 +1045,26 @@ class Dataset:
             A new dataset with duplicate rows removed, keeping one arbitrary row from each set of duplicates.
         """
         all_cols = self.columns()
+
+        # Handle empty dataset case
         if not all_cols:
             return self
 
-        subset_cols = keys if keys is not None else all_cols
+        # Validate keys parameter
+        if keys is not None:
+            if not keys:
+                raise ValueError(
+                    "keys cannot be an empty list. Use None to select all columns."
+                )
+            # Check that all specified keys exist in the dataset
+            invalid_keys = set(keys) - set(all_cols)
+            if invalid_keys:
+                raise ValueError(
+                    f"Keys {list(invalid_keys)} not found in dataset columns {all_cols}"
+                )
+            subset_cols = keys
+        else:
+            subset_cols = all_cols
 
         # Simple distinct implementation using groupby - keeps one arbitrary row per group
         def reducer_keep_one(batch: pa.Table) -> pa.Table:
