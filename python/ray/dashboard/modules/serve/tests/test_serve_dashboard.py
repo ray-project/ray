@@ -837,10 +837,7 @@ class TestScaleDeploymentEndpoint:
         )
 
         assert response.status_code == 412
-        assert (
-            "is being deleted. Scaling operations are not allowed."
-            in response.json()["error"]
-        )
+        assert "Deployment is deleted" in response.json()["error"]
 
         ray.get(signal_actor.send.remote())
 
