@@ -434,7 +434,7 @@ class UnboundedDataOperator(PhysicalOperator):
         """Get list of active streaming tasks."""
         # Return task references as OpTask-like objects for monitoring
         return [
-            _StreamingTaskWrapper(ref, i)
+            _StreamingTaskWrapper(ref, i, self)
             for i, ref in enumerate(self._current_read_tasks)
         ]
 
@@ -446,9 +446,15 @@ class UnboundedDataOperator(PhysicalOperator):
 class _StreamingTaskWrapper:
     """Wrapper to make streaming task refs compatible with OpTask interface."""
 
-    def __init__(self, task_ref: ray.ObjectRef, task_index: int):
+    def __init__(
+        self,
+        task_ref: ray.ObjectRef,
+        task_index: int,
+        operator: "UnboundedDataOperator" = None,
+    ):
         self._task_ref = task_ref
         self._task_index = task_index
+        self._operator = operator
 
     def task_index(self) -> int:
         return self._task_index
@@ -464,10 +470,12 @@ class _StreamingTaskWrapper:
 
     def progress_str(self) -> str:
         """Get progress string for monitoring."""
-        return (
-            f"Batch: {self._current_batch_id}, "
-            f"Active tasks: {len(self._current_read_tasks)}"
-        )
+        if self._operator:
+            return (
+                f"Batch: {self._operator._current_batch_id}, "
+                f"Active tasks: {len(self._operator._current_read_tasks)}"
+            )
+        return f"Task: {self._task_index}"
 
     def num_outputs_total(self) -> Optional[int]:
         """Streaming operators have unknown total outputs."""
@@ -479,11 +487,15 @@ class _StreamingTaskWrapper:
         This method is called by the resource manager to track current
         resource utilization for backpressure and scheduling decisions.
         """
-        num_active_tasks = len(self._current_read_tasks)
-        return ExecutionResources(
-            cpu=self.ray_remote_args.get("num_cpus", 0) * num_active_tasks,
-            gpu=self.ray_remote_args.get("num_gpus", 0) * num_active_tasks,
-        )
+        if self._operator:
+            num_active_tasks = len(self._operator._current_read_tasks)
+            return ExecutionResources(
+                cpu=self._operator.ray_remote_args.get("num_cpus", 0)
+                * num_active_tasks,
+                gpu=self._operator.ray_remote_args.get("num_gpus", 0)
+                * num_active_tasks,
+            )
+        return ExecutionResources()
 
     def pending_processor_usage(self) -> ExecutionResources:
         """Get pending CPU/GPU usage from tasks being submitted.
@@ -500,13 +512,15 @@ class _StreamingTaskWrapper:
         to launch one additional streaming task. This is used by the
         resource manager for backpressure decisions.
         """
-        return ExecutionResources(
-            cpu=self.ray_remote_args.get("num_cpus", 0),
-            gpu=self.ray_remote_args.get("num_gpus", 0),
-            memory=self.ray_remote_args.get("memory", 0),
-            # Object store memory estimate for streaming output
-            object_store_memory=self._estimate_output_memory_per_task(),
-        )
+        if self._operator:
+            return ExecutionResources(
+                cpu=self._operator.ray_remote_args.get("num_cpus", 0),
+                gpu=self._operator.ray_remote_args.get("num_gpus", 0),
+                memory=self._operator.ray_remote_args.get("memory", 0),
+                # Object store memory estimate for streaming output
+                object_store_memory=self._estimate_output_memory_per_task(),
+            )
+        return ExecutionResources()
 
     def min_max_resource_requirements(
         self,
@@ -519,19 +533,25 @@ class _StreamingTaskWrapper:
             - max_resources: Maximum resources this operator will use
               (parallelism tasks)
         """
-        min_resources = ExecutionResources(
-            cpu=self.ray_remote_args.get("num_cpus", 0),
-            gpu=self.ray_remote_args.get("num_gpus", 0),
-            memory=self.ray_remote_args.get("memory", 0),
-        )
+        if self._operator:
+            min_resources = ExecutionResources(
+                cpu=self._operator.ray_remote_args.get("num_cpus", 0),
+                gpu=self._operator.ray_remote_args.get("num_gpus", 0),
+                memory=self._operator.ray_remote_args.get("memory", 0),
+            )
 
-        max_resources = ExecutionResources(
-            cpu=self.ray_remote_args.get("num_cpus", 0) * self.parallelism,
-            gpu=self.ray_remote_args.get("num_gpus", 0) * self.parallelism,
-            memory=self.ray_remote_args.get("memory", 0) * self.parallelism,
-        )
+            max_resources = ExecutionResources(
+                cpu=self._operator.ray_remote_args.get("num_cpus", 0)
+                * self._operator.parallelism,
+                gpu=self._operator.ray_remote_args.get("num_gpus", 0)
+                * self._operator.parallelism,
+                memory=self._operator.ray_remote_args.get("memory", 0)
+                * self._operator.parallelism,
+            )
 
-        return min_resources, max_resources
+            return min_resources, max_resources
+
+        return ExecutionResources(), ExecutionResources()
 
     def _estimate_output_memory_per_task(self) -> float:
         """Estimate object store memory usage per streaming task.
@@ -540,22 +560,25 @@ class _StreamingTaskWrapper:
         We estimate based on max_records_per_task from the datasource.
         """
         try:
-            # Try to get max_records_per_task from datasource config
-            if hasattr(self.datasource, "streaming_config"):
-                max_records = self.datasource.streaming_config.get(
-                    "max_records_per_task", 1000
-                )
-            else:
-                max_records = 1000  # Default estimate
+            if self._operator:
+                # Try to get max_records_per_task from datasource config
+                if hasattr(self._operator.datasource, "streaming_config"):
+                    max_records = self._operator.datasource.streaming_config.get(
+                        "max_records_per_task", 1000
+                    )
+                else:
+                    max_records = 1000  # Default estimate
 
-            # Estimate ~1KB per record for typical streaming data
-            # This is conservative and should be configurable in production
-            estimated_bytes_per_record = 1024
-            return max_records * estimated_bytes_per_record
+                # Estimate ~1KB per record for typical streaming data
+                # This is conservative and should be configurable in production
+                estimated_bytes_per_record = 1024
+                return max_records * estimated_bytes_per_record
 
         except Exception:
             # Fallback to conservative estimate
-            return 1024 * 1024  # 1MB default
+            pass
+
+        return 1024 * 1024  # 1MB default
 
     def _apply_online_data_remote_args(self) -> None:
         """Apply online data source specific Ray remote args for optimal performance."""
@@ -617,50 +640,6 @@ class _StreamingTaskWrapper:
             # Hook for future adaptive behavior
             # Could potentially slow down data production or increase batch sizes
             pass
-
-    def _validate_ray_remote_args(
-        self, ray_remote_args: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Validate and sanitize Ray remote arguments for security.
-
-        Args:
-            ray_remote_args: User-provided Ray remote arguments.
-
-        Returns:
-            Validated and sanitized arguments.
-        """
-        # Define allowed keys for ray.remote to prevent injection attacks
-        allowed_keys = {
-            "num_cpus",
-            "num_gpus",
-            "memory",
-            "object_store_memory",
-            "resources",
-            "runtime_env",
-            "max_calls",
-            "max_retries",
-            "max_restarts",
-            "max_task_retries",
-            "placement_group",
-            "placement_group_bundle_index",
-            "placement_group_capture_child_tasks",
-            "name",
-            "lifetime",
-            "namespace",
-            "max_pending_calls",
-            "num_returns",
-            "_generator_backpressure_num_objects",
-            "_labels",
-        }
-
-        validated_args = {}
-        for key, value in ray_remote_args.items():
-            if key in allowed_keys:
-                validated_args[key] = value
-            else:
-                logger.warning(f"Ignoring disallowed ray.remote argument: {key}")
-
-        return validated_args
 
     def _update_performance_metrics(self, bundle: RefBundle) -> None:
         """Update performance tracking metrics."""

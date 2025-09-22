@@ -99,6 +99,9 @@ class FlinkDatasource(UnboundDatasource):
                         records.append(
                             {
                                 "job_id": self.flink_config.get("job_id", "job_123"),
+                                "job_name": self.flink_config.get(
+                                    "job_name", "test_job"
+                                ),
                                 "task_id": task_num,
                                 "record_id": f"flink_{task_num}_{i}",
                                 "data": f"flink_output_{task_num}_{i}",
@@ -163,6 +166,7 @@ class FlinkDatasource(UnboundDatasource):
         return pa.schema(
             [
                 ("job_id", pa.string()),
+                ("job_name", pa.string()),
                 ("task_id", pa.int64()),
                 ("record_id", pa.string()),
                 ("data", pa.string()),
