@@ -36,7 +36,7 @@ llm_config = LLMConfig(
         # Or unsloth/Meta-Llama-3.1-70B-Instruct for an ungated model
         model_source="meta-llama/Llama-3.1-70B-Instruct",
     ),
-    accelerator_type="A100-40G", # or L40S
+    accelerator_type="L40S", 
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
@@ -270,9 +270,9 @@ The following are a few ways to improve concurrency depending on your model and 
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
-**Example:** Running Llama-3.1-70&nbsp;B on an A100-40G:
-* `max_model_len = 32,768` → concurrency ≈ 13
-* `max_model_len = 16,384` → concurrency ≈ 26
+**Example:** Running Llama-3.1-70&nbsp;B on 8xL40S:
+* `max_model_len = 32,768` → concurrency ≈ 18
+* `max_model_len = 16,384` → concurrency ≈ 36
 
 **Use Quantized models**  
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
