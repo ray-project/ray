@@ -22,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
@@ -31,7 +30,9 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -51,7 +52,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       io_service_.run();
     }));
     for (int index = 0; index < 3; ++index) {
-      raylet_clients_.push_back(std::make_shared<FakeRayletClient>());
+      raylet_clients_.push_back(std::make_shared<rpc::FakeRayletClient>());
     }
     gcs_table_storage_ =
         std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
@@ -65,11 +66,14 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
-    gcs_node_manager_ = std::make_shared<GcsNodeManager>(gcs_publisher_.get(),
-                                                         gcs_table_storage_.get(),
-                                                         io_service_,
-                                                         raylet_client_pool_.get(),
-                                                         ClusterID::Nil());
+    gcs_node_manager_ =
+        std::make_shared<GcsNodeManager>(gcs_publisher_.get(),
+                                         gcs_table_storage_.get(),
+                                         io_service_,
+                                         raylet_client_pool_.get(),
+                                         ClusterID::Nil(),
+                                         /*ray_event_recorder=*/fake_ray_event_recorder_,
+                                         /*session_name=*/"");
     gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
@@ -292,10 +296,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::shared_ptr<InMemoryStoreClient> store_client_;
 
-  std::vector<std::shared_ptr<FakeRayletClient>> raylet_clients_;
+  std::vector<std::shared_ptr<rpc::FakeRayletClient>> raylet_clients_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  observability::FakeRayEventRecorder fake_ray_event_recorder_;
   std::unique_ptr<GcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<GcsPlacementGroup>> success_placement_groups_
       ABSL_GUARDED_BY(placement_group_requests_mutex_);

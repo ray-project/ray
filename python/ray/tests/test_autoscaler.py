@@ -748,8 +748,8 @@ class AutoscalingTest(unittest.TestCase):
         )
         self.waitForNodes(1)
         runner.assert_has_call("1.2.3.4", "init_cmd")
-        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
-        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        runner.assert_has_call("1.2.3.4", "podman exec .*head_setup_cmd.*")
+        runner.assert_has_call("1.2.3.4", "podman exec .*start_ray_head.*")
         self.assertEqual(self.provider.mock_nodes["0"].node_type, "head")
         runner.assert_has_call("1.2.3.4", pattern="podman run")
 

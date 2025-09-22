@@ -23,6 +23,8 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/observability/ray_node_definition_event.h"
+#include "ray/observability/ray_node_lifecycle_event.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -30,20 +32,36 @@
 namespace ray {
 namespace gcs {
 
-GcsNodeManager::GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
-                               gcs::GcsTableStorage *gcs_table_storage,
-                               instrumented_io_context &io_context,
-                               rpc::RayletClientPool *raylet_client_pool,
-                               const ClusterID &cluster_id)
+GcsNodeManager::GcsNodeManager(
+    pubsub::GcsPublisher *gcs_publisher,
+    gcs::GcsTableStorage *gcs_table_storage,
+    instrumented_io_context &io_context,
+    rpc::RayletClientPool *raylet_client_pool,
+    const ClusterID &cluster_id,
+    observability::RayEventRecorderInterface &ray_event_recorder,
+    const std::string &session_name)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
       cluster_id_(cluster_id),
+      ray_event_recorder_(ray_event_recorder),
+      session_name_(session_name),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
-void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const {
-  /// Write node_info as a export node event if enable_export_api_write() is enabled.
+void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
+                                          bool is_register_event) const {
+  if (RayConfig::instance().enable_ray_event()) {
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+    if (is_register_event) {
+      events.push_back(std::make_unique<observability::RayNodeDefinitionEvent>(
+          node_info, session_name_));
+    }
+    events.push_back(
+        std::make_unique<observability::RayNodeLifecycleEvent>(node_info, session_name_));
+    ray_event_recorder_.AddEvents(std::move(events));
+    return;
+  }
   if (!export_event_write_enabled_) {
     return;
   }
@@ -82,6 +100,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   // This function invokes a read lock
+  // TODO(#56391): node creation time should be assigned here instead of in the raylet.
   const rpc::GcsNodeInfo &node_info = request.node_info();
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(INFO)
@@ -96,7 +115,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     absl::MutexLock lock_(&mutex_);
     RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
     AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
-    WriteNodeExportEvent(node_info_copy);
+    WriteNodeExportEvent(node_info_copy, /*is_register_event*/ true);
     gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_copy));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -166,12 +185,13 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
+  auto on_put_done = [this, node_id, node_info_delta, node, send_reply_callback, reply](
+                         const Status &status) {
     gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta);
-    WriteNodeExportEvent(*node);
+    WriteNodeExportEvent(*node, /*is_register_event*/ false);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
@@ -526,7 +546,7 @@ void GcsNodeManager::InternalOnNodeFailure(
                     node_table_updated_callback,
                     node_info_delta = std::move(node_info_delta),
                     node](const Status &status) mutable {
-      WriteNodeExportEvent(*node);
+      WriteNodeExportEvent(*node, /*is_register_event*/ false);
       if (node_table_updated_callback != nullptr) {
         node_table_updated_callback();
       }

@@ -487,7 +487,6 @@ class ApplicationState:
             or docs path.
         """
 
-        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix = self._check_routes(deployment_infos)
 
@@ -722,28 +721,6 @@ class ApplicationState:
             )
             return None, BuildAppStatus.FAILED, error_msg
 
-    def _check_ingress_deployments(
-        self, deployment_infos: Dict[str, DeploymentInfo]
-    ) -> None:
-        """Check @serve.ingress of deployments in app.
-
-        Raises: RayServeException if more than one @serve.ingress
-            is found among deployments.
-        """
-        num_ingress_deployments = 0
-        for info in deployment_infos.values():
-            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
-                info.replica_config.deployment_def, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
-
-        if num_ingress_deployments > 1:
-            raise RayServeException(
-                f'Found multiple FastAPI deployments in application "{self._name}".'
-                "Please only include one deployment with @serve.ingress"
-                "in your application to avoid this issue."
-            )
-
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
@@ -829,22 +806,25 @@ class ApplicationState:
             Whether the target state has changed.
         """
 
-        infos, task_status, msg = self._reconcile_build_app_task()
         target_state_changed = False
-        if task_status == BuildAppStatus.SUCCEEDED:
-            target_state_changed = True
-            self._set_target_state(
-                deployment_infos=infos,
-                code_version=self._build_app_task_info.code_version,
-                api_type=self._target_state.api_type,
-                target_config=self._build_app_task_info.config,
-                target_capacity=self._build_app_task_info.target_capacity,
-                target_capacity_direction=(
-                    self._build_app_task_info.target_capacity_direction
-                ),
-            )
-        elif task_status == BuildAppStatus.FAILED:
-            self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
+        # If the application is being deleted, ignore any build task results to
+        # avoid flipping the state back to DEPLOYING/RUNNING.
+        if not self._target_state.deleting:
+            infos, task_status, msg = self._reconcile_build_app_task()
+            if task_status == BuildAppStatus.SUCCEEDED:
+                target_state_changed = True
+                self._set_target_state(
+                    deployment_infos=infos,
+                    code_version=self._build_app_task_info.code_version,
+                    api_type=self._target_state.api_type,
+                    target_config=self._build_app_task_info.config,
+                    target_capacity=self._build_app_task_info.target_capacity,
+                    target_capacity_direction=(
+                        self._build_app_task_info.target_capacity_direction
+                    ),
+                )
+            elif task_status == BuildAppStatus.FAILED:
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
         # Only reconcile deployments when the build app task is finished. If
         # it's not finished, we don't know what the target list of deployments

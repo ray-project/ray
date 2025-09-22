@@ -27,6 +27,7 @@
 #include "ray/gcs_client/accessor.h"
 #include "ray/gcs_client/gcs_client.h"
 #include "ray/gcs_client/rpc_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -37,14 +38,18 @@ using namespace std::chrono;           // NOLINT
 
 class GcsClientReconnectionTest : public ::testing::Test {
  public:
-  GcsClientReconnectionTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+  GcsClientReconnectionTest()
+      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
+    TestSetupUtil::StartUpRedisServers(std::vector<int>());
+  }
 
   ~GcsClientReconnectionTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void StartGCS() {
     RAY_CHECK(gcs_server_ == nullptr);
     server_io_service_ = std::make_unique<instrumented_io_context>();
-    gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
+    gcs_server_ = std::make_unique<gcs::GcsServer>(
+        config_, *server_io_service_, *fake_dropped_events_counter_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -158,6 +163,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
   std::unique_ptr<instrumented_io_context> server_io_service_;
+  std::unique_ptr<ray::observability::FakeCounter> fake_dropped_events_counter_;
 
   // GCS client.
   std::unique_ptr<std::thread> client_io_service_thread_;
