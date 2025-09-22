@@ -1,15 +1,17 @@
 from collections import Counter
 from numbers import Number
-from typing import Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from ray.data import Dataset
 from ray.data.aggregate import Mean
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
@@ -129,7 +131,7 @@ class SimpleImputer(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         if self.strategy == "mean":
             aggregates = [Mean(col) for col in self.columns]
             self.stats_ = dataset.aggregate(*aggregates)
@@ -192,7 +194,7 @@ class SimpleImputer(Preprocessor):
 
 
 def _get_most_frequent_values(
-    dataset: Dataset, *columns: str
+    dataset: "Dataset", *columns: str
 ) -> Dict[str, Union[str, Number]]:
     columns = list(columns)
 

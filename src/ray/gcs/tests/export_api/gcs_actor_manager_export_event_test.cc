@@ -32,8 +32,8 @@
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/worker/fake_core_worker_client.h"
 #include "ray/util/event.h"
 
 namespace ray {
@@ -80,7 +80,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   explicit MockWorkerClient(instrumented_io_context &io_service)
       : io_service_(io_service) {}

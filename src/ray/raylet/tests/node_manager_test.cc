@@ -21,9 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -34,11 +31,17 @@
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
+#include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/rpc/utils.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -296,7 +299,7 @@ class NodeManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
         raylet_client_pool_(
-            [](const auto &) { return std::make_shared<FakeRayletClient>(); }) {
+            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }) {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
@@ -308,7 +311,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
-    fake_task_by_state_counter_ = ray::observability::FakeMetric();
+    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -444,7 +447,7 @@ class NodeManagerTest : public ::testing::Test {
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -866,6 +869,101 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
 
+TEST_F(NodeManagerTest, AsyncGetOrWaitSkipsGetForWorkerWithoutLease) {
+  // Verifies AsyncGetOrWait drops stale GETs for workers whose lease was cleared,
+  // while leaving driver GETs unaffected.
+
+  // Prepare a mock worker returned by GetRegisteredWorker(client).
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  EXPECT_TRUE(worker->GetGrantedLeaseId().IsNil());
+
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
+      .WillRepeatedly(Return(worker));
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(0);
+
+  // Expect no pull to be registered on the ObjectManager for this GET.
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(0);
+
+  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
+  std::vector<ObjectID> object_ids;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
+  // Add one object and a corresponding (empty) owner address.
+  object_ids.push_back(ObjectID::FromRandom());
+  address_vec.push_back(protocol::CreateAddress(
+      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
+  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, fbb.CreateVector(address_vec));
+  fbb.Finish(message);
+
+  // Create a minimal client connection for ProcessClientMessage.
+  local_stream_socket fake_socket(io_service_);
+  auto client = ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      std::move(fake_socket),
+      "test-client",
+      std::vector<std::string>{});
+  node_manager_->ProcessClientMessage(
+      client,
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
+      fbb.GetBufferPointer());
+}
+
+TEST_F(NodeManagerTest, AsyncGetOrWaitRegistersGetForDriver) {
+  // A driver has no lease id; GET should still be registered.
+
+  // GetRegisteredWorker returns nullptr, driver is returned instead.
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
+      .WillRepeatedly(Return(nullptr));
+  auto driver = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(1)
+      .WillOnce(Return(driver));
+
+  // Expect a pull to be registered on the ObjectManager for this GET.
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1);
+
+  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
+  std::vector<ObjectID> object_ids;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
+  // Add one object and a corresponding (empty) owner address.
+  object_ids.push_back(ObjectID::FromRandom());
+  address_vec.push_back(protocol::CreateAddress(
+      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
+
+  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
+  auto message = protocol::CreateAsyncGetObjectsRequest(
+      fbb, object_ids_message, fbb.CreateVector(address_vec));
+  fbb.Finish(message);
+
+  // Create a minimal client connection for ProcessClientMessage.
+  local_stream_socket fake_socket(io_service_);
+  auto client = ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      std::move(fake_socket),
+      "test-client",
+      std::vector<std::string>{});
+  node_manager_->ProcessClientMessage(
+      client,
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
+      fbb.GetBufferPointer());
+}
+
 class NodeManagerReturnWorkerLeaseIdempotentTest
     : public NodeManagerTest,
       public testing::WithParamInterface<std::tuple<bool, bool>> {};
@@ -1070,6 +1168,58 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   ASSERT_EQ(reply1.success(), false);
   ASSERT_EQ(reply2.success(), false);
 }
+
+class PinObjectIDsIdempotencyTest : public NodeManagerTest,
+                                    public ::testing::WithParamInterface<bool> {};
+
+TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
+  // object_exists: determines whether we add an object to the plasma store which is used
+  // for pinning.
+  // object_exists == true: an object is added to the plasma store and PinObjectIDs is
+  // expected to succeed. A true boolean value is inserted at the index of the object
+  // in reply.successes.
+  // object_exists == false: an object is not added to the plasma store. PinObjectIDs will
+  // still succeed and not return an error when trying to pin a non-existent object, but
+  // will instead at the index of the object in reply.successes insert a false
+  // boolean value.
+  const bool object_exists = GetParam();
+  ObjectID id = ObjectID::FromRandom();
+
+  if (object_exists) {
+    rpc::Address owner_addr;
+    plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+    RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+
+  rpc::PinObjectIDsReply reply1;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  int64_t primary_bytes = local_object_manager_->GetPrimaryBytes();
+  rpc::PinObjectIDsReply reply2;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  // For each invocation of HandlePinObjectIDs, we expect the size of reply.successes and
+  // the boolean values it contains to not change.
+  EXPECT_EQ(reply1.successes_size(), 1);
+  EXPECT_EQ(reply1.successes(0), object_exists);
+  EXPECT_EQ(reply2.successes_size(), 1);
+  EXPECT_EQ(reply2.successes(0), object_exists);
+  EXPECT_EQ(local_object_manager_->GetPrimaryBytes(), primary_bytes);
+}
+
+INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
+                         PinObjectIDsIdempotencyTest,
+                         testing::Bool());
 
 }  // namespace ray::raylet
 

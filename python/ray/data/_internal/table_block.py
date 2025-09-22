@@ -115,7 +115,7 @@ class TableBlockBuilder(BlockBuilder):
         raise NotImplementedError
 
     @staticmethod
-    def _concat_tables(tables: List[Block]) -> Block:
+    def _combine_tables(tables: List[Block]) -> Block:
         raise NotImplementedError
 
     @staticmethod
@@ -140,10 +140,10 @@ class TableBlockBuilder(BlockBuilder):
 
         tables.extend(self._tables)
 
-        if len(tables) > 0:
-            return self._concat_tables(tables)
-        else:
+        if len(tables) == 0:
             return self._empty_table()
+        else:
+            return self._combine_tables(tables)
 
     def num_rows(self) -> int:
         return self._num_rows
@@ -591,3 +591,15 @@ class TableBlockAccessor(BlockAccessor):
             return BlockAccessor.for_block(block).to_pandas()
         else:
             return BlockAccessor.for_block(block).to_default()
+
+    def hstack(self, other_block: Block) -> Block:
+        """Combine this table with another table horizontally (column-wise).
+        This will append the columns.
+
+        Args:
+            other_block: The table to hstack side-by-side with.
+
+        Returns:
+            A new table with columns from both tables combined.
+        """
+        raise NotImplementedError
