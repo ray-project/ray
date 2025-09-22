@@ -64,7 +64,8 @@ def pre_envs(monkeypatch):
 
 def pytest_configure(config):
     try:
-        pass  # force-load the submodule
+        # force-load the submodule
+        import ray.util.state  # noqa: F401
     except Exception:
         raise RuntimeError("ray.util.state not available in this build")
 
