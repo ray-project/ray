@@ -405,7 +405,9 @@ class RuntimeContext(object):
         assert (
             not self.actor_id.is_nil()
         ), "This method should't be called inside Ray tasks."
-        actors = ray.util.state.list_actors(filters=[("id", "=", self.actor_id.hex())])
+        actors = ray.util.state.list_actors(
+            filters=[("id", "=", self.actor_id.hex())], detail=True
+        )
         return any(act.num_restarts or 0 for act in actors)
 
     @property

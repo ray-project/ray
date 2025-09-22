@@ -2089,10 +2089,11 @@ class Dataset:
             actors_state = {
                 actor.actor_id: actor.node_id
                 for actor in ray.util.state.list_actors(
+                    detail=True,
                     limit=ray.util.state.summarize_actors()
                     .get("cluster", {})
                     .get("total_actors", 0)
-                    + 100  # fetch current actors. Some staleness is assumed fine.
+                    + 100,  # fetch current actors. Some staleness is assumed fine.
                 )
             }
             return {actor: actors_state.get(actor._actor_id.hex()) for actor in actors}
