@@ -22,6 +22,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_actor_definition_event.h"
 #include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/observability/ray_driver_job_definition_event.h"
@@ -61,13 +63,20 @@ class RayEventRecorderTest : public ::testing::Test {
  public:
   RayEventRecorderTest() {
     fake_client_ = std::make_unique<FakeEventAggregatorClient>();
-    recorder_ = std::make_unique<RayEventRecorder>(*fake_client_, io_service_);
+    fake_dropped_events_counter_ = std::make_unique<FakeCounter>();
+    recorder_ = std::make_unique<RayEventRecorder>(*fake_client_,
+                                                   io_service_,
+                                                   max_buffer_size_,
+                                                   "gcs",
+                                                   *fake_dropped_events_counter_);
     recorder_->StartExportingEvents();
   }
 
   instrumented_io_context io_service_;
   std::unique_ptr<FakeEventAggregatorClient> fake_client_;
+  std::unique_ptr<FakeCounter> fake_dropped_events_counter_;
   std::unique_ptr<RayEventRecorder> recorder_;
+  size_t max_buffer_size_ = 5;
 };
 
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
@@ -155,6 +164,38 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   ASSERT_EQ(recorded_events[3].actor_lifecycle_event().state_transitions_size(), 1);
   ASSERT_EQ(recorded_events[3].actor_lifecycle_event().state_transitions(0).state(),
             rpc::events::ActorLifecycleEvent::ALIVE);
+}
+
+TEST_F(RayEventRecorderTest, TestDropEvents) {
+  size_t expected_num_dropped_events = 3;
+
+  // Add more events than the buffer size
+  std::vector<std::unique_ptr<RayEventInterface>> events_01;
+  for (size_t i = 0; i < max_buffer_size_ + 1; i++) {
+    rpc::JobTableData data;
+    data.set_job_id("test_job_id");
+    events_01.push_back(
+        std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session"));
+  }
+  recorder_->AddEvents(std::move(events_01));
+
+  // The buffer is full now, add more events to test the overflow handling
+  std::vector<std::unique_ptr<RayEventInterface>> events_02;
+  for (size_t i = 0; i < expected_num_dropped_events - 1; i++) {
+    rpc::JobTableData data;
+    data.set_job_id("test_job_id_" + std::to_string(i));
+    events_02.push_back(
+        std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session"));
+  }
+  recorder_->AddEvents(std::move(events_02));
+  io_service_.run_one();
+
+  auto tag_to_value = fake_dropped_events_counter_->GetTagToValue();
+  size_t num_dropped_events = 0;
+  for (const auto &[tags, value] : tag_to_value) {
+    num_dropped_events += value;
+  }
+  ASSERT_EQ(num_dropped_events, expected_num_dropped_events);
 }
 
 }  // namespace observability

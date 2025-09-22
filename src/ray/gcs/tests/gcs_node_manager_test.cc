@@ -20,12 +20,12 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -90,6 +90,8 @@ TEST_F(GcsNodeManagerTest, DISABLED_TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_0.node_definition_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_0.node_definition_event().node_ip_address(),
             node->node_manager_address());
+  ASSERT_EQ(ray_event_0.node_definition_event().start_timestamp().seconds(),
+            node->start_time_ms() / 1000);
   std::map<std::string, std::string> event_labels(
       ray_event_0.node_definition_event().labels().begin(),
       ray_event_0.node_definition_event().labels().end());

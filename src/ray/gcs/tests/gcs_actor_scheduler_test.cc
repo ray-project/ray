@@ -22,8 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
-#include "fakes/ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/test_utils.h"
@@ -32,6 +30,8 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/rpc/worker/fake_core_worker_client.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
