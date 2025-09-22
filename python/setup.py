@@ -395,7 +395,9 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "click >= 7.0",
+        # Click 8.3.0 does not work with copy.deepcopy on Python 3.10
+        # TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
+        "click>=7.0, !=8.3.0",
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",

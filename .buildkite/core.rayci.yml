@@ -287,7 +287,7 @@ steps:
       - minbuild-core
     matrix:
       - "3.9"
-      # - "3.10" # miniforge Python 3.10 seems to be broken..
+      - "3.10"
       - "3.11"
       - "3.12"
       - "3.13"
