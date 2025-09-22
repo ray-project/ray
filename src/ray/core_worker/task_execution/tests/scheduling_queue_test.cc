@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
@@ -19,7 +20,10 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/status.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/normal_scheduling_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
@@ -522,6 +526,34 @@ TEST(NormalSchedulingQueueTest, TestCancelQueuedTask) {
   ASSERT_EQ(n_rej, 1);
 
   queue->Stop();
+}
+
+TEST(NormalSchedulingQueueTest, StopCancelsQueuedTasks) {
+  std::unique_ptr<NormalSchedulingQueue> queue =
+      std::make_unique<NormalSchedulingQueue>();
+  int n_ok = 0;
+  std::atomic<int> n_rej{0};
+  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
+                       rpc::SendReplyCallback callback) { n_ok++; };
+  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
+                         const Status &status,
+                         rpc::SendReplyCallback callback) {
+    ASSERT_TRUE(status.IsSchedulingCancelled());
+    n_rej.fetch_add(1);
+  };
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
+
+  // Enqueue several normal tasks but do not schedule them.
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
+
+  // Stopping should cancel all queued tasks without running them.
+  queue->Stop();
+
+  ASSERT_EQ(n_ok, 0);
+  ASSERT_EQ(n_rej.load(), 3);
 }
 
 TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
