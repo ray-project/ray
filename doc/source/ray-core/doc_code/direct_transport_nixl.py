@@ -54,5 +54,4 @@ tensor1 = torch.randn(1000, 1000).cuda()
 tensor2 = torch.randn(1000, 1000).cuda()
 refs = sender.produce.remote([tensor1, tensor2])
 print(receiver.consume_with_nixl.remote(refs))
-# torch.Tensor(...)
 # __nixl_put__and_get_end__
