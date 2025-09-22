@@ -446,6 +446,7 @@ class ApplicationState:
         return (
             self._target_state.config is not None
             and self._target_state.config.autoscaling_policy is not None
+            and self._build_app_task_info is not None
             and self._build_app_task_info.finished
         )
 
