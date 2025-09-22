@@ -20,7 +20,7 @@ and how jobs consume them. Kueue decides when:
 * To preempt a job, which triggers Kubernetes to delete active Pods.
 
 Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue
-to manage resources that RayJob and RayCluster consume. See the
+to manage resources that RayJob, RayCluster, and RayService consume. See the
 [Kueue documentation](https://kueue.sigs.k8s.io/docs/overview/) to learn more.
 
 ## Why use gang scheduling
