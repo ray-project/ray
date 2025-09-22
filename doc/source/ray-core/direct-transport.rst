@@ -1,6 +1,5 @@
 .. _direct-transport:
 
-.. TODO: asyncio not yet supported.
 .. TODO: wait_tensor_freed
 
 **************************
@@ -149,6 +148,41 @@ The :func:`ray.get <ray.get>` function can also be used as usual to retrieve the
    :start-after: __gloo_get_start__
    :end-before: __gloo_get_end__
 
+Object mutability
+^^^^^^^^^^^^^^^^^
+
+Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the tensor, and will not copy it until a transfer is requested.
+This means that if the actor that returns a tensor also keeps a reference to the tensor, and the actor later modifies it in place while Ray is still storing the tensor reference, it's possible that some or all of the changes may be seen by receiving actors.
+
+Here is an example of what can go wrong:
+
+.. literalinclude:: doc_code/direct_transport_gloo.py
+   :language: python
+   :start-after: __gloo_wait_tensor_freed_bad_start__
+   :end-before: __gloo_wait_tensor_freed_bad_end__
+
+In this example, we pass the stored tensor back to the `sender` actor, which modifies it in place.
+Then, we pass the same tensor to the `receiver` actor, which will now read the modified tensor instead of the original.
+That's why the assertion fails, because `sender.increment_and_sum` and `receiver.increment_and_sum` receive different tensor values.
+To help you catch these kinds of errors, Ray also prints a warning when passing RDT objects to the actor that produced them, and a different actor.
+
+To fix this kind of error, use the :func:`ray.experimental.wait_tensor_freed <ray.experimental.wait_tensor_freed>` function to wait for Ray to release all references to the tensor, so that the actor can safely write to the tensor again.
+:func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will unblock once all dependent tasks have finished executing and all corresponding `ObjectRefs` have gone out of scope.
+Here's a fixed version of the earlier example.
+Note that the sender now calls increment and sum on its stored tensor instead of passing the `ObjectRef` back to itself, to avoid a deadlock between :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` and `sender.increment_and_sum`.
+
+.. literalinclude:: doc_code/direct_transport_gloo.py
+   :language: python
+   :start-after: __gloo_wait_tensor_freed_start__
+   :end-before: __gloo_wait_tensor_freed_end__
+
+The main changes are:
+1. `sender` stores the tensor that it returns to Ray, so that it can later pass the tensor reference to :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>`.
+2. `sender` calls :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` before modifying the tensor in place.
+3. The driver uses a timeout in :func:`ray.wait <ray.wait>` because the `sender.increment_and_sum_stored_tensor` task cannot finish while `tensor` is still in scope.
+4. The driver calls `del tensor` to release its reference to the tensor. This is necessary because otherwise Ray will continue storing the tensor, and :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will hang.
+
+
 Usage with NCCL (NVIDIA GPUs only)
 ----------------------------------
 
@@ -225,6 +259,7 @@ RDT is currently in alpha and currently has the following limitations, which may
 
 * Support for ``torch.Tensor`` objects only.
 * Support for Ray actors only, not Ray tasks.
+* Not yet compatible with `asyncio <https://docs.python.org/3/library/asyncio.html>`__. Follow the `tracking issue <https://github.com/ray-project/ray/issues/56398>`__ for updates.
 * Support for the following transports: Gloo, NCCL, and NIXL.
 * Support for CPUs and NVIDIA GPUs only.
 * RDT objects are *mutable*. This means that Ray only holds a reference to the tensor, and will not copy it until a transfer is requested. Thus, if the application code also keeps a reference to a tensor before returning it, and modifies the tensor in place, then some or all of the changes may be seen by the receiving actor.
