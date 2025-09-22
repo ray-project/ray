@@ -13,7 +13,6 @@ buildkite_dirs:
 build_env_keys:
   - RAYCI_TEST_TYPE
 env:
-  BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
   RAYCI_SKIP_UPLOAD: "true"
 hook_env_keys:
   - RAYCI_CHECKOUT_DIR

@@ -11,7 +11,6 @@ runner_queues:
 buildkite_dirs:
   - .buildkite/release
 env:
-  BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
   RAYCI_SKIP_UPLOAD: "true"
 hook_env_keys:
   - RAYCI_CHECKOUT_DIR

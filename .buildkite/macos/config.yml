@@ -10,8 +10,6 @@ runner_queues:
   macos-arm64: macos-branch-arm64
 buildkite_dirs:
   - .buildkite/macos
-env:
-  BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
 hook_env_keys:
   - RAYCI_CHECKOUT_DIR
 skip_tags:
