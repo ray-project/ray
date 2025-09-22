@@ -676,9 +676,19 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
 
     # TODO(wuxibin): cupy doesn't support bfloat16 for now,
     # once it is supported, we can eliminate this if statement.
+    #
+    # Allocate using the same backend as the tensors in `tensor_list`.
+    # Use torch only when the tensors are torch.Tensor; otherwise fall back to CuPy.
+    use_torch = False
     if torch_available():
-        import torch
+        try:
+            import torch
 
+            use_torch = isinstance(t, torch.Tensor)
+        except ImportError:
+            use_torch = False
+
+    if use_torch:
         buffer = torch.empty(tuple(buffer_shape), dtype=t.dtype, device=t.device)
     else:
         # note we need a cupy dtype here.

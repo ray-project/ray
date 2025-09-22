@@ -31,6 +31,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/rpc/worker/fake_core_worker_client.h"
 
 namespace ray {
 namespace core {
@@ -114,7 +115,7 @@ static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
 }
 
-class MockCoreWorkerClientInterface : public rpc::CoreWorkerClientInterface {
+class MockCoreWorkerClientInterface : public rpc::FakeCoreWorkerClient {
  public:
   ~MockCoreWorkerClientInterface() = default;
   virtual void WaitForRefRemoved(const ObjectID object_id,
