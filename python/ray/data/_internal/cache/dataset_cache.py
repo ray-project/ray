@@ -81,22 +81,22 @@ CACHE_VALIDITY_MATRIX = {
 
 # Transformation type mapping
 TRANSFORMATION_TYPES = {
-    "limit": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
-    "repartition": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
-    "map": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-    "add_column": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-    "drop_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-    "select_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-    "rename_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-    "filter": TransformationType.ROW_CHANGING_NO_SCHEMA_CHANGE,
-    "map_batches": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
-    "flat_map": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
-    "sort": TransformationType.REORDERING_ONLY,
-    "random_shuffle": TransformationType.REORDERING_ONLY,
-    "union": TransformationType.COMBINING,
-    "join": TransformationType.COMBINING,
-    "groupby": TransformationType.GROUPING,
-}
+        "limit": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
+        "repartition": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
+        "map": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+        "add_column": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+        "drop_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+        "select_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+        "rename_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+        "filter": TransformationType.ROW_CHANGING_NO_SCHEMA_CHANGE,
+        "map_batches": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
+        "flat_map": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
+        "sort": TransformationType.REORDERING_ONLY,
+        "random_shuffle": TransformationType.REORDERING_ONLY,
+        "union": TransformationType.COMBINING,
+        "join": TransformationType.COMBINING,
+        "groupby": TransformationType.GROUPING,
+    }
 
 
 @dataclass
@@ -175,9 +175,11 @@ class DatasetCache:
                 return result
             except Exception:
                 self._ray_cache.pop(cache_key, None)
+                # Fall through to miss counting below
 
-            self._miss_count += 1
-            return None
+        # Cache miss - key not found in either cache
+        self._miss_count += 1
+        return None
 
     def put(
         self, logical_plan: LogicalPlan, operation_name: str, result: Any, **params
@@ -990,7 +992,7 @@ class DatasetCache:
                     num_rows <= 5000
                 ):  # Medium takes - Ray object store (automatic spilling)
                     return "ray"
-                else:
+            else:
                     return "none"  # Large takes - don't cache (too much memory)
 
         if operation_name == "unique":
@@ -1000,7 +1002,7 @@ class DatasetCache:
                     return "local"
                 elif num_unique <= 50000:  # Medium unique sets - Ray object store
                     return "ray"
-                else:
+        else:
                     return "none"  # Large unique sets - don't cache (too much memory)
 
         if operation_name == "take_all":
@@ -1044,7 +1046,7 @@ def _get_cache() -> DatasetCache:
     global _global_cache
     if _global_cache is None:
         # Configure cache based on DataContext settings
-        context = DataContext.get_current()
+            context = DataContext.get_current()
         max_entries = getattr(context, "dataset_cache_max_entries", 10000)
         _global_cache = DatasetCache(max_entries)
     return _global_cache
