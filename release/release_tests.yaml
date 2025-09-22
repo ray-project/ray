@@ -223,11 +223,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_cpu_8_aws.yaml
+    cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
+    script: python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
 
     wait_for_nodes:
       num_nodes: 8
@@ -238,7 +238,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_cpu_8_gce.yaml
+        cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
 
