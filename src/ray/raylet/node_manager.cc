@@ -45,6 +45,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
@@ -2153,6 +2154,8 @@ void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
+  } else if (worker->GetGrantedLeaseId().IsNil()) {
+    return;  // The worker may have died or is no longer processing the task.
   }
   RAY_CHECK(worker);
 

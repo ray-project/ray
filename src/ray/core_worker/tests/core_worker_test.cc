@@ -26,12 +26,9 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
-#include "fakes/ray/common/asio/fake_periodical_runner.h"
-#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/plasma/client.h"
+#include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_creator.h"
@@ -47,9 +44,13 @@
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/ipc/fake_raylet_ipc_client.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/worker/fake_core_worker_client.h"
 
 namespace ray {
 namespace core {
@@ -99,15 +100,15 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto core_worker_client_pool =
         std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
-          return std::make_shared<rpc::CoreWorkerClientInterface>();
+          return std::make_shared<rpc::FakeCoreWorkerClient>();
         });
 
     auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
-        [](const rpc::Address &) { return std::make_shared<FakeRayletClient>(); });
+        [](const rpc::Address &) { return std::make_shared<rpc::FakeRayletClient>(); });
 
     auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
 
-    auto fake_local_raylet_rpc_client = std::make_shared<FakeRayletClient>();
+    auto fake_local_raylet_rpc_client = std::make_shared<rpc::FakeRayletClient>();
 
     auto fake_raylet_ipc_client = std::make_shared<ipc::FakeRayletIpcClient>();
 
@@ -181,7 +182,7 @@ class CoreWorkerTest : public ::testing::Test {
         RayConfig::instance().max_lineage_bytes(),
         *task_event_buffer,
         [](const ActorID &actor_id) {
-          return std::make_shared<rpc::CoreWorkerClientInterface>();
+          return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
         mock_gcs_client,
         fake_task_by_state_counter_);

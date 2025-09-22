@@ -126,12 +126,10 @@ def test_accelerator_setup_callback(mock_gpu_cluster, mock_runtime_context):
         train_run_context=create_dummy_run_context(),
         worker_group_context=worker_group_context,
     )
-    with pytest.raises(RuntimeError):
-        setup_callback.after_worker_group_start(worker_group)
 
     worker_group._start()
 
-    setup_callback.after_worker_group_start(worker_group)
+    setup_callback.before_init_train_context(worker_group.get_workers())
 
     visible_devices_per_worker = worker_group.execute(
         lambda: os.environ["CUDA_VISIBLE_DEVICES"]
