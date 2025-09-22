@@ -611,9 +611,9 @@ def test_fault_tolerance_chained_task_fail(
 ):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
-    A_NAME = "A"
-    B_NAME = "B"
-    C_NAME = "C"
+    A_NAME = "A_NAME"
+    B_NAME = "B_NAME"
+    C_NAME = "C_NAME"
 
     def sleep_or_fail(pid_actor=None, exit_type=None):
         if exit_type is None:

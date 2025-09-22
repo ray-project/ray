@@ -37,7 +37,7 @@ def test_ray_node_events(ray_start_cluster, httpserver):
     cluster.add_node(
         env_vars={
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": f"http://127.0.0.1:{_RAY_EVENT_PORT}",
-            "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT",
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES": "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT",
         },
         _system_config={
             "enable_ray_event": True,
@@ -52,6 +52,7 @@ def test_ray_node_events(ray_start_cluster, httpserver):
     wait_for_condition(lambda: len(httpserver.log) >= 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
+    print(req_json)
     assert len(req_json) == 2
     assert (
         base64.b64decode(req_json[0]["nodeDefinitionEvent"]["nodeId"]).hex()
