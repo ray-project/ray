@@ -24,6 +24,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --find-links=.whl/
+      - --python-platform=linux
     build_arg_sets:
       - py39
       - py310
@@ -45,6 +46,7 @@ depsets:
     output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
     build_arg_sets:
       - py39
       - py310
@@ -64,6 +66,7 @@ depsets:
     output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
     build_arg_sets:
       - py39
       - py310
