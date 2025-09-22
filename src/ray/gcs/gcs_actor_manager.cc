@@ -1296,6 +1296,7 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
   auto unresolved_actors = GetUnresolvedActorsByOwnerNode(node_id);
 
   if (!unresolved_actors.empty()) {
+    bool first = false;
     std::ostringstream oss;
     oss << "Node died; rescheduling actors that were resolving dependencies on it: ";
     for (auto unresolved_it = unresolved_actors.begin();
@@ -1304,13 +1305,11 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
       for (auto actor_it = unresolved_it->second.begin();
            actor_it != unresolved_it->second.end();
            actor_it++) {
-        oss << actor_it->Hex();
-        if (std::next(actor_it) != unresolved_it->second.end()) {
+        if (first) {
           oss << ", ";
+          first = false;
         }
-      }
-      if (std::next(unresolved_it) != unresolved_actors.end()) {
-        oss << ", ";
+        oss << actor_it->Hex();
       }
     }
     RAY_LOG(INFO).WithField(node_id) << oss.str();
