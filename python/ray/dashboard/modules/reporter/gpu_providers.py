@@ -9,7 +9,7 @@ import enum
 import logging
 import subprocess
 import time
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict, Union
 
 logger = logging.getLogger(__name__)
 

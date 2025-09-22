@@ -499,7 +499,9 @@ class TestGpuMetricProvider(unittest.TestCase):
     @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
     @patch.object(AmdGpuProvider, "is_available", return_value=True)
     @patch.object(HuaweiNpuProvider, "is_available", return_value=False)
-    def test_detect_gpu_provider_amd(self, mock_amd_available, mock_nvidia_available):
+    def test_detect_gpu_provider_amd(
+        self, mock_huawei_available, mock_amd_available, mock_nvidia_available
+    ):
         """Test GPU provider detection when AMD is available."""
         provider = self.provider._detect_gpu_provider()
 
