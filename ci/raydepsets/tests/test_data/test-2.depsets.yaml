@@ -10,8 +10,8 @@ depsets:
   - name: expand_imported_depset__${PYTHON_VERSION}_${CUDA_VERSION}
     operation: expand
     depsets:
-      - general_depset__${PYTHON_VERSION}_${CUDA_VERSION}
-      - expanded_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+      - general_depset__py311_cpu
+      - expanded_depset__py311_cpu
     constraints:
       - requirement_constraints_expand.txt
     output: requirements_compiled_expand_general.txt

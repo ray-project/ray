@@ -102,6 +102,12 @@ class Config:
                 and isinstance(v, dict)
             ):
                 final_config[k] = Config.merge_configs(final_config[k], v)
+            elif (
+                k in final_config
+                and isinstance(final_config[k], list)
+                and isinstance(v, list)
+            ):
+                final_config[k] = final_config[k] + v
             else:
                 final_config[k] = v
         return final_config
