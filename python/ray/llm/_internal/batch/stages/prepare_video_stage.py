@@ -1,16 +1,16 @@
-"""Prepare Video Stage
+"""Video Preparation Stage
 
-Minimal video preparation stage aligned with PrepareImageStage.
+A production-grade video preprocessing stage for Ray LLM batch pipelines.
 
-Features (MVP):
-- Parse video sources from OpenAI chat-style messages ("video", "video_url").
-- Resolve sources via streaming (default) or optional caching (disk/memory).
-- Decode via PyAV (FFmpeg) and sample frames by fps or uniform num_frames.
-- Return frames (PIL by default, or numpy arrays) and metadata.
+Responsibilities:
+- Parse video sources in OpenAI-style chat messages ("video", "video_url").
+- Resolve sources (HTTP, data URI, local path) with stream-first I/O and optional caching.
+- Decode via PyAV (FFmpeg) and sample frames by fps or by a fixed number.
+- Return frames (PIL or NumPy) and per-video metadata.
 
-Notes:
-- PyAV is imported dynamically; if missing, a clear ImportError is raised when used.
-- Heavy decode work runs in a thread to avoid blocking the event loop.
+Design notes:
+- Optional dependencies (PyAV, Pillow, NumPy) are imported lazily with clear error messages.
+- CPU-bound decode runs in a thread; async orchestration preserves order and concurrency limits.
 """
 
 from __future__ import annotations
@@ -29,9 +29,11 @@ from urllib.parse import urlparse
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 from ray.llm._internal.batch.stages._util import HTTPConnection
 
-# Safety cap to avoid generating excessively large sampling target lists
+# Upper bound for the number of sampling targets generated in fps/num_frames modes.
+# Prevents excessive memory/time when duration is very long or unknown.
 _MAX_TARGETS = 10_000
-# Safety cap to avoid infinite decode loops on malformed inputs
+# Upper bound for decoded frames per source in a single processing pass.
+# Prevents unbounded decoding on malformed or truncated streams.
 _MAX_DECODE_FRAMES = 100_000
 
 
