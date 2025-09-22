@@ -114,6 +114,8 @@ class NixlBackend:
                 nixl_agent.deregister_memory(local_descs)
             if remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
+            with self._aborted_transfer_obj_ids_lock:
+                self._aborted_transfer_obj_ids.discard(obj_id)
 
     def get_nixl_metadata(self, tensors: List["torch.Tensor"]) -> Tuple[bytes, bytes]:
         """Get NIXL metadata for a set of tensors.
