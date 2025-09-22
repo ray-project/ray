@@ -27,7 +27,7 @@ elif GPT_OSS_SIZE == "120b":
             model_id="my-gpt-oss",
             model_source="openai/gpt-oss-120b",
         ),
-        accelerator_type="A100-80G",
+        accelerator_type="L40S",
         deployment_config=dict(
             autoscaling_config=dict(
                 min_replicas=1,
@@ -35,7 +35,7 @@ elif GPT_OSS_SIZE == "120b":
             )
         ),
         engine_kwargs=dict(
-            max_model_len=65536,
+            max_model_len=32768,
             tensor_parallel_size=2,
         ),
     )
