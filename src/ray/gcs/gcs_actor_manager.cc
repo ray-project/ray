@@ -1220,12 +1220,13 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
 
     if (!children_ids.empty()) {
       std::ostringstream oss;
-      oss << "Killing actors that were owned by workers on dead node: ";
-      for (auto child_it = children_ids.begin(); child_it != children_ids.end(); child_it++) {
-        oss << child_it->second.Hex();
-        if (std::next(child_it) != children_ids.end()) {
+      oss << "Node died; killing actors that were owned by workers on it: ";
+      for (auto child_it = children_ids.begin(); child_it != children_ids.end();
+           child_it++) {
+        if (child_it != children_ids.begin()) {
           oss << ", ";
         }
+        oss << child_it->second.Hex();
       }
       RAY_LOG(INFO).WithField(node_id) << oss.str();
     }
@@ -1245,12 +1246,14 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
 
   if (!scheduling_actor_ids.empty()) {
     std::ostringstream oss;
-    oss << "Rescheduling actors that were being scheduled on dead node: ";
-    for (auto reschedule_it = scheduling_actor_ids.begin(); reschedule_it != scheduling_actor_ids.end(); reschedule_it++) {
-      oss << reschedule_it->Hex();
-      if (std::next(reschedule_it) != scheduling_actor_ids.end()) {
+    oss << "Node died; rescheduling actors that were being scheduled on it: ";
+    for (auto reschedule_it = scheduling_actor_ids.begin();
+         reschedule_it != scheduling_actor_ids.end();
+         reschedule_it++) {
+      if (reschedule_it != scheduling_actor_ids.begin()) {
         oss << ", ";
       }
+      oss << reschedule_it->Hex();
     }
     RAY_LOG(INFO).WithField(node_id) << oss.str();
   }
@@ -1269,12 +1272,13 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
     created_actors_.erase(iter);
 
     std::ostringstream oss;
-    oss << "Reconstructing actors that were running on dead node: ";
-    for (auto created_it = created_actors.begin(); created_it != created_actors.end(); created_it++) {
-      oss << created_it->second.Hex();
-      if (std::next(created_it) != created_actors.end()) {
+    oss << "Node died; reconstructing actors that were running on it: ";
+    for (auto created_it = created_actors.begin(); created_it != created_actors.end();
+         created_it++) {
+      if (created_it != created_actors.begin()) {
         oss << ", ";
       }
+      oss << created_it->second.Hex();
     }
     RAY_LOG(INFO).WithField(node_id) << oss.str();
 
@@ -1293,9 +1297,13 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
 
   if (!unresolved_actors.empty()) {
     std::ostringstream oss;
-    oss << "Rescheduling actors that were resolving dependencies on dead node : ";
-    for (auto unresolved_it = unresolved_actors.begin(); unresolved_it != unresolved_actors.end(); unresolved_it++) {
-      for (auto actor_it = unresolved_it->second.begin(); actor_it != unresolved_it->second.end(); actor_it++) {
+    oss << "Node died; rescheduling actors that were resolving dependencies on it: ";
+    for (auto unresolved_it = unresolved_actors.begin();
+         unresolved_it != unresolved_actors.end();
+         unresolved_it++) {
+      for (auto actor_it = unresolved_it->second.begin();
+           actor_it != unresolved_it->second.end();
+           actor_it++) {
         oss << actor_it->Hex();
         if (std::next(actor_it) != unresolved_it->second.end()) {
           oss << ", ";
