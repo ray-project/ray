@@ -31,7 +31,7 @@ class RayEvent : public RayEventInterface {
   void Merge(RayEventInterface &&other) override {
     RAY_CHECK_EQ(GetEntityId(), other.GetEntityId());
     RAY_CHECK_EQ(GetEventType(), other.GetEventType());
-    MergeSortedData(static_cast<RayEvent<T> &&>(other));
+    MergeData(static_cast<RayEvent<T> &&>(other));
   }
 
   ray::rpc::events::RayEvent Serialize() && override {
