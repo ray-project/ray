@@ -60,6 +60,7 @@ void FillNil(T *data) {
   for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(0xFF);
   }
+  RAY_CHECK(data != nullptr);
 }
 
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
