@@ -4,7 +4,7 @@ from itertools import chain
 import gymnasium as gym
 
 from ray.rllib.core.rl_module import MultiRLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -113,12 +113,8 @@ class MultiAgentEnvRunnerServerForExternalInference(
         env_to_module_pipeline_for_spaces = self.config.build_env_to_module_connector(
             env=None, spaces=None, device=get_device(self.config, 0)
         )
-        # TODO (ruben): adjust when adding multi-client setup
         return {
             INPUT_ENV_SPACES: (self.config.observation_space, self.config.action_space),
-            INPUT_ENV_SINGLE_SPACES: (
-                self.config.observation_space, self.config.action_space
-            ),
             **{
                 mid: (o, env_to_module_pipeline_for_spaces.action_space[mid])
                 for mid, o in
