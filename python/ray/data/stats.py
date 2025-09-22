@@ -85,6 +85,12 @@ def vector_aggregators(column: str) -> List[AggregateFnV2]:
     This function returns a list of aggregators that compute the following metrics:
     - count
     - MissingValuePercentage
+
+    Args:
+        column: The name of the vector column to compute metrics for.
+    Returns:
+        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
+
     """
     return [
         Count(on=column, ignore_nulls=False),
