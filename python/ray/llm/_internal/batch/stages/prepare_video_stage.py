@@ -36,7 +36,6 @@ _MAX_TARGETS = 10_000
 # Prevents unbounded decoding on malformed or truncated streams.
 _MAX_DECODE_FRAMES = 100_000
 
-
 # Types
 FrameType = Any  # PIL.Image.Image or numpy.ndarray
 
@@ -107,7 +106,8 @@ class VideoProcessor:
     def __init__(
         self,
         *,
-        sampling: Optional[Dict[str, Any]] = None,  # {"fps": k} or {"num_frames": n}
+        sampling: Optional[Dict[str, Any]] = None,
+        # {"fps": k} or {"num_frames": n}
         cache_dir: Optional[str] = None,
         cache_mode: str = "auto",  # "auto" | "disk" | "memory"
         output_format: str = "pil",  # "pil" | "numpy"
@@ -118,8 +118,10 @@ class VideoProcessor:
         retry_backoff_base: float = 0.5,
         bypass_if_frames_present: bool = False,
         pack_for_model: bool = False,  # reserved for future use
-        keep_downloaded: bool = False,  # when using disk cache, persist after use (default False)
-        preprocess: Optional[Dict[str, Any]] = None,  # {resize:{}, crop:{}, convert:"RGB"}; default off
+        keep_downloaded: bool = False,
+        # when using disk cache, persist after use (default False)
+        preprocess: Optional[Dict[str, Any]] = None,
+        # {resize:{}, crop:{}, convert:"RGB"}; default off
         max_sampled_frames: Optional[int] = None,
     ) -> None:
         self._sampling = Sampling.from_user(sampling)
@@ -134,7 +136,8 @@ class VideoProcessor:
         self._pack_for_model = pack_for_model
         self._keep_downloaded = keep_downloaded
         self._preprocess = preprocess or {}
-        self._max_sampled_frames = int(max_sampled_frames) if max_sampled_frames is not None else None
+        self._max_sampled_frames = int(
+            max_sampled_frames) if max_sampled_frames is not None else None
 
         # Lazy imports for optional dependencies
         self._av = None  # set on first use
@@ -155,7 +158,8 @@ class VideoProcessor:
             last_exc: Optional[Exception] = None
             while attempt <= self._retries:
                 try:
-                    return await asyncio.to_thread(self._process_one_sync, source)
+                    return await asyncio.to_thread(self._process_one_sync,
+                                                   source)
                 except Exception as e:
                     last_exc = e
                     # Decide retriable or not
@@ -205,7 +209,8 @@ class VideoProcessor:
     def _process_one_sync(self, source: str) -> Dict[str, Any]:
         self._ensure_deps()
 
-        resolved, is_memory, cleanup_path = self._resolve_source_for_decode(source)
+        resolved, is_memory, cleanup_path = self._resolve_source_for_decode(
+            source)
 
         container = None
         try:
@@ -220,7 +225,8 @@ class VideoProcessor:
                 container = self._av.open(resolved)
 
             try:
-                vstream = next(s for s in container.streams if getattr(s, "type", None) == "video")
+                vstream = next(s for s in container.streams if
+                               getattr(s, "type", None) == "video")
             except StopIteration:
                 raise ValueError("No video stream found in source")
 
@@ -348,7 +354,8 @@ class VideoProcessor:
                         "x-matroska": "matroska",
                     }.get(mime, None)
             parsed = urlparse(source)
-            ext = os.path.splitext(parsed.path or source)[1].lower().lstrip(".")
+            ext = os.path.splitext(parsed.path or source)[1].lower().lstrip(
+                ".")
             return {
                 "mp4": "mp4",
                 "m4v": "mp4",
@@ -360,7 +367,8 @@ class VideoProcessor:
         except Exception:
             return None
 
-    def _source_repr(self, original: str, resolved: Any, is_memory: bool) -> str:
+    def _source_repr(self, original: str, resolved: Any,
+                     is_memory: bool) -> str:
         try:
             if is_memory:
                 return f"memory://{len(resolved.getbuffer())}b"
@@ -383,7 +391,8 @@ class VideoProcessor:
             # Fallback: approximate by using stream duration if available
             try:
                 if getattr(vstream, "duration", None) is not None:
-                    duration_s = float(vstream.duration * float(vstream.time_base))
+                    duration_s = float(
+                        vstream.duration * float(vstream.time_base))
             except Exception:
                 duration_s = None
 
@@ -470,9 +479,11 @@ class VideoProcessor:
                 if getattr(arr, "ndim", 0) < 2 or arr.size == 0:
                     # Derive size from preprocess config or image attributes
                     size = None
-                    r = self._preprocess.get("resize") if isinstance(self._preprocess, dict) else None
+                    r = self._preprocess.get("resize") if isinstance(
+                        self._preprocess, dict) else None
                     if r and isinstance(r, dict) and "size" in r:
-                        size = tuple(r["size"])  # (W,H) or (H,W) depending on usage; assume (W,H)
+                        size = tuple(r[
+                                         "size"])  # (W,H) or (H,W) depending on usage; assume (W,H)
                     w = getattr(img, "width", None)
                     h = getattr(img, "height", None)
                     if size:
@@ -514,7 +525,8 @@ class VideoProcessor:
 
         # local file path
         parsed = urlparse(source)
-        if parsed.scheme in ("file", "") and os.path.exists(parsed.path or source):
+        if parsed.scheme in ("file", "") and os.path.exists(
+            parsed.path or source):
             return parsed.path or source, False, None
 
         # http/https
@@ -575,7 +587,8 @@ class PrepareVideoUDF(StatefulStageUDF):
         data_column: str,
         expected_input_keys: List[str],
         *,
-        sampling: Optional[Dict[str, Any]] = None,  # {"fps": 3} or {"num_frames": 8}
+        sampling: Optional[Dict[str, Any]] = None,
+        # {"fps": 3} or {"num_frames": 8}
         cache_dir: Optional[str] = None,
         cache_mode: str = "auto",
         output_format: str = "pil",
@@ -628,10 +641,12 @@ class PrepareVideoUDF(StatefulStageUDF):
                     raise ValueError(f"Cannot handle video type {type(src)}")
         return sources
 
-    async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
+    async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[
+        Dict[str, Any]]:
         messages_batch = [row["messages"] for row in batch]
 
-        all_video_info = [self.extract_video_info(msgs) for msgs in messages_batch]
+        all_video_info = [self.extract_video_info(msgs) for msgs in
+                          messages_batch]
         flat_sources = [s for lst in all_video_info for s in lst]
 
         processed = await self._video.process(flat_sources)
@@ -641,7 +656,7 @@ class PrepareVideoUDF(StatefulStageUDF):
             n = len(per_req)
             ret: Dict[str, Any] = {self.IDX_IN_BATCH_COLUMN: idx_in_batch}
             if n > 0:
-                chunk = processed[start : start + n]
+                chunk = processed[start: start + n]
                 start += n
                 ret.update(
                     {
