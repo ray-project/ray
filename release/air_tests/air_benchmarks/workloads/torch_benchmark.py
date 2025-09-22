@@ -273,8 +273,8 @@ def train_torch_ray_air(
 
     # print(f"Last result: {result.metrics}")
     loss, local_time_taken = 0.0, 0.0
-    if os.path.exists(VANILLA_RESULT_JSON):
-        with open(VANILLA_RESULT_JSON, "r") as f:
+    if os.path.exists(RAY_RESULT_JSON):
+        with open(RAY_RESULT_JSON, "r") as f:
             result = json.load(f)
         loss = result["loss"]
         local_time_taken = result["local_time_taken"]
