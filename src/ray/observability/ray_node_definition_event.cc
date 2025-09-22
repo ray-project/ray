@@ -35,7 +35,7 @@ RayNodeDefinitionEvent::RayNodeDefinitionEvent(const rpc::GcsNodeInfo &data,
 
 std::string RayNodeDefinitionEvent::GetEntityId() const { return data_.node_id(); }
 
-void RayNodeDefinitionEvent::MergeSortedData(
+void RayNodeDefinitionEvent::MergeData(
     RayEvent<rpc::events::NodeDefinitionEvent> &&other) {
   // Definition events are static. Merging do not change the event.
   return;

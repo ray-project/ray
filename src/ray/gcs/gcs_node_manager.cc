@@ -633,7 +633,10 @@ void GcsNodeManager::UpdateAliveNode(
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
     // Write the export event for the draining state. Note that we explicitly do not
     // write IDLE and ACTIVE events as they have very high cardinality.
-    WriteNodeExportEvent(*maybe_node_info.value(), /*is_register_event*/ false);
+    if (!drain_event_exported_) {
+      WriteNodeExportEvent(*maybe_node_info.value(), /*is_register_event*/ false);
+      drain_event_exported_ = true;
+    }
   }
 
   // N.B. For thread safety, all updates to alive_nodes_ need to follow a
