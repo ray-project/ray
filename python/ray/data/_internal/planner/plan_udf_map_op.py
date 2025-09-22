@@ -60,6 +60,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import AliasExpr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,11 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
-                    actual_name = expr.output_name or name
+                    # AliasExpr is given precedence over the name.
+                    if isinstance(expr, AliasExpr):
+                        actual_name = expr.name
+                    else:
+                        actual_name = name
                     result = eval_expr(expr, result_block)
                     result_block_accessor = BlockAccessor.for_block(result_block)
                     # Use fill_column for scalar values, upsert_column for arrays

@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -85,8 +85,6 @@ class Expr(ABC):
     """
 
     data_type: DataType
-    # output_name is used to rename the expression result when `alias()` is called. Not using `name` to avoid collision with ColumnExpr.name
-    output_name: Optional[str] = field(default=None, init=False)
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -221,7 +219,7 @@ class Expr(ABC):
             name: The new name for the expression
 
         Returns:
-            An Expr that wraps this expression with the specified name
+            An AliasExpr that wraps this expression with the specified name
 
         Example:
             >>> from ray.data.expressions import col, lit
@@ -229,8 +227,7 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        object.__setattr__(self, "output_name", name)
-        return self
+        return AliasExpr(data_type=self.data_type, expr=self, name=name)
 
 
 @DeveloperAPI(stability="alpha")
@@ -255,11 +252,7 @@ class ColumnExpr(Expr):
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
-        return (
-            isinstance(other, ColumnExpr)
-            and self.name == other.name
-            and self.output_name == other.output_name
-        )
+        return isinstance(other, ColumnExpr) and self.name == other.name
 
 
 @DeveloperAPI(stability="alpha")
@@ -297,7 +290,6 @@ class LiteralExpr(Expr):
             isinstance(other, LiteralExpr)
             and self.value == other.value
             and type(self.value) is type(other.value)
-            and self.output_name == other.output_name
         )
 
 
@@ -334,7 +326,6 @@ class BinaryExpr(Expr):
             and self.op is other.op
             and self.left.structurally_equals(other.left)
             and self.right.structurally_equals(other.right)
-            and self.output_name == other.output_name
         )
 
 
@@ -368,7 +359,6 @@ class UnaryExpr(Expr):
             isinstance(other, UnaryExpr)
             and self.op is other.op
             and self.operand.structurally_equals(other.operand)
-            and self.output_name == other.output_name
         )
 
 
@@ -417,7 +407,6 @@ class UDFExpr(Expr):
                 self.kwargs[k].structurally_equals(other.kwargs[k])
                 for k in self.kwargs.keys()
             )
-            and self.output_name == other.output_name
         )
 
 
@@ -527,7 +516,22 @@ class DownloadExpr(Expr):
         return (
             isinstance(other, DownloadExpr)
             and self.uri_column_name == other.uri_column_name
-            and self.output_name == other.output_name
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class AliasExpr(Expr):
+    """Expression that represents an alias for an expression."""
+
+    expr: Expr
+    name: str
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, AliasExpr)
+            and self.expr.structurally_equals(other.expr)
+            and self.name == other.name
         )
 
 
@@ -637,6 +641,7 @@ __all__ = [
     "UnaryExpr",
     "UDFExpr",
     "DownloadExpr",
+    "AliasExpr",
     "udf",
     "col",
     "lit",

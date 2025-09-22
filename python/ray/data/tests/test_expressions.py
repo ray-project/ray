@@ -68,8 +68,8 @@ def test_alias_functionality(expr, alias_name, expected_alias):
 
     # Test alias creation
     aliased_expr = expr.alias(alias_name)
-    assert aliased_expr.output_name == expected_alias
-    assert aliased_expr.structurally_equals(expr)
+    assert aliased_expr.name == expected_alias
+    assert aliased_expr.expr.structurally_equals(expr)
 
     # Test data type preservation
     assert aliased_expr.data_type == expr.data_type

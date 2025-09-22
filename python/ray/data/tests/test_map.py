@@ -3308,7 +3308,7 @@ def test_with_column_alias_expressions(
     expr = expr_factory()
 
     # Verify the alias name matches what we expect
-    assert expr.output_name == alias_name
+    assert expr.name == alias_name
 
     # Apply the aliased expression
     ds = ray.data.range(5).with_column(alias_name, expr)
