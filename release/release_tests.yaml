@@ -1839,7 +1839,7 @@
   alert: default
 
 
-- name: "{{framework}}_train_batch_inference_benchmark_{{size}}""
+- name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
