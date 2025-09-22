@@ -649,7 +649,7 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
             details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate

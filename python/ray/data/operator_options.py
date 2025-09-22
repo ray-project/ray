@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI(stability="alpha")
+@PublicAPI(stability="alpha")
 @dataclass
 class OperatorOptions:
     """Options for configuring individual operators."""
