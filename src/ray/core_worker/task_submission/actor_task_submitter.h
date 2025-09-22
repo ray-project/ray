@@ -31,7 +31,7 @@
 #include "ray/core_worker/task_submission/dependency_resolver.h"
 #include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
 namespace core {
