@@ -1271,16 +1271,18 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
     // Remove all created actors from node_to_created_actors_.
     created_actors_.erase(iter);
 
-    std::ostringstream oss;
-    oss << "Node died; reconstructing actors that were running on it: ";
-    for (auto created_it = created_actors.begin(); created_it != created_actors.end();
-         created_it++) {
-      if (created_it != created_actors.begin()) {
-        oss << ", ";
+    if (!created_actors.empty()) {
+      std::ostringstream oss;
+      oss << "Node died; reconstructing actors that were running on it: ";
+      for (auto created_it = created_actors.begin(); created_it != created_actors.end();
+           created_it++) {
+        if (created_it != created_actors.begin()) {
+          oss << ", ";
+        }
+        oss << created_it->second.Hex();
       }
-      oss << created_it->second.Hex();
+      RAY_LOG(INFO).WithField(node_id) << oss.str();
     }
-    RAY_LOG(INFO).WithField(node_id) << oss.str();
 
     for (auto &entry : created_actors) {
       // Reconstruct the removed actor.
@@ -1305,10 +1307,10 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
       for (auto actor_it = unresolved_it->second.begin();
            actor_it != unresolved_it->second.end();
            actor_it++) {
-        if (first) {
+        if (!first) {
           oss << ", ";
-          first = false;
         }
+        first = false;
         oss << actor_it->Hex();
       }
     }
