@@ -36,7 +36,7 @@ llm_config = LLMConfig(
         # Or unsloth/Meta-Llama-3.1-70B-Instruct for an ungated model
         model_source="meta-llama/Llama-3.1-70B-Instruct",
     ),
-    accelerator_type="L40S", 
+    accelerator_type="L40S",
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,

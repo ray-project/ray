@@ -18,7 +18,7 @@ llm_config = LLMConfig(
     # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
         # 4 GPUs is enough but you can increase tensor_parallel_size to more GPUs for better concurrency.
-        tensor_parallel_size=8, max_model_len=32768, reasoning_parser="qwen3"
+        tensor_parallel_size=4, max_model_len=32768, reasoning_parser="qwen3"
     ),
 )
 app = build_openai_app({"llm_configs": [llm_config]})
