@@ -1,9 +1,8 @@
 import json
 import os
-import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Any, Optional
 
 
 import click
@@ -18,6 +17,7 @@ from torchvision.transforms import ToTensor
 
 CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
+RAY_RESULT_JSON = "/tmp/ray_out.json"
 
 
 # Define model
@@ -208,17 +208,18 @@ def train_func(use_ray: bool, config: Dict):
         local_time_taken = time.monotonic() - local_start_time
 
         if use_ray:
-            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                if train.get_context().get_world_rank() == 0:
-                    torch.save(
-                        model.state_dict(),
-                        os.path.join(temp_checkpoint_dir, "model.pt"),
-                    )
+            # with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            #     if train.get_context().get_world_rank() == 0:
+            #         torch.save(
+            #             model.state_dict(),
+            #             os.path.join(temp_checkpoint_dir, "model.pt"),
+            #         )
 
-                train.report(
-                    dict(loss=loss, local_time_taken=local_time_taken),
-                    checkpoint=train.Checkpoint.from_directory(temp_checkpoint_dir),
-                )
+            #     train.report(
+            #         dict(loss=loss, local_time_taken=local_time_taken),
+            #         checkpoint=train.Checkpoint.from_directory(temp_checkpoint_dir),
+            #     )
+            train.report(dict(loss=loss, local_time_taken=local_time_taken))
         else:
             print(f"Reporting loss: {loss:.4f}")
             if local_rank == 0:
@@ -235,11 +236,23 @@ def train_torch_ray_air(
 ) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
+    import ray
     from ray.train import ScalingConfig, RunConfig
     from ray.train.torch import TorchTrainer
 
     def train_loop(config):
         train_func(use_ray=True, config=config)
+
+    class CustomMetricsCallback(ray.train.UserCallback):
+        def after_report(
+            self,
+            run_context,
+            metrics: List[Dict[str, Any]],
+            checkpoint: Optional[ray.train.Checkpoint],
+        ):
+            rank_0_metrics = metrics[0]
+            with open(RAY_RESULT_JSON, "w") as f:
+                json.dump(rank_0_metrics, f)
 
     start_time = time.monotonic()
     trainer = TorchTrainer(
@@ -250,13 +263,23 @@ def train_torch_ray_air(
             resources_per_worker={"CPU": cpus_per_worker},
             use_gpu=use_gpu,
         ),
-        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
+        run_config=RunConfig(
+            storage_path="/mnt/cluster_storage",
+            callbacks=[CustomMetricsCallback()],
+        ),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time
 
-    print(f"Last result: {result.metrics}")
-    return time_taken, result.metrics["local_time_taken"], result.metrics["loss"]
+    # print(f"Last result: {result.metrics}")
+    loss, local_time_taken = 0.0, 0.0
+    if os.path.exists(VANILLA_RESULT_JSON):
+        with open(VANILLA_RESULT_JSON, "r") as f:
+            result = json.load(f)
+        loss = result["loss"]
+        local_time_taken = result["local_time_taken"]
+
+    return time_taken, local_time_taken, loss
 
 
 def train_torch_vanilla_worker(
