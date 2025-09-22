@@ -743,10 +743,13 @@ class TestCli(unittest.TestCase):
     def test_expand_op_from_imported_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            result = _invoke_build(tmpdir, "test-2.depsets.yaml")
+            result = _invoke_build(
+                tmpdir, "test-2.depsets.yaml", "expand_imported_depset__py312_cpu"
+            )
+            print(result.output)
             assert result.exit_code == 0
             assert (
-                "Dependency set expand_imported_depset__py311_cpu compiled successfully"
+                "Dependency set expand_imported_depset__py312_cpu compiled successfully"
                 in result.output
             )
 

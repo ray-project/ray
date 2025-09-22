@@ -10,10 +10,10 @@ depsets:
   - name: expand_imported_depset__${PYTHON_VERSION}_${CUDA_VERSION}
     operation: expand
     depsets:
+      - ray_base_test_depset
       - general_depset__py311_cpu
-      - expanded_depset__py311_cpu
     constraints:
-      - requirement_constraints_expand.txt
+      - requirement_constraints_test.txt
     output: requirements_compiled_expand_general.txt
     build_arg_sets:
       - py312_cpu

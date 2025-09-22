@@ -77,16 +77,26 @@ def test_parse_pre_hooks():
         assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh"]
 
 
-def test_import():
+def test_import_depsets():
     with tempfile.TemporaryDirectory() as tmpdir:
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(path=Path(tmpdir) / "test-2.depsets.yaml")
-        assert config.depsets[0].name == "ray_base_test_depset"
-        print(config.depsets)
+        # verify depset from imported config exists
+        assert "ray_base_test_depset" in [depset.name for depset in config.depsets]
         assert "expand_imported_depset__py312_cpu" in [
             depset.name for depset in config.depsets
         ]
+
+
+def test_import_build_arg_sets():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_config(path=Path(tmpdir) / "test-2.depsets.yaml")
+        # verify build arg set from imported config exists
+        assert "py311_cpu" in config.build_arg_sets.keys()
+        assert "py312_cpu" in config.build_arg_sets.keys()
 
 
 if __name__ == "__main__":
