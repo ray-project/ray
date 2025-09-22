@@ -468,6 +468,7 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
     const rpc::GcsNodeInfo::GcsNodeState node_state,
     const int64_t update_time) {
   std::shared_ptr<const rpc::GcsNodeInfo> removed_node;
+  draining_node_ids_.erase(node_id);
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     // Set node death info. For thread safety, we don't update the node info in place (as
@@ -634,9 +635,9 @@ void GcsNodeManager::UpdateAliveNode(
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
     // Write the export event for the draining state. Note that we explicitly do not
     // write IDLE and ACTIVE events as they have very high cardinality.
-    if (!drain_event_exported_) {
-      WriteNodeExportEvent(*maybe_node_info.value(), /*is_register_event*/ false);
-      drain_event_exported_ = true;
+    if (!draining_node_ids_.contains(node_id)) {
+      WriteNodeExportEvent(new_node_info, /*is_register_event*/ false);
+      draining_node_ids_.insert(node_id);
     }
   }
 
