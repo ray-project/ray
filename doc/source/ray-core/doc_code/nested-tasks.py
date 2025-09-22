@@ -20,15 +20,19 @@ def h():
     # Call f 4 times, block until those 4 tasks finish,
     # retrieve the results, and return the values.
     return ray.get([f.remote() for _ in range(4)])
-
-
 # __nested_end__
+
+ray.init(num_cpus=4, num_gpus=1)
+
+obj_refs = ray.get(g.remote())
+assert len(obj_refs) == 4
+assert all(isinstance(o, ray.ObjectRef) for o in obj_refs)
 
 
 # __yield_start__
 @ray.remote(num_cpus=1, num_gpus=1)
 def g():
     return ray.get(f.remote())
-
-
 # __yield_end__
+
+assert ray.get(g.remote()) == 1
