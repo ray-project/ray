@@ -18,6 +18,7 @@ from ray_release.configs.global_config import get_global_config
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
+@mock.patch.dict(os.environ, {"RAY_WANT_COMMIT_IN_IMAGE": "abc123"})
 @mock.patch("ray_release.custom_byod_build_init_helper.get_images_from_tests")
 def test_create_custom_build_yaml(mock_get_images_from_tests):
     config = get_global_config()
@@ -61,6 +62,10 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             content = yaml.safe_load(f)
             assert content["group"] == "Custom images build"
             assert len(content["steps"]) == 2
+            assert (
+                "export RAY_WANT_COMMIT_IN_IMAGE=abc123"
+                in content["steps"][0]["commands"][0]
+            )
             assert (
                 f"--region {config['byod_ecr_region']}"
                 in content["steps"][0]["commands"][3]
