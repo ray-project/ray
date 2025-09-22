@@ -180,7 +180,7 @@ def test_global_state_actor_table(ray_start_regular):
             break
         else:
             time.sleep(0.5)
-    assert ray.util.state.list_actors().state == "DEAD"
+    assert ray.util.state.list_actors()[0].state == "DEAD"
 
 
 def test_global_state_worker_table(ray_start_regular):

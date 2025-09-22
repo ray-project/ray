@@ -2095,9 +2095,7 @@ class Dataset:
                     + 100  # fetch current actors. Some staleness is assumed fine.
                 )
             }
-            return {
-                actor: actors_state.get(actor._actor_id.hex(), {}) for actor in actors
-            }
+            return {actor: actors_state.get(actor._actor_id.hex()) for actor in actors}
 
         # expected number of blocks to be allocated for each actor
         expected_block_count_by_actor = build_allocation_size_map(
