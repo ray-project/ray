@@ -589,6 +589,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "medium",
     srcs = ["tests/test_hudi.py"],
@@ -732,6 +746,20 @@ py_test(
     name = "test_parquet",
     size = "medium",
     srcs = ["tests/test_parquet.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_projection_fusion",
+    size = "small",
+    srcs = ["tests/test_projection_fusion.py"],
     tags = [
         "exclusive",
         "team:data",
