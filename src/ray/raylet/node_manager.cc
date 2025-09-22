@@ -31,6 +31,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
@@ -113,7 +114,8 @@ NodeManager::NodeManager(
     plasma::PlasmaClientInterface &store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+    std::unique_ptr<CgroupManagerInterface> cgroup_manager)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -165,7 +167,8 @@ NodeManager::NodeManager(
           RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
-          CreateMemoryUsageRefreshCallback())) {
+          CreateMemoryUsageRefreshCallback())),
+      cgroup_manager_(std::move(cgroup_manager)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -1662,7 +1665,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 
   const bool is_actor_creation_task = lease.GetLeaseSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
-  metrics_num_task_scheduled_ += 1;
 
   if (is_actor_creation_task) {
     actor_id = lease.GetLeaseSpecification().ActorId();
@@ -2150,6 +2152,8 @@ void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
+  } else if (worker->GetGrantedLeaseId().IsNil()) {
+    return;  // The worker may have died or is no longer processing the task.
   }
   RAY_CHECK(worker);
 

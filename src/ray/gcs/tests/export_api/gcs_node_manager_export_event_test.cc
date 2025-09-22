@@ -21,11 +21,12 @@
 #include <thread>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
 
@@ -85,11 +86,14 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   // Test export event is written when a node is added with HandleRegisterNode
+  observability::FakeRayEventRecorder fake_ray_event_recorder;
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    io_service_,
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   /*ray_event_recorder=*/fake_ray_event_recorder,
+                                   /*session_name=*/"");
   auto node = GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -110,11 +114,14 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
 
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   // Test export event is written when a node is removed with HandleUnregisterNode
+  observability::FakeRayEventRecorder fake_ray_event_recorder;
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    io_service_,
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   /*ray_event_recorder=*/fake_ray_event_recorder,
+                                   /*session_name=*/"");
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);
