@@ -251,7 +251,12 @@ class ServeHead(SubprocessModule):
             )
         except Exception as e:
             if isinstance(e.cause, DeploymentIsBeingDeletedError):
-                return self._create_json_response({"error": str(e.cause)}, 412)
+                return self._create_json_response(
+                    # From customer's viewpoint, the deployment is deleted instead of being deleted
+                    # as they must have already executed the delete command
+                    {"error": "Deployment is deleted"},
+                    412,
+                )
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
                     {"error": "Application or Deployment not found"}, 400
