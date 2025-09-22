@@ -251,7 +251,7 @@ ray.get(ray_actor.run.remote())
 (unitrace-profiling-result)=
 #### Profiling Result
 
-The profiling result is stored in .json files. Please follow the [instructions](https://github.com/intel/pti-gpu/tree/master/tools/unitrace#view-traces-and-profiles) to visualize the result.
+The profiling result is stored in .json files. Please follow the [instructions](https://github.com/intel/pti-gpu/tree/master/tools/unitrace#view) to visualize the result.
 
 (profiling-timeline)=
 ## Ray Task or Actor timeline
