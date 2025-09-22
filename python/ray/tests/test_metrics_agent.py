@@ -564,7 +564,8 @@ def test_metrics_export_event_aggregator_agent(
     def test_case_publisher_specific_metrics_value_correct(
         publisher_name: str, expected_metrics_values: dict
     ):
-        _, _, metric_samples = fetch_prometheus_timeseries(prom_addresses)
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_samples = timeseries.metric_samples.values()
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [
                 m
