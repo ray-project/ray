@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 
-from ray.data._internal.datasource.datasource import ReadTask
+from ray.data.datasource.datasource import ReadTask
 from ray.data.block import BlockMetadata
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
@@ -35,8 +35,24 @@ class KinesisDatasource(UnboundDatasource):
             max_records_per_task: Maximum records per task
             start_position: Starting position for reading
             end_position: Ending position for reading
+
+        Raises:
+            ValueError: If required configuration is missing
         """
         super().__init__("kinesis")
+
+        # Validate required configuration
+        if not stream_name:
+            raise ValueError("stream_name cannot be empty")
+
+        if not kinesis_config.get("region_name") and not kinesis_config.get(
+            "aws_region"
+        ):
+            raise ValueError("region_name or aws_region is required in kinesis_config")
+
+        if max_records_per_task <= 0:
+            raise ValueError("max_records_per_task must be positive")
+
         self.stream_name = stream_name
         self.kinesis_config = kinesis_config
         self.max_records_per_task = max_records_per_task
@@ -119,4 +135,39 @@ class KinesisDatasource(UnboundDatasource):
 
     def get_name(self) -> str:
         """Get name of this datasource."""
-        return "Kinesis"
+        return "kinesis_unbound_datasource"
+
+    def get_unbound_schema(
+        self, kinesis_config: Dict[str, Any]
+    ) -> Optional["pa.Schema"]:
+        """Get schema for Kinesis records.
+
+        Args:
+            kinesis_config: Kinesis configuration
+
+        Returns:
+            PyArrow schema for Kinesis records
+        """
+        # Standard Kinesis record schema
+        return pa.schema(
+            [
+                ("sequence_number", pa.string()),
+                ("partition_key", pa.string()),
+                ("data", pa.string()),
+                ("stream_name", pa.string()),
+                ("shard_id", pa.string()),
+                ("timestamp", pa.string()),
+            ]
+        )
+
+    def supports_distributed_reads(self) -> bool:
+        """Kinesis datasource supports distributed reads."""
+        return True
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Estimate in-memory data size for Kinesis streams.
+
+        Returns:
+            None for unbounded streams
+        """
+        return None

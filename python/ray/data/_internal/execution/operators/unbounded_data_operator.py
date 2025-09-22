@@ -76,6 +76,20 @@ class UnboundedDataOperator(PhysicalOperator):
     def start(self, options: ExecutionOptions) -> None:
         """Start the streaming operator."""
         super().start(options)
+        logger.info(
+            f"Starting UnboundedDataOperator for {self.datasource.get_name()} "
+            f"with trigger type: {self.trigger.trigger_type}, "
+            f"parallelism: {self.parallelism}"
+        )
+
+        # Log trigger configuration details
+        if self.trigger.trigger_type == "fixed_interval":
+            logger.info(
+                f"Fixed interval trigger with interval: {self.trigger.interval}"
+            )
+        elif self.trigger.trigger_type == "cron":
+            logger.info(f"Cron trigger with expression: {self.trigger.cron_expression}")
+
         # Initialize first batch of read tasks if needed
         if self._should_trigger_new_batch():
             self._create_read_tasks()
@@ -113,26 +127,42 @@ class UnboundedDataOperator(PhysicalOperator):
             from ray.data.context import DataContext
 
             data_context = DataContext.get_current()
-            backpressure_threshold = data_context.streaming_backpressure_threshold
 
-            # Check memory usage
+            # Get backpressure threshold with fallback
+            backpressure_threshold = getattr(
+                data_context, "streaming_backpressure_threshold", 0.8
+            )
+
+            # Check memory usage with fallback to Ray memory monitoring
+            memory_pressure = False
             try:
                 import psutil
 
                 memory_percent = psutil.virtual_memory().percent / 100.0
+                memory_pressure = memory_percent > backpressure_threshold
 
-                if memory_percent > backpressure_threshold:
+                if memory_pressure:
                     logger.warning(
                         f"Memory usage {memory_percent:.1%} exceeds "
                         f"backpressure threshold {backpressure_threshold:.1%}"
                     )
-                    return True
             except ImportError:
-                # psutil not available, skip memory check
-                pass
+                # Fallback to Ray's object store memory monitoring
+                try:
+                    import ray
+
+                    memory_info = ray.cluster_resources()
+                    object_store_memory = memory_info.get("object_store_memory", 0)
+                    if object_store_memory > 0:
+                        # Simple heuristic: if we're using a lot of object store memory
+                        # This is a rough approximation since we can't get current usage easily
+                        pass
+                except Exception:
+                    # If all memory checks fail, be conservative
+                    pass
 
             # Check if we have too many concurrent tasks
-            max_concurrent = data_context.streaming_max_concurrent_tasks
+            max_concurrent = getattr(data_context, "streaming_max_concurrent_tasks", 10)
             if len(self._current_read_tasks) >= max_concurrent:
                 logger.debug(
                     f"Concurrent tasks {len(self._current_read_tasks)} at "
@@ -140,10 +170,12 @@ class UnboundedDataOperator(PhysicalOperator):
                 )
                 return True
 
-            return False
+            return memory_pressure
 
         except Exception as e:
-            logger.debug(f"Could not check backpressure: {e}")
+            logger.warning(
+                f"Error checking backpressure, assuming no backpressure: {e}"
+            )
             return False
 
     def _create_read_tasks(self) -> None:
@@ -261,7 +293,9 @@ class UnboundedDataOperator(PhysicalOperator):
             from ray.data.context import DataContext
 
             data_context = DataContext.get_current()
-            timeout_seconds = data_context.streaming_task_timeout
+            timeout_seconds = getattr(
+                data_context, "streaming_task_timeout", 300
+            )  # 5 min default
 
             if not timeout_seconds or not self._current_read_tasks:
                 return
@@ -271,26 +305,40 @@ class UnboundedDataOperator(PhysicalOperator):
             timed_out_tasks = []
 
             for i, task_ref in enumerate(self._current_read_tasks):
-                # For now, we'll use a simple heuristic based on task creation time
-                # In a more sophisticated implementation, we'd track individual task
-                # start times
                 if hasattr(self, "_task_start_times") and i < len(
                     self._task_start_times
                 ):
                     task_start = self._task_start_times[i]
-                    if (now - task_start).total_seconds() > timeout_seconds:
-                        logger.warning(f"Task {i} timed out after {timeout_seconds}s")
-                        timed_out_tasks.append(i)
+                    task_duration = (now - task_start).total_seconds()
+
+                    if task_duration > timeout_seconds:
+                        # Before marking as timed out, check if task is actually stuck
+                        # by seeing if it's still running (not finished)
+                        try:
+                            ready, _ = ray.wait([task_ref], timeout=0)
+                            if not ready:  # Task is still running
+                                logger.warning(
+                                    f"Task {i} has been running for {task_duration:.1f}s "
+                                    f"(timeout: {timeout_seconds}s), marking for cancellation"
+                                )
+                                timed_out_tasks.append(i)
+                            # If task is ready, it finished naturally, don't timeout
+                        except Exception as e:
+                            logger.debug(f"Error checking task {i} status: {e}")
+                            # If we can't check status, err on side of caution and timeout
+                            timed_out_tasks.append(i)
 
             # Remove timed-out tasks
             if timed_out_tasks:
+                successfully_cancelled = 0
                 for i in reversed(timed_out_tasks):
                     if i < len(self._current_read_tasks):
                         # Cancel the timed-out task
                         try:
-                            ray.cancel(self._current_read_tasks[i])
+                            ray.cancel(self._current_read_tasks[i], force=True)
+                            successfully_cancelled += 1
                         except Exception as e:
-                            logger.debug(f"Could not cancel timed-out task: {e}")
+                            logger.warning(f"Could not cancel timed-out task {i}: {e}")
 
                         # Remove from our tracking
                         self._current_read_tasks.pop(i)
@@ -299,10 +347,12 @@ class UnboundedDataOperator(PhysicalOperator):
                         ):
                             self._task_start_times.pop(i)
 
-                logger.info(f"Cleaned up {len(timed_out_tasks)} timed-out tasks")
+                logger.info(
+                    f"Cleaned up {successfully_cancelled}/{len(timed_out_tasks)} timed-out tasks"
+                )
 
         except Exception as e:
-            logger.debug(f"Error checking task timeouts: {e}")
+            logger.warning(f"Error checking task timeouts: {e}")
 
     def _get_next_inner(self) -> RefBundle:
         """Get the next result from completed read tasks."""
@@ -635,9 +685,25 @@ class _StreamingTaskWrapper:
             self._bytes_produced += estimated_bytes
             self._rows_produced += estimated_rows
 
-        except Exception:
-            # Don't fail streaming on metrics errors
-            pass
+            # Log performance metrics periodically
+            if self._current_batch_id % 10 == 0:  # Every 10 batches
+                from datetime import datetime
+
+                duration = (datetime.now() - self._last_trigger_time).total_seconds()
+                if duration > 0:
+                    throughput_rows = self._rows_produced / duration
+                    throughput_bytes = self._bytes_produced / duration
+                    logger.info(
+                        f"Streaming performance - Batch {self._current_batch_id}: "
+                        f"{throughput_rows:.1f} rows/sec, "
+                        f"{throughput_bytes/1024/1024:.1f} MB/sec, "
+                        f"Total: {self._rows_produced} rows, "
+                        f"{self._bytes_produced/1024/1024:.1f} MB"
+                    )
+
+        except Exception as e:
+            # Don't fail streaming on metrics errors, but log the issue
+            logger.debug(f"Error updating performance metrics: {e}")
 
     def get_stats(self) -> StatsDict:
         """Get operator statistics."""

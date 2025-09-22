@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pyarrow as pa
 
-from ray.data._internal.datasource.datasource import ReadTask
+from ray.data.datasource.datasource import ReadTask
 from ray.data.block import BlockMetadata
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
@@ -35,8 +35,22 @@ class KafkaDatasource(UnboundDatasource):
             max_records_per_task: Maximum records per task
             start_offset: Starting offset for reading
             end_offset: Ending offset for reading
+
+        Raises:
+            ValueError: If required configuration is missing
         """
         super().__init__("kafka")
+
+        # Validate required configuration
+        if not kafka_config.get("bootstrap_servers"):
+            raise ValueError("bootstrap_servers is required in kafka_config")
+
+        if not topics:
+            raise ValueError("topics cannot be empty")
+
+        if max_records_per_task <= 0:
+            raise ValueError("max_records_per_task must be positive")
+
         self.topics = topics if isinstance(topics, list) else [topics]
         self.kafka_config = kafka_config
         self.max_records_per_task = max_records_per_task
@@ -123,4 +137,37 @@ class KafkaDatasource(UnboundDatasource):
 
     def get_name(self) -> str:
         """Get name of this datasource."""
-        return "Kafka"
+        return "kafka_unbound_datasource"
+
+    def get_unbound_schema(self, kafka_config: Dict[str, Any]) -> Optional["pa.Schema"]:
+        """Get schema for Kafka messages.
+
+        Args:
+            kafka_config: Kafka configuration
+
+        Returns:
+            PyArrow schema for Kafka messages
+        """
+        # Standard Kafka message schema
+        return pa.schema(
+            [
+                ("offset", pa.int64()),
+                ("key", pa.string()),
+                ("value", pa.string()),
+                ("topic", pa.string()),
+                ("partition", pa.int32()),
+                ("timestamp", pa.string()),
+            ]
+        )
+
+    def supports_distributed_reads(self) -> bool:
+        """Kafka datasource supports distributed reads."""
+        return True
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Estimate in-memory data size for Kafka streams.
+
+        Returns:
+            None for unbounded streams
+        """
+        return None

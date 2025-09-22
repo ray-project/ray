@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 
-from ray.data._internal.datasource.datasource import ReadTask
+from ray.data.datasource.datasource import ReadTask
 from ray.data.block import BlockMetadata
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
@@ -21,7 +21,8 @@ class FlinkDatasource(UnboundDatasource):
 
     def __init__(
         self,
-        job_config: Dict[str, Any],
+        source_type: str,
+        flink_config: Dict[str, Any],
         max_records_per_task: int = 1000,
         start_position: Optional[str] = None,
         end_position: Optional[str] = None,
@@ -29,13 +30,42 @@ class FlinkDatasource(UnboundDatasource):
         """Initialize Flink datasource.
 
         Args:
-            job_config: Flink job configuration dictionary
+            source_type: Type of Flink source (rest_api, table, checkpoint)
+            flink_config: Flink configuration dictionary
             max_records_per_task: Maximum records per task
             start_position: Starting position for reading
             end_position: Ending position for reading
+
+        Raises:
+            ValueError: If required configuration is missing
         """
         super().__init__("flink")
-        self.job_config = job_config
+
+        # Validate source type
+        valid_source_types = {"rest_api", "table", "checkpoint"}
+        if source_type not in valid_source_types:
+            raise ValueError(f"source_type must be one of {valid_source_types}")
+
+        # Validate configuration based on source type
+        if source_type == "rest_api":
+            if not flink_config.get("rest_api_url"):
+                raise ValueError("rest_api_url is required for rest_api source type")
+            if not flink_config.get("job_id"):
+                raise ValueError("job_id is required for rest_api source type")
+        elif source_type == "table":
+            if not flink_config.get("table_name"):
+                raise ValueError("table_name is required for table source type")
+        elif source_type == "checkpoint":
+            if not flink_config.get("checkpoint_path"):
+                raise ValueError(
+                    "checkpoint_path is required for checkpoint source type"
+                )
+
+        if max_records_per_task <= 0:
+            raise ValueError("max_records_per_task must be positive")
+
+        self.source_type = source_type
+        self.flink_config = flink_config
         self.max_records_per_task = max_records_per_task
         self.start_position = start_position
         self.end_position = end_position
@@ -68,7 +98,7 @@ class FlinkDatasource(UnboundDatasource):
                     for i in range(self.max_records_per_task):
                         records.append(
                             {
-                                "job_id": self.job_config.get("job_id", "job_123"),
+                                "job_id": self.flink_config.get("job_id", "job_123"),
                                 "task_id": task_num,
                                 "record_id": f"flink_{task_num}_{i}",
                                 "data": f"flink_output_{task_num}_{i}",
@@ -89,7 +119,7 @@ class FlinkDatasource(UnboundDatasource):
                 num_rows=self.max_records_per_task,
                 size_bytes=None,
                 input_files=[
-                    f"flink://job/{self.job_config.get('job_id', 'job_123')}/task-{task_id}"
+                    f"flink://job/{self.flink_config.get('job_id', 'job_123')}/task-{task_id}"
                 ],
                 exec_stats=None,
             )
@@ -118,4 +148,37 @@ class FlinkDatasource(UnboundDatasource):
 
     def get_name(self) -> str:
         """Get name of this datasource."""
-        return "Flink"
+        return "flink_unbound_datasource"
+
+    def get_unbound_schema(self, flink_config: Dict[str, Any]) -> Optional["pa.Schema"]:
+        """Get schema for Flink job outputs.
+
+        Args:
+            flink_config: Flink configuration
+
+        Returns:
+            PyArrow schema for Flink job outputs
+        """
+        # Standard Flink job output schema
+        return pa.schema(
+            [
+                ("job_id", pa.string()),
+                ("task_id", pa.int64()),
+                ("record_id", pa.string()),
+                ("data", pa.string()),
+                ("processing_time", pa.string()),
+                ("watermark", pa.int64()),
+            ]
+        )
+
+    def supports_distributed_reads(self) -> bool:
+        """Flink datasource supports distributed reads."""
+        return True
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Estimate in-memory data size for Flink streams.
+
+        Returns:
+            None for unbounded streams
+        """
+        return None
