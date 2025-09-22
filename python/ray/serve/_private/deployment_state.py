@@ -3397,7 +3397,7 @@ class DeploymentStateManager:
         if deployment_id not in self._deployment_states:
             return False
         return self._deployment_states[deployment_id].scale(
-            target_num_replicas=target_num_replicas
+            decision_num_replicas=target_num_replicas
         )
 
     def _handle_scheduling_request_failures(

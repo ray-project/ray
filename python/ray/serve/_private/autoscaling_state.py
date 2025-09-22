@@ -359,7 +359,7 @@ class ApplicationAutoscalingState:
 
     def get_scaling_decisions(
         self, deployments: Dict[str, DeploymentDetails], _skip_bound_check: bool = False
-    ) -> Dict[str, int]:
+    ) -> Dict[DeploymentID, int]:
         autoscaling_contexts: Dict[str, AutoscalingContext] = {}
         decisions: Dict[str, int] = {}
         for name, deployment_detail in deployments.items():
@@ -380,9 +380,9 @@ class ApplicationAutoscalingState:
 
         updated_decisions = {}
 
-        for deployment, decision_num_replicas in decisions.items():
+        for deployment_name, decision_num_replicas in decisions.items():
             deployment_id: DeploymentID = DeploymentID(
-                name=deployment, app_name=self._app_name
+                name=deployment_name, app_name=self._app_name
             )
             deployment_autoscaling_state = self._deployment_autoscaling_states[
                 deployment_id
@@ -496,7 +496,7 @@ class AutoscalingStateManager:
 
     def get_scaling_decisions_for_application(
         self, app_name: ApplicationName, deployments: Dict[str, DeploymentDetails]
-    ) -> Dict[str, int]:
+    ) -> Dict[DeploymentID, int]:
         return self._app_autoscaling_states[app_name].get_scaling_decisions(deployments)
 
     def should_autoscale_deployment(self, deplyment_id):

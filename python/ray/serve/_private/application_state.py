@@ -452,16 +452,13 @@ class ApplicationState:
     def autoscale(self) -> bool:
         deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
         decisions: Dict[
-            str, int
+            DeploymentID, int
         ] = self._autoscaling_state_manager.get_scaling_decisions_for_application(
             self._name, deployments
         )
 
         target_state_changed = False
-        for deployment_name, decision_num_replicas in decisions.items():
-            deployment_id: DeploymentID = DeploymentID(
-                name=deployment_name, app_name=self._name
-            )
+        for deployment_id, decision_num_replicas in decisions.items():
             target_state_changed = (
                 self._deployment_state_manager.autoscale(
                     deployment_id, decision_num_replicas

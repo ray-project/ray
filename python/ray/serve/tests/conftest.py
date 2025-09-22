@@ -186,6 +186,20 @@ def serve_instance_with_signal(serve_instance):
     ray.kill(signal)
 
 
+@pytest.fixture
+def serve_instance_with_two_signal(serve_instance):
+    client = serve_instance
+
+    signal_a = SignalActor.options(name="signal_A").remote()
+    signal_b = SignalActor.options(name="signal_B").remote()
+
+    yield client, signal_a, signal_b
+
+    # Delete signal actors so there is no conflict between tests
+    ray.kill(signal_a)
+    ray.kill(signal_b)
+
+
 def check_ray_stop():
     try:
         httpx.get("http://localhost:8265/api/ray/version")
