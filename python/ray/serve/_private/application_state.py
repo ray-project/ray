@@ -528,7 +528,6 @@ class ApplicationState:
             or docs path.
         """
 
-        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix = self._check_routes(deployment_infos)
 
@@ -769,28 +768,6 @@ class ApplicationState:
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
-
-    def _check_ingress_deployments(
-        self, deployment_infos: Dict[str, DeploymentInfo]
-    ) -> None:
-        """Check @serve.ingress of deployments in app.
-
-        Raises: RayServeException if more than one @serve.ingress
-            is found among deployments.
-        """
-        num_ingress_deployments = 0
-        for info in deployment_infos.values():
-            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
-                info.replica_config.deployment_def, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
-
-        if num_ingress_deployments > 1:
-            raise RayServeException(
-                f'Found multiple FastAPI deployments in application "{self._name}".'
-                "Please only include one deployment with @serve.ingress"
-                "in your application to avoid this issue."
-            )
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]

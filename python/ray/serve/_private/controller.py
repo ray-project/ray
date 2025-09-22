@@ -3,7 +3,15 @@ import logging
 import os
 import pickle
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._common.network_utils import build_address
@@ -302,6 +310,9 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
+
+    def _dump_all_autoscaling_metrics_for_testing(self):
+        return self.autoscaling_state_manager.get_all_metrics()
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_metrics()
