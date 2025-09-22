@@ -538,5 +538,148 @@ def test_e2e_with_pyav_synth(tmp_path):
     assert all(isinstance(f, np.ndarray) for f in res[0]["frames"])  # type: ignore
 
 
+@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
+def test_e2e_num_frames_pil(tmp_path):
+    import av
+
+    # Synthesize a short mp4 with solid color frames
+    path = tmp_path / "synth2.mp4"
+    out = av.open(str(path), mode="w")
+    stream = out.add_stream("libx264", rate=24)
+    stream.width = 64
+    stream.height = 48
+    stream.pix_fmt = "yuv420p"
+
+    import numpy as np
+    for i in range(12):
+        img = np.full((48, 64, 3), fill_value=(i * 20) % 255, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(img, format="rgb24")
+        for packet in stream.encode(frame):
+            out.mux(packet)
+    for packet in stream.encode(None):
+        out.mux(packet)
+    out.close()
+
+    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
+    vp = VideoProcessor(sampling={"num_frames": 4}, output_format="pil")
+    import asyncio
+    res = asyncio.get_event_loop().run_until_complete(vp.process([str(path)]))
+    meta = res[0]["meta"]
+    assert not meta["failed"]
+    assert meta["video_num_frames"] == 4
+    # Size should be present for PIL path
+    sz = meta.get("video_size")
+    assert sz is None or sz == [64, 48]
+
+
+@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
+def test_e2e_fps_sampling(tmp_path):
+    import av
+    import numpy as np
+
+    path = tmp_path / "synth_fps.mp4"
+    out = av.open(str(path), mode="w")
+    stream = out.add_stream("libx264", rate=24)
+    stream.width = 64
+    stream.height = 48
+    stream.pix_fmt = "yuv420p"
+
+    for i in range(24):  # ~1 second @24fps
+        img = np.full((48, 64, 3), fill_value=(i * 10) % 255, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(img, format="rgb24")
+        for packet in stream.encode(frame):
+            out.mux(packet)
+    for packet in stream.encode(None):
+        out.mux(packet)
+    out.close()
+
+    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
+    vp = VideoProcessor(sampling={"fps": 6}, output_format="numpy")
+    import asyncio
+    res = asyncio.get_event_loop().run_until_complete(vp.process([str(path)]))
+    meta = res[0]["meta"]
+    # Expect roughly ~5 frames over ~1s @6fps, tolerate small variance
+    assert not meta["failed"]
+    assert 3 <= meta["video_num_frames"] <= 7
+    # timestamps should be non-decreasing
+    ts = meta.get("frame_timestamps") or []
+    assert all(ts[i] <= ts[i+1] for i in range(len(ts)-1))
+
+
+@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
+def test_e2e_preprocess_resize_numpy_channels_first(tmp_path):
+    import av
+    import numpy as np
+
+    path = tmp_path / "synth_resize.mp4"
+    out = av.open(str(path), mode="w")
+    stream = out.add_stream("libx264", rate=24)
+    stream.width = 64
+    stream.height = 48
+    stream.pix_fmt = "yuv420p"
+
+    for i in range(8):
+        img = np.full((48, 64, 3), fill_value=(i * 30) % 255, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(img, format="rgb24")
+        for packet in stream.encode(frame):
+            out.mux(packet)
+    for packet in stream.encode(None):
+        out.mux(packet)
+    out.close()
+
+    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
+    vp = VideoProcessor(
+        sampling={"num_frames": 3},
+        output_format="numpy",
+        channels_first=True,
+        preprocess={"resize": {"size": [32, 24]}, "convert": "RGB"},
+    )
+    import asyncio
+    res = asyncio.get_event_loop().run_until_complete(vp.process([str(path)]))
+    meta = res[0]["meta"]
+    frames = res[0]["frames"]
+    assert not meta["failed"]
+    assert meta["video_num_frames"] == 3
+    assert all(isinstance(f, np.ndarray) for f in frames)
+    assert frames[0].shape == (3, 24, 32)
+
+
+@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
+def test_e2e_max_sampled_frames_cap(tmp_path):
+    import av
+    import numpy as np
+
+    path = tmp_path / "synth_cap.mp4"
+    out = av.open(str(path), mode="w")
+    stream = out.add_stream("libx264", rate=24)
+    stream.width = 64
+    stream.height = 48
+    stream.pix_fmt = "yuv420p"
+
+    for i in range(30):
+        img = np.full((48, 64, 3), fill_value=(i * 5) % 255, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(img, format="rgb24")
+        for packet in stream.encode(frame):
+            out.mux(packet)
+    for packet in stream.encode(None):
+        out.mux(packet)
+    out.close()
+
+    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
+    # In fps mode, cap to 2
+    vp_fps = VideoProcessor(sampling={"fps": 30}, output_format="pil", max_sampled_frames=2)
+    # In num_frames mode, cap should also apply (min of requested and cap)
+    vp_n = VideoProcessor(sampling={"num_frames": 5}, output_format="pil", max_sampled_frames=2)
+
+    import asyncio
+    res_fps, res_n = asyncio.get_event_loop().run_until_complete(asyncio.gather(
+        vp_fps.process([str(path)]),
+        vp_n.process([str(path)]),
+    ))
+
+    assert res_fps[0]["meta"]["video_num_frames"] <= 2
+    assert res_n[0]["meta"]["video_num_frames"] == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

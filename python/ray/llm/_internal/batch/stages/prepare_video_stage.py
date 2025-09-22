@@ -217,37 +217,52 @@ class VideoProcessor:
             except StopIteration:
                 raise ValueError("No video stream found in source")
 
-            # Build target timestamps based on sampling config
-            targets = self._build_targets(container, vstream)
-            # Optional cap to avoid excessive sampling on long videos
-            if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
-                targets = targets[: self._max_sampled_frames]
-
             frames: List[FrameType] = []
             timestamps: List[float] = []
 
-            # Iterate frames once and pick nearest to targets
-            target_idx = 0
-            next_target = targets[target_idx] if targets else None
-
-            for frame in container.decode(video=vstream.index):
-                # frame.pts * time_base -> seconds
-                if getattr(frame, "pts", None) is None:
-                    # Approximate by count if pts missing
-                    current_ts = len(timestamps) / (self._sampling.fps or 30.0)
-                else:
-                    current_ts = float(frame.pts * vstream.time_base)
-
-                if next_target is None:
-                    break
-
-                if current_ts + 1e-6 >= next_target:
+            # Two sampling modes: by fixed fps or by a fixed number of frames.
+            s = self._sampling
+            if s.num_frames is not None:
+                # Deterministic: take the first N decoded frames (fast-path, no seeking assumptions).
+                n = max(int(s.num_frames), 1)
+                if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
+                    n = min(n, self._max_sampled_frames)
+                for frame in container.decode(video=vstream.index):
+                    # Compute timestamp in seconds when available
+                    if getattr(frame, "pts", None) is None:
+                        current_ts = len(timestamps) / float(s.fps or 30.0)
+                    else:
+                        current_ts = float(frame.pts * vstream.time_base)
                     frames.append(self._format_frame(frame))
                     timestamps.append(current_ts)
-                    target_idx += 1
-                    if target_idx >= len(targets):
+                    if len(frames) >= n:
                         break
-                    next_target = targets[target_idx]
+            else:
+                # FPS mode: build timestamp targets and pick nearest frames crossing thresholds.
+                targets = self._build_targets(container, vstream)
+                # Optional cap to avoid excessive sampling on long videos
+                if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
+                    targets = targets[: self._max_sampled_frames]
+
+                target_idx = 0
+                next_target = targets[target_idx] if targets else None
+
+                for frame in container.decode(video=vstream.index):
+                    if getattr(frame, "pts", None) is None:
+                        current_ts = len(timestamps) / (s.fps or 30.0)
+                    else:
+                        current_ts = float(frame.pts * vstream.time_base)
+
+                    if next_target is None:
+                        break
+
+                    if current_ts + 1e-6 >= next_target:
+                        frames.append(self._format_frame(frame))
+                        timestamps.append(current_ts)
+                        target_idx += 1
+                        if target_idx >= len(targets):
+                            break
+                        next_target = targets[target_idx]
         finally:
             # Ensure container is closed even on exceptions
             try:
