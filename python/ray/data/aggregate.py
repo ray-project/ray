@@ -21,6 +21,30 @@ if TYPE_CHECKING:
     from ray.data.dataset import Schema
 
 
+def _make_aggregator_name(stat_name: str, column_name: Optional[str]) -> str:
+    """Create a standardized aggregator name by combining stat name and column name.
+
+    This function codifies the naming convention used throughout Ray Data for
+    aggregator keys: "stat_name(column_name)".
+
+    Args:
+        stat_name: The name of the statistic (e.g., 'mean', 'count', 'sum')
+        column_name: The name of the column, or None for global aggregations
+
+    Returns:
+        A formatted aggregator name like "stat_name(column_name)"
+
+    Examples:
+        >>> _make_aggregator_name("count", "age")
+        'count(age)'
+        >>> _make_aggregator_name("count", None)
+        'count()'
+        >>> _make_aggregator_name("mean", "salary")
+        'mean(salary)'
+    """
+    return f"{stat_name}({column_name or ''})"
+
+
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
@@ -297,7 +321,7 @@ class Count(AggregateFnV2):
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            alias_name if alias_name else f"count({on or ''})",
+            alias_name if alias_name else _make_aggregator_name("count", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=lambda: 0,
@@ -353,7 +377,7 @@ class Sum(AggregateFnV2):
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            alias_name if alias_name else f"sum({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("sum", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=lambda: 0,
@@ -406,7 +430,7 @@ class Min(AggregateFnV2):
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            alias_name if alias_name else f"min({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("min", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=lambda: float("+inf"),
@@ -460,7 +484,7 @@ class Max(AggregateFnV2):
     ):
 
         super().__init__(
-            alias_name if alias_name else f"max({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("max", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=lambda: float("-inf"),
@@ -512,7 +536,7 @@ class Mean(AggregateFnV2):
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            alias_name if alias_name else f"mean({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("mean", on),
             on=on,
             ignore_nulls=ignore_nulls,
             # The accumulator is: [current_sum, current_count].
@@ -597,7 +621,7 @@ class Std(AggregateFnV2):
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            alias_name if alias_name else f"std({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("std", on),
             on=on,
             ignore_nulls=ignore_nulls,
             # Accumulator: [M2, mean, count]
@@ -695,7 +719,7 @@ class AbsMax(AggregateFnV2):
             raise ValueError(f"Column to aggregate on has to be provided (got {on})")
 
         super().__init__(
-            alias_name if alias_name else f"abs_max({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("abs_max", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=lambda: 0,
@@ -759,7 +783,7 @@ class Quantile(AggregateFnV2):
         self._q = q
 
         super().__init__(
-            alias_name if alias_name else f"quantile({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("quantile", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=list,
@@ -864,7 +888,7 @@ class Unique(AggregateFnV2):
         alias_name: Optional[str] = None,
     ):
         super().__init__(
-            alias_name if alias_name else f"unique({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("unique", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=set,
@@ -1060,7 +1084,7 @@ class MissingValuePercentage(AggregateFnV2):
     ):
         # Initialize with a list accumulator [null_count, total_count]
         super().__init__(
-            alias_name if alias_name else f"missing_pct({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("missing_pct", on),
             on=on,
             ignore_nulls=False,  # Include nulls for this calculation
             zero_factory=lambda: [0, 0],  # Our AggType is a simple list
@@ -1155,7 +1179,7 @@ class ZeroPercentage(AggregateFnV2):
     ):
         # Initialize with a list accumulator [zero_count, non_null_count]
         super().__init__(
-            alias_name if alias_name else f"zero_pct({str(on)})",
+            alias_name if alias_name else _make_aggregator_name("zero_pct", on),
             on=on,
             ignore_nulls=ignore_nulls,
             zero_factory=lambda: [0, 0],

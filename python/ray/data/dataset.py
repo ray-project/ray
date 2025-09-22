@@ -97,7 +97,16 @@ from ray.data._internal.util import (
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
-from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
+from ray.data.aggregate import (
+    AggregateFn,
+    Max,
+    Mean,
+    Min,
+    Std,
+    Sum,
+    Unique,
+    _make_aggregator_name,
+)
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -5986,7 +5995,7 @@ class Dataset:
             column_stats = {}
             for stat in stat_names:
                 # Aggregator names follow pattern: "stat_name(column_name)"
-                key = f"{stat}({column_name})"
+                key = _make_aggregator_name(stat, column_name)
                 if key in results:
                     column_stats[stat] = results[key]
             return column_stats

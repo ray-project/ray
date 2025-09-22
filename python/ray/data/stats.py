@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+RAY_DATA_DUMMY_COL = "__ray_data_dummy_col"
 
 
 class ColumnType(Enum):
@@ -207,13 +208,13 @@ def get_stat_names_for_column_type(column_type: ColumnType) -> List[str]:
         ColumnType.VECTOR: vector_aggregators,
     }
 
-    sample_aggs = aggregator_map[column_type]("dummy_col")
+    sample_aggs = aggregator_map[column_type](RAY_DATA_DUMMY_COL)
 
     # Extract the stat name from aggregator names like "count(dummy_col)" -> "count"
     stat_names = []
     for agg in sample_aggs:
         agg_name = agg.name
         # Remove "(dummy_col)" to get just the stat name
-        stat_name = agg_name.replace("(dummy_col)", "")
+        stat_name = agg_name.replace(f"({RAY_DATA_DUMMY_COL})", "")
         stat_names.append(stat_name)
     return stat_names
