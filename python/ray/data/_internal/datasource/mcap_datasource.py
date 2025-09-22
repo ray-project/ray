@@ -128,7 +128,7 @@ class MCAPDatasource(FileBasedDatasource):
             path: Path to the MCAP file being processed.
 
         Yields:
-            Blocks of MCAP message data as pyarrow Tables.
+            Block: Blocks of MCAP message data as pyarrow Tables.
 
         Raises:
             ValueError: If the MCAP file cannot be read or has invalid format.
@@ -137,6 +137,10 @@ class MCAPDatasource(FileBasedDatasource):
 
         try:
             reader = make_reader(f)
+            # Validate that the file is a valid MCAP file by checking the summary
+            summary = reader.get_summary()
+            if summary is None:
+                raise ValueError("Invalid MCAP file: no summary found")
 
             # Determine which topics to filter on for MCAP's built-in filtering
             # Use topics if specified, otherwise use channels (which map to topics)
@@ -176,7 +180,7 @@ class MCAPDatasource(FileBasedDatasource):
             logger.error(f"Error reading MCAP file {path}: {e}")
             raise ValueError(f"Failed to read MCAP file {path}: {e}") from e
 
-    def _should_include_message(self, schema, channel, message) -> bool:
+    def _should_include_message(self, schema: Any, channel: Any, message: Any) -> bool:
         """Check if a message should be included based on filters.
 
         This method applies Python-level filtering that cannot be pushed down
@@ -195,12 +199,15 @@ class MCAPDatasource(FileBasedDatasource):
             return False
 
         # Channel filter (only apply if topics weren't used for MCAP filtering)
+        # In MCAP, channels are identified by their topic names
         if self._channels and not self._topics and channel.topic not in self._channels:
             return False
 
         return True
 
-    def _message_to_dict(self, schema, channel, message, path: str) -> Dict[str, Any]:
+    def _message_to_dict(
+        self, schema: Any, channel: Any, message: Any, path: str
+    ) -> Dict[str, Any]:
         """Convert MCAP message to dictionary format.
 
         This method converts MCAP message objects into a standardized dictionary
@@ -236,9 +243,9 @@ class MCAPDatasource(FileBasedDatasource):
                 }
             )
 
-        # Add file path if include_paths is enabled
-        if hasattr(self, "include_paths") and self.include_paths:
-            message_data["_file_path"] = path
+        # Add file path if include_paths is enabled (from FileBasedDatasource)
+        if getattr(self, "include_paths", False):
+            message_data["path"] = path
 
         return message_data
 

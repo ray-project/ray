@@ -252,12 +252,8 @@ Lance
    read_lance
    Dataset.write_lance
 
-.. vale off
-
 MCAP (Message Capture)
 ----------------------
-
-.. vale on
 
 .. autosummary::
    :nosignatures:

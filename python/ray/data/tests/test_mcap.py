@@ -1,13 +1,10 @@
 import importlib.util
 import json
 import os
-import tempfile
-from time import time_ns
 
 import pytest
 
 import ray
-from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -113,7 +110,7 @@ def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_mcap(paths)
     assert ds.count() == 2
-    assert set(ds.input_files()) == set(_unwrap_protocol(p) for p in paths)
+    assert set(ds.input_files()) == {_unwrap_protocol(p) for p in paths}
 
     rows = ds.take_all()
     file_ids = {row["data"]["file_id"] for row in rows}
@@ -168,6 +165,36 @@ def test_read_mcap_topic_filtering(ray_start_regular_shared, tmp_path):
     assert len(rows) == 6  # 2/3 of messages
 
 
+def test_read_mcap_channel_filtering(ray_start_regular_shared, tmp_path):
+    """Test filtering by channels (which map to topics in MCAP)."""
+    path = os.path.join(tmp_path, "multi_channel.mcap")
+    base_time = 1000000000
+    messages = []
+
+    # Create messages across 3 channels (topics)
+    for i in range(9):
+        channels = ["/camera/image", "/lidar/points", "/gps/location"]
+        channel = channels[i % 3]
+        messages.append(
+            {
+                "topic": channel,
+                "data": {"seq": i, "channel": channel},
+                "log_time": base_time + i * 1000000,
+            }
+        )
+
+    create_test_mcap_file(path, messages)
+
+    # Test channel filtering (channels are identified by topic names in MCAP)
+    channels = {"/camera/image", "/lidar/points"}
+    ds = ray.data.read_mcap(path, channels=channels)
+
+    rows = ds.take_all()
+    actual_channels = {row["topic"] for row in rows}
+    assert actual_channels.issubset(channels)
+    assert len(rows) == 6  # 2/3 of messages
+
+
 def test_read_mcap_time_range_filtering(ray_start_regular_shared, tmp_path):
     """Test filtering by time range."""
     path = os.path.join(tmp_path, "time_test.mcap")
@@ -177,7 +204,7 @@ def test_read_mcap_time_range_filtering(ray_start_regular_shared, tmp_path):
     for i in range(10):
         messages.append(
             {
-                "topic": f"/test_topic",
+                "topic": "/test_topic",
                 "data": {"seq": i},
                 "log_time": base_time + i * 1000000,
             }
@@ -258,8 +285,8 @@ def test_read_mcap_include_paths(ray_start_regular_shared, tmp_path):
     rows = ds.take_all()
 
     for row in rows:
-        assert "_file_path" in row
-        assert path in row["_file_path"]
+        assert "path" in row
+        assert path in row["path"]
 
 
 def test_read_mcap_invalid_time_range(ray_start_regular_shared, tmp_path):
