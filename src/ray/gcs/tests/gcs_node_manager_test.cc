@@ -31,7 +31,7 @@ namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
-    auto raylet_client = std::make_shared<FakeRayletClient>();
+    auto raylet_client = std::make_shared<rpc::FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;

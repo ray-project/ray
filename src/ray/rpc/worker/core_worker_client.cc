@@ -18,6 +18,8 @@
 #include <memory>
 #include <utility>
 
+#include "ray/util/logging.h"
+
 namespace ray {
 namespace rpc {
 

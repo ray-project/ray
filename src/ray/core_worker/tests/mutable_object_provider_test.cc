@@ -74,7 +74,7 @@ class TestPlasma : public plasma::MockPlasmaClient {
   std::unordered_set<ObjectID> objects_;
 };
 
-class MockRayletClient : public FakeRayletClient {
+class MockRayletClient : public rpc::FakeRayletClient {
  public:
   virtual ~MockRayletClient() {}
 
