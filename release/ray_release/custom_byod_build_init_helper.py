@@ -32,7 +32,7 @@ def get_images_from_tests(
             test.get_byod_post_build_script(),
             test.get_byod_python_depset(),
         )
-        logger.info(f"To be built: {custom_byod_image_build.image}")
+        logger.info(f"To be built: {custom_byod_image_build[0]}")
         custom_byod_images.add(custom_byod_image_build)
     return list(custom_byod_images)
 
@@ -63,7 +63,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
-                f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script} {f'--python-depset {python_depset}' if python_depset else None}",
+                f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script} {f'--python-depset {python_depset}' if python_depset else ''}",
             ],
         }
         step["depends_on"] = get_prerequisite_step(image)
