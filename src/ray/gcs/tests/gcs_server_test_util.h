@@ -75,7 +75,7 @@ struct GcsServerMocker {
     absl::Mutex mutex_;
   };
 
-  class MockRayletClient : public FakeRayletClient {
+  class MockRayletClient : public rpc::FakeRayletClient {
    public:
     void ReturnWorkerLease(int worker_port,
                            const LeaseID &lease_id,

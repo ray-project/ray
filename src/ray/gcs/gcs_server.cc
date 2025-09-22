@@ -38,6 +38,8 @@
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/rpc/raylet/raylet_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 

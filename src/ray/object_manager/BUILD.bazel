@@ -68,7 +68,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/gcs_client",
         "//src/ray/pubsub:subscriber_interface",
-        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:core_worker_client_pool",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

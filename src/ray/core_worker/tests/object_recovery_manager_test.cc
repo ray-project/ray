@@ -63,7 +63,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_tasks_resubmitted = 0;
 };
 
-class MockRayletClient : public FakeRayletClient {
+class MockRayletClient : public rpc::FakeRayletClient {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address,
