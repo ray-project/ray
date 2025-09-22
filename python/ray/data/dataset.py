@@ -980,20 +980,15 @@ class Dataset:
 
         This method is useful for preprocessing data by eliminating redundant entries. It can operate
         on all columns (default) or only on a set of columns specified by ``keys``. The method keeps
-        the first occurrence of each duplicate row.
+        one arbitrary row from each set of duplicates.
 
-        The method uses an internal groupby operation to identify and remove duplicates. The 'first'
-        occurrence refers to the order of rows within each group after the groupby shuffling,
-        which may not correspond to the original dataset order.
+        The method uses a distributed groupby operation to identify and remove duplicates.
+        Due to the distributed nature of Ray Data, the specific row kept from each duplicate
+        group is implementation-dependent and may vary between runs.
 
         .. tip::
             Setting ``keys`` allows you to find unique values based on one or more chosen columns,
-            while other columns retain their values from the first row in each group.
-
-        .. tip::
-            For predictable ordering semantics, sort the dataset before calling distinct:
-
-            ``ds.sort(["timestamp"]).distinct(keys=["user_id"])`` - earliest record per user
+            while other columns retain their values from an arbitrary row in each group.
 
         .. warning::
             ``distinct`` is an expensive operation that requires shuffling data across the cluster.
@@ -1025,7 +1020,7 @@ class Dataset:
 
                 [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
 
-            For predictable ordering, sort the dataset before calling distinct:
+            Get one record per group using a more complex example:
 
             .. testcode::
 
@@ -1035,9 +1030,9 @@ class Dataset:
                     "value": ["a", "b", "c", "d", "e"]
                 }))
 
-                # Get earliest record per id (sort by timestamp first)
-                earliest = ds3.sort(["id", "timestamp"]).distinct(keys=["id"])
-                print(earliest.sort(key=["id"]).take_all())
+                # Get one record per id
+                unique_by_id = ds3.distinct(keys=["id"])
+                print(unique_by_id.sort(key=["id"]).take_all())
 
             .. testoutput::
 
@@ -1047,7 +1042,7 @@ class Dataset:
             keys: List of columns to consider for identifying duplicates. Only the values in these columns are checked for duplication. If None, all columns are used. Defaults to None.
 
         Returns:
-            A new dataset with duplicate rows removed, keeping the first occurrence of each duplicate.
+            A new dataset with duplicate rows removed, keeping one arbitrary row from each set of duplicates.
         """
         all_cols = self.columns()
         if not all_cols:
@@ -1055,11 +1050,12 @@ class Dataset:
 
         subset_cols = keys if keys is not None else all_cols
 
-        def reducer_first(batch: pa.Table) -> pa.Table:
+        # Simple distinct implementation using groupby - keeps one arbitrary row per group
+        def reducer_keep_one(batch: pa.Table) -> pa.Table:
             return batch.slice(0, 1)
 
         return self.groupby(subset_cols).map_groups(
-            reducer_first,
+            reducer_keep_one,
             batch_format="pyarrow",
         )
 
@@ -5958,9 +5954,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-            ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
 
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
