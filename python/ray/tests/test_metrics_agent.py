@@ -548,7 +548,8 @@ def test_metrics_export_event_aggregator_agent(
         return True
 
     def test_case_publisher_specific_metrics_correct(publisher_name: str):
-        _, _, metric_samples = fetch_prometheus_timeseries(prom_addresses)
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_samples = timeseries.metric_samples.values()
         expected_metrics_values = {
             "ray_aggregator_agent_published_events_total": 1.0,
             "ray_aggregator_agent_filtered_events_total": 1.0,
