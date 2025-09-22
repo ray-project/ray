@@ -93,7 +93,7 @@ ray_cc_library(
     name = "server_call",
     srcs = ["server_call.cc"],
     hdrs = ["server_call.h"],
-    visibility = ["//visibility:__subpackages__"],
+    visibility = ["__subpackages__"],
     deps = [
         ":rpc_callback_types",
         "//src/ray/common:asio",
@@ -235,6 +235,7 @@ ray_cc_library(
 ray_cc_library(
     name = "rpc_callback_types",
     hdrs = ["rpc_callback_types.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:status",
     ],
