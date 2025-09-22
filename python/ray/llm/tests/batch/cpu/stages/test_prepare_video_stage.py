@@ -506,7 +506,6 @@ def test_strict_no_fallback_when_no_frames(mock_http_connection_bytes):
         assert meta["error_type"] in ("ValueError",)
 
 
-@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
 def test_e2e_with_pyav_synth(tmp_path):
     import av
     import numpy as np
@@ -538,7 +537,6 @@ def test_e2e_with_pyav_synth(tmp_path):
     assert all(isinstance(f, np.ndarray) for f in res[0]["frames"])  # type: ignore
 
 
-@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
 def test_e2e_num_frames_pil(tmp_path):
     import av
 
@@ -572,7 +570,6 @@ def test_e2e_num_frames_pil(tmp_path):
     assert sz is None or sz == [64, 48]
 
 
-@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
 def test_e2e_fps_sampling(tmp_path):
     import av
     import numpy as np
@@ -596,7 +593,8 @@ def test_e2e_fps_sampling(tmp_path):
     from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
     vp = VideoProcessor(sampling={"fps": 6}, output_format="numpy")
     import asyncio
-    res = asyncio.get_event_loop().run_until_complete(vp.process([str(path)]))
+    loop = asyncio.get_event_loop()
+    res = loop.run_until_complete(vp.process([str(path)]))
     meta = res[0]["meta"]
     # Expect roughly ~5 frames over ~1s @6fps, tolerate small variance
     assert not meta["failed"]
@@ -606,7 +604,6 @@ def test_e2e_fps_sampling(tmp_path):
     assert all(ts[i] <= ts[i+1] for i in range(len(ts)-1))
 
 
-@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
 def test_e2e_preprocess_resize_numpy_channels_first(tmp_path):
     import av
     import numpy as np
@@ -644,7 +641,6 @@ def test_e2e_preprocess_resize_numpy_channels_first(tmp_path):
     assert frames[0].shape == (3, 24, 32)
 
 
-@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
 def test_e2e_max_sampled_frames_cap(tmp_path):
     import av
     import numpy as np

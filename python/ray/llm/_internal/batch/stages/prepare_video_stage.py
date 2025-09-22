@@ -29,6 +29,11 @@ from urllib.parse import urlparse
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 from ray.llm._internal.batch.stages._util import HTTPConnection
 
+# Safety cap to avoid generating excessively large sampling target lists
+_MAX_TARGETS = 10_000
+# Safety cap to avoid infinite decode loops on malformed inputs
+_MAX_DECODE_FRAMES = 100_000
+
 
 # Types
 FrameType = Any  # PIL.Image.Image or numpy.ndarray
@@ -227,7 +232,9 @@ class VideoProcessor:
                 n = max(int(s.num_frames), 1)
                 if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
                     n = min(n, self._max_sampled_frames)
+                decoded = 0
                 for frame in container.decode(video=vstream.index):
+                    decoded += 1
                     # Compute timestamp in seconds when available
                     if getattr(frame, "pts", None) is None:
                         current_ts = len(timestamps) / float(s.fps or 30.0)
@@ -236,6 +243,8 @@ class VideoProcessor:
                     frames.append(self._format_frame(frame))
                     timestamps.append(current_ts)
                     if len(frames) >= n:
+                        break
+                    if decoded >= _MAX_DECODE_FRAMES:
                         break
             else:
                 # FPS mode: build timestamp targets and pick nearest frames crossing thresholds.
@@ -247,7 +256,9 @@ class VideoProcessor:
                 target_idx = 0
                 next_target = targets[target_idx] if targets else None
 
+                decoded = 0
                 for frame in container.decode(video=vstream.index):
+                    decoded += 1
                     if getattr(frame, "pts", None) is None:
                         current_ts = len(timestamps) / (s.fps or 30.0)
                     else:
@@ -263,6 +274,9 @@ class VideoProcessor:
                         if target_idx >= len(targets):
                             break
                         next_target = targets[target_idx]
+
+                    if decoded >= _MAX_DECODE_FRAMES:
+                        break
         finally:
             # Ensure container is closed even on exceptions
             try:
@@ -375,30 +389,28 @@ class VideoProcessor:
         s = self._sampling
         targets: List[float] = []
         if s.fps is not None:
-            # Sample at fixed fps until duration if known, else sample up to first N frames (2 seconds heuristic)
             if duration_s is None:
-                # Fallback: sample up to ~2 seconds worth
+                # Fallback: sample up to ~2 seconds worth (bounded)
                 limit = max(int(s.fps * 2), 1)
+                limit = min(limit, _MAX_TARGETS)
                 targets = [i / s.fps for i in range(limit)]
             else:
-                i = 0
-                while True:
-                    t = i / s.fps
-                    if t > duration_s + 1e-6:
-                        break
-                    targets.append(t)
-                    i += 1
+                # Bounded construction to avoid pathological durations
+                n = int(max(duration_s, 0.0) * s.fps) + 1  # include t=0
+                n = max(1, min(n, _MAX_TARGETS))
+                targets = [i / s.fps for i in range(n)]
         elif s.num_frames is not None:
             n = max(int(s.num_frames), 1)
             if duration_s is None:
-                # Without duration, aim for the first n frames at t=0 (best-effort)
-                targets = [0.0 for _ in range(n)]
+                targets = [0.0 for _ in range(min(n, _MAX_TARGETS))]
             else:
                 if n == 1:
                     targets = [0.0]
                 else:
                     step = duration_s / (n - 1)
-                    targets = [i * step for i in range(n)]
+                    # Bound by _MAX_TARGETS as well
+                    n_bounded = min(n, _MAX_TARGETS)
+                    targets = [i * step for i in range(n_bounded)]
         return targets
 
     def _apply_preprocess_pil(self, img: Any) -> Any:
