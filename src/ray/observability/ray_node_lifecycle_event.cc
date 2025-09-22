@@ -31,7 +31,7 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
   if (data.state() == rpc::GcsNodeInfo::ALIVE) {
     if (data.has_state_snapshot() &&
         data.state_snapshot().state() == rpc::NodeSnapshot::DRAINING) {
-      state_transition.set_state(rpc::events::NodeLifecycleEvent::DRAINING);
+      state_transition.set_state(rpc::events::NodeLifecycleEvent::ALIVE_DRAINING);
     } else {
       state_transition.set_state(rpc::events::NodeLifecycleEvent::ALIVE);
     }
@@ -71,10 +71,9 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
 
 std::string RayNodeLifecycleEvent::GetEntityId() const { return data_.node_id(); }
 
-void RayNodeLifecycleEvent::MergeData(
-    RayEvent<rpc::events::NodeLifecycleEvent> &&other) {
+void RayNodeLifecycleEvent::MergeData(RayEvent<rpc::events::NodeLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayNodeLifecycleEvent &&>(other);
-  for (auto &state_transition : other_event.data_.state_transitions()) {
+  for (auto &state_transition : *other_event.data_.mutable_state_transitions()) {
     data_.mutable_state_transitions()->Add(std::move(state_transition));
   }
 }

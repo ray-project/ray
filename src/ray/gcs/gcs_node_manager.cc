@@ -409,6 +409,7 @@ void GcsNodeManager::SetNodeDraining(
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::NodeID &node_id, const rpc::NodeDeathInfo &node_death_info) {
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
+  draining_node_ids_.erase(node_id);
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
@@ -564,9 +565,9 @@ void GcsNodeManager::UpdateAliveNode(
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
     // Write the export event for the draining state. Note that we explicitly do not
     // write IDLE and ACTIVE events as they have very high cardinality.
-    if (!drain_event_exported_) {
+    if (!draining_node_ids_.contains(node_id)) {
       WriteNodeExportEvent(*maybe_node_info.value(), /*is_register_event*/ false);
-      drain_event_exported_ = true;
+      draining_node_ids_.insert(node_id);
     }
   }
 }
