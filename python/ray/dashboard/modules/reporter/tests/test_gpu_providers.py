@@ -7,10 +7,10 @@ from ray.dashboard.modules.reporter.gpu_providers import (
     MB,
     AmdGpuProvider,
     GpuMetricProvider,
-    HuaweiNpuProvider,
     GpuProvider,
     GpuProviderType,
     GpuUtilizationInfo,
+    HuaweiNpuProvider,
     NvidiaGpuProvider,
     ProcessGPUInfo,
 )
