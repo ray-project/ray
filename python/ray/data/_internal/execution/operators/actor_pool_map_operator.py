@@ -65,7 +65,6 @@ class ActorPoolMapOperator(MapOperator):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         data_context: DataContext,
-        target_max_block_size: Optional[int],
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -73,6 +72,7 @@ class ActorPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        target_max_block_size_override: Optional[int] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -81,8 +81,6 @@ class ActorPoolMapOperator(MapOperator):
                 to each ref bundle input.
             input_op: Operator generating input data for this op.
             data_context: The DataContext instance containing configuration settings.
-            target_max_block_size: The target maximum number of bytes to
-                include in an output block.
             compute_strategy: `ComputeStrategy` used for this operator.
             name: The name of this operator.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
@@ -100,13 +98,15 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            target_max_block_size_override: The target maximum number of bytes to
+                include in an output block.
         """
         super().__init__(
             map_transformer,
             input_op,
             data_context,
             name,
-            target_max_block_size,
+            target_max_block_size_override,
             min_rows_per_bundle,
             supports_fusion,
             map_task_kwargs,
@@ -150,6 +150,7 @@ class ActorPoolMapOperator(MapOperator):
             per_actor_resource_usage,
             min_size=compute_strategy.min_size,
             max_size=compute_strategy.max_size,
+            initial_size=compute_strategy.initial_size,
             max_actor_concurrency=max_actor_concurrency,
             max_tasks_in_flight_per_actor=(
                 # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
@@ -203,7 +204,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(
             ActorPoolScalingRequest(
-                delta=self._actor_pool.min_size(), reason="scaling to min size"
+                delta=self._actor_pool.initial_size(), reason="scaling to initial size"
             )
         )
 
@@ -300,7 +301,7 @@ class ActorPoolMapOperator(MapOperator):
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
-                target_max_block_size=self.actual_target_max_block_size,
+                target_max_block_size_override=self.target_max_block_size_override,
             )
             gen = actor.submit.options(
                 num_returns="streaming",
@@ -477,6 +478,22 @@ class ActorPoolMapOperator(MapOperator):
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         return [self._actor_pool]
+
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
+        return per_actor_resource_usage.scale(1 / max_concurrency)
+
+    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        return max_concurrency * self._actor_pool.max_size()
+
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        return self._actor_pool.per_actor_resource_usage()
 
     def update_resource_usage(self) -> None:
         """Updates resources usage."""
@@ -713,6 +730,7 @@ class _ActorPool(AutoscalingActorPool):
         *,
         min_size: int,
         max_size: int,
+        initial_size: int,
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
@@ -728,8 +746,9 @@ class _ActorPool(AutoscalingActorPool):
                 in the pool. Note, that this constraint could be violated when
                 no new work is available for scheduling in the actor pool (ie
                 when operator completes execution).
-            max_size: The minimum number of running actors to be maintained
+            max_size: The maximum number of running actors to be maintained
                 in the pool.
+            initial_size: The initial number of actors to start with.
             max_actor_concurrency: The maximum number of concurrent tasks a
                 single actor can execute (derived from `ray_remote_args`
                 passed to the operator).
@@ -741,6 +760,7 @@ class _ActorPool(AutoscalingActorPool):
 
         self._min_size: int = min_size
         self._max_size: int = max_size
+        self._initial_size: int = initial_size
         self._max_actor_concurrency: int = max_actor_concurrency
         self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._create_actor_fn = create_actor_fn
@@ -748,6 +768,8 @@ class _ActorPool(AutoscalingActorPool):
 
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
+        assert self._initial_size <= self._max_size
+        assert self._initial_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
         assert self._create_actor_fn is not None
 
@@ -803,6 +825,9 @@ class _ActorPool(AutoscalingActorPool):
 
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
+
+    def initial_size(self) -> int:
+        return self._initial_size
 
     def _can_apply(self, config: ActorPoolScalingRequest) -> bool:
         """Returns whether Actor Pool is able to execute scaling request"""

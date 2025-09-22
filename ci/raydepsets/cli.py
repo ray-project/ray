@@ -1,18 +1,22 @@
+import difflib
 import platform
+import shlex
+import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
 import click
 import runfiles
-from networkx import DiGraph, topological_sort, ancestors as networkx_ancestors
+from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 
 from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --unsafe-package ray
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
@@ -44,11 +48,17 @@ def cli():
 @click.option(
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
+@click.option(
+    "--check",
+    is_flag=True,
+    help="Check the the compiled dependencies are valid. Only compatible with generating all dependency sets.",
+)
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
+    check: Optional[bool],
 ):
     """
     Build dependency sets from a config file.
@@ -59,8 +69,17 @@ def build(
         config_path=config_path,
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
+        check=check,
     )
     manager.execute(name)
+    if check:
+        try:
+            manager.diff_lock_files()
+        except RuntimeError as e:
+            click.echo(e, err=True)
+            sys.exit(1)
+        finally:
+            manager.cleanup()
 
 
 class DependencySetManager:
@@ -69,33 +88,92 @@ class DependencySetManager:
         config_path: str = None,
         workspace_dir: Optional[str] = None,
         uv_cache_dir: Optional[str] = None,
+        check: Optional[bool] = False,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
+        if check:
+            self.temp_dir = tempfile.mkdtemp()
+            self.output_paths = self.get_output_paths()
+            self.copy_to_temp_dir()
         self.build_graph = DiGraph()
         self._build()
         self._uv_binary = _uv_binary()
         self._uv_cache_dir = uv_cache_dir
 
+    def get_output_paths(self) -> List[Path]:
+        output_paths = []
+        for depset in self.config.depsets:
+            output_paths.append(Path(depset.output))
+        return output_paths
+
+    def copy_to_temp_dir(self):
+        """Copy the lock files from source file paths to temp dir."""
+        for output_path in self.output_paths:
+            source_fp, target_fp = self.get_source_and_dest(output_path)
+            target_fp.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(
+                source_fp,
+                target_fp,
+            )
+
+    def get_diffs(self) -> List[str]:
+        diffs = []
+        for output_path in self.output_paths:
+            new_lock_file_fp, old_lock_file_fp = self.get_source_and_dest(output_path)
+            old_lock_file_contents = self.read_lock_file(old_lock_file_fp)
+            new_lock_file_contents = self.read_lock_file(new_lock_file_fp)
+            for diff in difflib.unified_diff(
+                old_lock_file_contents,
+                new_lock_file_contents,
+                fromfile=new_lock_file_fp.as_posix(),
+                tofile=old_lock_file_fp.as_posix(),
+                lineterm="",
+            ):
+                diffs.append(diff)
+        return diffs
+
+    def diff_lock_files(self):
+        diffs = self.get_diffs()
+        if len(diffs) > 0:
+            raise RuntimeError(
+                "Lock files are not up to date. Please update lock files and push the changes.\n"
+                + "".join(diffs)
+            )
+        click.echo("Lock files are up to date.")
+
+    def get_source_and_dest(self, output_path: str) -> tuple[Path, Path]:
+        return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
+
     def _build(self):
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
-                    depset.name, operation="compile", depset=depset
+                    depset.name, operation="compile", depset=depset, node_type="depset"
                 )
             elif depset.operation == "subset":
                 self.build_graph.add_node(
-                    depset.name, operation="subset", depset=depset
+                    depset.name, operation="subset", depset=depset, node_type="depset"
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
                 self.build_graph.add_node(
-                    depset.name, operation="expand", depset=depset
+                    depset.name, operation="expand", depset=depset, node_type="depset"
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
+            if depset.pre_hooks:
+                for ind, hook in enumerate(depset.pre_hooks):
+                    hook_name = f"{depset.name}_pre_hook_{ind+1}"
+                    self.build_graph.add_node(
+                        hook_name,
+                        operation="pre_hook",
+                        pre_hook=hook,
+                        node_type="pre_hook",
+                    )
+                    self.build_graph.add_edge(hook_name, depset.name)
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
@@ -109,8 +187,13 @@ class DependencySetManager:
             self.subgraph_dependency_nodes(single_depset_name)
 
         for node in topological_sort(self.build_graph):
-            depset = self.build_graph.nodes[node]["depset"]
-            self.execute_single(depset)
+            node_type = self.build_graph.nodes[node]["node_type"]
+            if node_type == "pre_hook":
+                pre_hook = self.build_graph.nodes[node]["pre_hook"]
+                self.execute_pre_hook(pre_hook)
+            elif node_type == "depset":
+                depset = self.build_graph.nodes[node]["depset"]
+                self.execute_depset(depset)
 
     def exec_uv_cmd(
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
@@ -122,7 +205,21 @@ class DependencySetManager:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
 
-    def execute_single(self, depset: Depset):
+    def execute_pre_hook(self, pre_hook: str):
+        status = subprocess.run(
+            shlex.split(pre_hook),
+            cwd=self.workspace.dir,
+            capture_output=True,
+            text=True,
+        )
+        if status.returncode != 0:
+            raise RuntimeError(
+                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
+            )
+        click.echo(f"{status.stdout}")
+        click.echo(f"Executed pre_hook {pre_hook} successfully")
+
+    def execute_depset(self, depset: Depset):
         if depset.operation == "compile":
             self.compile(
                 constraints=depset.constraints,
@@ -235,8 +332,14 @@ class DependencySetManager:
             override_flags=override_flags,
         )
 
-    def get_path(self, path: str) -> str:
-        return (Path(self.workspace.dir) / path).as_posix()
+    def read_lock_file(self, file_path: Path) -> List[str]:
+        if not file_path.exists():
+            raise RuntimeError(f"Lock file {file_path} does not exist")
+        with open(file_path, "r") as f:
+            return f.readlines()
+
+    def get_path(self, path: str) -> Path:
+        return Path(self.workspace.dir) / path
 
     def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
         for req in requirements:
@@ -244,6 +347,10 @@ class DependencySetManager:
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name}"
                 )
+
+    def cleanup(self):
+        if self.temp_dir:
+            shutil.rmtree(self.temp_dir)
 
 
 def _get_bytes(packages: List[str]) -> bytes:

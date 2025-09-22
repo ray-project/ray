@@ -16,6 +16,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Generator,
     Iterable,
     Iterator,
@@ -571,7 +572,7 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -630,25 +631,33 @@ def get_compute_strategy(
         return compute
     elif concurrency is not None:
         if isinstance(concurrency, tuple):
-            if (
-                len(concurrency) == 2
-                and isinstance(concurrency[0], int)
-                and isinstance(concurrency[1], int)
+            # Validate tuple length and that all elements are integers
+            if len(concurrency) not in (2, 3) or not all(
+                isinstance(c, int) for c in concurrency
             ):
-                if is_callable_class:
-                    return ActorPoolStrategy(
-                        min_size=concurrency[0], max_size=concurrency[1]
-                    )
-                else:
-                    raise ValueError(
-                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
-                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                        "control maximum number of workers to use."
-                    )
-            else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
+                )
+
+            # Check if function is callable class (common validation)
+            if not is_callable_class:
+                raise ValueError(
+                    "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                    f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                    "control maximum number of workers to use."
+                )
+
+            # Create ActorPoolStrategy based on tuple length
+            if len(concurrency) == 2:
+                return ActorPoolStrategy(
+                    min_size=concurrency[0], max_size=concurrency[1]
+                )
+            else:  # len(concurrency) == 3
+                return ActorPoolStrategy(
+                    min_size=concurrency[0],
+                    max_size=concurrency[1],
+                    initial_size=concurrency[2],
                 )
         elif isinstance(concurrency, int):
             if is_callable_class:
@@ -1744,3 +1753,30 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
 
     return actual_items_counts == expected_items_counts
+
+
+def merge_resources_to_ray_remote_args(
+    num_cpus: Optional[int],
+    num_gpus: Optional[int],
+    memory: Optional[int],
+    ray_remote_args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert the given resources to Ray remote args.
+
+    Args:
+        num_cpus: The number of CPUs to be added to the Ray remote args.
+        num_gpus: The number of GPUs to be added to the Ray remote args.
+        memory: The memory to be added to the Ray remote args.
+        ray_remote_args: The Ray remote args to be merged.
+
+    Returns:
+        The converted arguments.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if num_cpus is not None:
+        ray_remote_args["num_cpus"] = num_cpus
+    if num_gpus is not None:
+        ray_remote_args["num_gpus"] = num_gpus
+    if memory is not None:
+        ray_remote_args["memory"] = memory
+    return ray_remote_args
