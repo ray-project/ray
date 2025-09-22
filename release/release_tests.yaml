@@ -372,7 +372,7 @@
   run:
     timeout: 600  # 10min
     long_running: true
-    script: python RAY_TRAIN_V2_ENABLED=1 frequent_pausing/script.py
+    script: RAY_TRAIN_V2_ENABLED=1 python frequent_pausing/script.py
 
   variations:
     - __suffix__: aws
