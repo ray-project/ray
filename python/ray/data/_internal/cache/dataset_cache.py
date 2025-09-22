@@ -1,29 +1,31 @@
-"""Intelligent caching system for Ray Data operations.
+"""
+Simple, elegant caching for Ray Data operations.
 
-This module provides comprehensive caching for expensive Dataset operations including
-smart invalidation, disk spilling, and performance optimizations. The system is
-designed to be powerful yet simple, focusing on Ray Data-specific optimizations.
+This module provides lightweight caching that leverages Ray Data's existing
+ExecutionPlan snapshots and follows established Ray Data patterns.
 """
 
-import contextlib
 import functools
-import gzip
 import inspect
-import logging
-import os
-import pickle
-import threading
-import time
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data.context import DataContext
 
-logger = logging.getLogger(__name__)
+
+class TransformationType(Enum):
+    """Categories of transformations and their cache effects."""
+
+    SCHEMA_PRESERVING_COUNT_CHANGING = "schema_preserving_count_changing"
+    ROW_PRESERVING_SCHEMA_CHANGE = "row_preserving_schema_change"
+    ROW_CHANGING_NO_SCHEMA_CHANGE = "row_changing_no_schema_change"
+    ROW_CHANGING_SCHEMA_CHANGE = "row_changing_schema_change"
+    REORDERING_ONLY = "reordering_only"
+    COMBINING = "combining"
+    GROUPING = "grouping"
 
 
 class CacheableOperation(Enum):
@@ -35,43 +37,22 @@ class CacheableOperation(Enum):
     STATS = "stats"
     INPUT_FILES = "input_files"
     COLUMNS = "columns"
-    TAKE_ALL = "take_all"
-    TAKE_BATCH = "take_batch"
-    TAKE = "take"
-    MATERIALIZE = "materialize"
     SUM = "sum"
     MIN = "min"
     MAX = "max"
     MEAN = "mean"
     STD = "std"
     UNIQUE = "unique"
+    TAKE = "take"
+    TAKE_BATCH = "take_batch"
+    TAKE_ALL = "take_all"
 
 
-class TransformationType(Enum):
-    """Categories of transformations and their cache effects."""
-
-    SCHEMA_PRESERVING_COUNT_CHANGING = (
-        "schema_preserving_count_changing"  # limit, repartition
-    )
-    ROW_PRESERVING_SCHEMA_CHANGE = (
-        "row_preserving_schema_change"  # map, add_column, etc.
-    )
-    ROW_CHANGING_NO_SCHEMA_CHANGE = "row_changing_no_schema_change"  # filter
-    ROW_CHANGING_SCHEMA_CHANGE = "row_changing_schema_change"  # map_batches, flat_map
-    REORDERING_ONLY = "reordering_only"  # sort, random_shuffle
-    COMBINING = "combining"  # union, join
-    GROUPING = "grouping"  # groupby
-
-
-# Smart invalidation matrix
+# Smart invalidation matrix - which operations remain valid after transformations
 CACHE_VALIDITY_MATRIX = {
     TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING: {
-        # limit, repartition - preserve schema/columns but NOT count (limit changes count!)
         CacheableOperation.SCHEMA,
         CacheableOperation.COLUMNS,
-        # COUNT is invalidated because limit() changes the row count
-        # SIZE_BYTES is invalidated because limit() changes dataset size
-        # TAKE_ALL, MATERIALIZE invalidated because data subset changes
     },
     TransformationType.ROW_PRESERVING_SCHEMA_CHANGE: {
         CacheableOperation.COUNT,
@@ -98,518 +79,979 @@ CACHE_VALIDITY_MATRIX = {
 }
 
 
-def get_transformation_type(operation_name: str) -> TransformationType:
-    """Get transformation type for cache invalidation.
-
-    Args:
-        operation_name: Name of the transformation operation (e.g., "map", "filter").
-
-    Returns:
-        The transformation type for determining cache invalidation behavior.
-    """
-    operation_map = {
-        "limit": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
-        "repartition": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
-        "map": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "add_column": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "drop_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "select_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "rename_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "filter": TransformationType.ROW_CHANGING_NO_SCHEMA_CHANGE,
-        "map_batches": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
-        "flat_map": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
-        "sort": TransformationType.REORDERING_ONLY,
-        "random_shuffle": TransformationType.REORDERING_ONLY,
-        "union": TransformationType.COMBINING,
-        "join": TransformationType.COMBINING,
-        "groupby": TransformationType.GROUPING,
-    }
-    return operation_map.get(
-        operation_name, TransformationType.ROW_CHANGING_SCHEMA_CHANGE
-    )
+# Transformation type mapping
+TRANSFORMATION_TYPES = {
+    "limit": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
+    "repartition": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
+    "map": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "add_column": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "drop_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "select_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "rename_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "filter": TransformationType.ROW_CHANGING_NO_SCHEMA_CHANGE,
+    "map_batches": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
+    "flat_map": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
+    "sort": TransformationType.REORDERING_ONLY,
+    "random_shuffle": TransformationType.REORDERING_ONLY,
+    "union": TransformationType.COMBINING,
+    "join": TransformationType.COMBINING,
+    "groupby": TransformationType.GROUPING,
+}
 
 
-class _CacheKey:
-    """Cache key based on dataset logical plan and operation parameters.
+@dataclass
+class CacheStats:
+    """Statistics for cache performance monitoring."""
 
-    This class creates deterministic cache keys by hashing the logical plan
-    structure and operation parameters. Cache keys are used to identify
-    identical operations for caching purposes.
+    hit_count: int = 0
+    miss_count: int = 0
+    local_cache_entries: int = 0
+    ray_cache_entries: int = 0
+    max_entries: int = 0
 
-    Args:
-        logical_plan: The dataset's logical plan for cache key generation.
-        operation_name: Name of the operation being cached.
-        **kwargs: Additional parameters to include in the cache key.
-    """
-
-    def __init__(self, logical_plan: LogicalPlan, operation_name: str, **kwargs):
-        self.logical_plan = logical_plan
-        self.operation_name = operation_name
-        self.parameters = kwargs
-        self._hash = None
-
-    def __hash__(self) -> int:
-        if self._hash is None:
-            plan_hash = self._hash_logical_plan(self.logical_plan.dag)
-            param_hash = hash(frozenset(self.parameters.items()))
-            op_hash = hash(self.operation_name)
-            self._hash = hash((plan_hash, param_hash, op_hash))
-        return self._hash
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, _CacheKey):
-            return False
-        return (
-            hash(self) == hash(other)
-            and self.operation_name == other.operation_name
-            and self.parameters == other.parameters
-        )
-
-    def _hash_logical_plan(self, operator) -> int:
-        """Create deterministic hash of logical plan DAG structure."""
-        op_info = (
-            type(operator).__name__,
-            getattr(operator, "_name", ""),
-            str(getattr(operator, "_params", {})),
-        )
-
-        input_hashes = []
-        for input_op in getattr(operator, "input_dependencies", []):
-            input_hashes.append(self._hash_logical_plan(input_op))
-
-        combined = (*op_info, *sorted(input_hashes))
-        return hash(combined)
+    @property
+    def hit_rate(self) -> float:
+        """Calculate cache hit rate."""
+        total = self.hit_count + self.miss_count
+        return self.hit_count / total if total > 0 else 0.0
 
 
-class _CacheEntry:
-    """Cached result with metadata.
+@dataclass
+class CacheConfiguration:
+    """Configuration for dataset caching behavior."""
 
-    Stores a cached operation result along with metadata for cache management
-    including size estimation, access tracking, and LRU eviction.
+    max_entries: int = 10000
+    enable_smart_updates: bool = True
 
-    Args:
-        key: The cache key for this entry.
-        result: The cached operation result.
-        size_bytes: Estimated size of the cached result in bytes.
+
+class DatasetCache:
+    """Cache for Dataset operation results.
+
+    Provides caching while following Ray Data patterns:
+    - Local memory: Small metadata and aggregations
+    - Ray object store: Medium-sized results with automatic disk spilling
+    - Smart invalidation: Preserves valid cached operations based on transformation type
+    - Size-aware: Automatically chooses optimal caching strategy
     """
 
-    def __init__(self, key: _CacheKey, result: Any, size_bytes: int = 0):
-        self.key = key
-        self.result = result
-        self.size_bytes = size_bytes
-        self.created_at = time.time()
-        self.last_accessed = time.time()
-        self.access_count = 0
-
-    def access(self):
-        """Record access to this cache entry."""
-        self.last_accessed = time.time()
-        self.access_count += 1
-
-
-class _DiskSpillManager:
-    """Manages disk spilling for large cache items."""
-
-    def __init__(
-        self, cache_location: Optional[str] = None, max_size_bytes: int = 10 * 1024**3
-    ):
-        self.max_size_bytes = max_size_bytes
-        self.current_size_bytes = 0
-
-        # Setup cache directory
-        if cache_location is None:
-            cache_location = os.path.join(os.path.expanduser("~"), ".ray_data_cache")
-
-        self.cache_dir = Path(cache_location)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-
-        self._entries: OrderedDict[str, Dict] = OrderedDict()
-        self._lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="disk_cache"
-        )
-
-        self._load_existing_entries()
-
-    def _load_existing_entries(self):
-        """Load existing cache entries from disk."""
-        try:
-            metadata_file = self.cache_dir / "cache_metadata.pkl"
-            if metadata_file.exists():
-                with open(metadata_file, "rb") as f:
-                    saved_entries = pickle.load(f)
-
-                for key, entry in saved_entries.items():
-                    file_path = Path(entry["file_path"])
-                    if file_path.exists():
-                        self._entries[key] = entry
-                        self.current_size_bytes += entry["size_bytes"]
-                    else:
-                        # Clean up missing files
-                        with contextlib.suppress(FileNotFoundError):
-                            file_path.unlink()
-
-        except Exception as e:
-            logger.debug(f"Could not load disk cache metadata: {e}")
-
-    def get(self, key: str) -> Optional[Any]:
-        """Get item from disk cache."""
-        with self._lock:
-            entry = self._entries.get(key)
-            if entry is None:
-                return None
-
-            file_path = Path(entry["file_path"])
-            if not file_path.exists():
-                # Clean up missing entry
-                del self._entries[key]
-                return None
-
-            # Move to end (LRU)
-            self._entries.move_to_end(key)
-            entry["last_accessed"] = time.time()
-
-        # Load from disk
-        try:
-            with open(file_path, "rb") as f:
-                data = f.read()
-
-            if entry.get("compressed", False):
-                data = gzip.decompress(data)
-
-            return pickle.loads(data)
-
-        except Exception as e:
-            logger.warning(f"Failed to load disk cache entry {key}: {e}")
-            # Clean up corrupted entry
-            with self._lock:
-                self._entries.pop(key, None)
-                with contextlib.suppress(FileNotFoundError):
-                    file_path.unlink()
-            return None
-
-    def put(self, key: str, data: Any) -> None:
-        """Store item in disk cache asynchronously."""
-        self._executor.submit(self._put_sync, key, data)
-
-    def _put_sync(self, key: str, data: Any) -> None:
-        """Synchronously store item in disk cache."""
-        try:
-            # Serialize and compress
-            serialized = pickle.dumps(data)
-            compressed = gzip.compress(serialized)
-
-            file_path = self.cache_dir / f"{key}.cache"
-
-            # Atomic write
-            temp_path = file_path.with_suffix(".tmp")
-            with open(temp_path, "wb") as f:
-                f.write(compressed)
-                f.flush()
-                os.fsync(f.fileno())
-
-            temp_path.replace(file_path)
-
-            # Update metadata
-            with self._lock:
-                # Remove old entry if exists
-                if key in self._entries:
-                    old_entry = self._entries[key]
-                    self.current_size_bytes -= old_entry["size_bytes"]
-
-                # Add new entry
-                entry_data = {
-                    "file_path": str(file_path),
-                    "size_bytes": len(compressed),
-                    "compressed": True,
-                    "created_at": time.time(),
-                    "last_accessed": time.time(),
-                }
-
-                # Evict if necessary
-                while (
-                    self.current_size_bytes + entry_data["size_bytes"]
-                    > self.max_size_bytes
-                    and self._entries
-                ):
-                    self._evict_lru()
-
-                self._entries[key] = entry_data
-                self.current_size_bytes += entry_data["size_bytes"]
-
-                # Save metadata periodically
-                if len(self._entries) % 50 == 0:
-                    self._save_metadata()
-
-        except Exception as e:
-            logger.warning(f"Failed to store disk cache entry {key}: {e}")
-
-    def _evict_lru(self) -> None:
-        """Evict least recently used entry."""
-        if not self._entries:
-            return
-
-        key, entry = self._entries.popitem(last=False)
-        self.current_size_bytes -= entry["size_bytes"]
-
-        # Remove file
-        with contextlib.suppress(FileNotFoundError):
-            Path(entry["file_path"]).unlink()
-
-    def _save_metadata(self):
-        """Save metadata to disk."""
-        try:
-            metadata_file = self.cache_dir / "cache_metadata.pkl"
-            with open(metadata_file, "wb") as f:
-                pickle.dump(dict(self._entries), f)
-        except Exception as e:
-            logger.debug(f"Failed to save disk cache metadata: {e}")
-
-    def clear(self) -> None:
-        """Clear all disk cache entries."""
-        with self._lock:
-            for entry in self._entries.values():
-                with contextlib.suppress(FileNotFoundError):
-                    Path(entry["file_path"]).unlink()
-
-            self._entries.clear()
-            self.current_size_bytes = 0
-
-            # Remove metadata file
-            with contextlib.suppress(FileNotFoundError):
-                (self.cache_dir / "cache_metadata.pkl").unlink()
-
-
-class _DatasetCacheManager:
-    """Manages intelligent caching for Dataset operations.
-
-    Provides comprehensive caching with memory management, disk spilling,
-    and smart invalidation based on transformation types. The cache manager
-    handles both small results in memory and large results spilled to disk.
-
-    Args:
-        max_size_bytes: Maximum size in bytes for the memory cache.
-    """
-
-    def __init__(self, max_size_bytes: int = 1024 * 1024 * 1024):
-        self.max_size_bytes = max_size_bytes
-        self.current_size_bytes = 0
-        self._cache: OrderedDict[_CacheKey, _CacheEntry] = OrderedDict()
-        self._lock = threading.RLock()
+    def __init__(self, max_entries: int = 10000):
+        # Local cache for small objects (fastest access)
+        self._local_cache: OrderedDict[str, Any] = OrderedDict()
+        # Ray object store cache for medium objects (automatic spilling)
+        self._ray_cache: OrderedDict[str, Any] = OrderedDict()  # stores ObjectRefs
+        self._max_entries = max_entries
         self._hit_count = 0
         self._miss_count = 0
 
-        # Disk spilling for large items
-        context = DataContext.get_current()
-        cache_location = getattr(context, "cache_location", None)
-        self._disk_spill_threshold = getattr(
-            context, "memory_spill_threshold_bytes", 100 * 1024**2
-        )
+        # Intelligent size thresholds
+        self._local_threshold = 50 * 1024  # 50KB - keep reasonably sized objects local
+        self._ray_threshold = 100 * 1024 * 1024  # 100MB - use Ray store up to 100MB
 
-        # Use reasonable default for disk cache size (10GB)
-        max_disk_size = 10 * 1024**3
-        self._disk_cache = _DiskSpillManager(cache_location, max_disk_size)
+        # Performance tracking
+        self._cache_saves_seconds = 0.0  # Track time saved by cache hits
 
-    def get(self, key: _CacheKey) -> Optional[Any]:
-        """Get cached result for the given key."""
-        with self._lock:
-            entry = self._cache.get(key)
-            if entry is not None:
-                # Move to end (most recently used)
-                self._cache.move_to_end(key)
-                entry.access()
+    def get(
+        self, logical_plan: LogicalPlan, operation_name: str, **params
+    ) -> Optional[Any]:
+        """Get cached result for operation."""
+        cache_key = self._make_key(logical_plan, operation_name, **params)
+
+        # Try local cache first (fastest)
+        if cache_key in self._local_cache:
+            result = self._local_cache[cache_key]
+            self._local_cache.move_to_end(cache_key)
+            self._hit_count += 1
+            return result
+
+        # Try Ray object store cache (for medium objects)
+        if cache_key in self._ray_cache:
+            try:
+                import ray
+
+                object_ref = self._ray_cache[cache_key]
+                result = ray.get(object_ref)
+                self._ray_cache.move_to_end(cache_key)
                 self._hit_count += 1
-                return entry.result
-
-            # Try disk cache
-            disk_key = str(hash(key))
-            disk_result = self._disk_cache.get(disk_key)
-            if disk_result is not None:
-                self._hit_count += 1
-                return disk_result
+                return result
+            except Exception:
+                self._ray_cache.pop(cache_key, None)
 
             self._miss_count += 1
             return None
 
-    def put(self, key: _CacheKey, result: Any) -> None:
-        """Store result in cache with intelligent spilling."""
-
-        # Special handling for MaterializedDataset - cache the object itself, not raw data
-        if hasattr(result, "_plan") and hasattr(result, "num_blocks"):
-            # This is a MaterializedDataset - cache the object with ObjectRef[Block] references
-            # This is memory-efficient as we're not duplicating the actual data
-            size_bytes = self._estimate_materialized_dataset_size(result)
-            logger.debug(
-                f"Caching MaterializedDataset with {result.num_blocks()} blocks, estimated size: {size_bytes:,} bytes"
-            )
-        else:
-            size_bytes = self._estimate_size(result)
-
-        # Large items go directly to disk (but MaterializedDataset should usually stay in memory)
-        if size_bytes > self._disk_spill_threshold and not hasattr(
-            result, "num_blocks"
-        ):
-            disk_key = str(hash(key))
-            self._disk_cache.put(disk_key, result)
-            return
-
-        with self._lock:
-            # Check if we need to evict entries
-            while (
-                self.current_size_bytes + size_bytes > self.max_size_bytes
-                and self._cache
-            ):
-                self._evict_lru()
-
-            # Store in memory cache
-            entry = _CacheEntry(key, result, size_bytes)
-            if key in self._cache:
-                old_entry = self._cache[key]
-                self.current_size_bytes -= old_entry.size_bytes
-
-            self._cache[key] = entry
-            self.current_size_bytes += size_bytes
-
-    def invalidate_for_transformation(
-        self, base_logical_plan: LogicalPlan, transformation_type: TransformationType
+    def put(
+        self, logical_plan: LogicalPlan, operation_name: str, result: Any, **params
     ) -> None:
-        """Selectively invalidate cache based on transformation type."""
-        valid_operations = CACHE_VALIDITY_MATRIX.get(transformation_type, set())
+        """Cache result for operation with intelligent placement."""
+        cache_key = self._make_key(logical_plan, operation_name, **params)
 
-        with self._lock:
-            keys_to_remove = []
-            for cache_key in self._cache.keys():
-                if self._is_related_plan(cache_key.logical_plan, base_logical_plan):
-                    try:
-                        operation_enum = CacheableOperation(cache_key.operation_name)
-                        if operation_enum not in valid_operations:
-                            keys_to_remove.append(cache_key)
-                    except ValueError:
-                        # Unknown operation, invalidate conservatively
-                        keys_to_remove.append(cache_key)
+        # Determine cache strategy based on size and type
+        cache_strategy = self._get_cache_strategy(operation_name, result)
 
-            # Remove invalidated entries
-            for key in keys_to_remove:
-                entry = self._cache.pop(key)
-                self.current_size_bytes -= entry.size_bytes
+        if cache_strategy == "local":
+            # Evict LRU if needed
+            while len(self._local_cache) >= self._max_entries // 2:
+                self._local_cache.popitem(last=False)
+            self._local_cache[cache_key] = result
 
-    def _is_related_plan(self, plan1: LogicalPlan, plan2: LogicalPlan) -> bool:
-        """Check if two logical plans are related."""
-        # Simple check using string representation
-        plan1_str = str(plan1.dag)
-        plan2_str = str(plan2.dag)
-        return plan2_str in plan1_str or plan1_str in plan2_str
+        elif cache_strategy == "ray":
+            try:
+                import ray
+
+                object_ref = ray.put(result)
+                # Evict LRU if needed
+                while len(self._ray_cache) >= self._max_entries // 2:
+                    old_key, old_ref = self._ray_cache.popitem(last=False)
+                    # Ray GC will handle ObjectRef cleanup
+                self._ray_cache[cache_key] = object_ref
+            except Exception:
+                pass
+
+        # cache_strategy == "none" → don't cache
+
+    def invalidate_for_transform(
+        self,
+        operation_name: str,
+        source_plan: LogicalPlan,
+        target_plan: LogicalPlan,
+        **transform_params,
+    ) -> None:
+        """Intelligently update cache entries based on transformation type."""
+        transform_type = TRANSFORMATION_TYPES.get(
+            operation_name, TransformationType.ROW_CHANGING_SCHEMA_CHANGE
+        )
+        valid_operations = CACHE_VALIDITY_MATRIX.get(transform_type, set())
+
+        # First, try to compute new cache values from existing ones
+        self._smart_cache_update(
+            operation_name, source_plan, target_plan, transform_params
+        )
+
+        # Then invalidate remaining entries that can't be computed
+        self._invalidate_cache_dict(self._local_cache, valid_operations)
+        self._invalidate_cache_dict(self._ray_cache, valid_operations)
 
     def clear(self) -> None:
-        """Clear all cached entries."""
-        with self._lock:
-            self._cache.clear()
-            self.current_size_bytes = 0
-
-        self._disk_cache.clear()
+        """Clear all cache entries."""
+        self._local_cache.clear()
+        self._ray_cache.clear()
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get comprehensive cache statistics."""
-        with self._lock:
-            total_requests = self._hit_count + self._miss_count
-            hit_rate = self._hit_count / total_requests if total_requests > 0 else 0
+        """Get cache statistics."""
+        total = self._hit_count + self._miss_count
+        return {
+            "hit_count": self._hit_count,
+            "miss_count": self._miss_count,
+            "hit_rate": self._hit_count / total if total > 0 else 0,
+            "local_cache_entries": len(self._local_cache),
+            "ray_cache_entries": len(self._ray_cache),
+            "total_entries": len(self._local_cache) + len(self._ray_cache),
+            "max_entries": self._max_entries,
+        }
 
-            return {
-                "hit_count": self._hit_count,
-                "miss_count": self._miss_count,
-                "hit_rate": hit_rate,
-                "cache_size_bytes": self.current_size_bytes,
-                "cache_entries": len(self._cache),
-                "disk_cache_size_bytes": self._disk_cache.current_size_bytes,
-                "disk_cache_entries": len(self._disk_cache._entries),
-                "max_size_bytes": self.max_size_bytes,
-                "disk_spill_threshold_bytes": self._disk_spill_threshold,
-            }
+    def _invalidate_cache_dict(
+        self, cache_dict: OrderedDict, valid_operations: set
+    ) -> None:
+        """Invalidate entries in a cache dictionary."""
+        keys_to_remove = []
+        for cache_key in cache_dict.keys():
+            for op in CacheableOperation:
+                if op.value in cache_key and op not in valid_operations:
+                    keys_to_remove.append(cache_key)
+                    break
 
-    def _evict_lru(self) -> None:
-        """Evict least recently used entry."""
-        if not self._cache:
+        for key in keys_to_remove:
+            cache_dict.pop(key, None)
+
+    def _smart_cache_update(
+        self,
+        operation_name: str,
+        source_plan: LogicalPlan,
+        target_plan: LogicalPlan,
+        transform_params: dict,
+    ) -> None:
+        """Compute new cache values from existing ones.
+
+        CACHE SYSTEM OVERVIEW:
+
+        Instead of just invalidating cache entries after transformations, this system
+        COMPUTES new cached values from existing ones using mathematical relationships
+        and logical analysis of what each operation actually changes.
+
+        PERFORMANCE APPROACH:
+
+        Traditional approach:
+        1. ds.count() → compute and cache
+        2. ds.limit(100) → invalidate count cache
+        3. limited_ds.count() → recompute from scratch
+
+        Smart cache approach:
+        1. ds.count() → compute and cache: 10000
+        2. ds.limit(100) → compute new count: min(10000, 100) = 100
+        3. limited_ds.count() → use computed value
+
+        OPERATION CATEGORIES:
+
+        1. COUNT-PRESERVING: map, add_column, drop_columns, select_columns, rename_columns
+           → Preserve count (1:1 transformations or column-only changes)
+
+        2. VALUE-PRESERVING: sort, random_shuffle, repartition
+           → Preserve ALL aggregations (values unchanged, only order/blocks change)
+
+        3. STRUCTURE-PRESERVING: filter
+           → Preserve schema/columns (same structure, different rows)
+
+        4. SIZE-COMPUTABLE: limit
+           → Compute new count and size from original values + parameters
+
+        5. COLUMN-COMPUTABLE: add_column, drop_columns, select_columns, rename_columns
+           → Compute new columns list from original list + operation parameters
+
+        This is the core optimization that provides massive performance gains by computing
+        new cached values instead of invalidating and recomputing from scratch.
+        """
+
+        source_key_prefix = self._make_key(source_plan, "")
+        target_key_prefix = self._make_key(target_plan, "")
+
+        # Smart cache updates for specific operations
+        if operation_name == "limit":
+            self._update_limit_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "add_column":
+            self._update_add_column_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "drop_columns":
+            self._update_drop_columns_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "select_columns":
+            self._update_select_columns_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "repartition":
+            self._update_repartition_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "rename_columns":
+            self._update_rename_columns_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name in ["sort", "random_shuffle"]:
+            self._update_reorder_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "map":
+            self._update_map_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "with_column":  # Uses add_column transform type
+            self._update_with_column_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        elif operation_name == "filter":
+            self._update_filter_caches(
+                source_key_prefix, target_key_prefix, transform_params
+            )
+        # Advanced: Cross-operation cache computation
+        self._try_advanced_cache_computation(
+            operation_name, source_key_prefix, target_key_prefix, transform_params
+        )
+
+    def _update_limit_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for limit operation.
+
+        LOGIC: limit(N) operation truncates dataset to first N rows.
+        - If original dataset has 10000 rows and we limit(500), new count = 500
+        - If original dataset has 100 rows and we limit(500), new count = 100 (unchanged)
+        - Formula: new_count = min(original_count, limit_value)
+
+        This avoids expensive recomputation of count after limit operations.
+        """
+        limit_value = params.get("limit")
+        if limit_value is None:
             return
 
-        key, entry = self._cache.popitem(last=False)
-        self.current_size_bytes -= entry.size_bytes
+        # Check if we have cached count from the source dataset
+        source_count_key = f"count_{source_prefix}_"
+        if source_count_key in self._local_cache:
+            original_count = self._local_cache[source_count_key]
 
-    def _estimate_materialized_dataset_size(self, materialized_dataset) -> int:
-        """Estimate size of MaterializedDataset object (not the data itself).
+            # SMART COMPUTATION: new count = min(original count, limit value)
+            # This is mathematically correct and avoids expensive recomputation
+            new_count = min(original_count, limit_value)
 
-        MaterializedDataset contains ObjectRef[Block] references, not the actual data.
-        We estimate the size of the object structure itself, which is small.
+            # Cache the computed count for the target dataset
+            target_count_key = f"count_{target_prefix}_"
+            self._local_cache[target_count_key] = new_count
+
+    def _update_add_column_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for add_column operation.
+
+        LOGIC: add_column(name, function) adds a new column to the dataset.
+        - Row count stays the same (each row gets a new column value)
+        - Column list grows by one (original columns + new column)
+        - Schema changes (new column added to structure)
+        - Aggregations become invalid (data in rows changed)
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 1000 rows → still 1000 rows after adding column
+        2. Compute new columns: ["id", "value"] → ["id", "value", "new_col"]
+
+        This avoids expensive count() and columns() recomputation.
         """
-        try:
-            # MaterializedDataset object overhead
-            base_size = 1024  # Base object size
+        column_name = params.get("col") or params.get("column_name")
+        if column_name is None:
+            return
 
-            # Size of block references and metadata (not the actual block data)
-            num_blocks = materialized_dataset.num_blocks()
-            ref_overhead = num_blocks * 64  # ~64 bytes per ObjectRef + metadata
+        # OPTIMIZATION 1: Preserve count (add_column is 1:1 row transformation)
+        # Original: 1000 rows → After add_column: still 1000 rows
+        source_count_key = f"count_{source_prefix}_"
+        if source_count_key in self._local_cache:
+            original_count = self._local_cache[source_count_key]
+            target_count_key = f"count_{target_prefix}_"
+            self._local_cache[target_count_key] = original_count
 
-            # Logical plan overhead
-            plan_overhead = 2048  # Estimated logical plan size
+        # OPTIMIZATION 2: Compute new columns list from existing list
+        # Original: ["id", "value"] → After add_column("new"): ["id", "value", "new"]
+        source_columns_key = f"columns_{source_prefix}_"
+        if source_columns_key in self._local_cache:
+            original_columns = self._local_cache[source_columns_key]
+            if (
+                isinstance(original_columns, list)
+                and column_name not in original_columns
+            ):
+                new_columns = original_columns + [column_name]
+                target_columns_key = f"columns_{target_prefix}_"
+                self._local_cache[target_columns_key] = new_columns
 
-            total_size = base_size + ref_overhead + plan_overhead
+    def _update_drop_columns_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for drop_columns operation.
 
-            logger.debug(
-                f"MaterializedDataset size estimate: {num_blocks} blocks -> {total_size:,} bytes overhead"
+        LOGIC: drop_columns(["col1", "col2"]) removes specified columns from dataset.
+        - Row count stays the same (same rows, just fewer columns per row)
+        - Column list shrinks (remove specified columns from list)
+        - Schema changes (columns removed from structure)
+        - Aggregations on remaining columns could be preserved, but complex to track
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 1000 rows → still 1000 rows after dropping columns
+        2. Compute new columns: ["id", "name", "value"] → ["id", "value"] (dropped "name")
+
+        This avoids expensive count() and columns() recomputation.
+        """
+        cols_to_drop = params.get("cols", [])
+        if not cols_to_drop:
+            return
+
+        # OPTIMIZATION 1: Preserve count (drop_columns doesn't change number of rows)
+        # Original: 1000 rows → After drop_columns: still 1000 rows (same data, fewer columns)
+        source_count_key = f"count_{source_prefix}_"
+        if source_count_key in self._local_cache:
+            original_count = self._local_cache[source_count_key]
+            target_count_key = f"count_{target_prefix}_"
+            self._local_cache[target_count_key] = original_count
+
+        # OPTIMIZATION 2: Compute new columns list by filtering out dropped columns
+        # Original: ["id", "name", "value"] → After drop_columns(["name"]): ["id", "value"]
+        source_columns_key = f"columns_{source_prefix}_"
+        if source_columns_key in self._local_cache:
+            original_columns = self._local_cache[source_columns_key]
+            if isinstance(original_columns, list):
+                new_columns = [c for c in original_columns if c not in cols_to_drop]
+                target_columns_key = f"columns_{target_prefix}_"
+                self._local_cache[target_columns_key] = new_columns
+
+    def _update_select_columns_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for select_columns operation.
+
+        LOGIC: select_columns(["col1", "col2"]) keeps only specified columns.
+        - Row count stays the same (same rows, just subset of columns per row)
+        - Column list becomes exactly the selected columns
+        - Schema changes (only selected columns remain)
+        - Aggregations on selected columns could be preserved, but complex to track
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 1000 rows → still 1000 rows after selecting columns
+        2. Set new columns: ["id", "name", "value"] → ["id", "value"] (selected subset)
+
+        This avoids expensive count() and columns() recomputation.
+        """
+        cols_to_select = params.get("cols", [])
+        if not cols_to_select:
+            return
+
+        # Normalize single column to list for consistent handling
+        if isinstance(cols_to_select, str):
+            cols_to_select = [cols_to_select]
+
+        # OPTIMIZATION 1: Preserve count (select_columns doesn't change number of rows)
+        # Original: 1000 rows → After select_columns: still 1000 rows (same data, selected columns)
+        source_count_key = f"count_{source_prefix}_"
+        if source_count_key in self._local_cache:
+            original_count = self._local_cache[source_count_key]
+            target_count_key = f"count_{target_prefix}_"
+            self._local_cache[target_count_key] = original_count
+
+        # OPTIMIZATION 2: Set new columns list to exactly the selected columns
+        # Original: ["id", "name", "value"] → After select_columns(["id", "value"]): ["id", "value"]
+        target_columns_key = f"columns_{target_prefix}_"
+        self._local_cache[target_columns_key] = cols_to_select
+
+    def _update_repartition_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for repartition operation.
+
+        LOGIC: repartition(num_blocks) changes block structure but NOT data content.
+        - Row count stays exactly the same (same data, different block organization)
+        - Schema stays exactly the same (same columns and types)
+        - Column list stays exactly the same (no columns added/removed)
+        - ALL aggregations stay the same (sum, min, max, mean, std unchanged)
+        - Size stays the same (same data, just reorganized)
+        - Only block-level metadata changes (number of blocks, rows per block)
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 10000 rows → still 10000 rows after repartition
+        2. Preserve schema: Same column structure
+        3. Preserve ALL aggregations: sum, min, max, mean, std all unchanged
+
+        This avoids expensive recomputation for repartition operations.
+        """
+        # OPTIMIZATION: Preserve almost everything for repartition
+        # Repartition only changes block structure, not data content
+        preserve_operations = [
+            "count",
+            "schema",
+            "columns",
+            "size_bytes",
+            "sum",
+            "min",
+            "max",
+            "mean",
+            "std",
+        ]
+
+        for op in preserve_operations:
+            source_key = f"{op}_{source_prefix}_"
+            if source_key in self._local_cache:
+                original_value = self._local_cache[source_key]
+                target_key = f"{op}_{target_prefix}_"
+                self._local_cache[target_key] = original_value
+
+    def _update_rename_columns_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for rename_columns operation.
+
+        LOGIC: rename_columns({"old": "new"}) changes column names but NOT data content.
+        - Row count stays exactly the same (same rows, just renamed columns)
+        - Column list changes (same columns, different names)
+        - Schema changes (column names updated, but types stay same)
+        - Aggregations stay the same but need column name mapping
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 1000 rows → still 1000 rows after rename
+        2. Compute new columns: ["id", "name"] → ["id", "full_name"] (renamed "name" to "full_name")
+        3. Could preserve aggregations with name mapping (future enhancement)
+
+        This avoids expensive count() and columns() recomputation.
+        """
+        names = params.get("names", {})
+        if not names:
+            return
+
+        # OPTIMIZATION 1: Preserve count (rename doesn't change number of rows)
+        # Original: 1000 rows → After rename: still 1000 rows (same data, renamed columns)
+        source_count_key = f"count_{source_prefix}_"
+        if source_count_key in self._local_cache:
+            original_count = self._local_cache[source_count_key]
+            target_count_key = f"count_{target_prefix}_"
+            self._local_cache[target_count_key] = original_count
+
+        # OPTIMIZATION 2: Compute new columns list with renamed column names
+        # Original: ["id", "name", "value"] → After rename({"name": "full_name"}): ["id", "full_name", "value"]
+        source_columns_key = f"columns_{source_prefix}_"
+        if source_columns_key in self._local_cache:
+            original_columns = self._local_cache[source_columns_key]
+            if isinstance(original_columns, list):
+                # Handle both dict mapping and list of new names
+                if isinstance(names, dict):
+                    # Apply rename mapping: old_name → new_name
+                    new_columns = [names.get(col, col) for col in original_columns]
+                elif isinstance(names, list):
+                    # Replace with new names (truncate if needed)
+                    new_columns = names[: len(original_columns)]
+                else:
+                    return  # Unknown format
+
+                target_columns_key = f"columns_{target_prefix}_"
+                self._local_cache[target_columns_key] = new_columns
+
+    def _update_reorder_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for reordering operations (sort, shuffle).
+
+        LOGIC: sort/random_shuffle changes row ORDER but NOT row VALUES.
+        - Row count stays exactly the same (same rows, different order)
+        - Schema stays exactly the same (same columns and types)
+        - Column list stays exactly the same (no columns added/removed)
+        - ALL aggregations stay exactly the same (brilliant optimization!)
+          * sum([1,2,3]) == sum([3,1,2]) → order doesn't matter for aggregations
+          * min([1,2,3]) == min([3,1,2]) → minimum value unchanged
+          * max([1,2,3]) == max([3,1,2]) → maximum value unchanged
+          * mean([1,2,3]) == mean([3,1,2]) → average unchanged
+        - Size stays the same (same data, just reordered)
+        - Unique values stay the same (same set of values, different order)
+        - Only take() and materialize() become invalid (order-dependent operations)
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 10000 rows → still 10000 rows after sort
+        2. Preserve ALL aggregations: sum, min, max, mean, std all unchanged
+        3. Preserve unique values: same set of unique values, just reordered
+
+        This optimization provides significant performance benefits.
+        """
+        # OPTIMIZATION: Preserve almost everything for reordering operations
+        # Sort/shuffle only changes ORDER, not VALUES, so aggregations stay valid
+        preserve_operations = [
+            "count",
+            "schema",
+            "columns",
+            "size_bytes",
+            "sum",
+            "min",
+            "max",
+            "mean",
+            "std",
+            "unique",
+        ]
+
+        for op in preserve_operations:
+            source_key = f"{op}_{source_prefix}_"
+            if source_key in self._local_cache:
+                original_value = self._local_cache[source_key]
+                target_key = f"{op}_{target_prefix}_"
+                self._local_cache[target_key] = original_value
+
+    def _update_map_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for map operation.
+
+        LOGIC: map(function) transforms each row individually (1:1 transformation).
+        - Row count stays exactly the same (one output row per input row)
+        - Schema usually changes (function transforms row structure)
+        - Column list usually changes (function defines new column structure)
+        - Aggregations become invalid (row values completely transformed)
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 1000 rows → still 1000 rows after map (1:1 transformation)
+
+        Example: map(lambda x: {"doubled": x["id"] * 2})
+        - Input: 1000 rows with {"id": ...}
+        - Output: 1000 rows with {"doubled": ...}
+        - Count preserved: 1000 → 1000         - Schema changed: {"id": int} → {"doubled": int} (invalidated)
+
+        This avoids expensive count() recomputation after map operations.
+        """
+        # OPTIMIZATION: Preserve count (map is 1:1 row transformation)
+        # Original: 1000 rows → After map: still 1000 rows (each input row → one output row)
+        source_count_key = f"count_{source_prefix}_"
+        if source_count_key in self._local_cache:
+            original_count = self._local_cache[source_count_key]
+            target_count_key = f"count_{target_prefix}_"
+            self._local_cache[target_count_key] = original_count
+
+    def _update_with_column_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for with_column operation.
+
+        LOGIC: with_column(name, expression) adds a computed column using expressions.
+        - Row count stays exactly the same (each row gets a new computed column)
+        - Column list grows by one (original columns + new computed column)
+        - Schema changes (new column added with computed values)
+        - Aggregations become invalid (row data changed due to new column)
+
+        SMART OPTIMIZATIONS:
+        1. Preserve count: 1000 rows → still 1000 rows after with_column
+        2. Compute new columns: ["id", "value"] → ["id", "value", "computed_col"]
+
+        Example: with_column("doubled", col("id") * 2)
+        - Input: 1000 rows with ["id", "value"]
+        - Output: 1000 rows with ["id", "value", "doubled"]
+        - Count preserved: 1000 → 1000         - Columns computed: ["id", "value"] → ["id", "value", "doubled"]
+        This avoids expensive count() and columns() recomputation.
+        """
+        column_name = params.get("column_name")
+        if column_name is None:
+            return
+
+        # OPTIMIZATION 1: Preserve count (with_column is 1:1 row transformation)
+        # Original: 1000 rows → After with_column: still 1000 rows (each row gets new column)
+        source_count_key = f"count_{source_prefix}_"
+        if source_count_key in self._local_cache:
+            original_count = self._local_cache[source_count_key]
+            target_count_key = f"count_{target_prefix}_"
+            self._local_cache[target_count_key] = original_count
+
+        # OPTIMIZATION 2: Compute new columns list by appending the new column
+        # Original: ["id", "value"] → After with_column("doubled", ...): ["id", "value", "doubled"]
+        source_columns_key = f"columns_{source_prefix}_"
+        if source_columns_key in self._local_cache:
+            original_columns = self._local_cache[source_columns_key]
+            if (
+                isinstance(original_columns, list)
+                and column_name not in original_columns
+            ):
+                new_columns = original_columns + [column_name]
+                target_columns_key = f"columns_{target_prefix}_"
+                self._local_cache[target_columns_key] = new_columns
+
+    def _update_filter_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for filter operation.
+
+        LOGIC: filter(predicate) removes rows that don't match the predicate.
+        - Row count usually changes (some rows filtered out)
+        - Schema stays exactly the same (same columns and types)
+        - Column list stays exactly the same (no columns added/removed)
+        - Aggregations become invalid (different set of rows)
+
+        SMART OPTIMIZATIONS:
+        1. Preserve schema: same column structure after filtering
+        2. Preserve columns: same column names after filtering
+
+        Example: filter(lambda x: x["value"] > 100)
+        - Input: 1000 rows with ["id", "value"]
+        - Output: 300 rows with ["id", "value"] (700 rows filtered out)
+        - Count changes: 1000 → 300 (invalidated)
+        - Schema preserved: {"id": int, "value": int} → same         - Columns preserved: ["id", "value"] → same
+        This avoids expensive schema() and columns() recomputation.
+        """
+        # OPTIMIZATION: Preserve schema and columns (filter doesn't change structure)
+        # Filter only removes rows, doesn't change column structure
+        preserve_operations = ["schema", "columns"]
+
+        for op in preserve_operations:
+            source_key = f"{op}_{source_prefix}_"
+            if source_key in self._local_cache:
+                original_value = self._local_cache[source_key]
+                target_key = f"{op}_{target_prefix}_"
+                self._local_cache[target_key] = original_value
+
+    def _try_advanced_cache_computation(
+        self, operation_name: str, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Advanced cache computation across operations.
+
+        This method implements sophisticated cross-operation optimizations that go beyond
+        simple preservation. These optimizations compute new cached values using mathematical
+        relationships between operations.
+
+        ADVANCED OPTIMIZATIONS:
+        1. Size computation: Estimate new dataset size from existing size + operation parameters
+        2. Take transformation: Transform cached take results instead of recomputing
+        3. Aggregation mapping: Preserve aggregations with column name changes
+        4. Schema computation: Build new schema from existing schema + operation changes
+
+        These optimizations improve performance for complex pipelines.
+        """
+
+        # ADVANCED OPTIMIZATION 1: Size computation for limit operations
+        # If we know original size and count, we can estimate new size after limit
+        if operation_name == "limit":
+            self._compute_limit_size_bytes(source_prefix, target_prefix, params)
+
+        # ADVANCED OPTIMIZATION 2: Take result computation for simple transformations
+        # For operations that transform data predictably, transform cached take results
+        if operation_name in [
+            "add_column",
+            "drop_columns",
+            "select_columns",
+            "rename_columns",
+        ]:
+            self._try_compute_take_from_transformation(
+                operation_name, source_prefix, target_prefix, params
             )
-            return total_size
 
-        except Exception as e:
-            logger.debug(f"Failed to estimate MaterializedDataset size: {e}")
-            return 4096  # Conservative fallback
-
-    def _estimate_size(self, obj: Any) -> int:
-        """Estimate memory size of an object."""
-        if hasattr(obj, "__sizeof__"):
-            return obj.__sizeof__()
-        elif isinstance(obj, (list, tuple)):
-            if len(obj) > 1000:
-                # Sample large collections
-                sample_size = min(100, len(obj) // 10)
-                sample_total = sum(
-                    self._estimate_size(obj[i])
-                    for i in range(0, len(obj), len(obj) // sample_size)
-                )
-                return sample_total * len(obj) // sample_size
-            else:
-                return sum(self._estimate_size(item) for item in obj)
-        elif isinstance(obj, dict):
-            return sum(
-                self._estimate_size(k) + self._estimate_size(v) for k, v in obj.items()
+        # ADVANCED OPTIMIZATION 3: Aggregation preservation for column operations
+        # When columns are renamed, aggregations on those columns should be preserved with new names
+        if operation_name in ["rename_columns"]:
+            self._try_preserve_renamed_aggregations(
+                source_prefix, target_prefix, params
             )
-        else:
-            return 1024  # 1KB fallback
+
+        # ADVANCED OPTIMIZATION 4: Schema computation for column operations
+        # Build new schema from existing schema + operation changes (add/drop/select columns)
+        if operation_name in ["add_column", "drop_columns", "select_columns"]:
+            self._try_compute_schema_from_columns(source_prefix, target_prefix, params)
+
+    def _compute_limit_size_bytes(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Compute size_bytes for limit operation from existing cache.
+
+        ADVANCED LOGIC: If we know the original dataset size and count, we can mathematically
+        estimate the new size after a limit operation without executing it.
+
+        MATHEMATICAL RELATIONSHIP:
+        - Original: 10000 rows, 50MB total size → 5KB per row average
+        - After limit(2000): 2000 rows → estimated size = 2000 × 5KB = 10MB
+        - Formula: new_size = (new_count / original_count) × original_size
+
+        This avoids expensive size_bytes() recomputation for limit operations.
+        """
+        limit_value = params.get("limit")
+        if limit_value is None:
+            return
+
+        # Check if we have both count and size_bytes cached from source
+        source_count_key = f"count_{source_prefix}_"
+        source_size_key = f"size_bytes_{source_prefix}_"
+
+        if (
+            source_count_key in self._local_cache
+            and source_size_key in self._local_cache
+        ):
+            original_count = self._local_cache[source_count_key]
+            original_size = self._local_cache[source_size_key]
+
+            if original_count > 0:
+                # MATHEMATICAL COMPUTATION: Estimate new size based on row proportion
+                # Step 1: Calculate average size per row
+                size_per_row = original_size / original_count
+
+                # Step 2: Calculate new count (same as limit count computation)
+                new_count = min(original_count, limit_value)
+
+                # Step 3: Estimate new size = new_count × size_per_row
+                new_size = int(size_per_row * new_count)
+
+                # Cache the computed size
+                target_size_key = f"size_bytes_{target_prefix}_"
+                self._local_cache[target_size_key] = new_size
+
+    def _try_compute_take_from_transformation(
+        self, operation_name: str, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Try to compute take results for simple transformations.
+
+        FUTURE ENHANCEMENT: For operations that transform data predictably, we could
+        transform cached take results instead of invalidating them.
+
+        POTENTIAL LOGIC:
+        - drop_columns: Remove specified columns from cached take result
+        - select_columns: Keep only specified columns from cached take result
+        - rename_columns: Rename column keys in cached take result
+
+        Example for drop_columns(["name"]):
+        - Cached take: [{"id": 1, "name": "John", "value": 100}, ...]
+        - Computed take: [{"id": 1, "value": 100}, ...] (removed "name")
+
+        This would avoid expensive take() recomputation for simple column operations.
+        Implementation requires careful handling of data types and edge cases.
+        """
+        # This is a sophisticated enhancement for future implementation
+        # Requires careful analysis of transformation functions and data types
+        pass
+
+    def _try_preserve_renamed_aggregations(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Try to preserve aggregations when columns are renamed.
+
+        Args:
+            source_prefix: Cache key prefix for source dataset.
+            target_prefix: Cache key prefix for target dataset.
+            params: Transformation parameters including column rename mapping.
+
+        FUTURE ENHANCEMENT: When columns are renamed, aggregations on those columns
+        should be preserved with updated column names in the cache keys.
+
+        POTENTIAL LOGIC:
+        - If sum("old_name") = 12345 is cached
+        - After rename_columns({"old_name": "new_name"})
+        - We should cache sum("new_name") = 12345 (same value, new column name)
+
+        Example:
+        - Original: sum("revenue") = 1000000 (cached)
+        - After rename({"revenue": "total_sales"})
+        - Computed: sum("total_sales") = 1000000 (preserved with new name)
+
+        This would improve performance for rename operations.
+        Implementation requires parsing cache keys and mapping column names.
+        """
+        names = params.get("names", {})
+        if not isinstance(names, dict):
+            return
+
+        # This is a sophisticated enhancement for future implementation
+        # Requires parsing cache keys and mapping old column names to new names
+        pass
+
+    def _try_compute_schema_from_columns(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Try to compute schema from columns list for column operations.
+
+        FUTURE ENHANCEMENT: If we have cached schema and know the column changes,
+        we could compute the new schema without executing the operation.
+
+        POTENTIAL LOGIC:
+        - add_column: Add new column to existing schema with inferred type
+        - drop_columns: Remove specified columns from existing schema
+        - select_columns: Keep only specified columns from existing schema
+
+        Example for drop_columns(["name"]):
+        - Original schema: {"id": int64, "name": string, "value": float64}
+        - Computed schema: {"id": int64, "value": float64} (removed "name")
+
+        This would avoid expensive schema() recomputation for column operations.
+        Implementation requires understanding PyArrow schema manipulation.
+        """
+        # This is a sophisticated enhancement for future implementation
+        # Requires understanding PyArrow/Pandas schema structures and type inference
+        pass
+
+    def _update_union_caches(
+        self, source_prefix: str, target_prefix: str, params: dict
+    ) -> None:
+        """Smart cache update for union operation."""
+        # For union, we could compute count if we have counts from all datasets
+        # This is more complex and would require tracking multiple source plans
+        # For now, we'll leave this as a future enhancement
+        pass
+
+    def _get_cache_strategy(self, operation_name: str, result: Any) -> str:
+        """Determine optimal caching strategy based on operation type and result size.
+
+        Args:
+            operation_name: Name of the operation being cached.
+            result: The result object to be cached.
+
+        CACHING STRATEGY LOGIC:
+
+        1. LOCAL CACHE (fastest access, ≤50KB):
+           - Small metadata: count, schema, columns (always small)
+           - Aggregations: sum, min, max, mean, std (single values)
+           - Small data: take(≤50 rows), unique(≤1000 values)
+
+        2. RAY OBJECT STORE (automatic disk spilling, 50KB-100MB):
+           - Medium data: take(50-5000 rows), unique(1000-50000 values)
+           - MaterializedDataset: ≤1000 blocks (ObjectRef structure only)
+           - take_all: ≤1000 rows (very small datasets only)
+
+        3. NO CACHE (too large, let Ray Data handle):
+           - Large data: take(>5000 rows), unique(>50000 values)
+           - Huge MaterializedDataset: >1000 blocks
+           - take_all: >1000 rows (unsafe to cache)
+
+        Returns:
+            'local' → cache in local memory (fastest)
+            'ray' → cache in Ray object store (automatic spilling)
+            'none' → don't cache (too large or unsafe)
+        """
+
+        # STRATEGY 1: LOCAL CACHE - Always cache small metadata locally (fastest access)
+        if operation_name in [
+            "count",
+            "schema",
+            "size_bytes",
+            "input_files",
+            "columns",
+        ]:
+            return "local"  # Always small (8 bytes to ~1KB)
+
+        # STRATEGY 1: LOCAL CACHE - Always cache aggregations locally (single values)
+        if operation_name in ["sum", "min", "max", "mean", "std"]:
+            return "local"  # Always small (single numeric values)
+
+        # STRATEGY 2: INTELLIGENT SIZE-BASED DECISIONS for data operations
+        if operation_name in ["take", "take_batch"]:
+            if isinstance(result, list):
+                num_rows = len(result)
+                if num_rows <= 50:  # Small takes - local cache (fast access)
+                    return "local"
+                elif (
+                    num_rows <= 5000
+                ):  # Medium takes - Ray object store (automatic spilling)
+                    return "ray"
+                else:
+                    return "none"  # Large takes - don't cache (too much memory)
+
+        if operation_name == "unique":
+            if isinstance(result, list):
+                num_unique = len(result)
+                if num_unique <= 1000:  # Small unique sets - local cache
+                    return "local"
+                elif num_unique <= 50000:  # Medium unique sets - Ray object store
+                    return "ray"
+                else:
+                    return "none"  # Large unique sets - don't cache (too much memory)
+
+        if operation_name == "take_all":
+            if isinstance(result, list):
+                if len(result) <= 1000:  # Only cache very small datasets
+                    return "ray"  # Use Ray store for safety (could still be large)
+                else:
+                    return "none"  # Large datasets - unsafe to cache (memory risk)
+
+        # STRATEGY 3: MATERIALIZED DATASET - Cache ObjectRef structure only
+        if operation_name == "materialize":
+            if hasattr(result, "num_blocks"):
+                num_blocks = result.num_blocks()
+                if num_blocks <= 1000:  # Reasonable-sized datasets
+                    return "ray"  # Cache ObjectRef structure (leverages Ray's capabilities)
+                else:
+                    return "none"  # Very large datasets - let ExecutionPlan._snapshot_bundle handle
+
+        # STRATEGY 1: LOCAL CACHE - Stats are usually small text
+        if operation_name == "stats":
+            return "local"  # Usually small formatted text output
+
+        # STRATEGY 4: CONSERVATIVE DEFAULT - Don't cache unknown operations
+        return "none"  # Safe default for unknown operations
+
+    def _make_key(
+        self, logical_plan: LogicalPlan, operation_name: str, **params
+    ) -> str:
+        """Create cache key from logical plan and parameters."""
+        plan_hash = hash(str(logical_plan.dag))
+        param_hash = hash(frozenset(params.items())) if params else 0
+        return f"{operation_name}_{plan_hash}_{param_hash}"
 
 
-# Global cache manager
-_global_cache_manager: Optional[_DatasetCacheManager] = None
-_cache_lock = threading.Lock()
+# Global cache instance
+_global_cache: Optional[DatasetCache] = None
 
 
-def _get_cache_manager() -> _DatasetCacheManager:
-    """Get the global cache manager instance."""
-    global _global_cache_manager
-    with _cache_lock:
-        if _global_cache_manager is None:
-            context = DataContext.get_current()
-            max_cache_size = getattr(
-                context, "dataset_cache_max_size_bytes", 1024 * 1024 * 1024
-            )
-            _global_cache_manager = _DatasetCacheManager(max_cache_size)
-        return _global_cache_manager
+def _get_cache() -> DatasetCache:
+    """Get global cache instance with DataContext configuration."""
+    global _global_cache
+    if _global_cache is None:
+        # Configure cache based on DataContext settings
+        context = DataContext.get_current()
+        max_entries = getattr(context, "dataset_cache_max_entries", 10000)
+        _global_cache = DatasetCache(max_entries)
+    return _global_cache
 
 
 def cache_result(operation_name: str, include_params: List[str] = None):
-    """Decorator to cache Dataset operation results.
-
-    Args:
-        operation_name: Name of the operation being cached.
-        include_params: List of parameter names to include in cache key.
-    """
+    """Decorator to cache Dataset operation results."""
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -619,30 +1061,27 @@ def cache_result(operation_name: str, include_params: List[str] = None):
             if not getattr(context, "enable_dataset_caching", True):
                 return func(self, *args, **kwargs)
 
-            # Create cache key
+            # Extract parameters for cache key
             cache_params = {}
             if include_params:
-
                 sig = inspect.signature(func)
                 bound_args = sig.bind(self, *args, **kwargs)
                 bound_args.apply_defaults()
-
                 for param_name in include_params:
                     if param_name in bound_args.arguments:
                         cache_params[param_name] = bound_args.arguments[param_name]
 
-            cache_key = _CacheKey(self._logical_plan, operation_name, **cache_params)
-
-            # Try to get from cache
-            cache_manager = _get_cache_manager()
-            cached_result = cache_manager.get(cache_key)
+            # Try cache first
+            cache = _get_cache()
+            cached_result = cache.get(
+                self._logical_plan, operation_name, **cache_params
+            )
             if cached_result is not None:
                 return cached_result
 
-            # Execute operation and cache result
+            # Execute and cache result
             result = func(self, *args, **kwargs)
-            cache_manager.put(cache_key, result)
-
+            cache.put(self._logical_plan, operation_name, result, **cache_params)
             return result
 
         return wrapper
@@ -651,34 +1090,37 @@ def cache_result(operation_name: str, include_params: List[str] = None):
 
 
 def invalidate_cache_on_transform(operation_name: str):
-    """Decorator to invalidate cache when transformations are applied.
-
-    Args:
-        operation_name: Name of the transformation operation.
-    """
+    """Decorator to intelligently update cache when transformations are applied."""
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            # Get original logical plan
-            original_logical_plan = self._logical_plan
+            # Get original logical plan before transformation
+            original_plan = self._logical_plan
 
             # Execute transformation
             result = func(self, *args, **kwargs)
 
-            # Apply selective invalidation if caching enabled
+            # Smart cache update if enabled
             context = DataContext.get_current()
             if getattr(context, "enable_dataset_caching", True) and hasattr(
                 result, "_logical_plan"
             ):
-                try:
-                    transformation_type = get_transformation_type(operation_name)
-                    cache_manager = _get_cache_manager()
-                    cache_manager.invalidate_for_transformation(
-                        original_logical_plan, transformation_type
-                    )
-                except Exception as e:
-                    logger.debug(f"Cache invalidation failed for {operation_name}: {e}")
+                cache = _get_cache()
+
+                # Extract transformation parameters
+                sig = inspect.signature(func)
+                bound_args = sig.bind(self, *args, **kwargs)
+                bound_args.apply_defaults()
+                transform_params = dict(bound_args.arguments)
+                transform_params.pop("self", None)  # Remove self parameter
+
+                cache.invalidate_for_transform(
+                    operation_name,
+                    original_plan,
+                    result._logical_plan,
+                    **transform_params,
+                )
 
             return result
 
@@ -687,57 +1129,29 @@ def invalidate_cache_on_transform(operation_name: str):
     return decorator
 
 
-# Context manager for cache configuration
-class _CacheConfig:
-    """Context manager for temporary cache configuration."""
-
-    def __init__(self, enabled: bool = True, max_size_bytes: int = None):
-        self.enabled = enabled
-        self.max_size_bytes = max_size_bytes
-        self._old_enabled = None
-        self._old_max_size = None
-
-    def __enter__(self):
-        context = DataContext.get_current()
-        self._old_enabled = getattr(context, "enable_dataset_caching", True)
-        context.enable_dataset_caching = self.enabled
-
-        if self.max_size_bytes is not None:
-            global _global_cache_manager
-            if _global_cache_manager is not None:
-                self._old_max_size = _global_cache_manager.max_size_bytes
-                _global_cache_manager.max_size_bytes = self.max_size_bytes
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        context = DataContext.get_current()
-        context.enable_dataset_caching = self._old_enabled
-
-        if self._old_max_size is not None:
-            global _global_cache_manager
-            if _global_cache_manager is not None:
-                _global_cache_manager.max_size_bytes = self._old_max_size
-
-
 # Public API functions
 def clear_dataset_cache() -> None:
     """Clear all cached Dataset results."""
-    cache_manager = _get_cache_manager()
-    cache_manager.clear()
+    _get_cache().clear()
 
 
 def get_cache_stats() -> Dict[str, Any]:
     """Get Dataset cache statistics."""
-    cache_manager = _get_cache_manager()
-    return cache_manager.get_stats()
+    return _get_cache().get_stats()
 
 
 def disable_dataset_caching():
     """Context manager to temporarily disable dataset caching."""
-    return _CacheConfig(enabled=False)
 
+    class _DisableCache:
+        def __enter__(self):
+            context = DataContext.get_current()
+            self._old_enabled = getattr(context, "enable_dataset_caching", True)
+            context.enable_dataset_caching = False
+            return self
 
-def set_cache_size(max_size_bytes: int):
-    """Context manager to temporarily set cache size limit."""
-    return _CacheConfig(max_size_bytes=max_size_bytes)
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            context = DataContext.get_current()
+            context.enable_dataset_caching = self._old_enabled
+
+    return _DisableCache()

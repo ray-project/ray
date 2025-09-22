@@ -63,6 +63,18 @@ from ray.data._internal.cache.dataset_cache import (
     cache_result,
     invalidate_cache_on_transform,
 )
+from ray.data._internal.operation_decorators import (
+    transform,
+    shuffle,
+    combine,
+    consume,
+    inspect,
+    filter_op,
+    limit_op,
+    row_and_schema_change,
+    expression,
+    aggregate,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -276,7 +288,7 @@ class Dataset:
             return _as(ds._plan.copy(), ds._logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
-    @invalidate_cache_on_transform("map")
+    @transform()
     def map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
@@ -457,6 +469,7 @@ class Dataset:
         return self._plan.get_dataset_id()
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @row_and_schema_change()
     def map_batches(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
@@ -788,6 +801,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    @expression()
     def with_column(
         self,
         column_name: str,
@@ -859,7 +873,7 @@ class Dataset:
             logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
-    @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def add_column(
         self,
         col: str,
@@ -975,7 +989,7 @@ class Dataset:
             **ray_remote_args,
         )
 
-    @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def drop_columns(
         self,
         cols: List[str],
@@ -1033,7 +1047,7 @@ class Dataset:
             **ray_remote_args,
         )
 
-    @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def select_columns(
         self,
         cols: Union[str, List[str]],
@@ -1117,7 +1131,7 @@ class Dataset:
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
 
-    @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def rename_columns(
         self,
         names: Union[List[str], Dict[str, str]],
@@ -1243,7 +1257,7 @@ class Dataset:
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
 
-    @PublicAPI(api_group=BT_API_GROUP)
+    @row_and_schema_change()
     def flat_map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
@@ -1389,7 +1403,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
-    @invalidate_cache_on_transform("filter")
+    @filter_op()
     def filter(
         self,
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
@@ -1528,7 +1542,7 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @PublicAPI(api_group=SSR_API_GROUP)
+    @limit_op("repartition")
     def repartition(
         self,
         num_blocks: Optional[int] = None,
@@ -1654,8 +1668,7 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @AllToAllAPI
-    @PublicAPI(api_group=SSR_API_GROUP)
+    @shuffle()
     def random_shuffle(
         self,
         *,
@@ -2447,7 +2460,7 @@ class Dataset:
             )
         return ds_length
 
-    @PublicAPI(api_group=SMJ_API_GROUP)
+    @combine()
     def union(self, *other: List["Dataset"]) -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
@@ -2493,8 +2506,7 @@ class Dataset:
             logical_plan,
         )
 
-    @AllToAllAPI
-    @PublicAPI(api_group=SMJ_API_GROUP)
+    @combine()
     def join(
         self,
         ds: "Dataset",
@@ -2669,8 +2681,7 @@ class Dataset:
 
         return Dataset(plan, LogicalPlan(op, self.context))
 
-    @AllToAllAPI
-    @PublicAPI(api_group=GGA_API_GROUP)
+    @aggregate()
     def groupby(
         self,
         key: Union[str, List[str], None],
@@ -3056,8 +3067,8 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
+    @shuffle()
     def sort(
         self,
         key: Union[str, List[str]],
@@ -3164,8 +3175,7 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @PublicAPI(api_group=BT_API_GROUP)
-    @invalidate_cache_on_transform("limit")
+    @limit_op()
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
 
@@ -3192,9 +3202,8 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
-    @cache_result("take_batch", include_params=["batch_size", "batch_format"])
+    @consume(["batch_size", "batch_format"])
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
@@ -3253,9 +3262,8 @@ class Dataset:
         self._plan._snapshot_stats = limited_ds._plan.stats()
         return res
 
-    @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
-    @cache_result("take", include_params=["limit"])
+    @consume(["limit"])
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` rows from the :class:`Dataset`.
 
@@ -3305,9 +3313,7 @@ class Dataset:
         self._plan._snapshot_stats = limited_ds._plan.stats()
         return output
 
-    @ConsumptionAPI
-    @PublicAPI(api_group=CD_API_GROUP)
-    @cache_result("take_all", include_params=["limit"])
+    @consume(["limit"])
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the rows in this :class:`Dataset`.
 
@@ -3383,7 +3389,7 @@ class Dataset:
         pattern="Examples:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
-    @cache_result("count")
+    @inspect()
     def count(self) -> int:
         """Count the number of rows in the dataset.
 

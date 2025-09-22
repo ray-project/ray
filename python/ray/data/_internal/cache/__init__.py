@@ -33,11 +33,10 @@ Usage:
 
 from ray.data._internal.cache.dataset_cache import (
     cache_result,
-    invalidate_cache_on_transform,
     clear_dataset_cache,
-    get_cache_stats,
     disable_dataset_caching,
-    set_cache_size,
+    get_cache_stats,
+    invalidate_cache_on_transform,
 )
 
 __all__ = [
@@ -46,5 +45,4 @@ __all__ = [
     "clear_dataset_cache",
     "get_cache_stats",
     "disable_dataset_caching",
-    "set_cache_size",
 ]
