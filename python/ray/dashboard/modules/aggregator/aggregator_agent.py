@@ -210,7 +210,9 @@ class AggregatorAgent(
         )
 
         self._executor.shutdown()
-        self._async_gcs_channel.close()
+
+        if self._async_gcs_channel:
+            self._async_gcs_channel.close()
 
     @staticmethod
     def is_minimal_module() -> bool:
