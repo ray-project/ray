@@ -27,7 +27,7 @@ elif GPT_OSS_SIZE == "120b":
             model_id="my-gpt-oss",
             model_source="openai/gpt-oss-120b",
         ),
-        accelerator_type="L40S",
+        accelerator_type="L40S", # Or "A100-40G"
         deployment_config=dict(
             autoscaling_config=dict(
                 min_replicas=1,

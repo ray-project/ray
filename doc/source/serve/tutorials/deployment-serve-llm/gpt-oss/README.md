@@ -68,7 +68,7 @@ llm_config = LLMConfig(
         model_id="my-gpt-oss",
         model_source="openai/gpt-oss-120b",
     ),
-    accelerator_type="L40S",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
@@ -198,7 +198,7 @@ Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which come pre-load
 
 Build a minimal Dockerfile:
 ```Dockerfile
-FROM anyscale/ray:2.49.1-slim-py312-cu128
+FROM anyscale/ray:2.49.0-slim-py312-cu128
 
 # C compiler for Triton’s runtime build step (vLLM V1 engine)
 # https://github.com/vllm-project/vllm/issues/2997
@@ -304,19 +304,21 @@ INFO 09-09 00:32:32 [kv_cache_utils.py:1017] Maximum concurrency for 32,768 toke
 
 To improve concurrency for gpt-oss models, see [Deploy a small-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html#improve-concurrency) for small-sized models such as `gpt-oss-20b`, and [Deploy a medium-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#improve-concurrency) for medium-sized models such as `gpt-oss-120b`.
 
+**Note:** Some example guides recommend using quantization to boost concurrency. `gpt-oss` weights are already 4-bit by default, so further quantization typically isn’t applicable.  
+
+For broader guidance, also see [Choose a GPU for LLM serving](https://docs.anyscale.com/llm/serving/gpu-guidance) and [Optimize performance for Ray Serve LLM](https://docs.anyscale.com/llm/serving/performance-optimization).
+
 ---
 
 ## Reasoning configuration
 
-You can control how `gpt-oss` handles reasoning in its responses. This includes accessing reasoning outputs and adjusting the reasoning effort.
-
-For more details on deploying reasoning models with Ray Serve LLM, see [Deploy a reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/reasoning-llm/README.html).
+You don’t need a custom reasoning parser when deploying `gpt-oss` with Ray Serve LLM, you can access the reasoning content in the model's response directly. You can also control the reasoning effort of the model in the request.
 
 ---
 
 ### Access reasoning output
 
-You don’t need to set a reasoning parser when deploying `gpt-oss` with Ray Serve LLM. The reasoning content is available directly in the `reasoning_content` field of the response:
+The reasoning content is available directly in the `reasoning_content` field of the response:
 
 ```python
 response = client.chat.completions.create(
@@ -335,8 +337,18 @@ content = response.choices[0].message.content
 
 `gpt-oss` supports [three reasoning levels](https://huggingface.co/openai/gpt-oss-20b#reasoning-levels): **low**, **medium**, and **high**. The default level is **medium**.
 
-You can set a level explicitly in the system prompt:
+You can control reasoning with the `reasoning_effort` request parameter:  
+```python
+response = client.chat.completions.create(
+    model="my-gpt-oss",
+    messages=[
+        {"role": "user", "content": "What are the three main touristic spots to see in Paris?"}
+    ],
+    reasoning_effort="low" # Or "medium", "high"
+)
+```
 
+You can also set a level explicitly in the system prompt:  
 ```python
 response = client.chat.completions.create(
     model="my-gpt-oss",
@@ -344,18 +356,6 @@ response = client.chat.completions.create(
         {"role": "system", "content": "Reasoning: low. You are an AI travel assistant."},
         {"role": "user", "content": "What are the three main touristic spots to see in Paris?"}
     ]
-)
-```
-
-You can also control reasoning with the `reasoning_effort` request parameter:
-
-```python
-response = client.chat.completions.create(
-    model="my-gpt-oss",
-    messages=[
-        {"role": "user", "content": "What are the three main touristic spots to see in Paris?"}
-    ],
-    reasoning_effort="low"
 )
 ```
 
@@ -370,8 +370,11 @@ response = client.chat.completions.create(
 openai_harmony.HarmonyError: error downloading or loading vocab file: failed to download or load vocab
 ```
 
-This is a known bug in the `openai_harmony` library.  
-Download the *tiktoken* encoding files in advance and set the `TIKTOKEN_ENCODINGS_BASE` environment variable:
+The `openai_harmony` library needs the *tiktoken* encoding files and tries to fetch them from OpenAI's public host. Common cause includes:
+- Corporate firewall or proxy blocks `openaipublic.blob.core.windows.net`; you may need to allowlist this domain.
+- Race conditions when multiple processes try to download to the same cache. This can happen when [deploying multiple models at the same time](https://github.com/openai/harmony/pull/41).
+
+You can also directly download the *tiktoken* encoding files in advance and set the `TIKTOKEN_ENCODINGS_BASE` environment variable:
 ```bash
 mkdir -p tiktoken_encodings
 wget -O tiktoken_encodings/o200k_base.tiktoken "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
@@ -383,7 +386,7 @@ export TIKTOKEN_ENCODINGS_BASE=${PWD}/tiktoken_encodings
 ```console
 Value error, The checkpoint you are trying to load has model type `gpt_oss` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.
 ```
-Older vLLM and transformers versions don't register `gpt_oss`, raising an error when vLLM hands off to Transformers. Upgrade **vLLM ≥ 0.10.1** and let your package resolver such as `pip` handle the other dependencies.
+Older vLLM and transformers versions don't register `gpt_oss`, raising an error when vLLM hands off to transformers. Upgrade **vLLM ≥ 0.10.1** and let your package resolver such as `pip` handle the other dependencies.
 ```bash
 pip install -U "vllm>=0.10.1"
 ```
