@@ -158,6 +158,8 @@ class NixlTensorTransport(TensorTransportManager):
         obj_id: str,
         communicator_metadata: NixlCommunicatorMetadata,
     ):
+        from ray.util.collective.collective import get_group_handle
+
         g = get_group_handle(communicator_metadata.communicator_name)
         if g:
             g.abort(obj_id)
