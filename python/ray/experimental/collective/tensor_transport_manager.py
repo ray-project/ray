@@ -100,6 +100,7 @@ class TensorTransportManager(ABC):
     @abstractmethod
     def recv_multiple_tensors(
         tensors: List["torch.Tensor"],
+        obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
@@ -108,6 +109,7 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The pre-allocated tensor space to receive the tensors.
+            obj_id: The object ID for related GPU object.
             tensor_transport_metadata: The tensor transport metadata for the GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
 
@@ -124,5 +126,19 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The tensors to send.
+            communicator_metadata: The communicator metadata for the send/recv operation.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: CommunicatorMetadata,
+    ):
+        """
+        Abort the transport.
+
+        Args:
+            obj_id: The object ID for related GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
         """

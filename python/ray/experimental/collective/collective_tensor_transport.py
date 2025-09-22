@@ -136,6 +136,7 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def recv_multiple_tensors(
         tensors,
+        obj_id: str,
         tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
     ):
@@ -176,3 +177,12 @@ class CollectiveTensorTransport(TensorTransportManager):
                 communicator_metadata.dst_rank,
                 communicator_metadata.communicator_name,
             )
+
+    @staticmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: CollectiveCommunicatorMetadata,
+    ):
+        raise NotImplementedError(
+            "Collective transport does not support abort_transport for now."
+        )
