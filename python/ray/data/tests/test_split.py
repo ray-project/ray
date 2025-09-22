@@ -887,6 +887,41 @@ def test_split_is_not_disruptive(ray_start_cluster):
     verify_integrity(ds.randomize_block_order().split(3, equal=True))
 
 
+def test_streaming_train_test_split_hash(ray_start_regular_shared_2_cpus):
+    ds = ray.data.range(10000000, override_num_blocks=10)
+
+    ds_train, ds_test = ds.streaming_train_test_split(
+        test_proportion=0.2, split_type="hash", key_column="id"
+    )
+
+    np.testing.assert_almost_equal(float(ds_train.count()) / 10000000.0, 0.8, decimal=3)
+    np.testing.assert_almost_equal(float(ds_test.count()) / 10000000.0, 0.2, decimal=3)
+
+    # Check if train and test are disjoint
+    assert (
+        ds_train.join(ds_test, join_type="inner", on=("id",), num_partitions=1).count()
+        == 0
+    )
+
+
+@pytest.mark.parametrize("seed", [None, 42])
+def test_streaming_train_test_split_bernoulli(ray_start_regular_shared_2_cpus, seed):
+    ds = ray.data.range(10000000, override_num_blocks=10)
+
+    ds_train, ds_test = ds.streaming_train_test_split(
+        test_proportion=0.2, split_type="bernoulli", seed=seed
+    )
+
+    np.testing.assert_almost_equal(float(ds_train.count()) / 10000000.0, 0.8, decimal=3)
+    np.testing.assert_almost_equal(float(ds_test.count()) / 10000000.0, 0.2, decimal=3)
+
+    # Check if train and test are disjoint
+    assert (
+        ds_train.join(ds_test, join_type="inner", on=("id",), num_partitions=1).count()
+        == 0
+    )
+
+
 if __name__ == "__main__":
     import sys
 

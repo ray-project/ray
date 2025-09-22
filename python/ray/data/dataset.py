@@ -2463,6 +2463,126 @@ class Dataset:
             )
         return ds_length
 
+    @PublicAPI(stability="alpha", pi_group=SMJ_API_GROUP)
+    def streaming_train_test_split(
+        self,
+        test_proportion: float,
+        *,
+        split_type: Literal["hash", "bernoulli"] = "bernoulli",
+        key_column: Optional[str] = None,
+        seed: Optional[int] = None,
+        **ray_remote_kwargs,
+    ) -> Tuple["Dataset", "Dataset"]:
+        """split the dataset into train and test subsets in a streaming manner.
+        This method is recommended for large datasets.
+
+        The split type can be either "hash" or "bernoulli".
+        - "hash": The dataset is split into train and test subsets based on the hash of the key column.
+        - "bernoulli": The dataset is split into train and test subsets based on the Bernoulli distribution.
+
+        Examples:
+            Examples with Bernoulli split:
+
+            >>> import ray
+            >>> ds = ray.data.range(8, override_num_blocks=1)
+            >>> train, test = ds.streaming_train_test_split(test_proportion=0.25)
+            >>> train.take_batch()
+            {'id': array([0, 2, 4, 5, 6, 7])}
+            >>> test.take_batch()
+            {'id': array([1, 3])}
+
+            Examples with Hash split:
+
+            >>> import ray
+            >>> ds = ray.data.range(8)
+            >>> train, test = ds.streaming_train_test_split(test_proportion=0.25, split_type="hash", key_column="id")
+            >>> train.take_batch()
+            {'id': array([0, 2, 3, 4, 5, 6])}
+            >>> test.take_batch()
+            {'id': array([1, 7])}
+
+        Args:
+            test_proportion: The proportion of the dataset to include in the test split.
+            split_type: The type of split to perform. Can be "hash" or "bernoulli".
+            key_column: The column to use for the hash split. Required for hash split and
+                ignored for Bernoulli split.
+            seed: The seed to use for the Bernoulli split. Ignored for hash split.
+            **ray_remote_kwargs: Additional kwargs to pass to the Ray remote function.
+
+        Returns:
+            Train and test subsets as two ``Dataset``.
+
+        .. seealso::
+
+            :meth:`Dataset.train_test_split`
+        """
+        import hashlib
+
+        import pyarrow as pa
+
+        def hash_split(
+            batch: pa.Table, test_proportion: float, key_column: str
+        ) -> tuple[pa.Table, pa.Table]:
+            def key_to_bucket(key: Any) -> int:
+                # 64-bit integer in [0, 2^64)
+                h = int.from_bytes(
+                    hashlib.blake2b(str(key).encode(), digest_size=8).digest(), "big"
+                )
+                return True if h < (1 - test_proportion) * (1 << 64) else False
+
+            if key_column in batch.column_names:
+                # Use provided key for hashing
+                keys = batch[key_column].to_numpy()
+            else:
+                raise ValueError(f"Key column {key_column} not found in batch")
+
+            bucket_arr = pa.array([key_to_bucket(key) for key in keys], type=pa.bool_())
+            return batch.append_column(_TRAIN_TEST_SPLIT_COLUMN, bucket_arr)
+
+        def bernoulli_split(batch, test_proportion: float, seed: int | None):
+            # Build a stable per-task seed so re-execution gives identical masks
+            base = 0 if seed is None else seed
+            task_id_str = ray.get_runtime_context().get_task_id()
+            # task_id is stable for a given execution of the upstream block
+            task_bits = int(task_id_str[-16:], 16) & 0xFFFFFFFF
+
+            rng = np.random.default_rng(base ^ task_bits)
+            is_train = rng.random(batch.num_rows) < (1 - test_proportion)
+            return batch.append_column(
+                _TRAIN_TEST_SPLIT_COLUMN, pa.array(is_train, type=pa.bool_())
+            )
+
+        if split_type == "bernoulli":
+            bucketted = self.map_batches(
+                bernoulli_split,
+                fn_kwargs={"test_proportion": test_proportion, "seed": seed},
+                batch_format="pyarrow",
+                **ray_remote_kwargs,
+            )
+        elif split_type == "hash":
+            if key_column is None:
+                raise ValueError("key_column is required for hash split")
+            bucketted = self.map_batches(
+                hash_split,
+                fn_kwargs={
+                    "test_proportion": test_proportion,
+                    "key_column": key_column,
+                },
+                batch_format="pyarrow",
+                **ray_remote_kwargs,
+            )
+        else:
+            raise ValueError(f"Invalid split type: {split_type}")
+
+        ds_train = bucketted.filter(
+            expr=f"{_TRAIN_TEST_SPLIT_COLUMN} == True"
+        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+        ds_test = bucketted.filter(
+            expr=f"{_TRAIN_TEST_SPLIT_COLUMN} == False"
+        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+
+        return ds_train, ds_test
+
     @PublicAPI(api_group=SMJ_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
