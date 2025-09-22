@@ -294,6 +294,7 @@ py_binary(
         ["**/*.py"],
         exclude = ["ray_release/tests/*.py"],
     ),
+    exec_compatible_with = ["//:hermetic_python"],
     deps = [":ray_release"],
 )
 
