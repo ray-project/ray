@@ -380,7 +380,7 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
             details.
 
@@ -648,7 +648,7 @@ class Dataset:
 
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
             details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
@@ -926,7 +926,7 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
@@ -1033,7 +1033,7 @@ class Dataset:
                 an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
@@ -1101,7 +1101,7 @@ class Dataset:
                 dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
@@ -1195,7 +1195,7 @@ class Dataset:
             names: A dictionary that maps old column names to new column names, or a
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
@@ -1375,7 +1375,7 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
@@ -1507,7 +1507,7 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
-            operator_options: Options for configuring the operator. See
+            operator_options: Advanced options for configuring the operator. See
                 :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
