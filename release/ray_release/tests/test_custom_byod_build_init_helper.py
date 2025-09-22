@@ -63,16 +63,16 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             assert len(content["steps"]) == 2
             assert (
                 f"--region {config['byod_ecr_region']}"
-                in content["steps"][0]["commands"][2]
+                in content["steps"][0]["commands"][3]
             )
-            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][2]
+            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][3]
             assert (
                 f"--image-name {custom_byod_images[0][0]}"
-                in content["steps"][0]["commands"][3]
+                in content["steps"][0]["commands"][4]
             )
             assert (
                 f"--image-name {custom_byod_images[2][0]}"
-                in content["steps"][1]["commands"][3]
+                in content["steps"][1]["commands"][4]
             )
 
 

@@ -57,6 +57,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             "key": generate_custom_build_step_key(image),
             "instance_type": "release-medium",
             "commands": [
+                '[[ -n "$RAY_WANT_COMMIT_IN_IMAGE" ]] && export RAY_WANT_COMMIT_IN_IMAGE=$RAY_WANT_COMMIT_IN_IMAGE',
                 "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
