@@ -128,6 +128,7 @@ class AggregatorAgent(
             )
             self._http_endpoint_publisher = NoopPublisher()
 
+        self._async_gcs_channel = None
         if PUBLISH_EVENTS_TO_GCS:
             logger.info("Publishing events to GCS is enabled")
             self._event_processing_enabled = True
