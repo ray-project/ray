@@ -35,7 +35,7 @@ def test_retry_last_attempt_successful_with_appropriate_wait_time(
         sleep_total += x
 
     monkeypatch.setattr("time.sleep", sleep)
-    monkeypatch.setattr("random.random", lambda: 1)
+    monkeypatch.setattr("random.uniform", lambda a, b: 1)
 
     pattern = "have not reached 4th attempt"
     call_count = 0

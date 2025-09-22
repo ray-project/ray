@@ -39,10 +39,15 @@ def call_with_retry(
         try:
             return f(*args, **kwargs)
         except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
+            exception_str = str(e)
+            is_retryable = match is None or any(
+                pattern in exception_str for pattern in match
+            )
             if is_retryable and i + 1 < max_attempts:
-                # Retry with binary exponential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
+                # Retry with binary exponential backoff with 20% random jitter.
+                backoff = min((2 ** (i + 1)), max_backoff_s) * (
+                    random.uniform(0.8, 1.2)
+                )
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )
@@ -54,7 +59,7 @@ def call_with_retry(
                     )
                 else:
                     logger.debug(
-                        f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
+                        f"Did not find a match for {exception_str}. Raising after {i+1} attempts."
                     )
                 raise e from None
 
