@@ -2302,7 +2302,6 @@ cdef execute_task_with_cancellation_handler(
                 # cancel tasks to fail.
                 NULL)
     finally:
-        print("runnning 9", file=sys.stderr)
         with current_task_id_lock:
             current_task_id = None
 
