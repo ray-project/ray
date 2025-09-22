@@ -370,7 +370,7 @@ class GPUObjectManager:
                 None, None, tensor_transport_backend
             )
             __ray_recv__(
-                None, obj_id, gpu_object_meta.tensor_transport_meta, communicator_meta
+                None, obj_id, [gpu_object_meta.tensor_transport_meta], communicator_meta
             )
 
     def trigger_out_of_band_tensor_transfer(

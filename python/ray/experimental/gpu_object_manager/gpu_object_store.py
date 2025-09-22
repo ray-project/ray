@@ -76,7 +76,7 @@ def __ray_send__(
 def __ray_recv__(
     self,
     obj_id: str,
-    tensor_transport_meta: List[ObjectRef],
+    tensor_transport_meta: List[Union[ObjectRef, TensorTransportMetadata]],
     communicator_meta: CommunicatorMetadata,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
@@ -84,8 +84,10 @@ def __ray_recv__(
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     try:
-        tensor_transport_meta: TensorTransportMetadata = ray.get(
-            tensor_transport_meta[0]
+        tensor_transport_meta: TensorTransportMetadata = (
+            ray.get(tensor_transport_meta[0])
+            if isinstance(tensor_transport_meta[0], ObjectRef)
+            else tensor_transport_meta[0]
         )
         device = tensor_transport_meta.tensor_device
         tensor_meta = tensor_transport_meta.tensor_meta
