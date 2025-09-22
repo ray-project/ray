@@ -527,7 +527,6 @@ doctest(
         ],
         exclude = [
             "source/ray-core/handling-dependencies.rst",
-            "source/ray-core/tasks/nested-tasks.rst",
         ],
     ),
     tags = ["team:core"],
