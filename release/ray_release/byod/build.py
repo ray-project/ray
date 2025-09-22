@@ -20,7 +20,10 @@ RELEASE_BYOD_DIR = (
 
 
 def build_anyscale_custom_byod_image(
-    image: str, base_image: str, post_build_script: str, lock_file: Optional[str] = None
+    image: str,
+    base_image: str,
+    post_build_script: str,
+    python_depset: Optional[str] = None,
 ) -> None:
     if _image_exist(image):
         logger.info(f"Image {image} already exists")
@@ -37,8 +40,8 @@ def build_anyscale_custom_byod_image(
         "--build-arg",
         f"POST_BUILD_SCRIPT={post_build_script}",
     ]
-    if lock_file:
-        docker_build_cmd.extend(["--build-arg", f"LOCK_FILE={lock_file}"])
+    if python_depset:
+        docker_build_cmd.extend(["--build-arg", f"PYTHON_DEPSET={python_depset}"])
     docker_build_cmd.extend(
         [
             "-t",

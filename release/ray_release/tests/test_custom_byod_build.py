@@ -19,7 +19,7 @@ def test_custom_byod_build(mock_build_anyscale_custom_byod_image):
             "test-base-image",
             "--post-build-script",
             "test_post_build_script.sh",
-            "--lock-file",
+            "--python-depset",
             "python_depset.lock",
         ],
     )
