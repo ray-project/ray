@@ -41,6 +41,7 @@
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -297,7 +298,6 @@ int main(int argc, char *argv[]) {
   ray::raylet::NodeManagerConfig node_manager_config;
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
-
   SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service{
