@@ -7,10 +7,8 @@ import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-import ray._private.ray_constants
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    convert_actor_state,
     make_global_state_accessor,
 )
 from ray._raylet import GcsClient
@@ -150,6 +148,11 @@ def test_add_remove_cluster_resources(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 6
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{"num_cpus": 1, "include_dashboard": True}],
+    indirect=True,
+)
 def test_global_state_actor_table(ray_start_regular):
     @ray.remote
     class Actor:
@@ -157,28 +160,27 @@ def test_global_state_actor_table(ray_start_regular):
             return os.getpid()
 
     # actor table should be empty at first
-    assert len(ray._common.state.actors()) == 0
+    assert len(ray.util.state.list_actors()) == 0
 
     # actor table should contain only one entry
     def get_actor_table_data(field):
-        return list(ray._common.state.actors().values())[0][field]
+        return ray.util.state.list_actors()[0][field]
 
     a = Actor.remote()
     pid = ray.get(a.ready.remote())
-    assert len(ray._common.state.actors()) == 1
-    assert get_actor_table_data("Pid") == pid
+    assert len(ray.util.state.list_actors()) == 1
+    assert ray.util.state.list_actors()[0].pid == pid
 
     # actor table should contain only this entry
     # even when the actor goes out of scope
     del a
 
-    dead_state = convert_actor_state(gcs_utils.ActorTableData.DEAD)
     for _ in range(10):
-        if get_actor_table_data("State") == dead_state:
+        if ray.util.state.list_actors()[0].state == "DEAD":
             break
         else:
             time.sleep(0.5)
-    assert get_actor_table_data("State") == dead_state
+    assert ray.util.state.list_actors().state == "DEAD"
 
 
 def test_global_state_worker_table(ray_start_regular):
@@ -190,6 +192,11 @@ def test_global_state_worker_table(ray_start_regular):
     wait_for_condition(worker_initialized)
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{"num_cpus": 1, "include_dashboard": True}],
+    indirect=True,
+)
 def test_global_state_actor_entry(ray_start_regular):
     @ray.remote
     class Actor:
@@ -197,23 +204,19 @@ def test_global_state_actor_entry(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray._common.state.actors()) == 0
+    assert len(ray.util.state.list_actors()) == 0
 
     a = Actor.remote()
     b = Actor.remote()
     ray.get(a.ready.remote())
     ray.get(b.ready.remote())
-    assert len(ray._common.state.actors()) == 2
+    assert len(ray.util.state.list_actors()) == 2
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
-    assert ray._common.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray._common.state.actors(actor_id=a_actor_id)[
-        "State"
-    ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-    assert ray._common.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray._common.state.actors(actor_id=b_actor_id)[
-        "State"
-    ] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
+    assert ray.util.state.get_actor(id=a_actor_id).actor_id == a_actor_id
+    assert ray.util.state.get_actor(id=a_actor_id).state == "ALIVE"
+    assert ray.util.state.get_actor(id=b_actor_id).actor_id == b_actor_id
+    assert ray.util.state.get_actor(id=b_actor_id).state == "ALIVE"
 
 
 def test_node_name_cluster(ray_start_cluster):

@@ -208,6 +208,11 @@ async def test_asyncio_double_await(ray_start_regular_shared):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_regular_shared",
+    [{"num_cpus": 1, "include_dashboard": True}],
+    indirect=True,
+)
 async def test_asyncio_exit_actor(ray_start_regular_shared):
     # https://github.com/ray-project/ray/issues/12649
     # The test should just hang without the fix.
@@ -240,7 +245,7 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     @ray.remote
     def check_actor_gone_now():
         def cond():
-            return ray._common.state.actors()[a._ray_actor_id.hex()]["State"] != 2
+            return ray.util.state.get_actor(id=a._ray_actor_id.hex()).state != "ALIVE"
 
         wait_for_condition(cond)
 

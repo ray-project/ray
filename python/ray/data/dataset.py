@@ -2086,12 +2086,17 @@ class Dataset:
 
         def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
             """Build a map from a actor to its node_id."""
-            actors_state = ray._common.state.actors()
+            actors_state = {
+                actor.actor_id: actor.node_id
+                for actor in ray.util.state.list_actors(
+                    limit=ray.util.state.summarize_actors()
+                    .get("cluster", {})
+                    .get("total_actors", 0)
+                    + 100  # fetch current actors. Some staleness is assumed fine.
+                )
+            }
             return {
-                actor: actors_state.get(actor._actor_id.hex(), {})
-                .get("Address", {})
-                .get("NodeID")
-                for actor in actors
+                actor: actors_state.get(actor._actor_id.hex(), {}) for actor in actors
             }
 
         # expected number of blocks to be allocated for each actor

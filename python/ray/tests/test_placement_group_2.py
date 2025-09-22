@@ -4,11 +4,9 @@ import time
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    convert_actor_state,
     generate_system_config_map,
     get_other_nodes,
     kill_actor_and_wait_for_failure,
@@ -342,6 +340,16 @@ def test_mini_integration(ray_start_cluster):
     assert all(ray.get([a.ping.remote() for a in actors]))
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_nodes": 1,
+            "include_dashboard": True,  # Dashboard is needed for actor state API
+        }
+    ],
+    indirect=True,
+)
 def test_capture_child_actors(ray_start_cluster):
     cluster = ray_start_cluster
     total_num_actors = 4
@@ -400,9 +408,9 @@ def test_capture_child_actors(ray_start_cluster):
     # Make sure all the actors are scheduled on the same node.
     # (why? The placement group has STRICT_PACK strategy).
     node_id_set = set()
-    for actor_info in ray._common.state.actors().values():
-        if actor_info["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE):
-            node_id = actor_info["Address"]["NodeID"]
+    for actor_info in ray.util.state.list_actors():
+        if actor_info.state == "ALIVE":
+            node_id = actor_info.node_id
             node_id_set.add(node_id)
 
     # Since all node id should be identical, set should be equal to 1.
@@ -425,9 +433,9 @@ def test_capture_child_actors(ray_start_cluster):
     # It is because the child tasks are not scheduled on the same
     # placement group.
     node_id_set = set()
-    for actor_info in ray._common.state.actors().values():
-        if actor_info["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE):
-            node_id = actor_info["Address"]["NodeID"]
+    for actor_info in ray.util.state.list_actors():
+        if actor_info.state == "ALIVE":
+            node_id = actor_info.node_id
             node_id_set.add(node_id)
 
     assert len(node_id_set) == 2
@@ -450,9 +458,9 @@ def test_capture_child_actors(ray_start_cluster):
     # It is because the child tasks are not scheduled on the same
     # placement group.
     node_id_set = set()
-    for actor_info in ray._common.state.actors().values():
-        if actor_info["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE):
-            node_id = actor_info["Address"]["NodeID"]
+    for actor_info in ray.util.state.list_actors():
+        if actor_info.state == "ALIVE":
+            node_id = actor_info.node_id
             node_id_set.add(node_id)
 
     assert len(node_id_set) == 2

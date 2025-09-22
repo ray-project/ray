@@ -96,15 +96,12 @@ def test_placement_group_no_resource(ray_start_cluster):
         for actor in chain(first_node, second_node):
             ray.get(actor.value.remote())
 
-        # Get all actors.
-        actor_infos = ray._common.state.actors()
-
         first_node_ids = [
-            actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
+            ray.util.state.get_actor(id=actor._actor_id.hex()).node_id
             for actor in first_node
         ]
         second_node_ids = [
-            actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
+            ray.util.state.get_actor(id=actor._actor_id.hex()).node_id
             for actor in second_node
         ]
 
@@ -202,6 +199,15 @@ def test_task_using_pg_observability(ray_start_cluster):
 
 
 @pytest.mark.parametrize("scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK"])
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
 def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_strategy):
     @ray.remote
     class Actor(object):
@@ -255,13 +261,10 @@ def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_stra
     [ray.get(actor.value.remote()) for actor in actors]
 
     # Get all actors.
-    actor_infos = ray._common.state.actors()
+    actor_infos = ray.util.state.list_actors()
 
     # Make sure all actors in counter_list are located in separate nodes.
-    actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-    assert are_pairwise_unique(
-        [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-    )
+    assert are_pairwise_unique([info_obj.node_id for info_obj in actor_infos])
 
 
 def test_placement_group_parallel_submission(ray_start_cluster):

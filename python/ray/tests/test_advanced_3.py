@@ -20,6 +20,11 @@ import psutil
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.parametrize(
+    "shutdown_only",
+    [{"num_cpus": 1, "include_dashboard": True}],
+    indirect=True,
+)
 def test_global_state_api(shutdown_only):
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
@@ -47,15 +52,14 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray._common.state.actors()
+    actor_table = (
+        ray.util.state.list_actors()
+    )  # should be using this API now for fetching actors
     assert len(actor_table) == 1
 
     (actor_info,) = actor_table.values()
-    assert actor_info["JobID"] == job_id.hex()
-    assert actor_info["Name"] == "test_actor"
-    assert "IPAddress" in actor_info["Address"]
-    assert "IPAddress" in actor_info["OwnerAddress"]
-    assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
+    assert actor_info.job_id == job_id.hex()
+    assert actor_info.name == "test_actor"
 
     job_table = ray._private.state.jobs()
 
