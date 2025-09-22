@@ -140,8 +140,7 @@ class GcsActorManagerTest : public ::testing::Test {
     mock_actor_scheduler_ = scheduler.get();
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
-    auto fake_ray_event_recorder_ =
-        std::make_unique<observability::FakeRayEventRecorder>();
+    fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(scheduler),
         gcs_table_storage_.get(),
@@ -235,6 +234,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
