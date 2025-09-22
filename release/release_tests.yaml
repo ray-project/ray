@@ -1839,10 +1839,14 @@
   alert: default
 
 
-- name: {{framework}}_train_batch_inference_benchmark_{{size}}
-- name: xgboost_train_batch_inference_benchmark_10G
+- name: "{{framework}}_train_batch_inference_benchmark_{{size}}""
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
+
+  matrix:
+    setup:
+      framework: [xgboost, lightgbm]
+      size: [10G, 100G]
 
   frequency: nightly-3x
   team: ml
