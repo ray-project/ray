@@ -12,6 +12,30 @@ class OutputBlockSizeOption:
     target_max_block_size: Optional[int] = None
     target_num_rows_per_block: Optional[int] = None
 
+    def __post_init__(self):
+        if (
+            self.target_max_block_size is None
+            and self.target_num_rows_per_block is None
+        ):
+            raise ValueError(
+                "Either `target_max_block_size` or `target_num_rows_per_block` "
+                "must be specified"
+            )
+
+    @classmethod
+    def of(
+        cls,
+        target_max_block_size: Optional[int] = None,
+        target_num_rows_per_block: Optional[int] = None,
+    ) -> Optional["OutputBlockSizeOption"]:
+        if target_max_block_size is None and target_num_rows_per_block is None:
+            return None
+        else:
+            return OutputBlockSizeOption(
+                target_max_block_size=target_max_block_size,
+                target_num_rows_per_block=target_num_rows_per_block,
+            )
+
 
 class BlockOutputBuffer:
     """Generates output blocks of a given size or number of rows given a stream of
@@ -149,18 +173,7 @@ class BlockOutputBuffer:
             )
 
         if target_num_rows is not None and target_num_rows < accessor.num_rows():
-            # NOTE: We're maintaining following protocol of slicing underlying block
-            #       into appropriately sized ones:
-            #
-            #         - (Finalized) Target blocks sliced from the original one
-            #           and are *copied* to avoid referencing original blocks
-            #         - Temporary remainder of the block should *NOT* be copied
-            #           such as to avoid repeatedly copying the remainder bytes
-            #           of the block, resulting in O(M * N) total bytes being
-            #           copied, where N is the total number of bytes in the original
-            #           block and M is the number of blocks that will be produced by
-            #           this iterator
-            block = accessor.slice(0, target_num_rows, copy=True)
+            block = accessor.slice(0, target_num_rows, copy=False)
             block_remainder = accessor.slice(
                 target_num_rows, accessor.num_rows(), copy=False
             )

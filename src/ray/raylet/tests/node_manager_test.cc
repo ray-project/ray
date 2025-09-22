@@ -21,9 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -35,10 +32,13 @@
 #include "ray/common/buffer.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -308,7 +308,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
-    fake_task_by_state_counter_ = ray::observability::FakeMetric();
+    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -444,7 +444,7 @@ class NodeManagerTest : public ::testing::Test {
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -1070,6 +1070,58 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   ASSERT_EQ(reply1.success(), false);
   ASSERT_EQ(reply2.success(), false);
 }
+
+class PinObjectIDsIdempotencyTest : public NodeManagerTest,
+                                    public ::testing::WithParamInterface<bool> {};
+
+TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
+  // object_exists: determines whether we add an object to the plasma store which is used
+  // for pinning.
+  // object_exists == true: an object is added to the plasma store and PinObjectIDs is
+  // expected to succeed. A true boolean value is inserted at the index of the object
+  // in reply.successes.
+  // object_exists == false: an object is not added to the plasma store. PinObjectIDs will
+  // still succeed and not return an error when trying to pin a non-existent object, but
+  // will instead at the index of the object in reply.successes insert a false
+  // boolean value.
+  const bool object_exists = GetParam();
+  ObjectID id = ObjectID::FromRandom();
+
+  if (object_exists) {
+    rpc::Address owner_addr;
+    plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+    RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+
+  rpc::PinObjectIDsReply reply1;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  int64_t primary_bytes = local_object_manager_->GetPrimaryBytes();
+  rpc::PinObjectIDsReply reply2;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  // For each invocation of HandlePinObjectIDs, we expect the size of reply.successes and
+  // the boolean values it contains to not change.
+  EXPECT_EQ(reply1.successes_size(), 1);
+  EXPECT_EQ(reply1.successes(0), object_exists);
+  EXPECT_EQ(reply2.successes_size(), 1);
+  EXPECT_EQ(reply2.successes(0), object_exists);
+  EXPECT_EQ(local_object_manager_->GetPrimaryBytes(), primary_bytes);
+}
+
+INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
+                         PinObjectIDsIdempotencyTest,
+                         testing::Bool());
 
 }  // namespace ray::raylet
 
