@@ -68,7 +68,6 @@ rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
 }
 
 }  // namespace
->>>>>>> upstream/master
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
