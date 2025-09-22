@@ -82,7 +82,7 @@ class Config:
         return Config(depsets=depsets, build_arg_sets=build_arg_sets)
 
     @staticmethod
-    def check_imports(data: dict, dir: str) -> dict:
+    def read_imports(data: dict, dir: str) -> dict:
         imports = data.get("imports", [])
         if len(imports) == 0:
             return data
@@ -133,5 +133,5 @@ class Workspace:
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
             data = yaml.safe_load(f)
-            data = Config.check_imports(data, self.dir)
+            data = Config.read_imports(data, self.dir)
             return Config.from_dict(data)
