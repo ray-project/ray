@@ -104,25 +104,25 @@ class VideoProcessor:
     """
 
     def __init__(
-        self,
-        *,
-        sampling: Optional[Dict[str, Any]] = None,
-        # {"fps": k} or {"num_frames": n}
-        cache_dir: Optional[str] = None,
-        cache_mode: str = "auto",  # "auto" | "disk" | "memory"
-        output_format: str = "pil",  # "pil" | "numpy"
-        channels_first: bool = False,
-        timeout_s: float = 30.0,
-        max_concurrency: int = 8,
-        retries: int = 2,
-        retry_backoff_base: float = 0.5,
-        bypass_if_frames_present: bool = False,
-        pack_for_model: bool = False,  # reserved for future use
-        keep_downloaded: bool = False,
-        # when using disk cache, persist after use (default False)
-        preprocess: Optional[Dict[str, Any]] = None,
-        # {resize:{}, crop:{}, convert:"RGB"}; default off
-        max_sampled_frames: Optional[int] = None,
+            self,
+            *,
+            sampling: Optional[Dict[str, Any]] = None,
+            # {"fps": k} or {"num_frames": n}
+            cache_dir: Optional[str] = None,
+            cache_mode: str = "auto",  # "auto" | "disk" | "memory"
+            output_format: str = "pil",  # "pil" | "numpy"
+            channels_first: bool = False,
+            timeout_s: float = 30.0,
+            max_concurrency: int = 8,
+            retries: int = 2,
+            retry_backoff_base: float = 0.5,
+            bypass_if_frames_present: bool = False,
+            pack_for_model: bool = False,  # reserved for future use
+            keep_downloaded: bool = False,
+            # when using disk cache, persist after use (default False)
+            preprocess: Optional[Dict[str, Any]] = None,
+            # {resize:{}, crop:{}, convert:"RGB"}; default off
+            max_sampled_frames: Optional[int] = None,
     ) -> None:
         self._sampling = Sampling.from_user(sampling)
         self._cache_dir = Path(cache_dir) if cache_dir else None
@@ -486,7 +486,7 @@ class VideoProcessor:
             return arr
 
     def _resolve_source_for_decode(
-        self, source: str
+            self, source: str
     ) -> Tuple[Union[str, io.BytesIO], bool, Optional[str]]:
         """Return (resolved, is_memory, cleanup_path).
 
@@ -507,21 +507,21 @@ class VideoProcessor:
         # local file path
         parsed = urlparse(source)
         if parsed.scheme in ("file", "") and os.path.exists(
-            parsed.path or source):
+                parsed.path or source):
             return parsed.path or source, False, None
 
         # http/https
         if _is_http(source):
             # Decide caching mode
             use_disk = (
-                self._cache_dir is not None
-                and (
-                    self._cache_mode == "disk"
-                    or (
-                        self._cache_mode == "auto"
-                        and self._sampling.num_frames is not None
+                    self._cache_dir is not None
+                    and (
+                            self._cache_mode == "disk"
+                            or (
+                                    self._cache_mode == "auto"
+                                    and self._sampling.num_frames is not None
+                            )
                     )
-                )
             )
             use_memory = self._cache_mode == "memory"
 
@@ -564,23 +564,23 @@ class PrepareVideoUDF(StatefulStageUDF):
     """
 
     def __init__(
-        self,
-        data_column: str,
-        expected_input_keys: List[str],
-        *,
-        sampling: Optional[Dict[str, Any]] = None,
-        # {"fps": 3} or {"num_frames": 8}
-        cache_dir: Optional[str] = None,
-        cache_mode: str = "auto",
-        output_format: str = "pil",
-        channels_first: bool = False,
-        timeout_s: float = 30.0,
-        max_concurrency: int = 8,
-        retries: int = 2,
-        retry_backoff_base: float = 0.5,
-        bypass_if_frames_present: bool = False,
-        pack_for_model: bool = False,
-        max_sampled_frames: Optional[int] = None,
+            self,
+            data_column: str,
+            expected_input_keys: List[str],
+            *,
+            sampling: Optional[Dict[str, Any]] = None,
+            # {"fps": 3} or {"num_frames": 8}
+            cache_dir: Optional[str] = None,
+            cache_mode: str = "auto",
+            output_format: str = "pil",
+            channels_first: bool = False,
+            timeout_s: float = 30.0,
+            max_concurrency: int = 8,
+            retries: int = 2,
+            retry_backoff_base: float = 0.5,
+            bypass_if_frames_present: bool = False,
+            pack_for_model: bool = False,
+            max_sampled_frames: Optional[int] = None,
     ) -> None:
         super().__init__(data_column, expected_input_keys)
         self._video = VideoProcessor(

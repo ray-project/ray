@@ -15,7 +15,7 @@ from ray.llm._internal.batch.stages.prepare_video_stage import (
 @pytest.fixture
 def mock_http_connection_bytes():
     with patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage.HTTPConnection",
+            "ray.llm._internal.batch.stages.prepare_video_stage.HTTPConnection",
     ) as mock:
         conn = MagicMock()
         conn.download_bytes_chunked = MagicMock(return_value=b"FAKE-MP4")
@@ -264,13 +264,16 @@ async def test_multiple_videos_order_preserved(mock_http_connection_bytes,
 
 @pytest.mark.asyncio
 async def test_preprocess_convert_numpy_consistency(
-    mock_http_connection_bytes):
+        mock_http_connection_bytes):
     # Ensure numpy output respects preprocess (resize) by going through PIL then to numpy
     with patch("importlib.import_module") as imp:
         def _import(name):
             if name == "av":
                 class _S:
-                    type = "video"; index = 0; time_base = 1 / 1000; duration = 1000
+                    type = "video";
+                    index = 0;
+                    time_base = 1 / 1000;
+                    duration = 1000
 
                 class _F:
                     def __init__(self, pts): self.pts = pts
@@ -462,7 +465,10 @@ async def test_target_cap_limits_frames(mock_http_connection_bytes):
         def _import(name):
             if name == "av":
                 class _S:
-                    type = "video"; index = 0; time_base = 1 / 1000; duration = 2000
+                    type = "video";
+                    index = 0;
+                    time_base = 1 / 1000;
+                    duration = 2000
 
                 class _F:
                     def __init__(self, pts): self.pts = pts
@@ -566,24 +572,35 @@ async def test_strict_no_fallback_when_no_frames(mock_http_connection_bytes):
         def _import(name):
             if name == "av":
                 class _S:
-                    type = "video"; index = 0; time_base = 1 / 1000; duration = 1000
+                    type = "video";
+                    index = 0;
+                    time_base = 1 / 1000;
+                    duration = 1000
+
                 class _C:
                     def __init__(self): self.streams = [_S()]; self.duration = 1_000_000
+
                     def decode(self, video=0):
                         if False:
                             yield  # no frames
                         return
+
                     def close(self): pass
+
                 class _AV:
                     time_base = 1 / 1_000_000
+
                     @staticmethod
                     def open(resolved, format=None): return _C()
+
                 return _AV
             elif name == "PIL.Image":
                 class _P:
                     pass
+
                 return _P
             return __import__(name)
+
         imp.side_effect = _import
         udf = PrepareVideoUDF(
             data_column="__data",
