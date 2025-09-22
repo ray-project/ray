@@ -256,39 +256,9 @@ class VideoProcessor:
             except Exception:
                 pass
 
-        # Fallback: ensure at least one frame (best-effort)
+        # Strict: no implicit fallback. If no frames sampled, treat as failure.
         if not frames:
-            container_fb = None
-            try:
-                if is_memory:
-                    try:
-                        container_fb = self._av.open(resolved)
-                    except Exception:
-                        fmt_guess = self._guess_format_from_source(source) or "mp4"
-                        container_fb = self._av.open(resolved, format=fmt_guess)
-                else:
-                    container_fb = self._av.open(resolved)
-                try:
-                    vstream_fb = next(s for s in container_fb.streams if getattr(s, "type", None) == "video")
-                except StopIteration:
-                    frames = []
-                    timestamps = []
-                else:
-                    for frame in container_fb.decode(video=vstream_fb.index):
-                        frames.append(self._format_frame(frame))
-                        ts = (
-                            float(frame.pts * vstream_fb.time_base)
-                            if getattr(frame, "pts", None) is not None
-                            else 0.0
-                        )
-                        timestamps.append(ts)
-                        break
-            finally:
-                try:
-                    if container_fb is not None:
-                        container_fb.close()
-                except Exception:
-                    pass
+            raise ValueError("No frames sampled")
 
         w = h = None
         if frames:

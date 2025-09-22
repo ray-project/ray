@@ -3,26 +3,8 @@ import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Optional pytest import for linters; real runs will have pytest
-try:  # pragma: no cover - fallback for static analyzers
-    import pytest  # type: ignore
-except Exception:  # pragma: no cover
-    class _DummyPytest:  # minimal shim
-        @staticmethod
-        def mark(*a, **k):
-            return lambda f: f
-
-        @staticmethod
-        def importorskip(name):
-            raise ImportError(name)
-
-    pytest = _DummyPytest()  # type: ignore
-
-# Optional numpy import for tests that require it
-try:  # pragma: no cover
-    import numpy as _np  # type: ignore
-except Exception:  # pragma: no cover
-    _np = None  # type: ignore
+import pytest
+import numpy as np
 
 from ray.llm._internal.batch.stages.prepare_video_stage import (
     PrepareVideoUDF,
@@ -68,8 +50,7 @@ def mock_pyav_open():
                                 return self
                         return _Img()
                     def to_ndarray(self, format="rgb24"):
-                        # Avoid importing numpy here to keep tests runnable without numpy
-                        return [[0]]  # sentinel non-numpy structure
+                        return np.zeros((48, 64, 3), dtype=np.uint8)
                 class _Container:
                     def __init__(self):
                         self.streams = [_Stream()]
@@ -251,7 +232,6 @@ async def test_multiple_videos_order_preserved(mock_http_connection_bytes, mock_
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(_np is None, reason="numpy required")
 async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
     # Ensure numpy output respects preprocess (resize) by going through PIL then to numpy
     with patch("importlib.import_module") as imp:
@@ -268,7 +248,7 @@ async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
                             def convert(self, *a, **k): return self
                         return _I()
                     def to_ndarray(self, format="rgb24"):
-                        return _np.zeros((10,10,3), dtype=_np.uint8)
+                        return np.zeros((10,10,3), dtype=np.uint8)
                 class _C:
                     def __init__(self): self.streams=[_S()]; self.duration=1000000
                     def decode(self, video=0):
@@ -295,7 +275,6 @@ async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
         batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
         outs=[]
         async for out in udf(batch): outs.append(out["__data"][0])
-        np = _np
         arr = outs[0]["video"][0][0]
         assert isinstance(arr, np.ndarray)
         assert arr.shape[:2] == (8,8)
@@ -450,7 +429,6 @@ async def test_target_cap_limits_frames(mock_http_connection_bytes):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(_np is None, reason="numpy required")
 async def test_numpy_output_channels_first(mock_http_connection_bytes, mock_pyav_open):
     udf = PrepareVideoUDF(
         data_column="__data",
@@ -483,8 +461,81 @@ async def test_numpy_output_channels_first(mock_http_connection_bytes, mock_pyav
     assert isinstance(frames, list)
     if frames:
         f0 = frames[0]
-        assert hasattr(_np, "ndarray") and isinstance(f0, _np.ndarray)
+        assert isinstance(f0, np.ndarray)
         assert f0.shape[0] in (3, 48)  # (C,H,W) or (H,W,C) safety
+
+
+@pytest.mark.asyncio
+def test_strict_no_fallback_when_no_frames(mock_http_connection_bytes):
+    # Use av mock that yields no frames -> should surface ValueError and mark failed in metadata
+    with patch("importlib.import_module") as imp:
+        def _import(name):
+            if name == "av":
+                class _S: type="video"; index=0; time_base=1/1000; duration=1000
+                class _C:
+                    def __init__(self): self.streams=[_S()]; self.duration=1_000_000
+                    def decode(self, video=0):
+                        if False:
+                            yield  # no frames
+                        return
+                    def close(self): pass
+                class _AV:
+                    time_base=1/1_000_000
+                    @staticmethod
+                    def open(resolved, format=None): return _C()
+                return _AV
+            elif name == "PIL.Image":
+                class _P: pass
+                return _P
+            return __import__(name)
+        imp.side_effect = _import
+        udf = PrepareVideoUDF(
+            data_column="__data",
+            expected_input_keys=["messages"],
+            sampling={"fps": 10},
+            output_format="pil",
+        )
+        batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
+        outs=[]
+        async def run():
+            async for out in udf(batch): outs.append(out["__data"][0])
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(run())
+        meta = outs[0]["video_meta"][0]
+        assert meta["failed"] is True
+        assert meta["error_type"] in ("ValueError",)
+
+
+@pytest.mark.skipif(os.getenv("RUN_PYAV_E2E") != "1", reason="set RUN_PYAV_E2E=1 to run")
+def test_e2e_with_pyav_synth(tmp_path):
+    import av
+    import numpy as np
+
+    # Synthesize a short mp4 with solid color frames
+    path = tmp_path / "synth.mp4"
+    out = av.open(str(path), mode="w")
+    stream = out.add_stream("libx264", rate=24)
+    stream.width = 64
+    stream.height = 48
+    stream.pix_fmt = "yuv420p"
+
+    for i in range(10):
+        img = np.full((48, 64, 3), fill_value=(i * 25) % 255, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(img, format="rgb24")
+        for packet in stream.encode(frame):
+            out.mux(packet)
+    for packet in stream.encode(None):
+        out.mux(packet)
+    out.close()
+
+    # Run VideoProcessor directly on the local file
+    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
+    vp = VideoProcessor(sampling={"num_frames": 4}, output_format="numpy")
+    import asyncio
+    res = asyncio.get_event_loop().run_until_complete(vp.process([str(path)]))
+    assert not res[0]["meta"]["failed"]
+    assert res[0]["meta"]["video_num_frames"] == 4
+    assert all(isinstance(f, np.ndarray) for f in res[0]["frames"])  # type: ignore
 
 
 if __name__ == "__main__":
