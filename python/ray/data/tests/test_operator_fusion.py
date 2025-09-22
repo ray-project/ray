@@ -774,7 +774,7 @@ def test_map_fusion_disabled_with_operator_options(ray_start_regular_shared_2_cp
 def test_filter_fusion_disabled_with_operator_options(ray_start_regular_shared_2_cpus):
     ds = ray.data.read_parquet("example://iris.parquet", parallelism=1)
 
-    filtered_ds = ds.filter(lambda x: x["id"] % 2 == 0)
+    filtered_ds = ds.filter(lambda x: x["sepal.length"] > 5.0)
 
     physical_plan = get_execution_plan(filtered_ds._logical_plan)
     physical_op = physical_plan.dag
@@ -788,7 +788,7 @@ def test_filter_fusion_disabled_with_operator_options(ray_start_regular_shared_2
     ds_1 = ray.data.read_parquet("example://iris.parquet", parallelism=1)
 
     filtered_ds_1 = ds_1.filter(
-        lambda x: x["id"] % 2 == 0,
+        lambda x: x["sepal.length"] > 5.0,
         operator_options=OperatorOptions(disable_fusion=True),
     )
 
