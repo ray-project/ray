@@ -227,7 +227,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
 
     wait_for_nodes:
       num_nodes: 8
