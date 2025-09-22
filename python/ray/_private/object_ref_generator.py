@@ -40,7 +40,7 @@ class ObjectRefGenerator:
     >>> next(gen)
     >>> await gen.__anext__()
     """
-    def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
+    def __init__(self, generator_ref: ray.ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
         # The exception raised from a generator task.
@@ -57,7 +57,7 @@ class ObjectRefGenerator:
     def __iter__(self) -> "ObjectRefGenerator":
         return self
 
-    def __next__(self) -> ObjectRef:
+    def __next__(self) -> ray.ObjectRef:
         """Waits until a next ref is available and returns the object ref.
 
         Raises StopIteration if there's no more objects
@@ -94,7 +94,7 @@ class ObjectRefGenerator:
     async def aclose(self):
         raise NotImplementedError("`gen.aclose` is not supported.")
 
-    def completed(self) -> ObjectRef:
+    def completed(self) -> ray.ObjectRef:
         """Returns an object ref that is ready when
         a generator task completes.
 
@@ -170,7 +170,7 @@ class ObjectRefGenerator:
     Private APIs
     """
 
-    def _get_next_ref(self) -> ObjectRef:
+    def _get_next_ref(self) -> ray.ObjectRef:
         """Return the next reference from a generator.
 
         Note that the ObjectID generated from a generator
@@ -184,7 +184,7 @@ class ObjectRefGenerator:
     def _next_sync(
         self,
         timeout_s: Optional[int | float] = None
-    ) -> ObjectRef:
+    ) -> ray.ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -216,7 +216,7 @@ class ObjectRefGenerator:
             _, unready = ray.wait(
                 [expected_ref], timeout=timeout_s, fetch_local=False)
             if len(unready) > 0:
-                return ObjectRef.nil()
+                return ray.ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
@@ -240,7 +240,7 @@ class ObjectRefGenerator:
                 raise StopIteration
         return ref
 
-    async def _suppress_exceptions(self, ref: ObjectRef) -> None:
+    async def _suppress_exceptions(self, ref: ray.ObjectRef) -> None:
         # Wrap a streamed ref to avoid asyncio warnings about not retrieving
         # the exception when we are just waiting for the ref to become ready.
         # The exception will get returned (or warned) to the user once they
@@ -266,7 +266,7 @@ class ObjectRefGenerator:
                 timeout=timeout_s
             )
             if len(unready) > 0:
-                return ObjectRef.nil()
+                return ray.ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
