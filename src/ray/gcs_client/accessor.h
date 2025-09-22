@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "absl/types/optional.h"
-#include "ray/common/gcs_callbacks.h"
+#include "ray/common/gcs_callback_types.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/status_or.h"

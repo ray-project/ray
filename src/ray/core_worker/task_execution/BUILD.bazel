@@ -138,7 +138,6 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/core_worker:common",
         "//src/ray/protobuf:core_worker_cc_proto",
-        "//src/ray/rpc:server_call",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

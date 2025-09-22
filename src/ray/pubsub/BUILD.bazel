@@ -87,7 +87,7 @@ ray_cc_library(
     hdrs = ["gcs_subscriber.h"],
     deps = [
         ":subscriber_interface",
-        "//src/ray/common:gcs_callbacks",
+        "//src/ray/common:gcs_callback_types",
         "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
