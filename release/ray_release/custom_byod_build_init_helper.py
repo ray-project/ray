@@ -19,7 +19,7 @@ def generate_custom_build_step_key(image: str) -> str:
 
 def get_images_from_tests(
     tests: List[Test], build_id: str
-) -> List[Tuple[str, str, str]]:
+) -> List[Tuple[str, str, str, str]]:
     """Get a list of custom BYOD images to build from a list of tests."""
     custom_byod_images = set()
     for test in tests:
@@ -31,7 +31,7 @@ def get_images_from_tests(
             test.get_byod_post_build_script(),
             test.get_byod_python_depset(),
         )
-        logger.info(f"To be built: {custom_byod_image_build[0]}")
+        logger.info(f"To be built: {custom_byod_image_build.image}")
         custom_byod_images.add(custom_byod_image_build)
     return list(custom_byod_images)
 
@@ -61,7 +61,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
-                f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script} {f'--python-depset {python_depset}' if python_depset else ''}",
+                f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script} {f'--python-depset {python_depset}' if python_depset else None}",
             ],
         }
         step["depends_on"] = get_prerequisite_step(image)
