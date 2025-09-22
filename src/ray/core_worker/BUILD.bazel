@@ -230,6 +230,7 @@ ray_cc_library(
     name = "task_event_buffer",
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
+    copts = ["-Wno-error=deprecated-declarations"],
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:asio",
