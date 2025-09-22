@@ -28,22 +28,29 @@ def build_anyscale_custom_byod_image(
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
-    subprocess.check_call(
+    cmd = [
+        "docker",
+        "build",
+        "--progress=plain",
+        "--build-arg",
+        f"BASE_IMAGE={base_image}",
+        "--build-arg",
+        f"POST_BUILD_SCRIPT={post_build_script}",
+    ]
+    if lock_file:
+        cmd.append("--build-arg")
+        cmd.append(f"LOCK_FILE={lock_file}")
+    cmd.extend(
         [
-            "docker",
-            "build",
-            "--progress=plain",
-            "--build-arg",
-            f"BASE_IMAGE={base_image}",
-            "--build-arg",
-            f"POST_BUILD_SCRIPT={post_build_script}",
-            f"LOCK_FILE={lock_file}",
             "-t",
             image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
             RELEASE_BYOD_DIR,
-        ],
+        ]
+    )
+    subprocess.check_call(
+        cmd,
         stdout=sys.stderr,
         env=env,
     )
