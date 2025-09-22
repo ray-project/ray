@@ -18,6 +18,7 @@
 #include <boost/regex.hpp>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1205,7 +1206,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO).WithField(node_id) << "Node is dead, reconstructing actors.";
+  RAY_LOG(DEBUG).WithField(node_id) << "Node is dead, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
@@ -1216,6 +1217,19 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
         children_ids.emplace(owner.first, child_id);
       }
     }
+
+    if (!children_ids.empty()) {
+      std::ostringstream oss;
+      oss << "Killing actors that were owned by workers on dead node: ";
+      for (auto child_it = children_ids.begin(); child_it != children_ids.end(); child_it++) {
+        oss << child_it->second.Hex();
+        if (std::next(child_it) != children_ids.end()) {
+          oss << ", ";
+        }
+      }
+      RAY_LOG(INFO).WithField(node_id) << oss.str();
+    }
+
     for (const auto &[owner_id, child_id] : children_ids) {
       DestroyActor(child_id,
                    GenOwnerDiedCause(GetActor(child_id),
@@ -1228,6 +1242,19 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
 
   // Cancel scheduling actors that haven't been created on the node.
   auto scheduling_actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
+
+  if (!scheduling_actor_ids.empty()) {
+    std::ostringstream oss;
+    oss << "Rescheduling actors that were being scheduled on dead node: ";
+    for (auto reschedule_it = scheduling_actor_ids.begin(); reschedule_it != scheduling_actor_ids.end(); reschedule_it++) {
+      oss << reschedule_it->Hex();
+      if (std::next(reschedule_it) != scheduling_actor_ids.end()) {
+        oss << ", ";
+      }
+    }
+    RAY_LOG(INFO).WithField(node_id) << oss.str();
+  }
+
   for (auto &actor_id : scheduling_actor_ids) {
     RestartActor(actor_id,
                  /*need_reschedule=*/true,
@@ -1240,6 +1267,17 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
     auto created_actors = std::move(iter->second);
     // Remove all created actors from node_to_created_actors_.
     created_actors_.erase(iter);
+
+    std::ostringstream oss;
+    oss << "Reconstructing actors that were running on dead node: ";
+    for (auto created_it = created_actors.begin(); created_it != created_actors.end(); created_it++) {
+      oss << created_it->second.Hex();
+      if (std::next(created_it) != created_actors.end()) {
+        oss << ", ";
+      }
+    }
+    RAY_LOG(INFO).WithField(node_id) << oss.str();
+
     for (auto &entry : created_actors) {
       // Reconstruct the removed actor.
       RestartActor(entry.second,
@@ -1252,6 +1290,24 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
   // case, these actors will never be created successfully. So we need to destroy them,
   // to prevent actor tasks hang forever.
   auto unresolved_actors = GetUnresolvedActorsByOwnerNode(node_id);
+
+  if (!unresolved_actors.empty()) {
+    std::ostringstream oss;
+    oss << "Rescheduling actors that were resolving dependencies on dead node : ";
+    for (auto unresolved_it = unresolved_actors.begin(); unresolved_it != unresolved_actors.end(); unresolved_it++) {
+      for (auto actor_it = unresolved_it->second.begin(); actor_it != unresolved_it->second.end(); actor_it++) {
+        oss << actor_it->Hex();
+        if (std::next(actor_it) != unresolved_it->second.end()) {
+          oss << ", ";
+        }
+      }
+      if (std::next(unresolved_it) != unresolved_actors.end()) {
+        oss << ", ";
+      }
+    }
+    RAY_LOG(INFO).WithField(node_id) << oss.str();
+  }
+
   for (const auto &[owner_id, actor_ids] : unresolved_actors) {
     for (const auto &actor_id : actor_ids) {
       if (registered_actors_.count(actor_id)) {
