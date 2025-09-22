@@ -230,7 +230,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
 
     wait_for_nodes:
-      num_nodes: 8
+      num_nodes: 4
 
   variations:
     - __suffix__: aws
