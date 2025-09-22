@@ -204,16 +204,16 @@ class AggregatorAgent(
             events_event_aggregator_service_pb2_grpc.add_EventAggregatorServiceServicer_to_server(
                 self, server
             )
-
-        await asyncio.gather(
+        try:
+            await asyncio.gather(
             self._http_endpoint_publisher.run_forever(),
             self._gcs_publisher.run_forever(),
         )
+        finally:
+            self._executor.shutdown()
 
-        self._executor.shutdown()
-
-        if self._async_gcs_channel:
-            self._async_gcs_channel.close()
+            if self._async_gcs_channel:
+                self._async_gcs_channel.close()
 
     @staticmethod
     def is_minimal_module() -> bool:
