@@ -233,6 +233,14 @@ TEST_F(PullManagerWithAdmissionControlTest,
   ASSERT_EQ(num_abort_calls_[oid_a], 0);
   ASSERT_EQ(num_send_pull_request_calls_, 3);  // 2 new requests + 1 old request above.
 
+  // simulate the timer expiring and the Tick() should try to re-pull the objects.
+  // This makes sure we don't miss sending pull requests for activated bundles in any
+  // cases because Tick() is triggered periodically.
+  pull_manager_.ResetRetryTimer(oid_a);
+  pull_manager_.ResetRetryTimer(oid_b);
+  pull_manager_.Tick();
+  ASSERT_EQ(num_send_pull_request_calls_, 5);  // 2 new requests + 3 old requests.
+
   pull_manager_.CancelPull(get_req_id);
   pull_manager_.CancelPull(task_req_id);
   AssertNoLeaks();
