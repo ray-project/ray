@@ -222,41 +222,23 @@ void TaskCounter::RecordMetrics() {
   absl::MutexLock l(&mu_);
   counter_.FlushOnChangeCallbacks();
   if (IsActor()) {
-    float running = 0.0;
+    float running_tasks = 0.0;
     float idle = 0.0;
-    if (num_tasks_running_ > 0) {
-      running = 1.0;
-    } else {
+    if (num_tasks_running_ == 0) {
       idle = 1.0;
+    } else {
+      running_tasks = 1.0;
     }
-    int running_in_wait = running_in_wait_counter_.Total();
-    int running_in_get = running_in_get_counter_.Total();
-    int executing = num_tasks_running_ - (running_in_wait + running_in_get);
     ray::stats::STATS_actors.Record(idle,
-                                    {{"State", "IDLE"},
+                                    {{"State", "ALIVE_IDLE"},
                                      {"Name", actor_name_},
                                      {"Source", "executor"},
                                      {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(running,
-                                    {{"State", "RUNNING_TASKS"},
+    ray::stats::STATS_actors.Record(running_tasks,
+                                    {{"State", "ALIVE_RUNNING_TASKS"},
                                      {"Name", actor_name_},
                                      {"Source", "executor"},
                                      {"JobId", job_id_}});
-    ray::stats::STATS_actor_tasks.Record(running_in_wait,
-                                         {{"State", "RUNNING_IN_RAY_WAIT"},
-                                          {"Name", actor_name_},
-                                          {"Source", "executor"},
-                                          {"JobId", job_id_}});
-    ray::stats::STATS_actor_tasks.Record(running_in_get,
-                                         {{"State", "RUNNING_IN_RAY_GET"},
-                                          {"Name", actor_name_},
-                                          {"Source", "executor"},
-                                          {"JobId", job_id_}});
-    ray::stats::STATS_actor_tasks.Record(executing,
-                                         {{"State", "EXECUTING"},
-                                          {"Name", actor_name_},
-                                          {"Source", "executor"},
-                                          {"JobId", job_id_}});
   }
 }
 
