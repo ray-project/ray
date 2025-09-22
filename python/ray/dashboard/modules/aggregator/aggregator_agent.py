@@ -204,11 +204,12 @@ class AggregatorAgent(
                 self, server
             )
 
-        await asyncio.gather(
-            self._http_endpoint_publisher.run_forever(),
-        )
-
-        self._executor.shutdown()
+        try:
+            await asyncio.gather(
+                self._http_endpoint_publisher.run_forever(),
+            )
+        finally:
+            self._executor.shutdown()
 
     @staticmethod
     def is_minimal_module() -> bool:
