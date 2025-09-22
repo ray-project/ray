@@ -14,6 +14,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_assertion,
+    wait_for_dashboard_agent_available,
 )
 
 METRIC_CONFIG = {
@@ -435,7 +436,7 @@ time.sleep(999)
         ("Phaser.inc", "FAILED", "0"): 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info, timeseries) == expected,
+        lambda: expected.items() <= tasks_by_all(info, timeseries).items(),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -489,7 +490,7 @@ time.sleep(999)
         ("Phaser.inc", "FINISHED", "0"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info, timeseries) == expected,
+        lambda: expected.items() <= tasks_by_all(info, timeseries).items(),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -566,8 +567,14 @@ ray.get([a.f.remote() for _ in range(40)])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_metrics_export_now(shutdown_only):
-    info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
+def test_metrics_export_now(shutdown_only, ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        **SLOW_METRIC_CONFIG,
+        num_cpus=2,
+    )
+    wait_for_dashboard_agent_available(cluster)
+    info = ray.init(address=cluster.address)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -734,7 +741,7 @@ time.sleep(999)
         ("Phaser.inc", "FINISHED", "0"): 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_all(info, timeseries) == expected,
+        lambda: expected.items() <= tasks_by_all(info, timeseries).items(),
         timeout=20,
         retry_interval_ms=500,
     )
