@@ -23,18 +23,20 @@ package ray.rpc.events;
 // capture the full state transition history.
 //
 // For static information associated with this event, see DriverJobDefinitionEvent.
-message DriverJobExecutionEvent {
+message DriverJobLifecycleEvent {
   enum State {
     UNSPECIFIED = 0;
     CREATED = 1;
     FINISHED = 2;
   }
 
-  message StateTimestamp {
+  message StateTransition {
     State state = 1;
     google.protobuf.Timestamp timestamp = 2;
   }
 
   bytes job_id = 1;
-  repeated StateTimestamp states = 2;
-}
+  // This records the state transitions within each export interval. The consumer should
+  // concatenate these intervals over the node’s lifetime to reconstruct the complete
+  // state transition time series.
+  repeated StateTransition state_transitions = 2;
