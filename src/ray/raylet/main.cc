@@ -257,6 +257,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
+
   gflags::ShutDownCommandLineFlags();
 
   std::unique_ptr<ray::CgroupManager> cgroup_manager;

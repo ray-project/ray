@@ -106,6 +106,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       io_service_(&io_service),
       node_id_(node_id),
       node_address_(std::move(node_address)),
+      node_address_family_(IsIPv6(node_address_) ? AF_INET6 : AF_INET),
       get_num_cpus_available_(std::move(get_num_cpus_available)),
       maximum_startup_concurrency_(
           RayConfig::instance().worker_maximum_startup_concurrency() > 0
@@ -692,7 +693,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-    if (CheckPortFree(*port)) {
+    if (CheckPortFree(node_address_family_, *port)) {
       return Status::OK();
     }
     // Return to pool to check later.

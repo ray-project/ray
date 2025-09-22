@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
+from ray._common.network_utils import is_ipv6
 from ray.rllib.core import (
     COMPONENT_RL_MODULE,
     DEFAULT_AGENT_ID,
@@ -285,7 +286,10 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
         time.sleep(sleep)
 
         # Start listening on the configured port.
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = socket.socket(
+            socket.AF_INET6 if is_ipv6(self.host) else socket.AF_INET,
+            socket.SOCK_STREAM,
+        )
         # Allow reuse of the address.
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))

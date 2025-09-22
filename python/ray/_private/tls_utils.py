@@ -2,6 +2,11 @@ import datetime
 import os
 import socket
 
+from ray._common.network_utils import (
+    get_localhost_ip,
+    node_ip_address_from_perspective,
+)
+
 
 def generate_self_signed_tls_certs():
     """Create self-signed key/cert pair for testing.
@@ -29,21 +34,13 @@ def generate_self_signed_tls_certs():
     ).decode()
 
     ray_interal = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ray-internal")])
-    # This is the same logic used by the GCS server to acquire a
-    # private/interal IP address to listen on. If we just use localhost +
-    # 127.0.0.1 then we won't be able to connect to the GCS and will get
-    # an error like "No match found for server name: 192.168.X.Y"
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    private_ip_address = s.getsockname()[0]
-    s.close()
     altnames = x509.SubjectAlternativeName(
         [
             x509.DNSName(
                 socket.gethostbyname(socket.gethostname())
-            ),  # Probably 127.0.0.1
-            x509.DNSName("127.0.0.1"),
-            x509.DNSName(private_ip_address),  # 192.168.*.*
+            ),  # Probably 127.0.0.1 or ::1
+            x509.DNSName(get_localhost_ip()),
+            x509.DNSName(node_ip_address_from_perspective()),
             x509.DNSName("localhost"),
         ]
     )
