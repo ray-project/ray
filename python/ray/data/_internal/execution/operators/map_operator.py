@@ -60,7 +60,7 @@ from ray.data.block import (
     to_stats,
 )
 from ray.data.context import DataContext
-from ray.data.operation_options import OperatorOptions
+from ray.data.operator_options import OperatorOptions
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)

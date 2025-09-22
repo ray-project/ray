@@ -60,7 +60,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
-from ray.data.operation_options import OperatorOptions
+from ray.data.operator_options import OperatorOptions
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)

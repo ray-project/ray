@@ -113,7 +113,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
-from ray.data.operation_options import OperatorOptions
+from ray.data.operator_options import OperatorOptions
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -381,7 +381,7 @@ class Dataset:
                   method raises an error.
 
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
             details.
 
             ray_remote_args_fn: A function that returns a dictionary of remote args
@@ -927,7 +927,7 @@ class Dataset:
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data.operation_options.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -1034,7 +1034,7 @@ class Dataset:
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data.operation_options.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -1102,7 +1102,7 @@ class Dataset:
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data.operation_options.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -1196,7 +1196,7 @@ class Dataset:
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data.operation_options.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -1376,7 +1376,7 @@ class Dataset:
                   method raises an error.
 
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data.operation_options.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -1508,7 +1508,7 @@ class Dataset:
                   method raises an error.
 
             operator_options: Options for configuring the operator. See
-                :class:`~ray.data.operation_options.OperatorOptions` for more
+                :class:`~ray.data.operator_options.OperatorOptions` for more
                 details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
