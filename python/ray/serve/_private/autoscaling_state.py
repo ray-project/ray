@@ -403,9 +403,11 @@ class AutoscalingState:
         if running_requests_timeseries:
 
             # assume that the last recorded metric is valid for last_window_s seconds
+            last_metric_timestamp = running_requests_timeseries[-1].timestamp
             last_window_s = min(
                 self._config.metrics_interval_s,
                 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
+                time.time() - last_metric_timestamp,
             )
             # Calculate the time-weighted average of the running requests
             avg_running = time_weighted_average(
@@ -468,11 +470,10 @@ class AutoscalingState:
             merged_timeseries = {"running_requests": [(0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.4, 15), (1.5, 14)]}
 
             Step 5: Calculate time-weighted average over full timeseries (t=0.1 to t=1.5+0.5=2.0)
-            # Time-weighted calculation: (3*0.1 + 8*0.6 + 10*0.1 + 11*0.3 + 15*0.3 + 14*1.0) / 2.0
-            # = (0.3 + 4.8 + 1.0 + 3.3 + 4.5 + 14.0) / 2.0 = 27.9 / 2.0 = 13.95
-            avg_running = 13.95
+            # Time-weighted calculation: (3*0.1 + 8*0.6 + 10*0.1 + 11*0.5 + 15*0.1 + 14*0.5) / 2.0 = 10.05
+            avg_running = 10.05
 
-            Final result: total_requests = avg_running + queued = 13.95 + 5 = 18.95
+            Final result: total_requests = avg_running + queued = 10.05 + 5 = 15.05
 
         Returns:
             Total number of requests (average running + queued) calculated from
