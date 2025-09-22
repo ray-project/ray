@@ -618,9 +618,10 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # Wait for the actor to be alive again in a new worker process.
     def check_actor_restart():
-        actors = ray.util.state.list_actors()
+        actors = ray.util.state.list_actors(
+            detail=True
+        )  # detail is needed for num_restarts to populate
         assert len(actors) == 1
-        print(actors)
         return actors[0].state == "ALIVE" and actors[0].num_restarts == 1
 
     wait_for_condition(check_actor_restart)

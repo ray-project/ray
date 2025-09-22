@@ -162,10 +162,6 @@ def test_global_state_actor_table(ray_start_regular):
     # actor table should be empty at first
     assert len(ray.util.state.list_actors()) == 0
 
-    # actor table should contain only one entry
-    def get_actor_table_data(field):
-        return ray.util.state.list_actors()[0][field]
-
     a = Actor.remote()
     pid = ray.get(a.ready.remote())
     assert len(ray.util.state.list_actors()) == 1

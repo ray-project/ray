@@ -270,7 +270,7 @@ def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_stra
     [ray.get(actor.value.remote()) for actor in actors]
 
     # Get all actors.
-    actor_infos = ray.util.state.list_actors()
+    actor_infos = ray.util.state.list_actors(detail=True)
 
     # Make sure all actors in counter_list are located in separate nodes.
     assert are_pairwise_unique([info_obj.node_id for info_obj in actor_infos])

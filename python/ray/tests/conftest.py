@@ -62,6 +62,13 @@ def pre_envs(monkeypatch):
     yield
 
 
+def pytest_configure(config):
+    try:
+        pass  # force-load the submodule
+    except Exception:
+        raise RuntimeError("ray.util.state not available in this build")
+
+
 def wait_for_redis_to_start(
     redis_ip_address: str, redis_port: bool, password=None, username=None
 ):

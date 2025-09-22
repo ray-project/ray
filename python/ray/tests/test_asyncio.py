@@ -244,8 +244,10 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     # Using ray task so it works in Ray Client as well.
     @ray.remote
     def check_actor_gone_now():
+        import ray.util.state as STATE
+
         def cond():
-            return ray.util.state.get_actor(id=a._ray_actor_id.hex()).state != "ALIVE"
+            return STATE.get_actor(id=a._ray_actor_id.hex()).state != "ALIVE"
 
         wait_for_condition(cond)
 

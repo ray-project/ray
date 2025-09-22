@@ -408,7 +408,7 @@ def test_capture_child_actors(ray_start_cluster):
     # Make sure all the actors are scheduled on the same node.
     # (why? The placement group has STRICT_PACK strategy).
     node_id_set = set()
-    for actor_info in ray.util.state.list_actors():
+    for actor_info in ray.util.state.list_actors(detail=True):
         if actor_info.state == "ALIVE":
             node_id = actor_info.node_id
             node_id_set.add(node_id)
@@ -433,7 +433,7 @@ def test_capture_child_actors(ray_start_cluster):
     # It is because the child tasks are not scheduled on the same
     # placement group.
     node_id_set = set()
-    for actor_info in ray.util.state.list_actors():
+    for actor_info in ray.util.state.list_actors(detail=True):
         if actor_info.state == "ALIVE":
             node_id = actor_info.node_id
             node_id_set.add(node_id)
@@ -458,7 +458,7 @@ def test_capture_child_actors(ray_start_cluster):
     # It is because the child tasks are not scheduled on the same
     # placement group.
     node_id_set = set()
-    for actor_info in ray.util.state.list_actors():
+    for actor_info in ray.util.state.list_actors(detail=True):
         if actor_info.state == "ALIVE":
             node_id = actor_info.node_id
             node_id_set.add(node_id)
