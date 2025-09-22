@@ -39,5 +39,7 @@ steps:
       - bash ci/build/build-placeholder-wheel.sh
       # compile rayimg dependencies
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml --check
+      - chown -R 2000:100 /artifact-mount
+      - cp ./python/deplocks/rayimg/* /artifact-mount/
     job_env: manylinux
     depends_on: manylinux
