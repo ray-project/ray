@@ -73,19 +73,18 @@ from ray.data.read_api import (  # noqa: F401
     read_webdataset,
 )
 
-# Import simplified SQL API
+# Import clean SQL API
 try:
     from ray.data.sql_api import (
         clear_tables,
+        config as sql_config,
         list_tables,
         register,
         sql,
-        sql_config,
     )
 
-    # Import exceptions for error handling
+    # Import essential exceptions
     from ray.data.sql import (
-        ColumnNotFoundError,
         SQLError,
         SQLExecutionError,
         SQLParseError,

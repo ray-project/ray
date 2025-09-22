@@ -1,13 +1,12 @@
 """
-Simplified SQL API for Ray Data - DuckDB-style interface.
+Clean SQL API for Ray Data - Native Dataset Operations.
 
-This module provides a clean, Pythonic SQL interface that automatically
-discovers Ray Datasets from the caller's namespace, similar to how DuckDB
-automatically discovers Pandas DataFrames.
+This provides a clean SQL interface that converts SQL directly into
+Ray Dataset native operations for maximum performance and compatibility.
 """
 
 import inspect
-from typing import Any, Dict, Set
+from typing import List
 
 from ray.data import Dataset
 from ray.data.sql.core import get_engine
@@ -17,170 +16,136 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 def sql(query: str, **datasets) -> Dataset:
-    """Execute a SQL query on Ray Datasets with automatic variable discovery.
-
-    This function provides a simple, Pythonic SQL interface similar to DuckDB.
-    Ray Datasets can be referenced directly in SQL queries by their variable names,
-    or passed explicitly as keyword arguments.
-
+    """Execute SQL using Ray Dataset native operations. Variables auto-discovered.
+    
+    This function converts SQL queries directly into Ray Dataset native operations
+    like filter(expr=...), join(), groupby().aggregate(), sort(), and limit()
+    for maximum performance and compatibility.
+    
     Args:
         query: SQL query string.
-        **datasets: Optional explicit dataset mappings (name=dataset).
-
+        **datasets: Optional explicit dataset mappings.
+        
     Returns:
-        Dataset containing the query results.
-
+        Dataset with query results using Ray Dataset native operations.
+        
     Examples:
-        Automatic dataset discovery (DuckDB-style):
-            >>> import ray.data
+        Basic filtering (uses dataset.filter(expr=...) with native Arrow optimization):
             >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-            >>> orders = ray.data.from_items([{"id": 1, "user_id": 1, "amount": 100}])
-            >>> # Datasets automatically available by variable name
-            >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
-            >>> result = ray.data.sql("SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id")
-
-        Explicit dataset passing:
-            >>> result = ray.data.sql("SELECT * FROM my_table", my_table=users)
-
-        Your requested pattern:
-            >>> ds = ray.data.from_items([{"x": 1}, {"x": 2}])
-            >>> new_ds = ray.data.sql("SELECT * FROM ds WHERE x > 1")
-            >>> # That's it! No registration needed!
+            >>> result = ray.data.sql("SELECT * FROM users WHERE id > 0")
+            >>> # Internally: users.filter(expr="id > 0")
+        
+        Joins (uses dataset.join() with native distributed join):
+            >>> orders = ray.data.from_items([{"user_id": 1, "amount": 100}])
+            >>> result = ray.data.sql("SELECT * FROM users u JOIN orders o ON u.id = o.user_id")
+            >>> # Internally: users.join(orders, on="id", right_on="user_id")
+        
+        Aggregation (uses dataset.groupby().aggregate() with native aggregates):
+            >>> result = ray.data.sql("SELECT COUNT(*) as count FROM users")
+            >>> # Internally: users.aggregate(Count())
+        
+        Complex queries (chains native operations):
+            >>> result = ray.data.sql('''
+            ...     SELECT city, AVG(age) as avg_age 
+            ...     FROM users 
+            ...     WHERE age BETWEEN 25 AND 65
+            ...     GROUP BY city 
+            ...     ORDER BY avg_age DESC
+            ...     LIMIT 10
+            ... ''')
+            >>> # Internally: users.filter(expr="(age >= 25) and (age <= 65)")
+            >>> #              .groupby("city").aggregate(Mean("age"))
+            >>> #              .sort("avg_age", descending=True).limit(10)
     """
-    # Extract table names from the SQL query
+    # Get caller's variables (optimized)
+    frame = inspect.currentframe().f_back
+    caller_locals = frame.f_locals
+    caller_globals = frame.f_globals
+
+    # Extract table names from query
     try:
         table_names = extract_table_names_from_query(query)
     except Exception:
-        # If we can't parse table names, fall back to current behavior
-        engine = get_engine()
-        return engine.sql(query)
+        # Fallback if parsing fails
+        return get_engine().sql(query)
 
-    # Get the caller's frame to access their local variables
-    caller_frame = inspect.currentframe().f_back
-    caller_locals = caller_frame.f_locals
-    caller_globals = caller_frame.f_globals
-
-    # Auto-register datasets from caller's namespace
+    # Auto-register datasets
     engine = get_engine()
-    auto_registered = []
+    registered = []
 
-    for table_name in table_names:
+    for table in table_names:
         # Skip if already registered
-        if table_name in engine.registry.list_tables():
+        if table in engine.list_tables():
             continue
 
-        # Look for dataset in explicit kwargs first
-        if table_name in datasets:
-            dataset = datasets[table_name]
-            if isinstance(dataset, Dataset):
-                engine.register_table(table_name, dataset)
-                auto_registered.append(table_name)
+        # Use explicit dataset if provided
+        if table in datasets and isinstance(datasets[table], Dataset):
+            engine.register_table(table, datasets[table])
+            registered.append(table)
             continue
 
-        # Look for dataset in caller's local variables
-        if table_name in caller_locals:
-            var = caller_locals[table_name]
-            if isinstance(var, Dataset):
-                engine.register_table(table_name, var)
-                auto_registered.append(table_name)
-                continue
+        # Auto-discover from caller's variables (check locals first, then globals)
+        if table in caller_locals and isinstance(caller_locals[table], Dataset):
+            engine.register_table(table, caller_locals[table])
+            registered.append(table)
+        elif table in caller_globals and isinstance(caller_globals[table], Dataset):
+            engine.register_table(table, caller_globals[table])
+            registered.append(table)
 
-        # Look for dataset in caller's global variables
-        if table_name in caller_globals:
-            var = caller_globals[table_name]
-            if isinstance(var, Dataset):
-                engine.register_table(table_name, var)
-                auto_registered.append(table_name)
-
+    # Execute query and cleanup
     try:
-        # Execute the query
-        result = engine.sql(query)
-        return result
+        return engine.sql(query)
     finally:
-        # Clean up auto-registered tables to avoid namespace pollution
-        for table_name in auto_registered:
+        # Clean up auto-registered tables
+        for table in registered:
             try:
-                engine.unregister_table(table_name)
+                engine.unregister_table(table)
             except Exception:
-                pass  # Ignore cleanup errors
+                pass
 
 
 @PublicAPI(stability="alpha")
 def register(name: str, dataset: Dataset) -> None:
-    """Register a Dataset as a SQL table (optional - for persistent registration).
+    """Register a dataset as a SQL table (optional - auto-discovery usually works).
 
     Args:
-        name: SQL table name.
+        name: Table name for SQL queries.
         dataset: Ray Dataset to register.
 
     Examples:
-        >>> import ray.data
         >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-        >>> ray.data.register("users", users)  # Persistent registration
+        >>> ray.data.register("users", users)
         >>> result = ray.data.sql("SELECT * FROM users")
     """
-    engine = get_engine()
-    engine.register_table(name, dataset)
+    get_engine().register_table(name, dataset)
 
 
 @PublicAPI(stability="alpha")
 def clear_tables() -> None:
-    """Clear all registered SQL tables.
-
-    Examples:
-        >>> ray.data.clear_tables()  # Clean slate
-    """
-    engine = get_engine()
-    engine.clear_tables()
+    """Clear all registered tables."""
+    get_engine().clear_tables()
 
 
 @PublicAPI(stability="alpha")
 def list_tables() -> List[str]:
-    """List all registered SQL tables.
-
-    Returns:
-        List of registered table names.
-
-    Examples:
-        >>> tables = ray.data.list_tables()
-        >>> print(f"Available tables: {tables}")
-    """
-    engine = get_engine()
-    return engine.list_tables()
+    """List all registered tables."""
+    return get_engine().list_tables()
 
 
-# Simple configuration through module-level properties
-class _SQLConfig:
-    """Simple SQL configuration accessible as ray.data.sql_config.*"""
-
-    def __init__(self):
-        self._dialect = "duckdb"
-        self._case_sensitive = True
-
+# Simple configuration - just the essentials
+class _Config:
     @property
     def dialect(self) -> str:
-        """SQL dialect (duckdb, postgres, mysql, etc.)."""
-        return self._dialect
+        """SQL dialect. Default: duckdb"""
+        from ray.data.sql.core import get_dialect
+
+        return get_dialect()
 
     @dialect.setter
     def dialect(self, value: str) -> None:
         from ray.data.sql.core import set_dialect
 
         set_dialect(value)
-        self._dialect = value
-
-    @property
-    def case_sensitive(self) -> bool:
-        """Whether identifiers are case sensitive."""
-        return self._case_sensitive
-
-    @case_sensitive.setter
-    def case_sensitive(self, value: bool) -> None:
-        from ray.data.sql.core import configure
-
-        configure(case_sensitive=value)
-        self._case_sensitive = value
 
 
-# Create global config instance
-sql_config = _SQLConfig()
+config = _Config()
