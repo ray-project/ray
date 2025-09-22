@@ -525,18 +525,18 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
 
     # Case 1: Single tensor
     ref = actor.echo.remote(tensor1)
-    assert torch.equal(ray.get(ref), tensor1)
+    assert torch.equal(ray.get(ref, _tensor_transport="object_store"), tensor1)
 
     # Case 2: Multiple tensors
     ref = actor.echo.remote([tensor1, tensor2])
-    result = ray.get(ref)
+    result = ray.get(ref, _tensor_transport="object_store")
     assert torch.equal(result[0], tensor1)
     assert torch.equal(result[1], tensor2)
 
     # Case 3: Mixed CPU and GPU data
     data = [tensor1, tensor2, 7]
     ref = actor.echo.remote(data)
-    result = ray.get(ref)
+    result = ray.get(ref, _tensor_transport="object_store")
     assert torch.equal(result[0], tensor1)
     assert torch.equal(result[1], tensor2)
     assert result[2] == 7
@@ -659,8 +659,8 @@ def test_dynamic_tensor_transport_via_options(
         # If enable_tensor_transport is set to True, then it's okay to use
         # dynamic tensor_transport.
         ref = sender.tensor_method.options(tensor_transport="gloo").remote()
-        tensor = ray.get(ref)
-        result = ray.get(receiver.double.remote(ref))
+        tensor = ray.get(ref, _tensor_transport="object_store")
+        result = ray.get(receiver.double.remote(ref), _tensor_transport="object_store")
         assert result == pytest.approx(tensor * 2)
     else:
         # If enable_tensor_transport is not set, then user cannot use
@@ -713,12 +713,12 @@ def test_app_error_fetch_to_driver(ray_start_regular):
 
     ref = actor.fail.options(tensor_transport="gloo").remote("test_app_error")
     with pytest.raises(Exception, match="test_app_error"):
-        ray.get(ref)
+        ray.get(ref, _tensor_transport="object_store")
 
     # Make sure the driver can receive an exception from the actor.
     small_tensor = torch.tensor([1, 2, 3])
     ref = actor.echo.remote(small_tensor)
-    assert torch.equal(ray.get(ref), small_tensor)
+    assert torch.equal(ray.get(ref, _tensor_transport="object_store"), small_tensor)
 
 
 def test_write_after_save(ray_start_regular):
@@ -847,12 +847,12 @@ def test_send_back_and_dst_warning(ray_start_regular):
         t = src_actor.echo.remote(tensor)
         t1 = src_actor.echo.remote(t)  # Sent back to the source actor
         t2 = dst_actor.echo.remote(t)  # Also sent to another actor
-        ray.get([t1, t2])
+        ray.get([t1, t2], _tensor_transport="object_store")
 
     # Second transmission of ObjectRef `t` to `dst_actor` should not trigger a warning
     # Verify no `pytest.warns` context is used here because no warning should be raised
     t3 = dst_actor.echo.remote(t)
-    ray.get(t3)
+    ray.get(t3, _tensor_transport="object_store")
 
 
 def test_duplicate_objectref_transfer(ray_start_regular):

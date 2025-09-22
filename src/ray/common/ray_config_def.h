@@ -27,7 +27,7 @@ RAY_CONFIG(bool, event_stats, true)
 /// Whether to enable Ray event stats metrics for main services
 /// such as gcs and raylet (which today are the sole consumers of
 /// this config)
-RAY_CONFIG(bool, emit_main_service_metrics, true)
+RAY_CONFIG(bool, emit_main_service_metrics, false)
 
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
@@ -533,6 +533,8 @@ RAY_CONFIG(bool, enable_open_telemetry, false)
 /// Whether to enable Ray Event as the event collection backend. The default is
 /// using the Export API.
 RAY_CONFIG(bool, enable_ray_event, false)
+
+RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance

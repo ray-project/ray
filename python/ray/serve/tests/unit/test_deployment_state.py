@@ -2912,7 +2912,19 @@ class TestAutoscaling:
             for replica in ds._replicas.get():
                 replica._actor.set_ready()
         else:
+            # Due to two-stage downscaling one of the replicas will still be running
+            check_counts(
+                ds,
+                total=3,
+                by_state=[
+                    (ReplicaState.STOPPING, 2, None),
+                    (ReplicaState.RUNNING, 1, None),
+                ],
+            )
+            # Trigger the second stage of downscaling
+            dsm.update()
             check_counts(ds, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+
             assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
             assert (
                 ds.curr_status_info.status_trigger
@@ -2923,7 +2935,7 @@ class TestAutoscaling:
 
             dsm.update()
             astate = asm._autoscaling_states[TEST_DEPLOYMENT_ID]
-            assert len(astate._replica_requests) == 0
+            assert len(astate._replica_metrics) == 0
 
         # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
         dsm.update()
@@ -3561,6 +3573,17 @@ class TestAutoscaling:
         # result, the replicas should scale back down to 0.
         timer.advance(10)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        # The first update will trigger the first stage of downscaling to 1
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[
+                (ReplicaState.STOPPING, 1, None),
+                (ReplicaState.RUNNING, 1, None),
+            ],
+        )
+        # The second update will trigger the second stage of downscaling from 1 to 0
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
         assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 0
@@ -3664,6 +3687,17 @@ class TestAutoscaling:
         # Now that the d2 replica is dead, its metrics should be dropped.
         # Consequently d1 should scale down to 0 replicas
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        # Due to two-stage downscaling one of the replicas will still be running
+        check_counts(
+            ds1,
+            total=2,
+            by_state=[
+                (ReplicaState.STOPPING, 1, None),
+                (ReplicaState.RUNNING, 1, None),
+            ],
+        )
+        # Trigger the second stage of downscaling
         dsm.update()
         check_counts(ds1, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
 
