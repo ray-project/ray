@@ -59,7 +59,7 @@ def _sha256_16(s: str) -> str:
 @dataclass
 class Sampling:
     fps: Optional[float] = None  # e.g., 3.0 frames/sec
-    num_frames: Optional[int] = None  # e.g., 8 uniformly spaced frames
+    num_frames: Optional[int] = None  # # e.g., take the first 8 frames
 
     @classmethod
     def from_user(cls, cfg: Optional[Dict[str, Any]]) -> "Sampling":
@@ -290,8 +290,10 @@ class VideoProcessor:
             try:
                 if container is not None:
                     container.close()
-            except Exception:
-                pass
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to close PyAV container for source {self._source_repr(source, resolved, is_memory)}: {e}"
+                ) from e
 
         # Strict: no implicit fallback. If no frames sampled, treat as failure.
         if not frames:
@@ -334,8 +336,10 @@ class VideoProcessor:
         if cleanup_path is not None and not self._keep_downloaded:
             try:
                 os.remove(cleanup_path)
-            except Exception:
-                pass
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to remove cached file at {cleanup_path}: {e}"
+                ) from e
 
         return result
 
@@ -396,7 +400,7 @@ class VideoProcessor:
             except Exception:
                 duration_s = None
 
-        # Build targets
+        # Build targets (fps mode only)
         s = self._sampling
         targets: List[float] = []
         if s.fps is not None:
@@ -410,18 +414,6 @@ class VideoProcessor:
                 n = int(max(duration_s, 0.0) * s.fps) + 1  # include t=0
                 n = max(1, min(n, _MAX_TARGETS))
                 targets = [i / s.fps for i in range(n)]
-        elif s.num_frames is not None:
-            n = max(int(s.num_frames), 1)
-            if duration_s is None:
-                targets = [0.0 for _ in range(min(n, _MAX_TARGETS))]
-            else:
-                if n == 1:
-                    targets = [0.0]
-                else:
-                    step = duration_s / (n - 1)
-                    # Bound by _MAX_TARGETS as well
-                    n_bounded = min(n, _MAX_TARGETS)
-                    targets = [i * step for i in range(n_bounded)]
         return targets
 
     def _apply_preprocess_pil(self, img: Any) -> Any:
@@ -475,22 +467,11 @@ class VideoProcessor:
                 img = frame.to_image()
                 img = self._apply_preprocess_pil(img)
                 arr = np.array(img)
-                # Some mocks may not convert to a proper array; synthesize if needed
+                # In production, fail fast if conversion is invalid
                 if getattr(arr, "ndim", 0) < 2 or arr.size == 0:
-                    # Derive size from preprocess config or image attributes
-                    size = None
-                    r = self._preprocess.get("resize") if isinstance(
-                        self._preprocess, dict) else None
-                    if r and isinstance(r, dict) and "size" in r:
-                        size = tuple(r[
-                                         "size"])  # (W,H) or (H,W) depending on usage; assume (W,H)
-                    w = getattr(img, "width", None)
-                    h = getattr(img, "height", None)
-                    if size:
-                        W, H = size if len(size) == 2 else (w or 8, h or 8)
-                    else:
-                        W, H = (w or 8), (h or 8)
-                    arr = np.zeros((H, W, 3), dtype=np.uint8)
+                    raise ValueError(
+                        "Failed to convert preprocessed PIL image to a valid numpy array"
+                    )
             else:
                 # Direct RGB ndarray; coerce to numpy if backend returns list
                 arr = frame.to_ndarray(format="rgb24")
