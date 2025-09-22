@@ -811,7 +811,7 @@ def test_select_fusion_disabled_with_operator_options(ray_start_regular_shared_2
     physical_op = physical_plan.dag
 
     actual_plan_str = physical_op.dag_str
-    # # Select ops are fused with Map
+    # Project op are fused with Map
     assert (
         "ReadParquet->MapBatches(<lambda>)->Project" in actual_plan_str
     ), f"Expected fusion not found in plan: {actual_plan_str}"
@@ -827,7 +827,7 @@ def test_select_fusion_disabled_with_operator_options(ray_start_regular_shared_2
     physical_op = physical_plan.dag
 
     actual_plan_str = physical_op.dag_str
-    # Map ops should not be fused with Read
+    # Project op should not be fused with Map
     assert (
         "ReadParquet->MapBatches(<lambda>)->Project" not in actual_plan_str
     ), f"UnExpected fusion found in plan: {actual_plan_str}"
@@ -844,7 +844,7 @@ def test_rename_fusion_disabled_with_operator_options(ray_start_regular_shared_2
     physical_op = physical_plan.dag
 
     actual_plan_str = physical_op.dag_str
-    # # Select ops are fused with Map
+    # Project op is fused with Map
     assert (
         "ReadParquet->MapBatches(<lambda>)->Project" in actual_plan_str
     ), f"Expected fusion not found in plan: {actual_plan_str}"
@@ -860,7 +860,7 @@ def test_rename_fusion_disabled_with_operator_options(ray_start_regular_shared_2
     physical_op = physical_plan.dag
 
     actual_plan_str = physical_op.dag_str
-    # Map ops should not be fused with Read
+    # Project op should not be fused with Map
     assert (
         "ReadParquet->MapBatches(<lambda>)->Project" not in actual_plan_str
     ), f"UnExpected fusion found in plan: {actual_plan_str}"
