@@ -2876,6 +2876,43 @@ def unify_schemas_nested_struct_tensors_schemas():
     return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
 
 
+def test_concat_with_mixed_tensor_types_and_native_pyarrow_types():
+    num_rows = 512
+
+    # Block A: int is uint64; tensor = Ray tensor extension
+    t_uint = pa.table(
+        {
+            "int": pa.array(np.zeros(num_rows, dtype=np.uint64), type=pa.uint64()),
+            "tensor": ArrowTensorArray.from_numpy(
+                np.zeros((num_rows, 3, 3), dtype=np.float32)
+            ),
+        }
+    )
+
+    # Block B: int is float64 with NaNs; tensor = same extension type
+    f = np.ones(num_rows, dtype=np.float64)
+    f[::8] = np.nan
+    t_float = pa.table(
+        {
+            "int": pa.array(f, type=pa.float64()),
+            "tensor": ArrowTensorArray.from_numpy(
+                np.zeros((num_rows, 3, 3), dtype=np.float32)
+            ),
+        }
+    )
+
+    # Two input blocks with different Arrow dtypes for "int"
+    ds = ray.data.from_arrow([t_uint, t_float])
+
+    # Force a concat across blocks; either repartition(1) OR an identity pyarrow map will do.
+    # (Use the map if you want to be extra sure we hit the concat inside the map pipeline.)
+    ds = ds.repartition(1)
+    # ds = ds.map_batches(lambda tbl: tbl, batch_format="pyarrow", batch_size=256, concurrency=1)
+
+    # This should raise: RuntimeError: Types mismatch: double != uint64
+    ds.materialize()
+
+
 @pytest.fixture
 def object_with_tensor_fails_blocks():
     """Blocks that should fail when concatenating objects with tensors."""
