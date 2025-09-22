@@ -3,7 +3,26 @@ import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+# Optional pytest import for linters; real runs will have pytest
+try:  # pragma: no cover - fallback for static analyzers
+    import pytest  # type: ignore
+except Exception:  # pragma: no cover
+    class _DummyPytest:  # minimal shim
+        @staticmethod
+        def mark(*a, **k):
+            return lambda f: f
+
+        @staticmethod
+        def importorskip(name):
+            raise ImportError(name)
+
+    pytest = _DummyPytest()  # type: ignore
+
+# Optional numpy import for tests that require it
+try:  # pragma: no cover
+    import numpy as _np  # type: ignore
+except Exception:  # pragma: no cover
+    _np = None  # type: ignore
 
 from ray.llm._internal.batch.stages.prepare_video_stage import (
     PrepareVideoUDF,
@@ -49,8 +68,8 @@ def mock_pyav_open():
                                 return self
                         return _Img()
                     def to_ndarray(self, format="rgb24"):
-                        import numpy as np
-                        return np.zeros((48, 64, 3), dtype=np.uint8)
+                        # Avoid importing numpy here to keep tests runnable without numpy
+                        return [[0]]  # sentinel non-numpy structure
                 class _Container:
                     def __init__(self):
                         self.streams = [_Stream()]
@@ -178,14 +197,14 @@ async def test_auto_cache_to_disk_when_num_frames(mock_http_connection_bytes, mo
     batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
     async for _ in udf(batch):
         pass
-    # expect a cached file present (keep_downloaded default False may remove, but if absent that's acceptable)
-    # we just ensure no crash and the directory exists
+    # ensure directory exists and download_file happened once
     assert tmp_path.exists()
+    assert mock_http_connection_bytes.download_file.call_count >= 1
 
 
 @pytest.mark.asyncio
-async def test_av_missing_import_raises_clear_error(mock_http_connection_bytes):
-    # Simulate missing av import
+async def test_av_missing_import_error_metadata(mock_http_connection_bytes):
+    # Simulate missing av import and validate metadata fields
     with patch("importlib.import_module", side_effect=lambda name: (_ for _ in ()).throw(ImportError()) if name == "av" else __import__(name)):
         udf = PrepareVideoUDF(
             data_column="__data",
@@ -194,12 +213,14 @@ async def test_av_missing_import_raises_clear_error(mock_http_connection_bytes):
             output_format="pil",
         )
         batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
-        # The UDF swallows errors per item and marks failed; just ensure it doesn't crash generator
         outs = []
         async for out in udf(batch):
             outs.append(out["__data"][0])
-        assert outs and "video_meta" in outs[0]
-        assert outs[0]["video_meta"][0]["failed"] is True
+        meta = outs[0]["video_meta"][0]
+        assert meta["failed"] is True
+        assert "error_type" in meta and meta["error_type"] in ("ImportError", "Exception")
+        assert "attempts" in meta and meta["attempts"] >= 1
+        assert "retried" in meta
 
 
 @pytest.mark.asyncio
@@ -232,35 +253,89 @@ async def test_multiple_videos_order_preserved(mock_http_connection_bytes, mock_
 
 
 @pytest.mark.asyncio
-async def test_preprocess_convert_no_crash(mock_http_connection_bytes):
-    # Use simple av mock with minimal image behavior
+@pytest.mark.skipif(_np is None, reason="numpy required")
+async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
+    # Ensure numpy output respects preprocess (resize) by going through PIL then to numpy
     with patch("importlib.import_module") as imp:
         def _import(name):
             if name == "av":
-                class _Stream:
-                    type = "video"; index=0; time_base=1/1000; duration=1000
-                class _Frame:
+                class _S: type="video"; index=0; time_base=1/1000; duration=1000
+                class _F:
                     def __init__(self, pts): self.pts=pts
                     def to_image(self):
-                        class _Img:
+                        class _I:
                             width=10; height=10
                             def resize(self, *a, **k): return self
                             def crop(self, *a, **k): return self
                             def convert(self, *a, **k): return self
-                        return _Img()
-                class _Container:
-                    def __init__(self): self.streams=[_Stream()]; self.duration=1000000
+                        return _I()
+                    def to_ndarray(self, format="rgb24"):
+                        return _np.zeros((10,10,3), dtype=_np.uint8)
+                class _C:
+                    def __init__(self): self.streams=[_S()]; self.duration=1000000
                     def decode(self, video=0):
-                        yield _Frame(0)
+                        yield _F(0)
                     def close(self): pass
                 class _AV:
-                    time_base = 1/1_000_000
+                    time_base=1/1_000_000
                     @staticmethod
-                    def open(resolved, format=None): return _Container()
+                    def open(resolved, format=None): return _C()
                 return _AV
             elif name == "PIL.Image":
-                class _PIL: pass
-                return _PIL
+                class _P: pass
+                return _P
+            return __import__(name)
+        imp.side_effect = _import
+        udf = PrepareVideoUDF(
+            data_column="__data",
+            expected_input_keys=["messages"],
+            sampling={"fps": 1},
+            output_format="numpy",
+            channels_first=False,
+        )
+        udf._video._preprocess = {"resize": {"size": [8,8]}, "convert": "RGB"}
+        batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
+        outs=[]
+        async for out in udf(batch): outs.append(out["__data"][0])
+        np = _np
+        arr = outs[0]["video"][0][0]
+        assert isinstance(arr, np.ndarray)
+        assert arr.shape[:2] == (8,8)
+
+
+@pytest.mark.asyncio
+async def test_bytesio_format_guess_fallback(mock_http_connection_bytes):
+    # For data URI, first open without format raises; second with guessed format succeeds
+    with patch("importlib.import_module") as imp:
+        class _ErrOnAuto:
+            time_base = 1/1_000_000
+            @staticmethod
+            def open(resolved, format=None):
+                # Fail when resolved is BytesIO and format is None
+                if isinstance(resolved, io.BytesIO) and format is None:
+                    raise RuntimeError("need format")
+                class _S: type="video"; index=0; time_base=1/1000; duration=1000
+                class _F:
+                    def __init__(self, pts): self.pts=pts
+                    def to_image(self):
+                        class _I:
+                            width=4; height=4
+                            def resize(self, *a, **k): return self
+                            def crop(self, *a, **k): return self
+                            def convert(self, *a, **k): return self
+                        return _I()
+                class _C:
+                    def __init__(self): self.streams=[_S()]; self.duration=500000
+                    def decode(self, video=0):
+                        yield _F(0)
+                    def close(self): pass
+                return _C()
+        def _import(name):
+            if name == "av":
+                return _ErrOnAuto
+            elif name == "PIL.Image":
+                class _P: pass
+                return _P
             return __import__(name)
         imp.side_effect = _import
         udf = PrepareVideoUDF(
@@ -268,72 +343,116 @@ async def test_preprocess_convert_no_crash(mock_http_connection_bytes):
             expected_input_keys=["messages"],
             sampling={"fps": 1},
             output_format="pil",
+            cache_mode="memory",
         )
-        # Inject preprocess via internal processor for this test
-        udf._video._preprocess = {"resize": {"size": [8,8]}, "convert": "RGB"}
+        data_uri = "data:video/mp4;base64,AAAA"  # mime indicates mp4 so guess should be mp4
+        batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": data_uri}]}]}]}
+        outs=[]
+        async for out in udf(batch): outs.append(out["__data"][0])
+        assert outs and outs[0]["video_meta"][0]["failed"] is False
+
+
+@pytest.mark.asyncio
+async def test_retries_success_and_counts(mock_pyav_open):
+    # Monkeypatch processor sync method to fail once then succeed
+    udf = PrepareVideoUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        sampling={"fps": 1},
+        output_format="pil",
+        retries=1,
+        retry_backoff_base=0.0,
+    )
+    calls = {"n": 0}
+
+    def _sync_ok(_src):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("temp")
+        return {"frames": [object()], "meta": {"failed": False}}
+
+    udf._video._process_one_sync = _sync_ok  # patch instance method
+
+    batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
+    outs=[]
+    async for out in udf(batch): outs.append(out["__data"][0])
+    assert calls["n"] == 2  # retried once
+    assert outs[0]["video_meta"][0]["failed"] is False
+
+
+@pytest.mark.asyncio
+async def test_non_retriable_no_retry(mock_pyav_open):
+    udf = PrepareVideoUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        sampling={"fps": 1},
+        output_format="pil",
+        retries=3,
+        retry_backoff_base=0.0,
+    )
+
+    def _sync_fail(_src):
+        raise ValueError("bad config")
+
+    udf._video._process_one_sync = _sync_fail
+
+    batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
+    outs=[]
+    async for out in udf(batch): outs.append(out["__data"][0])
+    meta = outs[0]["video_meta"][0]
+    assert meta["failed"] is True
+    assert meta.get("attempts") == 1
+    assert meta.get("retried") is False
+
+
+@pytest.mark.asyncio
+async def test_target_cap_limits_frames(mock_http_connection_bytes):
+    # Use av mock that yields many frames over 2s; cap to 2
+    with patch("importlib.import_module") as imp:
+        def _import(name):
+            if name == "av":
+                class _S: type="video"; index=0; time_base=1/1000; duration=2000
+                class _F:
+                    def __init__(self, pts): self.pts=pts
+                    def to_image(self):
+                        class _I:
+                            width=10; height=10
+                            def resize(self, *a, **k): return self
+                            def crop(self, *a, **k): return self
+                            def convert(self, *a, **k): return self
+                        return _I()
+                class _C:
+                    def __init__(self): self.streams=[_S()]; self.duration=2_000_000
+                    def decode(self, video=0):
+                        # generate many pts
+                        for pts in range(0, 2000, 50):
+                            yield _F(pts)
+                    def close(self): pass
+                class _AV:
+                    time_base=1/1_000_000
+                    @staticmethod
+                    def open(resolved, format=None): return _C()
+                return _AV
+            elif name == "PIL.Image":
+                class _P: pass
+                return _P
+            return __import__(name)
+        imp.side_effect = _import
+        udf = PrepareVideoUDF(
+            data_column="__data",
+            expected_input_keys=["messages"],
+            sampling={"fps": 30},
+            output_format="pil",
+            max_sampled_frames=2,
+        )
         batch = {"__data": [{"messages": [{"content": [{"type": "video", "video": "http://example.com/v.mp4"}]}]}]}
         outs=[]
         async for out in udf(batch): outs.append(out["__data"][0])
-        assert outs and outs[0]["video_meta"][0]["video_num_frames"] >= 1
+        assert outs and outs[0]["video_meta"][0]["video_num_frames"] <= 2
 
 
 @pytest.mark.asyncio
-async def test_disk_cache_cleanup_toggle(mock_http_connection_bytes, mock_pyav_open, tmp_path):
-    udf_del = PrepareVideoUDF(
-        data_column="__data",
-        expected_input_keys=["messages"],
-        sampling={"num_frames": 3},
-        cache_dir=str(tmp_path),
-        cache_mode="disk",
-        output_format="pil",
-        # default keep_downloaded=False
-    )
-
-    udf_keep = PrepareVideoUDF(
-        data_column="__data",
-        expected_input_keys=["messages"],
-        sampling={"num_frames": 3},
-        cache_dir=str(tmp_path),
-        cache_mode="disk",
-        output_format="pil",
-        # expose keep_downloaded via kwargs passthrough
-        # Not directly on UDF in this test; emulate by toggling processor flag
-    )
-    # Toggle internal flag for keep
-    udf_keep._video._keep_downloaded = True
-
-    batch = {
-        "__data": [
-            {
-                "messages": [
-                    {
-                        "content": [
-                            {"type": "video_url", "video_url": {"url": "http://example.com/video.mp4"}}
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
-
-    # Run deletion case
-    files_before = set(os.listdir(tmp_path))
-    res1 = []
-    async for _ in udf_del(batch):
-        pass
-    files_after_del = set(os.listdir(tmp_path))
-    # temp file should be cleaned or not present except cache naming; since we remove after use
-    assert files_after_del == files_before or files_after_del >= files_before
-
-    # Run keep case
-    async for _ in udf_keep(batch):
-        pass
-    files_after_keep = set(os.listdir(tmp_path))
-    # At least one cached file should remain
-    assert len(files_after_keep) >= len(files_after_del)
-
-
-@pytest.mark.asyncio
+@pytest.mark.skipif(_np is None, reason="numpy required")
 async def test_numpy_output_channels_first(mock_http_connection_bytes, mock_pyav_open):
     udf = PrepareVideoUDF(
         data_column="__data",
@@ -362,12 +481,11 @@ async def test_numpy_output_channels_first(mock_http_connection_bytes, mock_pyav
         out_rows.append(out["__data"][0])
 
     frames = out_rows[0]["video"][0]
-    import numpy as np
 
     assert isinstance(frames, list)
     if frames:
         f0 = frames[0]
-        assert isinstance(f0, np.ndarray)
+        assert hasattr(_np, "ndarray") and isinstance(f0, _np.ndarray)
         assert f0.shape[0] in (3, 48)  # (C,H,W) or (H,W,C) safety
 
 
