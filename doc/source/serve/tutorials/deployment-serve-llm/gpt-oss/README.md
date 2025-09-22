@@ -68,7 +68,7 @@ llm_config = LLMConfig(
         model_id="my-gpt-oss",
         model_source="openai/gpt-oss-120b",
     ),
-    accelerator_type="A100-80G",
+    accelerator_type="L40S",
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
@@ -297,9 +297,9 @@ Example log for gpt-oss-20b with 1xL4:
 INFO 09-08 17:34:28 [kv_cache_utils.py:1017] Maximum concurrency for 32,768 tokens per request: 5.22x
 ```
 
-Example log for gpt-oss-120b with 2xA100-80G:
+Example log for gpt-oss-120b with 2xL40S:
 ```console
-INFO 09-09 00:32:32 [kv_cache_utils.py:1017] Maximum concurrency for 32,768 tokens per request: 44.08x
+INFO 09-09 00:32:32 [kv_cache_utils.py:1017] Maximum concurrency for 32,768 tokens per request: 6.18x
 ```
 
 To improve concurrency for gpt-oss models, see [Deploy a small-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html#improve-concurrency) for small-sized models such as `gpt-oss-20b`, and [Deploy a medium-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#improve-concurrency) for medium-sized models such as `gpt-oss-120b`.
@@ -377,6 +377,15 @@ mkdir -p tiktoken_encodings
 wget -O tiktoken_encodings/o200k_base.tiktoken "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
 wget -O tiktoken_encodings/cl100k_base.tiktoken "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
 export TIKTOKEN_ENCODINGS_BASE=${PWD}/tiktoken_encodings
+```
+
+**`gpt-oss` architecture not recognized**  
+```console
+Value error, The checkpoint you are trying to load has model type `gpt_oss` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.
+```
+Older vLLM and transformers versions don't register `gpt_oss`, raising an error when vLLM hands off to Transformers. Upgrade **vLLM ≥ 0.10.1** and let your package resolver such as `pip` handle the other dependencies.
+```bash
+pip install -U "vllm>=0.10.1"
 ```
 
 ---
