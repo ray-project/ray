@@ -4,11 +4,11 @@ except ImportError:
     pyarrow = None
 
 
-def _is_column_extension_type(ca: "pyarrow.ChunkedArray") -> bool:
+def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
     """Whether the provided Arrow Table column is an extension array, using an Arrow
     extension type.
     """
-    return isinstance(ca.type, pyarrow.ExtensionType)
+    return isinstance(pa_type, pyarrow.ExtensionType)
 
 
 def _concatenate_extension_column(
@@ -29,7 +29,7 @@ def _concatenate_extension_column(
         get_arrow_extension_tensor_types,
     )
 
-    if not _is_column_extension_type(ca):
+    if not _is_pa_extension_type(ca.type):
         raise ValueError("Chunked array isn't an extension array: {ca}")
 
     tensor_extension_types = get_arrow_extension_tensor_types()
