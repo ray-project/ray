@@ -301,7 +301,46 @@ class AutoscalingState:
         return total_queued_requests
 
     def _collect_handle_running_requests(self) -> List[Dict[str, List]]:
-        """Collect running requests metrics from handles when not collected on replicas."""
+        """Collect running requests metrics from handles when not collected on replicas.
+
+        Returns:
+            A list of dictionaries, each containing a key-value pair:
+            - The key is the name of the metric (RUNNING_REQUESTS_KEY)
+            - The value is a list of TimeStampedValue objects, each representing a single measurement of the metric
+                this list is sorted by timestamp ascending
+            - The TimeStampedValue object contains a timestamp and a value
+            - The timestamp is the time at which the measurement was taken
+            - The value is the measurement of the metric
+
+        Example:
+            If there are 2 handles, each managing 2 replicas, and the running requests metrics are:
+            - Handle 1: Replica 1: 5, Replica 2: 7
+            - Handle 2: Replica 1: 3, Replica 2: 1
+            and the timestamp is 0.1 and 0.2 respectively
+            Then the returned list will be:
+            [
+                {
+                    "running_requests": [
+                        TimeStampedValue(timestamp=0.1, value=5.0),
+                    ]
+                },
+                {
+                    "running_requests": [
+                        TimeStampedValue(timestamp=0.2, value=7.0),
+                    ]
+                },
+                {
+                    "running_requests": [
+                        TimeStampedValue(timestamp=0.1, value=3.0),
+                    ]
+                },
+                {
+                    "running_requests": [
+                        TimeStampedValue(timestamp=0.2, value=1.0),
+                    ]
+                }
+            ]
+        """
         metrics_timeseries_dicts = []
 
         for handle_metric in self._handle_requests.values():
@@ -324,7 +363,36 @@ class AutoscalingState:
     def _aggregate_running_requests(
         self, metrics_timeseries_dicts: List[Dict[str, List]]
     ) -> float:
-        """Aggregate and average running requests from timeseries data using instantaneous merge."""
+        """Aggregate and average running requests from timeseries data using instantaneous merge.
+
+        Args:
+            metrics_timeseries_dicts: A list of dictionaries, each containing a key-value pair:
+                - The key is the name of the metric (RUNNING_REQUESTS_KEY)
+                - The value is a list of TimeStampedValue objects, each representing a single measurement of the metric
+                this list is sorted by timestamp ascending
+
+        Returns:
+            The time-weighted average of the running requests
+
+        Example:
+            If the metrics_timeseries_dicts is:
+            [
+                {
+                    "running_requests": [
+                        TimeStampedValue(timestamp=0.1, value=5.0),
+                        TimeStampedValue(timestamp=0.2, value=7.0),
+                    ]
+                },
+                {
+                    "running_requests": [
+                        TimeStampedValue(timestamp=0.2, value=3.0),
+                        TimeStampedValue(timestamp=0.3, value=1.0),
+                    ]
+                }
+            ]
+            Then the returned value will be:
+            (5.0*0.1 + 7.0*0.2 + 3.0*0.2 + 1.0*0.3) / (0.1 + 0.2 + 0.2 + 0.3) = 4.5 / 0.8 = 5.625
+        """
 
         if not metrics_timeseries_dicts:
             return 0.0
@@ -334,12 +402,12 @@ class AutoscalingState:
         running_requests_timeseries = aggregated_metrics.get(RUNNING_REQUESTS_KEY, [])
         if running_requests_timeseries:
 
-            # assume that the last recorded metric is valid for buffer_length seconds
+            # assume that the last recorded metric is valid for last_window_s seconds
             last_window_s = min(
                 self._config.metrics_interval_s,
                 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
             )
-            # Use time-weighted average over
+            # Calculate the time-weighted average of the running requests
             avg_running = time_weighted_average(
                 running_requests_timeseries, last_window_s=last_window_s
             )
@@ -384,7 +452,7 @@ class AutoscalingState:
             Step 1: Collect raw timeseries from 2 replicas (r1, r2)
             replica_metrics = [
                 {"running_requests": [(t=0.2, val=5), (t=0.8, val=7), (t=1.5, val=6)]},  # r1
-                {"running_requests": [(t=0.1, val=3), (t=0.9, val=4), (t=1.2, val=8)]}   # r2
+                {"running_requests": [(t=0.1, val=3), (t=0.9, val=4), (t=1.4, val=8)]}   # r2
             ]
 
             Step 2: Collect queued requests from handles
@@ -395,16 +463,16 @@ class AutoscalingState:
 
             Step 4: Merge timeseries using instantaneous approach
             # Create delta events: r1 starts at 5 (t=0.2), changes to 7 (t=0.8), then 6 (t=1.5)
-            #                      r2 starts at 3 (t=0.1), changes to 4 (t=0.9), then 8 (t=1.2)
-            # Merged instantaneous total: [(t=0.1, val=3), (t=0.2, val=8), (t=0.8, val=10), (t=0.9, val=11), (t=1.2, val=15), (t=1.5, val=14)]
-            merged_timeseries = {"running_requests": [(0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.2, 15), (1.5, 14)]}
+            #                      r2 starts at 3 (t=0.1), changes to 4 (t=0.9), then 8 (t=1.4)
+            # Merged instantaneous total: [(t=0.1, val=3), (t=0.2, val=8), (t=0.8, val=10), (t=0.9, val=11), (t=1.4, val=15), (t=1.5, val=14)]
+            merged_timeseries = {"running_requests": [(0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.4, 15), (1.5, 14)]}
 
-            Step 5: Calculate time-weighted average over full timeseries (t=0.1 to t=1.5+1.0=2.5)
-            # Time-weighted calculation: (3*0.1 + 8*0.6 + 10*0.1 + 11*0.3 + 15*0.3 + 14*1.0) / 2.4
-            # = (0.3 + 4.8 + 1.0 + 3.3 + 4.5 + 14.0) / 2.4 = 27.9 / 2.4 = 11.625
-            avg_running = 11.625
+            Step 5: Calculate time-weighted average over full timeseries (t=0.1 to t=1.5+0.5=2.0)
+            # Time-weighted calculation: (3*0.1 + 8*0.6 + 10*0.1 + 11*0.3 + 15*0.3 + 14*1.0) / 2.0
+            # = (0.3 + 4.8 + 1.0 + 3.3 + 4.5 + 14.0) / 2.0 = 27.9 / 2.0 = 13.95
+            avg_running = 13.95
 
-            Final result: total_requests = avg_running + queued = 11.625 + 5 = 16.625
+            Final result: total_requests = avg_running + queued = 13.95 + 5 = 18.95
 
         Returns:
             Total number of requests (average running + queued) calculated from

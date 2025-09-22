@@ -355,21 +355,15 @@ def time_weighted_average(
 
     total_weighted_value = 0.0
     total_duration = 0.0
-
-    # Find the value at window_start (LOCF)
     current_value = 0.0  # Default if no data before window_start
-    for point in step_series:
-        if point.timestamp <= window_start:
-            current_value = point.value
-        else:
-            break
-
     current_time = window_start
 
     # Process each segment that overlaps with the window
     for point in step_series:
         if point.timestamp <= window_start:
-            continue  # Already processed above
+            # Find the value at window_start (LOCF)
+            current_value = point.value
+            continue
         if point.timestamp >= window_end:
             break  # Beyond our window
 
@@ -414,9 +408,6 @@ def merge_instantaneous_total(
         A list of TimeStampedValue representing the instantaneous total at event times.
         Between events, the total remains constant (step function).
     """
-    if not replicas_timeseries or not any(replicas_timeseries):
-        return []
-
     # Filter out empty timeseries
     active_series = [series for series in replicas_timeseries if series]
     if not active_series:
