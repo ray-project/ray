@@ -143,21 +143,25 @@ class GPUObjectManager:
                 except Exception as e:
                     self._abort_transport(done[0], ref_info_map, e)
 
-            # wait returns lists in the same order they were passed in,
-            # so can just check the timeout of the first
-            while (
-                len(not_done) > 0
-                and not_done[0].hex() in ref_info_map
-                and ref_info_map[not_done[0].hex()].timeout < time.time()
-            ):
-                self._abort_transport(
-                    not_done[0],
-                    ref_info_map,
-                    TimeoutError(
-                        f"RDT transfer failed after {ray.constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
-                    ),
-                )
-            self._monitor_failures_shutdown_event.wait(1)
+            while len(not_done) > 0:
+                if not_done[0].hex() not in ref_info_map:
+                    # The associated transfer was already aborted.
+                    not_done.pop(0)
+                elif ref_info_map[not_done[0].hex()].timeout < time.time():
+                    self._abort_transport(
+                        not_done[0],
+                        ref_info_map,
+                        TimeoutError(
+                            f"RDT transfer failed after {ray.constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
+                        ),
+                    )
+                else:
+                    # wait returns lists in the same order they were passed in, so if
+                    # the timeout of first hasn't been reached, neither have the others.
+                    break
+            if len(not_done) == 0:
+                # If we emptied out _unmonitored_transfers on this iteration, wait for a bit.
+                self._monitor_failures_shutdown_event.wait(1)
 
     def _abort_transport(
         self,
