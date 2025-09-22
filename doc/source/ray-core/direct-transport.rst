@@ -194,7 +194,7 @@ Compared to the :ref:`Gloo example <direct-transport-gloo>`, the main code diffe
 2. No collective group is needed.
 
 ray.put and ray.get with NIXL
-^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Unlike the collective-based tensor transports (Gloo and NCCL), the :func:`ray.get <ray.get>` function can use NIXL to retrieve a copy of the result.
 By default, the tensor transport for :func:`ray.get <ray.get>` will be the one specified in the :func:`@ray.method <ray.method>` decorator.
