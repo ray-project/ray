@@ -32,140 +32,132 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   // assigned at initial actor creation time.
   std::optional<ResourceMappingType> resource_ids;
 
-  auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
-                             const TaskSpecification &accepted_task_spec,
-                             const rpc::SendReplyCallback
-                                 &accepted_send_reply_callback) mutable {
-    auto num_returns = accepted_task_spec.NumReturns();
-    RAY_CHECK(num_returns >= 0);
+  auto make_accept_callback = [&]() {
+    // Capture resource_ids by value at the time of callback creation, AFTER it
+    // has been populated for non-actor tasks inside the critical section.
+    return [this, reply, resource_ids = resource_ids](
+               const TaskSpecification &accepted_task_spec,
+               const rpc::SendReplyCallback &accepted_send_reply_callback) mutable {
+      auto num_returns = accepted_task_spec.NumReturns();
+      RAY_CHECK(num_returns >= 0);
 
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
-    std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
-    bool is_retryable_error = false;
-    std::string application_error;
-    auto status = task_handler_(accepted_task_spec,
-                                std::move(resource_ids),
-                                &return_objects,
-                                &dynamic_return_objects,
-                                &streaming_generator_returns,
-                                reply->mutable_borrowed_refs(),
-                                &is_retryable_error,
-                                &application_error);
-    reply->set_is_retryable_error(is_retryable_error);
-    reply->set_is_application_error(!application_error.empty());
-    std::string task_execution_error;
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+      std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
+      bool is_retryable_error = false;
+      std::string application_error;
+      auto status = task_handler_(accepted_task_spec,
+                                  std::move(resource_ids),
+                                  &return_objects,
+                                  &dynamic_return_objects,
+                                  &streaming_generator_returns,
+                                  reply->mutable_borrowed_refs(),
+                                  &is_retryable_error,
+                                  &application_error);
+      reply->set_is_retryable_error(is_retryable_error);
+      reply->set_is_application_error(!application_error.empty());
+      std::string task_execution_error;
 
-    if (!application_error.empty()) {
-      task_execution_error = "User exception:\n" + application_error;
-    }
-    // System errors occurred while executing the task.
-    if (!status.ok()) {
+      if (!application_error.empty()) {
+        task_execution_error = "User exception:\n" + application_error;
+      }
+      if (!status.ok()) {
+        if (!task_execution_error.empty()) {
+          task_execution_error += "\n\n";
+        }
+        task_execution_error += "System error:\n" + status.ToString();
+      }
+
       if (!task_execution_error.empty()) {
-        task_execution_error += "\n\n";
-      }
-      task_execution_error += "System error:\n" + status.ToString();
-    }
-
-    if (!task_execution_error.empty()) {
-      // Application errors occurred while executing the task.
-      // We could get the errors from return_objects, but it would require deserializing
-      // the serialized error message. So we just record the error message directly while
-      // executing the task.
-      reply->set_task_execution_error(task_execution_error);
-    }
-
-    for (const auto &it : streaming_generator_returns) {
-      const auto &object_id = it.first;
-      bool is_plasma_object = it.second;
-      auto return_id_proto = reply->add_streaming_generator_return_ids();
-      return_id_proto->set_object_id(object_id.Binary());
-      return_id_proto->set_is_plasma_object(is_plasma_object);
-    }
-
-    bool objects_valid = return_objects.size() == num_returns;
-    for (const auto &return_object : return_objects) {
-      if (return_object.second == nullptr) {
-        objects_valid = false;
-      }
-    }
-
-    if (objects_valid) {
-      if (accepted_task_spec.ReturnsDynamic()) {
-        size_t num_dynamic_returns_expected =
-            accepted_task_spec.DynamicReturnIds().size();
-        if (num_dynamic_returns_expected > 0) {
-          RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
-              << "Expected " << num_dynamic_returns_expected
-              << " dynamic returns, but task generated " << dynamic_return_objects.size();
-        }
-      } else {
-        RAY_CHECK(dynamic_return_objects.size() == 0)
-            << "Task with static num_returns returned " << dynamic_return_objects.size()
-            << " objects dynamically";
-      }
-      for (const auto &dynamic_return : dynamic_return_objects) {
-        auto return_object_proto = reply->add_dynamic_return_objects();
-        SerializeReturnObject(
-            dynamic_return.first, dynamic_return.second, return_object_proto);
-      }
-      for (size_t i = 0; i < return_objects.size(); i++) {
-        const auto &return_object = return_objects[i];
-        auto return_object_proto = reply->add_return_objects();
-        SerializeReturnObject(
-            return_object.first, return_object.second, return_object_proto);
+        reply->set_task_execution_error(task_execution_error);
       }
 
-      if (accepted_task_spec.IsActorCreationTask()) {
-        concurrency_groups_ = accepted_task_spec.ConcurrencyGroups();
-        if (is_asyncio_) {
-          fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-              concurrency_groups_, fiber_max_concurrency_, initialize_thread_callback_);
-        } else {
-          // If the actor is an asyncio actor, then this concurrency group manager
-          // for BoundedExecutor will never be used, so we don't need to initialize it.
-          const int default_max_concurrency = accepted_task_spec.MaxActorConcurrency();
-          pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-              concurrency_groups_, default_max_concurrency, initialize_thread_callback_);
-        }
+      for (const auto &it : streaming_generator_returns) {
+        const auto &object_id = it.first;
+        bool is_plasma_object = it.second;
+        auto return_id_proto = reply->add_streaming_generator_return_ids();
+        return_id_proto->set_object_id(object_id.Binary());
+        return_id_proto->set_is_plasma_object(is_plasma_object);
+      }
 
-        // Tell raylet that an actor creation task has finished execution, so that
-        // raylet can publish actor creation event to GCS, and mark this worker as
-        // actor, thus if this worker dies later raylet will restart the actor.
-        RAY_CHECK_OK(actor_creation_task_done_());
-        if (status.IsCreationTaskError()) {
-          RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
-                           << accepted_task_spec.TaskId()
-                           << ", actor_id: " << accepted_task_spec.ActorCreationId()
-                           << ", status: " << status;
-        } else {
-          // Set the actor repr name if it's customized by the actor.
-          if (!actor_repr_name_.empty()) {
-            reply->set_actor_repr_name(actor_repr_name_);
-          }
-          RAY_LOG(INFO) << "Actor creation task finished, task_id: "
-                        << accepted_task_spec.TaskId()
-                        << ", actor_id: " << accepted_task_spec.ActorCreationId()
-                        << ", actor_repr_name: " << actor_repr_name_;
+      bool objects_valid = return_objects.size() == num_returns;
+      for (const auto &return_object : return_objects) {
+        if (return_object.second == nullptr) {
+          objects_valid = false;
         }
       }
-    }
-    if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
-        status.IsCreationTaskError()) {
-      // Don't allow the worker to be reused, even though the reply status is OK.
-      // The worker will be shutting down shortly.
-      reply->set_worker_exiting(true);
+
       if (objects_valid) {
-        // This happens when max_calls is hit. We still need to return the objects.
-        accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
-      } else {
-        accepted_send_reply_callback(status, nullptr, nullptr);
+        if (accepted_task_spec.ReturnsDynamic()) {
+          size_t num_dynamic_returns_expected =
+              accepted_task_spec.DynamicReturnIds().size();
+          if (num_dynamic_returns_expected > 0) {
+            RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
+                << "Expected " << num_dynamic_returns_expected
+                << " dynamic returns, but task generated "
+                << dynamic_return_objects.size();
+          }
+        } else {
+          RAY_CHECK(dynamic_return_objects.size() == 0)
+              << "Task with static num_returns returned " << dynamic_return_objects.size()
+              << " objects dynamically";
+        }
+        for (const auto &dynamic_return : dynamic_return_objects) {
+          auto return_object_proto = reply->add_dynamic_return_objects();
+          SerializeReturnObject(
+              dynamic_return.first, dynamic_return.second, return_object_proto);
+        }
+        for (size_t i = 0; i < return_objects.size(); i++) {
+          const auto &return_object = return_objects[i];
+          auto return_object_proto = reply->add_return_objects();
+          SerializeReturnObject(
+              return_object.first, return_object.second, return_object_proto);
+        }
+
+        if (accepted_task_spec.IsActorCreationTask()) {
+          concurrency_groups_ = accepted_task_spec.ConcurrencyGroups();
+          if (is_asyncio_) {
+            fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
+                concurrency_groups_, fiber_max_concurrency_, initialize_thread_callback_);
+          } else {
+            const int default_max_concurrency = accepted_task_spec.MaxActorConcurrency();
+            pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+                concurrency_groups_,
+                default_max_concurrency,
+                initialize_thread_callback_);
+          }
+
+          RAY_CHECK_OK(actor_creation_task_done_());
+          if (status.IsCreationTaskError()) {
+            RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
+                             << accepted_task_spec.TaskId()
+                             << ", actor_id: " << accepted_task_spec.ActorCreationId()
+                             << ", status: " << status;
+          } else {
+            if (!actor_repr_name_.empty()) {
+              reply->set_actor_repr_name(actor_repr_name_);
+            }
+            RAY_LOG(INFO) << "Actor creation task finished, task_id: "
+                          << accepted_task_spec.TaskId()
+                          << ", actor_id: " << accepted_task_spec.ActorCreationId()
+                          << ", actor_repr_name: " << actor_repr_name_;
+          }
+        }
       }
-    } else {
-      RAY_CHECK_OK(status);
-      RAY_CHECK(objects_valid);
-      accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
+      if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
+          status.IsCreationTaskError()) {
+        reply->set_worker_exiting(true);
+        if (objects_valid) {
+          accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
+        } else {
+          accepted_send_reply_callback(status, nullptr, nullptr);
+        }
+      } else {
+        RAY_CHECK_OK(status);
+        RAY_CHECK(objects_valid);
+        accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
+      }
+    };
   };
 
   auto cancel_callback = [reply](
@@ -173,11 +165,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                              const Status &status,
                              const rpc::SendReplyCallback &canceled_send_reply_callback) {
     if (canceled_task_spec.IsActorTask()) {
-      // We consider cancellation of actor tasks to be a push task RPC failure.
       canceled_send_reply_callback(status, nullptr, nullptr);
     } else {
-      // We consider cancellation of normal tasks to be an in-band cancellation of a
-      // successful RPC.
       reply->set_was_cancelled_before_running(true);
       canceled_send_reply_callback(status, nullptr, nullptr);
     }
@@ -245,6 +234,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                  .first;
       }
 
+      auto accept_callback = make_accept_callback();
       it->second->Add(request.sequence_number(),
                       request.client_processed_up_to(),
                       std::move(accept_callback),
@@ -254,6 +244,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     } else {
       RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                      << " to normal scheduling task queue.";
+      auto accept_callback = make_accept_callback();
       normal_scheduling_queue_->Add(request.sequence_number(),
                                     request.client_processed_up_to(),
                                     std::move(accept_callback),
