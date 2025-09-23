@@ -208,7 +208,6 @@ def _get_most_frequent_values(
     columns: List[str],
     key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
-
     def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
         return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
 
