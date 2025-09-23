@@ -19,8 +19,8 @@
 #include <string>
 #include <utility>
 
+#include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 

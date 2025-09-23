@@ -43,14 +43,14 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
-#include "ray/ipc/fake_raylet_ipc_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
+#include "ray/raylet_ipc_client/fake_raylet_ipc_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 namespace core {

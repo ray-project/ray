@@ -29,8 +29,8 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {

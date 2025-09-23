@@ -27,11 +27,11 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
 
 namespace ray {
 namespace core {

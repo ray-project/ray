@@ -60,7 +60,7 @@ ray_cc_test(
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:task_receiver",
-        "//src/ray/rpc:core_worker_client_interface",
+        "//src/ray/core_worker_rpc_client:core_worker_client_interface",
         "//src/ray/util:time",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",

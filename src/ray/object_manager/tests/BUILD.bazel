@@ -36,9 +36,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/pubsub:fake_subscriber",
-        "//src/ray/rpc:fake_core_worker_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -116,7 +116,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/object_manager",
         "//src/ray/object_manager/plasma:fake_plasma_client",
-        "//src/ray/rpc/object_manager:fake_object_manager_client",
+        "//src/ray/object_manager_rpc_client:fake_object_manager_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
