@@ -57,6 +57,21 @@ class GPUTestActor:
     def fail(self, error_message):
         raise Exception(error_message)
 
+    def new(self, data, actor):
+        # _helper(self, actor, data)
+        actor.double.remote(data)
+
+
+def test0(ray_start_regular):
+    print("test0")
+    # world_size = 2
+    # # actors = [GPUTestActor.remote() for _ in range(world_size)]
+    # actors = [SourceActor.remote(), DestActor.remote()]
+    # # create_collective_group(actors, backend="torch_gloo")
+    # src_actor, dst_actor = actors[0], actors[1]
+
+    # ray.get(src_actor.forward.remote(dst_actor))
+
 
 @pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_gpu_object(ray_start_regular, data_size_bytes):
@@ -210,6 +225,7 @@ def test_p2p(ray_start_regular):
     ref = sender.echo.remote(small_tensor)
     result = receiver.double.remote(ref)
     assert ray.get(result) == pytest.approx(small_tensor * 2)
+    print("dst num GPU objects:", ray.get(receiver.get_num_gpu_objects.remote()))
 
     medium_tensor = torch.randn((500, 500))
     ref = sender.echo.remote(medium_tensor)
@@ -804,6 +820,18 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
     assert not gpu_object_store.has_object(obj_id2)
+
+
+def test_ipc_colocated_actors(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.options(num_gpus=0.5).remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+    src_actor, dst_actor = actors[0], actors[1]
+
+    ref = src_actor.echo.remote(torch.tensor([1, 2, 3]))
+
+    dst_actor.double.remote(ref)
+    assert torch.equal(ray.get(ref), torch.tensor([2, 4, 6]))
 
 
 def test_send_back_and_dst_warning(ray_start_regular):

@@ -84,6 +84,82 @@ class GPUObjectManager:
                 self._gpu_object_store = GPUObjectStore()
         return self._gpu_object_store
 
+    def _try_ipc_transfer_same_gpu(
+        self,
+        src_actor: "ray.actor.ActorHandle",
+        dst_actor: "ray.actor.ActorHandle",
+        obj_ref: ObjectRef,
+    ) -> bool:
+        print("loc4: Trying IPC transfer2")
+        """
+        Attempt a same-GPU transfer using CUDA IPC when both actors are on the
+        same CUDA device. Returns True on success; False to fall back to network.
+        """
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_get_cuda_device__,
+            __ray_cuda_ipc_export__,
+            __ray_cuda_ipc_import__,
+        )
+
+        # Compare physical GPU UUIDs instead of device indices to avoid
+        # false positives due to CUDA_VISIBLE_DEVICES remapping.
+        def _get_uuid(actor):
+            from ray.experimental.gpu_object_manager.gpu_object_store import (
+                __ray_get_cuda_uuid__,
+            )
+            try:
+                return ray.get(
+                    actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                        __ray_get_cuda_uuid__
+                    )
+                )
+            except Exception:
+                return None
+
+        src_uuid = _get_uuid(src_actor)
+        dst_uuid = _get_uuid(dst_actor)
+        print(f"loc5: src_uuid: {src_uuid}, dst_uuid: {dst_uuid}")
+        if src_uuid and dst_uuid and src_uuid == dst_uuid:
+            obj_id = obj_ref.hex()
+            try:
+                metas = ray.get(
+                    src_actor.__ray_call__.options(
+                        concurrency_group="_ray_system"
+                    ).remote(__ray_cuda_ipc_export__, obj_id)
+                )
+                ray.get(
+                    dst_actor.__ray_call__.options(
+                        concurrency_group="_ray_system"
+                    ).remote(__ray_cuda_ipc_import__, obj_id, metas)
+                )
+                print("loc3: IPC transfer successful")
+                return True
+            except (ray.exceptions.RayActorError, RuntimeError) as e:
+                # Source actor died or IPC import failed
+                warnings.warn(
+                    f"CUDA IPC transfer failed for {obj_id}: {e}. "
+                    f"Falling back to network transfer."
+                )
+                return False
+        return False
+
+    def _get_tensor_meta(
+        self, src_actor: "ray.actor.ActorHandle", obj_id: str
+    ) -> ObjectRef:
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_get_tensor_meta__,
+        )
+
+        # Submit a Ray actor task to the source actor to get the tensor metadata.
+        # The metadata is a list of tuples, where each tuple contains the shape and dtype
+        # of a tensor in the GPU object store. This function returns an ObjectRef that
+        # points to the tensor metadata.
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking this task.
+        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+            __ray_get_tensor_meta__, obj_id
+        )
+
     def is_managed_object(self, obj_id: str) -> bool:
         """
         Check if the GPU object is managed by this process.
@@ -250,6 +326,7 @@ class GPUObjectManager:
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
 
+        print("loc7: Triggering out-of-band tensor transfer")
         gpu_object_refs = set()
         for arg in task_args:
             # If an ObjectRef is managed, it means the actual value is a list of tensors stored
@@ -260,7 +337,23 @@ class GPUObjectManager:
             if self.is_managed_object(arg.hex()):
                 gpu_object_refs.add(arg)
         if gpu_object_refs:
+            # Only print when refs are actually eligible for collective/IPC (i.e.,
+            # not falling back to object store). We detect fallback by checking
+            # if the stored tensor_transport_meta is an ObjectRef placeholder.
+            collective_refs = set()
+            for r in gpu_object_refs:
+                meta = self._get_gpu_object_metadata(r)
+                if not isinstance(meta.tensor_transport_meta, ObjectRef):
+                    collective_refs.add(r)
+            if collective_refs:
+                print(
+                    "GPU_OBJECTS: triggering collective/IPC transfer for",
+                    len(collective_refs),
+                    "ref(s)",
+                )
             from ray.experimental.collective import get_tensor_transport_manager
+        
+            print("loc8: GPU object refs:", gpu_object_refs)
 
         # Count the number of readers for each GPU object.
         for obj_ref in gpu_object_refs:
@@ -271,6 +364,11 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+
+            # Same-GPU fast path using CUDA IPC.
+            if self._try_ipc_transfer_same_gpu(src_actor, dst_actor, obj_ref):
+                # Done for this object; skip network transfer.
+                continue
 
             obj_id = obj_ref.hex()
 
