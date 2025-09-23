@@ -5,12 +5,13 @@ from abc import ABC, abstractmethod
 from typing import Dict, Optional
 
 from ray.dashboard.modules.aggregator.constants import (
-    PUBLISHER_TAG_KEY,
+    CONSUMER_TAG_KEY,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+    PublishBatch,
     PublisherClientInterface,
 )
 from ray.dashboard.modules.aggregator.publisher.configs import (
@@ -81,7 +82,7 @@ class RayEventPublisher(RayEventPublisherInterface):
         """
         self._name = name
         self._common_metric_tags = dict(common_metric_tags or {})
-        self._common_metric_tags[PUBLISHER_TAG_KEY] = name
+        self._common_metric_tags[CONSUMER_TAG_KEY] = name
         self._max_retries = int(max_retries)
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)
@@ -89,7 +90,6 @@ class RayEventPublisher(RayEventPublisherInterface):
         self._publish_client = publish_client
         self._event_buffer = event_buffer
         self._task_metadata_buffer = task_metadata_buffer
-        self._event_buffer_consumer_id = None
 
         # Event set once the publisher has registered as a consumer and is ready to publish events
         self._started_event: asyncio.Event = asyncio.Event()
@@ -99,9 +99,7 @@ class RayEventPublisher(RayEventPublisherInterface):
 
         Registers as a consumer, starts the worker loop, and handles cleanup on cancellation.
         """
-        self._event_buffer_consumer_id = await self._event_buffer.register_consumer(
-            self._name
-        )
+        await self._event_buffer.register_consumer(self._name)
 
         # Signal that the publisher is ready to publish events
         self._started_event.set()
@@ -113,10 +111,13 @@ class RayEventPublisher(RayEventPublisherInterface):
                     self._event_buffer_consumer_id,
                     PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
                 )
+                publish_batch = PublishBatch(events=events_batch)
+
                 if self._task_metadata_buffer is not None:
                     task_metadata_batch = await self._task_metadata_buffer.get()
-                    events_batch = (events_batch, task_metadata_batch)
-                await self._async_publish_with_retries(events_batch)
+                    publish_batch.task_events_metadata = task_metadata_batch
+
+                await self._async_publish_with_retries(publish_batch)
         except asyncio.CancelledError:
             logger.info(f"Publisher {self._name} cancelled, shutting down gracefully")
             self._started_event.clear()

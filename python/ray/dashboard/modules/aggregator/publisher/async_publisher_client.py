@@ -3,7 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import aiohttp
 
@@ -15,7 +15,6 @@ from ray.core.generated import (
 )
 from ray.dashboard.modules.aggregator.publisher.configs import (
     GCS_EXPOSABLE_EVENT_TYPES,
-    HTTP_EXPOSABLE_EVENT_TYPES,
     PUBLISHER_TIMEOUT_SECONDS,
 )
 
@@ -26,9 +25,24 @@ logger = logging.getLogger(__name__)
 class PublishStats:
     """Data class that represents stats of publishing a batch of events."""
 
+    # Whether the publish was successful
     is_publish_successful: bool
+    # Number of events published
     num_events_published: int
+    # Number of events filtered out
     num_events_filtered_out: int
+
+
+@dataclass
+class PublishBatch:
+    """Data class that represents a batch of events to publish."""
+
+    # The list of events to publish
+    events: list[events_base_event_pb2.RayEvent]
+    # Metadata about the events
+    task_events_metadata: Optional[
+        events_event_aggregator_service_pb2.TaskEventsMetadata
+    ] = None
 
 
 class PublisherClientInterface(ABC):
@@ -40,6 +54,10 @@ class PublisherClientInterface(ABC):
 
     def __init__(self):
         self._exposable_event_types = None
+
+    def count_num_events_in_batch(self, batch: PublishBatch) -> int:
+        """Count the number of events in a given batch."""
+        return len(batch.events)
 
     def _can_expose_event(self, event) -> bool:
         """
@@ -54,12 +72,10 @@ class PublisherClientInterface(ABC):
                 event.event_type
             )
             return event_type_name in self._exposable_event_types
-        else:
-            raise ValueError(
-                f"Invalid exposable event types: {self._exposable_event_types}"
-            )
 
-        return True
+        raise ValueError(
+            f"Invalid exposable event types: {self._exposable_event_types}"
+        )
 
     @abstractmethod
     async def publish(self, batch) -> PublishStats:
@@ -67,8 +83,8 @@ class PublisherClientInterface(ABC):
         pass
 
     @abstractmethod
-    def count_num_events_in_batch(self, batch) -> int:
-        """Count the number of events in a given batch."""
+    async def publish(self, batch: PublishBatch) -> PublishStats:
+        """Publish a batch of events to the destination."""
         pass
 
     @abstractmethod
@@ -92,16 +108,8 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
 
-        # Initialize exposable event types from environment variable
-        self._exposable_event_types = {
-            event_type.strip()
-            for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
-            if event_type.strip()
-        }
-
-    async def publish(
-        self, events_batch: list[events_base_event_pb2.RayEvent]
-    ) -> PublishStats:
+    async def publish(self, batch: PublishBatch) -> PublishStats:
+        events_batch: list[events_base_event_pb2.RayEvent] = batch.events
         if not events_batch:
             # Nothing to publish -> success but nothing published
             return PublishStats(
@@ -156,11 +164,6 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
                 num_events_filtered_out=num_filtered_out,
             )
 
-    def count_num_events_in_batch(
-        self, events_batch: list[events_base_event_pb2.RayEvent]
-    ) -> int:
-        return len(events_batch)
-
     async def close(self) -> None:
         """Closes the http session if one was created. Should be called when the publisherClient is no longer required"""
         if self._session:
@@ -193,12 +196,10 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
 
     async def publish(
         self,
-        events_batch: Tuple[
-            List[events_base_event_pb2.RayEvent],
-            Optional[events_event_aggregator_service_pb2.TaskEventsMetadata],
-        ],
+        batch: PublishBatch,
     ) -> PublishStats:
-        events, task_events_metadata = events_batch
+        events = batch.events
+        task_events_metadata = batch.task_events_metadata
 
         has_task_events_metadata = (
             task_events_metadata and task_events_metadata.dropped_task_attempts
@@ -252,16 +253,6 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
                 num_events_published=0,
                 num_events_filtered_out=0,
             )
-
-    def count_num_events_in_batch(
-        self,
-        events_batch: Tuple[
-            List[events_base_event_pb2.RayEvent],
-            events_event_aggregator_service_pb2.TaskEventsMetadata,
-        ],
-    ) -> int:
-        events, _ = events_batch
-        return len(events)
 
     def _create_ray_events_data(
         self,

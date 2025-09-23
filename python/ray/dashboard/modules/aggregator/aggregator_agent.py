@@ -15,10 +15,7 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2_grpc,
     gcs_service_pb2_grpc,
 )
-from ray.dashboard.modules.aggregator.constants import (
-    AGGREGATOR_AGENT_METRIC_PREFIX,
-    PUBLISHER_TAG_KEY,
-)
+from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
@@ -92,7 +89,6 @@ class AggregatorAgent(
             max_size=MAX_EVENT_BUFFER_SIZE,
             max_batch_size=MAX_EVENT_SEND_BATCH_SIZE,
             common_metric_tags=self._common_tags,
-            consumer_tag_key=PUBLISHER_TAG_KEY,
         )
         self._executor = ThreadPoolExecutor(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
@@ -114,7 +110,7 @@ class AggregatorAgent(
             )
             self._event_processing_enabled = True
             self._http_endpoint_publisher = RayEventPublisher(
-                name="http_publisher",
+                name="http_svc",
                 publish_client=AsyncHttpPublisherClient(
                     endpoint=self._events_export_addr,
                     executor=self._executor,
@@ -139,7 +135,7 @@ class AggregatorAgent(
                 )
             )
             self._gcs_publisher = RayEventPublisher(
-                name="gcs_publisher",
+                name="ray_gcs",
                 publish_client=AsyncGCSPublisherClient(
                     async_gcs_ray_event_export_service_stub=_async_gcs_ray_event_export_service_stub
                 ),
@@ -180,7 +176,10 @@ class AggregatorAgent(
             return events_event_aggregator_service_pb2.AddEventsReply()
 
         events_data = request.events_data
-        await self._task_metadata_buffer.merge(events_data.task_events_metadata)
+
+        if PUBLISH_EVENTS_TO_GCS:
+            await self._task_metadata_buffer.merge(events_data.task_events_metadata)
+
         for event in events_data.events:
             self._open_telemetry_metric_recorder.set_metric_value(
                 self._events_received_metric_name, self._common_tags, 1
