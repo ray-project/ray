@@ -91,7 +91,7 @@ py_test(
     name = "test_api_migrations",
     size = "small",
     srcs = ["tests/test_api_migrations.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
