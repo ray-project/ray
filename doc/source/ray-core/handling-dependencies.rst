@@ -627,6 +627,13 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}``
 
+- ``unitrace`` (Union[str, Dict[str, str]]): specifies the config for the unitrace profiler. The value is either (1) "default", which refers to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/unitrace.py#L20>`_, or (2) a dict of unitrace profiler options and their values.
+  See :ref:`here <profiling-unitrace-profiler>` for more details on setup and usage.
+
+  - Example: ``"default"``
+
+  - Example: ``{"chrome-kernel-logging": "", "chrome-call-logging": "", "chrome-ccl-logging": "", "chrome-event-buffer-size": "65536"}``
+
 - ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
   - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
 

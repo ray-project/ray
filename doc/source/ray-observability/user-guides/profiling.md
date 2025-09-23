@@ -9,6 +9,7 @@ Here is a list of common profiling tools you may use when debugging Ray applicat
 - GPU profiling
     - PyTorch Profiler
     - Nsight System
+    - Unitrace
 - Ray Task / Actor timeline
 
 If Ray doesn't work with certain profiling tools, try running them without Ray to debug the issues.
@@ -67,6 +68,7 @@ Additionally, you can specify the following profiling Memray parameters from the
 GPU and GRAM profiling for your GPU workloads like distributed training. This helps you analyze performance and debug memory issues. 
 - PyTorch profiler is supported out of box when used with Ray Train
 - NVIDIA Nsight System is natively supported on Ray.
+- Unitrace is natively supported on Ray for Intel(R) GPUs
 
 (profiling-pytorch-profiler)=
 ### PyTorch Profiler
@@ -168,6 +170,88 @@ To visualize the results, install the [Nsight System GUI](https://developer.nvid
 ```
 The best practice is to only specify the filename in output option.
 
+
+(profiling-unitrace-profiler)=
+### Unitrace Profiler
+
+If you run Ray on Intel(R) GPUs, you need the unitrace tool for GPU profiling.
+
+#### Build and Installation
+
+The unitrace tool is open sourced. Please follow the [instructions](https://github.com/intel/pti-gpu/blob/master/tools/unitrace/README.md) to build and install the tool.
+
+To confirm that you built and installed the tool correctly, run:
+
+```bash
+$ unitrace --version
+2.3.0 (7301e70b3e3bb060e0c56ab23cb5fc0316afc98a)
+```
+
+(run-unitrace-on-ray)=
+#### Run unitrace on Ray
+
+To enable GPU profiling, specify the config in the `runtime_env` as follows:
+
+```python
+import torch
+import ray
+
+ray.init()
+
+@ray.remote(num_gpus=1, runtime_env={ "unitrace": "default"})
+class RayActor:
+    def run(self):
+        a = torch.tensor([1.0, 2.0, 3.0]).xpu()
+        b = torch.tensor([4.0, 5.0, 6.0]).xpu()
+        c = a * b
+
+        print("Result on GPU:", c)
+
+ray_actor = RayActor.remote()
+# The Actor or Task process runs with : "unitrace [default options] ..."
+ray.get(ray_actor.run.remote())
+```
+
+You can find the `"default"` config in [unitrace.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/unitrace.py#L20).
+
+#### Custom Options
+
+You can also add [custom options](https://github.com/intel/pti-gpu/blob/master/tools/unitrace/README.md#run) by specifying a dictionary of option values, which overwrites the `default` config.
+
+
+```python
+import torch
+import ray
+
+ray.init()
+
+@ray.remote(
+num_gpus=1, 
+runtime_env={ "unitrace": {
+    "chrome-kernel-logging": "",
+    "chrome-call-logging": "",
+    "chrome-event-buffer-size": "65536",
+    "chrome-ccl-logging": "",
+}})
+class RayActor:
+    def run(self):
+        a = torch.tensor([1.0, 2.0, 3.0]).xpu()
+        b = torch.tensor([4.0, 5.0, 6.0]).xpu()
+        c = a * b
+
+        print("Result on GPU:", c)
+
+ray_actor = RayActor.remote()
+
+# The Actor or Task process runs with :
+# "unitrace --chrome-kernel-logging --chrome-call-logging --chrome-event-buffer-size 65536 chrome-ccl-logging ..."
+ray.get(ray_actor.run.remote())
+```
+
+(unitrace-profiling-result)=
+#### Profiling Result
+
+The profiling result is stored in .json files. Please follow the [instructions](https://github.com/intel/pti-gpu/tree/master/tools/unitrace#view) to visualize the result.
 
 (profiling-timeline)=
 ## Ray Task or Actor timeline
