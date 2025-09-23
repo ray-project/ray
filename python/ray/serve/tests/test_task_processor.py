@@ -413,7 +413,7 @@ class TestTaskConsumerWithRayServe:
         worker_name = next(iter(worker_reply))
         assert worker_reply[worker_name] == {"ok": "pong"}
 
-    def test_task_processor_with_cancel_tasks(
+    def test_task_processor_with_cancel_tasks_and_app_custom_config(
         self, external_redis, serve_instance  # noqa: F811
     ):
         """Test the cancel task functionality with celery broker."""
@@ -424,7 +424,7 @@ class TestTaskConsumerWithRayServe:
             adapter_config=CeleryAdapterConfig(
                 broker_url=f"redis://{redis_address}/0",
                 backend_url=f"redis://{redis_address}/1",
-                worker_concurrency=1,
+                app_custom_config={"worker_prefetch_multiplier": 1},
             ),
         )
 
@@ -475,37 +475,6 @@ class TestTaskConsumerWithRayServe:
         assert "test_data_1" not in handle.get_message_received.remote().result()
 
         serve.delete("app_v1")
-
-    def test_task_consumer_with_app_custom_config(
-        self, temp_queue_directory, serve_instance, create_processor_config
-    ):
-        """Test that task consumer works with app custom config."""
-        processor_config = create_processor_config()
-        processor_config.adapter_config.app_custom_config = {"worker_concurrency": 10}
-        signal = SignalActor.remote()
-
-        @serve.deployment(max_ongoing_requests=1)
-        @task_consumer(task_processor_config=processor_config)
-        class ServeTaskConsumer:
-            def __init__(self, signal_actor):
-                self._signal = signal_actor
-
-            @task_handler(name="process_request")
-            def process_request(self, data):
-                ray.get(self._signal.wait.remote())
-                return
-
-        serve.run(ServeTaskConsumer.bind(signal))
-
-        num_tasks = 10
-        for _ in range(num_tasks):
-            send_request_to_queue.remote(processor_config, f"test_data_{_}")
-
-        wait_for_condition(
-            lambda: ray.get(signal.cur_num_waiters.remote()) == num_tasks, timeout=20
-        )
-
-        ray.get(signal.send.remote())
 
     def test_task_consumer_with_task_custom_config(
         self, temp_queue_directory, serve_instance, create_processor_config

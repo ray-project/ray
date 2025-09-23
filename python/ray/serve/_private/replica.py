@@ -54,7 +54,6 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
@@ -1605,9 +1604,6 @@ class UserCallableWrapper:
             # This allows deployments to define an async __init__
             # method (mostly used for testing).
             self._callable = self._deployment_def.__new__(self._deployment_def)
-            self._init_kwargs[
-                RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL
-            ] = self._deployment_config.max_ongoing_requests
             await self._call_func_or_gen(
                 self._callable.__init__,
                 args=self._init_args,
@@ -1618,6 +1614,13 @@ class UserCallableWrapper:
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._initialize_asgi_callable()
+
+            from ray.serve.task_consumer import TaskConsumerWrapper
+
+            if isinstance(self._callable, TaskConsumerWrapper):
+                self._callable.initialize_callable(
+                    self._deployment_config.max_ongoing_requests
+                )
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         self._user_record_routing_stats = getattr(

@@ -10,8 +10,7 @@ from celery.signals import task_failure, task_unknown
 
 from ray.serve import get_replica_context
 from ray.serve._private.constants import (
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL,
+    DEFAULT_CONSUMER_CONCURRENCY,
     SERVE_LOGGER_NAME,
 )
 from ray.serve.schema import (
@@ -22,6 +21,21 @@ from ray.serve.schema import (
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+CELERY_WORKER_POOL = "worker_pool"
+CELERY_WORKER_CONCURRENCY = "worker_concurrency"
+CELERY_TASK_IGNORE_RESULT = "task_ignore_result"
+CELERY_TASK_ACKS_LATE = "task_acks_late"
+CELERY_TASK_REJECT_ON_WORKER_LOST = "task_reject_on_worker_lost"
+
+CELERY_DEFAULT_APP_CONFIG = [
+    CELERY_WORKER_POOL,
+    CELERY_WORKER_CONCURRENCY,
+    CELERY_TASK_IGNORE_RESULT,
+    CELERY_TASK_ACKS_LATE,
+    CELERY_TASK_REJECT_ON_WORKER_LOST,
+]
 
 
 @PublicAPI(stability="alpha")
@@ -94,7 +108,7 @@ class TaskProcessorAdapter(ABC):
         return len(self._async_capabilities) > 0
 
     @abstractmethod
-    def initialize(self):
+    def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
         """
         Initialize the task processor.
         """
@@ -320,7 +334,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     _config: TaskProcessorConfig
     _worker_thread: Optional[threading.Thread] = None
     _worker_hostname: Optional[str] = None
-    _worker_concurrency: int = DEFAULT_MAX_ONGOING_REQUESTS
+    _worker_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
 
     def __init__(self, config: TaskProcessorConfig, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -330,17 +344,23 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
                 "TaskProcessorConfig.adapter_config must be an instance of CeleryAdapterConfig"
             )
 
-        self._config = config
+        # Check if any app_custom_config keys conflict with default Celery app config
+        if config.adapter_config.app_custom_config:
+            conflicting_keys = set(
+                config.adapter_config.app_custom_config.keys()
+            ) & set(CELERY_DEFAULT_APP_CONFIG)
+            if conflicting_keys:
+                raise ValueError(
+                    f"The following configuration keys cannot be changed via app_custom_config: {sorted(conflicting_keys)}. "
+                    f"These are managed internally by the CeleryTaskProcessorAdapter."
+                )
 
-        if RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL in kwargs:
-            self._worker_concurrency = kwargs[
-                RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL
-            ]
+        self._config = config
 
         # Celery adapter does not support any async capabilities
         # self._async_capabilities is already an empty set from parent class
 
-    def initialize(self):
+    def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
         self._app = Celery(
             self._config.queue_name,
             backend=self._config.adapter_config.backend_url,
@@ -348,18 +368,13 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         )
 
         app_configuration = {
-            "loglevel": "info",
-            "worker_pool": "threads",
-            "worker_concurrency": self._worker_concurrency,
-            # Store task results so they can be retrieved after completion
-            "task_ignore_result": False,
-            # Acknowledge tasks only after completion (not when received) for better reliability
-            "task_acks_late": True,
-            # Reject and requeue tasks when worker is lost to prevent data loss
-            "task_reject_on_worker_lost": True,
-            # Only prefetch 1 task at a time to match concurrency and prevent task hoarding
-            "worker_prefetch_multiplier": 1,
+            CELERY_WORKER_POOL: "threads",
+            CELERY_WORKER_CONCURRENCY: consumer_concurrency,
+            CELERY_TASK_IGNORE_RESULT: False,  # Store task results so they can be retrieved after completion
+            CELERY_TASK_ACKS_LATE: True,  # Acknowledge tasks only after completion (not when received) for better reliability
+            CELERY_TASK_REJECT_ON_WORKER_LOST: True,  # Reject and requeue tasks when worker is lost to prevent data loss
         }
+
         if self._config.adapter_config.app_custom_config:
             app_configuration.update(self._config.adapter_config.app_custom_config)
 

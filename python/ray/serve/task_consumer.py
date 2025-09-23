@@ -1,11 +1,12 @@
 import inspect
 import logging
+from abc import ABC
 from functools import wraps
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Optional
 
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
-    RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL,
+    DEFAULT_CONSUMER_CONCURRENCY,
     SERVE_LOGGER_NAME,
 )
 from ray.serve.schema import TaskProcessorConfig
@@ -15,11 +16,23 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+class TaskConsumerWrapper(ABC):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def initialize_callable(
+        self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
+    ):
+        pass
+
+    def __del__(self):
+        pass
+
+
 @PublicAPI(stability="alpha")
 def instantiate_adapter_from_config(
     task_processor_config: TaskProcessorConfig,
-    *args: Optional[Tuple],
-    **kwargs: Optional[Dict],
+    consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY,
 ) -> TaskProcessorAdapter:
     """
     Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
@@ -32,9 +45,7 @@ def instantiate_adapter_from_config(
 
     Args:
         task_processor_config: Configuration object containing adapter specification.
-        *args: Arguments to pass to the adapter constructor.
-        **kwargs: Keyword arguments to pass to the adapter constructor.
-
+        consumer_concurrency: The concurrency of the consumer.
     Returns:
         An initialized TaskProcessorAdapter instance ready for use.
 
@@ -68,7 +79,7 @@ def instantiate_adapter_from_config(
         )
 
     try:
-        adapter_instance = adapter_class(task_processor_config, *args, **kwargs)
+        adapter_instance = adapter_class(task_processor_config)
     except Exception as e:
         raise RuntimeError(f"Failed to instantiate {adapter_class.__name__}: {e}")
 
@@ -78,7 +89,7 @@ def instantiate_adapter_from_config(
         )
 
     try:
-        adapter_instance.initialize()
+        adapter_instance.initialize(consumer_concurrency)
     except Exception as e:
         raise RuntimeError(f"Failed to initialize {adapter_class.__name__}: {e}")
 
@@ -117,20 +128,17 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
     """
 
     def decorator(target_cls):
-        class TaskConsumerWrapper(target_cls):
+        class _TaskConsumerWrapper(target_cls, TaskConsumerWrapper):
             _adapter: TaskProcessorAdapter
 
             def __init__(self, *args, **kwargs):
-                # Remove RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL from kwargs to avoid passing it to target_cls.__init__
-                filtered_kwargs = {
-                    k: v
-                    for k, v in kwargs.items()
-                    if k != RAY_SERVE_MAX_ONGOING_REQUESTS_ENV_KEY_INTERNAL
-                }
-                target_cls.__init__(self, *args, **filtered_kwargs)
+                target_cls.__init__(self, *args, **kwargs)
 
+            def initialize_callable(
+                self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
+            ):
                 self._adapter = instantiate_adapter_from_config(
-                    task_processor_config, *args, **kwargs
+                    task_processor_config, consumer_concurrency
                 )
 
                 for name, method in inspect.getmembers(
@@ -158,7 +166,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
                 if hasattr(target_cls, "__del__"):
                     target_cls.__del__(self)
 
-        return TaskConsumerWrapper
+        return _TaskConsumerWrapper
 
     return decorator
 
