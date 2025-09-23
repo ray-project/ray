@@ -1,36 +1,19 @@
-from typing import Any, Dict, List, Union, Tuple
+from typing import Any, List, Union, Tuple
 
 import numpy as np
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.metrics.stats.stats_base import Stats
+from ray.rllib.utils.metrics.stats.series import SeriesStats
 
 torch, _ = try_import_torch()
 
 
 @DeveloperAPI
-class MaxStats(Stats):
-    """A Stats object that tracks the max of the values."""
+class MaxStats(SeriesStats):
+    """A Stats object that tracks the max of a series of values."""
 
-    def __init__(
-        self,
-        *args,
-        **kwargs,
-    ):
-        """Initializes a MaxStats instance."""
-        super().__init__(*args, **kwargs)
-
-    def _push(self, value: Any) -> None:
-        """Pushes a value into this Stats object.
-
-        Args:
-            value: The value to be pushed. Can be of any type.
-        """
-        # For windowed operations, append to values and trim if needed
-        self.values.append(value)
-        _, new_internal_values = self.reduced_values
-        self._set_values(new_internal_values)
+    stats_cls_identifier = "max"
 
     @property
     def reduced_values(self, values=None) -> Tuple[Any, Any]:
@@ -55,7 +38,7 @@ class MaxStats(Stats):
 
         return self._torch_or_numpy_reduce(values, "max")
 
-    def _merge_in_parallel(self, *stats: "Stats") -> List[Union[int, float]]:
+    def _merge_in_parallel(self, *stats: "MaxStats") -> List[Union[int, float]]:
         return np.nanmax([s.reduced_values[0] for s in stats])
 
     def __repr__(self) -> str:
@@ -63,7 +46,3 @@ class MaxStats(Stats):
             f"MaxStats({self.peek()}; window={self._window}; len={len(self)}; "
             f"clear_on_reduce={self._clear_on_reduce})"
         )
-
-    def _get_init_args(self, state=None) -> Dict[str, Any]:
-        """Returns the initialization arguments for this Stats object."""
-        return self._get_base_stats_init_args(stats_object=self, state=state)

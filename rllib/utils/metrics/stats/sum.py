@@ -6,44 +6,36 @@ import numpy as np
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.metrics.stats.stats_base import Stats
+from ray.rllib.utils.metrics.stats.series import SeriesStats
 
 torch, _ = try_import_torch()
 
 
 @DeveloperAPI
-class SumStats(Stats):
-    """A Stats object that tracks the sum of the values."""
+class SumStats(SeriesStats):
+    """A Stats object that tracks the sum of a series of values."""
 
-    def __init__(
-        self,
-        lifetime_sum: bool = False,
-        *args,
-        **kwargs,
-    ):
+    stats_cls_identifier = "sum"
+
+    def __init__(self, **kwargs):
         """Initializes a SumStats instance."""
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
-        if lifetime_sum:
+        if not self._clear_on_reduce:
             assert (
                 self._window is None
             ), "Lifetime sum must be used with an infinite window"
-        self._is_lifetime_sum = lifetime_sum
 
         # The ID of this Stats instance.
         self._id = str(uuid.uuid4())
         self._prev_merge_values = defaultdict(int)
 
-    def _push(self, value: Any) -> None:
-        """Pushes a value into this Stats object.
-
-        Args:
-            value: The value to be pushed. Can be of any type.
-        """
-        # For windowed operations, append to values and trim if needed
-        self.values.append(value)
-        _, new_internal_values = self.reduced_values
-        self._set_values(new_internal_values)
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the state of the stats object."""
+        state = super().get_state()
+        state["id"] = self._id
+        state["prev_merge_values"] = self._prev_merge_values
+        return state
 
     @property
     def reduced_values(self, values=None) -> Tuple[Any, Any]:
@@ -66,10 +58,10 @@ class SumStats(Stats):
         if len(values) == 0:
             return [0], []
 
-        return self._torch_or_numpy_reduce(values, "sum")
+        return self._torch_or_numpy_reduce(values, torch.nansum, np.nansum)
 
-    def _merge_in_parallel(self, *stats: "Stats") -> List[Union[int, float]]:
-        if self._is_lifetime_sum:
+    def _merge_in_parallel(self, *stats: "SumStats") -> List[Union[int, float]]:
+        if not self._clear_on_reduce:
             # For a lifetime sum, we need to subtract the previous merge values to not count
             # older "lifetime counts" more than once.
             merged_sum = 0.0
@@ -93,11 +85,4 @@ class SumStats(Stats):
             return [np.nansum([s.reduced_values[0] for s in stats])]
 
     def __repr__(self) -> str:
-        return (
-            f"SumStats({self.peek()}; window={self._window}; len={len(self)}; "
-            f"clear_on_reduce={self._clear_on_reduce})"
-        )
-
-    def _get_init_args(self, state=None) -> Dict[str, Any]:
-        """Returns the initialization arguments for this Stats object."""
-        return self._get_base_stats_init_args(stats_object=self, state=state)
+        return f"SumStats({self.peek()}; window={self._window}; len={len(self)}"

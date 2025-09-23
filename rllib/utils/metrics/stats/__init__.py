@@ -3,14 +3,19 @@ from .mean import MeanStats
 from .min import MinStats
 from .max import MaxStats
 from .percentiles import PercentilesStats
-from .stats_base import Stats, merge_stats
+from .item import ItemStats
+from .series import SeriesStats
+from .stats_base import StatsBase
+from .item_series import ItemSeriesStats
 
 __all__ = [
+    "StatsBase",
     "SumStats",
     "MeanStats",
     "MinStats",
     "MaxStats",
     "PercentilesStats",
-    "Stats",
-    "merge_stats",
+    "ItemStats",
+    "SeriesStats",
+    "ItemSeriesStats",
 ]
