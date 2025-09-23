@@ -1666,10 +1666,12 @@ class Dataset:
             # and use regular repartition with updated context
             current_size_bytes = self._plan.stats().total_bytes_estimate()
             if current_size_bytes > 0:
-                estimated_num_blocks = max(1, current_size_bytes // target_num_bytes_per_block)
+                estimated_num_blocks = max(
+                    1, current_size_bytes // target_num_bytes_per_block
+                )
             else:
                 estimated_num_blocks = 1
-            
+
             op = Repartition(
                 self._logical_plan.dag,
                 num_outputs=estimated_num_blocks,
