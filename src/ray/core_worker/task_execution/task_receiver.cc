@@ -27,40 +27,10 @@ namespace core {
 void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
-  {
-    absl::MutexLock lock(&stop_mu_);
-    if (stopping_) {
-      // Reject new tasks once shutdown begins.
-      RAY_LOG(INFO)
-          << "Rejecting PushTask due to worker shutdown: task will be cancelled";
-      reply->set_was_cancelled_before_running(true);
-      send_reply_callback(
-          Status::SchedulingCancelled("Worker is shutting down"), nullptr, nullptr);
-      return;
-    }
-  }
-  TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
-
-  if (task_spec.IsActorCreationTask()) {
-    SetupActor(task_spec.IsAsyncioActor(),
-               task_spec.MaxActorConcurrency(),
-               task_spec.AllowOutOfOrderExecution());
-  }
-
+  TaskSpecification task_spec;
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::optional<ResourceMappingType> resource_ids;
-  if (!task_spec.IsActorTask()) {
-    resource_ids = ResourceMappingType{};
-    for (const auto &mapping : request.resource_mapping()) {
-      std::vector<std::pair<int64_t, double>> rids;
-      rids.reserve(mapping.resource_ids().size());
-      for (const auto &ids : mapping.resource_ids()) {
-        rids.emplace_back(ids.index(), ids.quantity());
-      }
-      (*resource_ids)[mapping.name()] = std::move(rids);
-    }
-  }
 
   auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
                              const TaskSpecification &accepted_task_spec,
@@ -213,50 +183,84 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     }
   };
 
-  if (task_spec.IsActorTask()) {
-    auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
-    if (it == actor_scheduling_queues_.end()) {
-      it = actor_scheduling_queues_
-               .emplace(
-                   task_spec.CallerWorkerId(),
-                   allow_out_of_order_execution_
-                       ? std::unique_ptr<SchedulingQueue>(
-                             std::make_unique<OutOfOrderActorSchedulingQueue>(
-                                 task_execution_service_,
-                                 waiter_,
-                                 task_event_buffer_,
-                                 pool_manager_,
-                                 fiber_state_manager_,
-                                 is_asyncio_,
-                                 fiber_max_concurrency_,
-                                 concurrency_groups_))
-                       : std::unique_ptr<SchedulingQueue>(
-                             std::make_unique<ActorSchedulingQueue>(
-                                 task_execution_service_,
-                                 waiter_,
-                                 task_event_buffer_,
-                                 pool_manager_,
-                                 RayConfig::instance()
-                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
-               .first;
+  {
+    absl::MutexLock lock(&stop_mu_);
+    if (stopping_) {
+      RAY_LOG(INFO)
+          << "Rejecting PushTask due to worker shutdown: task will be cancelled";
+      reply->set_was_cancelled_before_running(true);
+      send_reply_callback(
+          Status::SchedulingCancelled("Worker is shutting down"), nullptr, nullptr);
+      return;
     }
 
-    it->second->Add(request.sequence_number(),
-                    request.client_processed_up_to(),
-                    std::move(accept_callback),
-                    std::move(cancel_callback),
-                    std::move(send_reply_callback),
-                    std::move(task_spec));
-  } else {
-    // Add the normal task's callbacks to the non-actor scheduling queue.
-    RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
-                   << " to normal scheduling task queue.";
-    normal_scheduling_queue_->Add(request.sequence_number(),
-                                  request.client_processed_up_to(),
-                                  std::move(accept_callback),
-                                  std::move(cancel_callback),
-                                  std::move(send_reply_callback),
-                                  std::move(task_spec));
+    // Safe to decode and enqueue while holding the lock; avoid heavy work.
+    task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
+
+    if (task_spec.IsActorCreationTask()) {
+      SetupActor(task_spec.IsAsyncioActor(),
+                 task_spec.MaxActorConcurrency(),
+                 task_spec.AllowOutOfOrderExecution());
+    }
+
+    // Only assign resources for non-actor tasks. Actor tasks inherit the resources
+    // assigned at initial actor creation time.
+    if (!task_spec.IsActorTask()) {
+      resource_ids = ResourceMappingType{};
+      for (const auto &mapping : request.resource_mapping()) {
+        std::vector<std::pair<int64_t, double>> rids;
+        rids.reserve(mapping.resource_ids().size());
+        for (const auto &ids : mapping.resource_ids()) {
+          rids.emplace_back(ids.index(), ids.quantity());
+        }
+        (*resource_ids)[mapping.name()] = std::move(rids);
+      }
+    }
+
+    if (task_spec.IsActorTask()) {
+      auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
+      if (it == actor_scheduling_queues_.end()) {
+        it = actor_scheduling_queues_
+                 .emplace(
+                     task_spec.CallerWorkerId(),
+                     allow_out_of_order_execution_
+                         ? std::unique_ptr<SchedulingQueue>(
+                               std::make_unique<OutOfOrderActorSchedulingQueue>(
+                                   task_execution_service_,
+                                   waiter_,
+                                   task_event_buffer_,
+                                   pool_manager_,
+                                   fiber_state_manager_,
+                                   is_asyncio_,
+                                   fiber_max_concurrency_,
+                                   concurrency_groups_))
+                         : std::unique_ptr<
+                               SchedulingQueue>(std::make_unique<ActorSchedulingQueue>(
+                               task_execution_service_,
+                               waiter_,
+                               task_event_buffer_,
+                               pool_manager_,
+                               RayConfig::instance()
+                                   .actor_scheduling_queue_max_reorder_wait_seconds())))
+                 .first;
+      }
+
+      it->second->Add(request.sequence_number(),
+                      request.client_processed_up_to(),
+                      std::move(accept_callback),
+                      std::move(cancel_callback),
+                      std::move(send_reply_callback),
+                      std::move(task_spec));
+    } else {
+      RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
+                     << " to normal scheduling task queue.";
+      normal_scheduling_queue_->Add(request.sequence_number(),
+                                    request.client_processed_up_to(),
+                                    std::move(accept_callback),
+                                    std::move(cancel_callback),
+                                    std::move(send_reply_callback),
+                                    std::move(task_spec));
+    }
   }
 }
 
