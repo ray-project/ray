@@ -54,7 +54,6 @@ def _run_head_and_workers(
     def fake_check_head_node_ready(address, timeout=None):
         # Wait until head reports readiness.
         if not head_ready.wait(timeout):
-            workers_ready.set()  # FIXME: is this necessary?
             return False
         mark_worker_ready()
         return True
@@ -64,8 +63,6 @@ def _run_head_and_workers(
         if expected_workers == 0:
             return True
         ready = workers_ready.wait(timeout)
-        if not ready:
-            workers_ready.set()
         return ready
 
     head_result = {}
