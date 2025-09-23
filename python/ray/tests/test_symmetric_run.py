@@ -42,7 +42,6 @@ def _run_head_and_workers(
     workers_ready = threading.Event()
     worker_counter = {"count": 0}
     counter_lock = threading.Lock()
-    address_arg = args[args.index("--address") + 1]
 
     def mark_worker_ready():
         with counter_lock:
