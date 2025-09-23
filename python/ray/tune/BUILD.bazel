@@ -51,6 +51,7 @@ py_test(
     name = "test_actor_reuse",
     size = "large",
     srcs = ["tests/test_actor_reuse.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -65,6 +66,7 @@ py_test(
     name = "test_api",
     size = "large",
     srcs = ["tests/test_api.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "rllib",
@@ -77,6 +79,7 @@ py_test(
     name = "test_api_checkpoint_integration",
     size = "medium",
     srcs = ["tests/test_api_checkpoint_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -88,6 +91,7 @@ py_test(
     name = "test_api_migrations",
     size = "small",
     srcs = ["tests/test_api_migrations.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -99,6 +103,7 @@ py_test(
     name = "test_callbacks",
     size = "small",
     srcs = ["tests/test_callbacks.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -110,6 +115,7 @@ py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "rllib",
@@ -122,6 +128,7 @@ py_test(
     name = "test_commands",
     size = "medium",
     srcs = ["tests/test_commands.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -133,6 +140,7 @@ py_test(
     name = "test_convergence",
     size = "medium",
     srcs = ["tests/test_convergence.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -144,6 +152,7 @@ py_test(
     name = "test_dependency",
     size = "small",
     srcs = ["tests/test_dependency.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -155,6 +164,7 @@ py_test(
     name = "test_env_callbacks",
     size = "small",
     srcs = ["tests/test_env_callbacks.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -166,6 +176,7 @@ py_test(
     name = "test_experiment",
     size = "small",
     srcs = ["tests/test_experiment.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -177,6 +188,7 @@ py_test(
     name = "test_experiment_analysis",
     size = "small",
     srcs = ["tests/test_experiment_analysis.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -191,6 +203,7 @@ py_test(
     name = "test_function_api",
     size = "medium",
     srcs = ["tests/test_function_api.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -202,6 +215,7 @@ py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -213,6 +227,7 @@ py_test(
     name = "test_logger",
     size = "small",
     srcs = ["tests/test_logger.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = ["team:ml"],
     deps = [":tune_lib"],
 )
@@ -224,6 +239,7 @@ py_test(
         "tests/_test_multi_tenancy_run.py",
         "tests/test_multi_tenancy.py",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = ["team:ml"],
     deps = [":tune_lib"],
 )
@@ -232,6 +248,7 @@ py_test(
     name = "test_progress_reporter",
     size = "medium",
     srcs = ["tests/test_progress_reporter.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -243,6 +260,7 @@ py_test(
     name = "test_resource_updater",
     size = "small",
     srcs = ["tests/test_resource_updater.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -254,6 +272,7 @@ py_test(
     name = "test_run_experiment",
     size = "medium",
     srcs = ["tests/test_run_experiment.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -265,6 +284,7 @@ py_test(
     name = "test_remote",
     size = "medium",
     srcs = ["tests/test_remote.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -276,6 +296,7 @@ py_test(
     name = "test_result_grid",
     size = "medium",
     srcs = ["tests/test_result_grid.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -290,6 +311,7 @@ py_test(
     name = "test_warnings",
     size = "medium",
     srcs = ["tests/test_warnings.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -301,6 +323,7 @@ py_test(
     name = "test_sample",
     size = "large",
     srcs = ["tests/test_sample.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "medium_instance",
@@ -313,6 +336,7 @@ py_test(
     name = "test_placeholder",
     size = "small",
     srcs = ["tests/test_placeholder.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -324,6 +348,7 @@ py_test(
     name = "test_searcher_utils",
     size = "small",
     srcs = ["tests/test_searcher_utils.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -335,6 +360,7 @@ py_test(
     name = "test_searchers",
     size = "large",
     srcs = ["tests/test_searchers.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "medium_instance",
@@ -347,6 +373,7 @@ py_test(
     name = "test_soft_imports",
     size = "small",
     srcs = ["tests/test_soft_imports.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "soft_imports",
         "team:ml",
@@ -358,6 +385,7 @@ py_test(
     name = "test_stopper",
     size = "small",
     srcs = ["tests/test_stopper.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -369,6 +397,7 @@ py_test(
     name = "test_util_file_transfer",
     size = "medium",
     srcs = ["tests/test_util_file_transfer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -380,6 +409,7 @@ py_test(
     name = "test_util_object_cache",
     size = "small",
     srcs = ["tests/test_util_object_cache.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -391,6 +421,7 @@ py_test(
     name = "test_syncer",
     size = "medium",
     srcs = ["tests/test_syncer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -417,6 +448,7 @@ py_test(
     name = "test_trainable",
     size = "medium",
     srcs = ["tests/test_trainable.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -428,6 +460,7 @@ py_test(
     name = "test_trainable_util",
     size = "small",
     srcs = ["tests/test_trainable_util.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -439,6 +472,7 @@ py_test(
     name = "test_trial",
     size = "small",
     srcs = ["tests/test_trial.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -450,6 +484,7 @@ py_test(
     name = "test_var",
     size = "medium",
     srcs = ["tests/test_var.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -461,6 +496,7 @@ py_test(
     name = "test_trial_scheduler",
     size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "medium_instance",
@@ -473,6 +509,7 @@ py_test(
     name = "test_trial_scheduler_pbt",
     size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "medium_instance",
@@ -485,6 +522,7 @@ py_test(
     name = "test_trial_scheduler_resource_changing",
     size = "small",
     srcs = ["tests/test_trial_scheduler_resource_changing.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -496,6 +534,7 @@ py_test(
     name = "test_tune_restore_warm_start",
     size = "large",
     srcs = ["tests/test_tune_restore_warm_start.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -507,6 +546,7 @@ py_test(
     name = "test_tune_restore",
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "rllib",
@@ -519,6 +559,7 @@ py_test(
     name = "test_tune_save_restore",
     size = "small",
     srcs = ["tests/test_tune_save_restore.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -530,6 +571,7 @@ py_test(
     name = "test_tuner",
     size = "large",
     srcs = ["tests/test_tuner.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "medium_instance",
@@ -542,6 +584,7 @@ py_test(
     name = "test_tuner_restore",
     size = "large",
     srcs = ["tests/test_tuner_restore.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -556,6 +599,7 @@ py_test(
     name = "test_utils",
     size = "small",
     srcs = ["tests/test_utils.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -572,6 +616,7 @@ py_test(
     name = "example",
     size = "small",
     srcs = ["tests/example.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -586,6 +631,7 @@ py_test(
     name = "tutorial",
     size = "medium",
     srcs = ["tests/tutorial.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -605,6 +651,7 @@ py_test(
     name = "test_actor_caching",
     size = "small",
     srcs = ["tests/execution/test_actor_caching.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -616,6 +663,7 @@ py_test(
     name = "test_controller_callback_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_callback_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -627,6 +675,7 @@ py_test(
     name = "test_controller_checkpointing_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_checkpointing_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -638,6 +687,7 @@ py_test(
     name = "test_controller_control_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_control_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -649,6 +699,7 @@ py_test(
     name = "test_controller_errors_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_errors_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -660,6 +711,7 @@ py_test(
     name = "test_controller_resources_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_resources_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -671,6 +723,7 @@ py_test(
     name = "test_controller_resume_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_resume_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -682,6 +735,7 @@ py_test(
     name = "test_controller_search_alg_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_search_alg_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -698,6 +752,7 @@ py_test(
     size = "small",
     srcs = ["examples/async_hyperband_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -711,6 +766,7 @@ py_test(
     size = "small",
     srcs = ["examples/ax_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -724,6 +780,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bayesopt_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -736,6 +793,7 @@ py_test(
     name = "bohb_example",
     size = "medium",
     srcs = ["examples/bohb_example.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -749,6 +807,7 @@ py_test(
     size = "medium",
     srcs = ["examples/cifar10_pytorch.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -763,6 +822,7 @@ py_test(
     size = "small",
     srcs = ["examples/custom_func_checkpointing.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -776,6 +836,7 @@ py_test(
     size = "medium",
     srcs = ["examples/hyperband_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -789,6 +850,7 @@ py_test(
     size = "small",
     srcs = ["examples/hyperband_function_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -802,6 +864,7 @@ py_test(
     size = "small",
     srcs = ["examples/hyperopt_conditional_search_space_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -814,6 +877,7 @@ py_test(
     name = "lightgbm_example",
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -827,6 +891,7 @@ py_test(
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
     args = ["--use-cv"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/lightgbm_example.py",
     tags = [
         "example",
@@ -841,6 +906,7 @@ py_test(
     size = "small",
     srcs = ["examples/logging_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -853,6 +919,7 @@ py_test(
     name = "mlflow_example",
     size = "medium",
     srcs = ["examples/mlflow_example.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -866,6 +933,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mlflow_ptl.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -880,6 +948,7 @@ py_test(
     size = "small",
     srcs = ["examples/mnist_pytorch.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -894,6 +963,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mnist_ptl_mini.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -908,6 +978,7 @@ py_test(
     size = "small",
     srcs = ["examples/mnist_pytorch_trainable.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -922,6 +993,7 @@ py_test(
     size = "small",
     srcs = ["examples/nevergrad_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -935,6 +1007,7 @@ py_test(
     size = "small",
     srcs = ["examples/optuna_define_by_run_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -948,6 +1021,7 @@ py_test(
     size = "small",
     srcs = ["examples/optuna_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -961,6 +1035,7 @@ py_test(
     size = "medium",
     srcs = ["examples/optuna_multiobjective_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -975,6 +1050,7 @@ py_test(
     size = "small",
     srcs = ["examples/pb2_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -988,6 +1064,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_convnet_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1001,6 +1078,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_convnet_function_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1014,6 +1092,7 @@ py_test(
     size = "medium",
     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1027,6 +1106,7 @@ py_test(
     size = "medium",
     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1040,6 +1120,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1053,6 +1134,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_function.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1066,6 +1148,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_memnn_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1109,6 +1192,7 @@ py_test(
     size = "medium",
     srcs = ["examples/tf_mnist_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1123,6 +1207,7 @@ py_test(
     size = "small",
     srcs = ["examples/tune_basic_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1135,6 +1220,7 @@ py_test(
     name = "test_telemetry",
     size = "small",
     srcs = ["tests/test_telemetry.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = ["team:ml"],
     deps = [":tune_lib"],
 )
@@ -1144,6 +1230,7 @@ py_test(
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1156,6 +1243,7 @@ py_test(
     name = "xgboost_example",
     size = "small",
     srcs = ["examples/xgboost_example.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1169,6 +1257,7 @@ py_test(
     size = "small",
     srcs = ["examples/xgboost_example.py"],
     args = ["--use-cv"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/xgboost_example.py",
     tags = [
         "example",
@@ -1182,6 +1271,7 @@ py_test(
     name = "xgboost_dynamic_resources_example",
     size = "large",
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "example",
         "exclusive",
@@ -1199,6 +1289,7 @@ py_test(
     name = "test_output",
     size = "small",
     srcs = ["tests/output/test_output.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
