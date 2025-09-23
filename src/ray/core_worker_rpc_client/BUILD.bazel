@@ -10,6 +10,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/protobuf:pubsub_cc_proto",
         "//src/ray/pubsub:subscriber_interface",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 
@@ -26,6 +27,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/rpc:retryable_grpc_client",
+        "//src/ray/rpc:rpc_callback_types",
         "//src/ray/util:logging",
         "@com_google_absl//absl/synchronization",
     ],

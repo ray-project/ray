@@ -24,13 +24,11 @@
 
 #include "ray/common/status.h"
 #include "ray/object_manager_rpc_client/object_manager_client_interface.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/object_manager.pb.h"
 
 namespace ray {
 namespace rpc {
-
-template <class Reply>
-using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 
 class FakeObjectManagerClient : public ObjectManagerClientInterface {
  public:

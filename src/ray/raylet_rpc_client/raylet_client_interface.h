@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -40,11 +41,6 @@ class ObjectID;
 class LeaseID;
 class NodeID;
 class BundleSpecification;
-
-namespace rpc {
-template <class Reply>
-using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
-}
 
 class RayletClientInterface {
  public:

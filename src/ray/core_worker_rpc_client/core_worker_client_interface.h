@@ -17,15 +17,13 @@
 #include <string>
 
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
 namespace rpc {
-
-template <class Reply>
-using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 
 class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
  public:

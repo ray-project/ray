@@ -10,6 +10,7 @@ ray_cc_library(
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 

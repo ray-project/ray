@@ -20,6 +20,7 @@ ray_cc_library(
     hdrs = ["object_manager_client_interface.h"],
     deps = [
         "//src/ray/protobuf:object_manager_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 
@@ -46,5 +47,6 @@ ray_cc_library(
         ":object_manager_client_interface",
         "//src/ray/common:status",
         "//src/ray/protobuf:object_manager_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )

@@ -331,6 +331,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 
