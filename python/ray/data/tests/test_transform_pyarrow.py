@@ -633,7 +633,6 @@ def test_unify_schemas_nested_struct_tensors(
 
     # Should convert nested tensor to variable-shaped
     result = unify_schemas([schemas["with_tensor"], schemas["without_tensor"]])
-
     assert result == schemas["expected"]
 
 
