@@ -96,6 +96,26 @@
   variations:
     - __suffix__: aws
 
+- name: hello_world_custom_byod
+  team: reef
+  group: hello_world_custom_byod
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod:
+      type: llm-cu128
+      post_build_script: byod_hello_world.sh
+      python_depset: emoji.lock
+    cluster_compute: ci/aws.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world_emoji.py
+
+  variations:
+    - __suffix__: aws
+
 #######################
 # Cluster scaling tests
 #######################
