@@ -175,6 +175,9 @@ EOF
 # --- Return to main image ---
 FROM main-build as main
 
+# Switch to root for system-level HAProxy setup
+USER root
+
 # Copy HAProxy binary from builder stage
 COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
 
@@ -186,7 +189,7 @@ RUN groupadd -r haproxy || true && \
     useradd -r -g haproxy haproxy || true && \
     mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
     chown -R haproxy:haproxy /run/haproxy && \
-    echo "ray ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy" | tee /etc/sudoers.d/haproxy-ray
+    echo "ray ALL=(ALL) NOPASSWD: /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg *" | tee /etc/sudoers.d/haproxy-ray
 
 # Update PATH to include both anaconda3 and HAProxy
 ENV PATH="/home/ray/anaconda3/bin:/usr/local/sbin:$PATH"
