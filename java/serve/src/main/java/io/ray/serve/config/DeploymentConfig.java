@@ -66,6 +66,8 @@ public class DeploymentConfig implements Serializable {
 
   private String prevVersion;
 
+  private Integer maxConstructorRetryCount = 20;
+
   public Integer getNumReplicas() {
     return numReplicas;
   }
@@ -85,6 +87,19 @@ public class DeploymentConfig implements Serializable {
     if (maxOngoingRequests != null) {
       Preconditions.checkArgument(maxOngoingRequests > 0, "max_ongoing_requests must be > 0");
       this.maxOngoingRequests = maxOngoingRequests;
+    }
+    return this;
+  }
+
+  public Integer getMaxConstructorRetryCount() {
+    return maxConstructorRetryCount;
+  }
+
+  public DeploymentConfig setMaxConstructorRetryCount(Integer maxConstructorRetryCount) {
+    if (maxConstructorRetryCount != null) {
+      Preconditions.checkArgument(
+          maxConstructorRetryCount > 0, "max constructor retry count must be > 0");
+      this.maxConstructorRetryCount = maxConstructorRetryCount;
     }
     return this;
   }
@@ -234,7 +249,8 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage)
-            .setVersion(version);
+            .setVersion(version)
+            .setMaxConstructorRetryCount(maxConstructorRetryCount);
     if (null != userConfig) {
       builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
     }
@@ -257,7 +273,8 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
-            .setDeploymentLanguage(deploymentLanguage);
+            .setDeploymentLanguage(deploymentLanguage)
+            .setMaxConstructorRetryCount(maxConstructorRetryCount);
     if (null != userConfig) {
       builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
     }
@@ -294,6 +311,7 @@ public class DeploymentConfig implements Serializable {
           MessagePackSerializer.decode(
               proto.getUserConfig().toByteArray(), Object.class)); // TODO-xlang
     }
+    deploymentConfig.setMaxConstructorRetryCount(proto.getMaxConstructorRetryCount());
     return deploymentConfig;
   }
 
