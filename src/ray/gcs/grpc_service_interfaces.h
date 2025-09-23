@@ -22,14 +22,12 @@
 #pragma once
 
 #include "ray/common/status.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
-
-using SendReplyCallback = std::function<void(
-    Status status, std::function<void()> success, std::function<void()> failure)>;
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \

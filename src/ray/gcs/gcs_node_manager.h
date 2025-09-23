@@ -28,7 +28,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/autoscaler.pb.h"

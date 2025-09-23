@@ -27,7 +27,7 @@
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 namespace core {

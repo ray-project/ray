@@ -1,0 +1,15 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "raylet_client_pool_test",
+    size = "small",
+    srcs = ["raylet_client_pool_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
