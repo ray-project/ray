@@ -168,6 +168,14 @@ The main code differences are:
 Usage with NIXL (CPUs or NVIDIA GPUs)
 -------------------------------------
 
+Installation
+^^^^^^^^^^^^
+
+For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` is not installed, things will still work with a plain ``pip install nixl``, just with lower performance. `nixl` and `ucx` are installed as dependencies via pip.
+
+Walkthrough
+^^^^^^^^^^^
+
 NIXL can transfer data between different devices, including CPUs and NVIDIA GPUs, but doesn't require a collective group to be created ahead of time.
 This means that any actor that has NIXL installed in its environment can be used to create and pass an RDT object.
 
@@ -185,17 +193,23 @@ Compared to the :ref:`Gloo example <direct-transport-gloo>`, the main code diffe
 1. The :func:`@ray.method <ray.method>` uses ``tensor_transport="nixl"`` instead of ``tensor_transport="gloo"``.
 2. No collective group is needed.
 
-.. TODO: ray.get with NIXL
-   ``ray.get``
-   ^^^^^^^^^^^
+ray.put and ray.get with NIXL
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-   Unlike the collective-based tensor transports (Gloo and NCCL), the :func:`ray.get <ray.get>` function can use NIXL or the Ray object store to retrieve a copy of the result.
-   By default, the tensor transport for :func:`ray.get <ray.get>` will be the one specified in the :func:`@ray.method <ray.method>` decorator.
+Unlike the collective-based tensor transports (Gloo and NCCL), the :func:`ray.get <ray.get>` function can use NIXL to retrieve a copy of the result.
+By default, the tensor transport for :func:`ray.get <ray.get>` will be the one specified in the :func:`@ray.method <ray.method>` decorator.
 
-   .. literalinclude:: doc_code/direct_transport_nixl.py
-      :language: python
-      :start-after: __nixl_get_start__
-      :end-before: __nixl_get_end__
+.. literalinclude:: doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_get_start__
+   :end-before: __nixl_get_end__
+
+You can also use NIXL to retrieve the result from references created by :func:`ray.put <ray.put>`.
+
+.. literalinclude:: doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_put__and_get_start__
+   :end-before: __nixl_put__and_get_end__
 
 Summary
 -------
