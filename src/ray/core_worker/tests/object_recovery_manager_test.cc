@@ -27,8 +27,8 @@
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/pubsub/fake_subscriber.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 
 namespace ray {
 namespace core {
