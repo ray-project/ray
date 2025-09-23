@@ -27,14 +27,14 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
 #include "ray/util/event.h"
 
 namespace ray {
