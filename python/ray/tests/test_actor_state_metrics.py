@@ -83,7 +83,7 @@ def test_basic_states(shutdown_only):
     # Test creation states.
     expected = {
         "ALIVE": 3,
-        "IDLE": 3,
+        "ALIVE_IDLE": 3,
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
@@ -98,9 +98,7 @@ def test_basic_states(shutdown_only):
     c.wait.remote()
     expected = {
         "ALIVE": 3,
-        "RUNNING_TASK": 1,
-        "RUNNING_IN_RAY_GET": 1,
-        "RUNNING_IN_RAY_WAIT": 1,
+        "ALIVE_RUNNING_TASKS": 3,
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
@@ -127,7 +125,7 @@ def test_destroy_actors(shutdown_only):
 
     expected = {
         "ALIVE": 1,
-        "IDLE": 1,
+        "ALIVE_IDLE": 1,
         "DEAD": 2,
     }
     wait_for_condition(
@@ -225,7 +223,7 @@ def test_async_actor(shutdown_only):
     a.sleep.remote()
     expected = {
         "ALIVE": 1,
-        "RUNNING_TASK": 1,
+        "ALIVE_RUNNING_TASKS": 1,
     }
     wait_for_condition(
         lambda: actors_by_state(info) == expected,
@@ -238,7 +236,7 @@ def test_async_actor(shutdown_only):
     a.do_get.remote()
     expected = {
         "ALIVE": 1,
-        "RUNNING_IN_RAY_GET": 1,
+        "ALIVE_RUNNING_TASKS": 1,
     }
     wait_for_condition(
         lambda: actors_by_state(info) == expected,
