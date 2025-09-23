@@ -570,7 +570,7 @@ class RuntimeEnvAgent:
         except Exception as e:
             return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message=f"{self._node_prefix}Fails to decrement reference for runtime env for {str(e)}",
+                error_message=f"{self._node_prefix}Failed to decrement reference for runtime env for {str(e)}",
             )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
