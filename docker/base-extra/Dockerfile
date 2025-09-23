@@ -67,36 +67,24 @@ HAPROXY_PKGS=(
     zlib1g-dev
 )
 
-RUN apt-get update -y && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    "${HAPROXY_PKGS[@]}"
+sudo apt-get install -y "${HAPROXY_PKGS[@]}"
 
 # Install HAProxy from source.
-RUN HAPROXY_VERSION="2.8.12" && \
-    HAPROXY_TMP="$(mktemp -d)" && ( \
-    set -e; \
-    cd "${HAPROXY_TMP}"; \
-    \
-    sudo groupadd -r haproxy || true; \
-    sudo useradd -r -g haproxy haproxy || true; \
-    \
-    curl -sSfL "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz" -o haproxy.tar.gz; \
-    tar -xzf haproxy.tar.gz; \
-    cd "haproxy-${HAPROXY_VERSION}"; \
-    make TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j"$(nproc)"; \
-    sudo make install; \
-) && \
-    rm -rf "${HAPROXY_TMP}"
+HAPROXY_VERSION="2.8.12"
+BUILD_DIR=$(mktemp -d)
+curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
+make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
+sudo make -C "${BUILD_DIR}" install
+rm -rf "${BUILD_DIR}"
 
-# Update PATH
-ENV PATH="/usr/local/sbin:$PATH"
+sudo groupadd -r haproxy || true
+sudo useradd -r -g haproxy haproxy || true
 
-# Create HAProxy directories
-RUN sudo mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
-    sudo chown -R haproxy:haproxy /run/haproxy
+sudo mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+sudo chown -R haproxy:haproxy /run/haproxy
 
-# Allow the ray user to manage HAProxy files without password
-echo "ray ALL=(ALL) NOPASSWD: /bin/cp * /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy" | sudo tee /etc/sudoers.d/haproxy-ray
+echo "ray ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy" | sudo tee /etc/sudoers.d/haproxy-ray
 
 # Install azcopy
 AZCOPY_VERSION="10.30.0"
@@ -238,5 +226,7 @@ fi
 sudo rm -rf /etc/apt/sources.list.d/*
 
 EOF
+
+ENV PATH="/usr/local/sbin:$PATH"
 
 RUN mkdir -p /tmp/supervisord

@@ -145,40 +145,52 @@ EOF
 ENV PATH="/home/ray/anaconda3/bin:$PATH"
 
 # --- HAProxy Build Stage ---
-FROM debian:bullseye as haproxy-builder
+FROM ubuntu:22.04 as haproxy-builder
 
-ARG HAPROXY_VERSION="2.8.12"
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+
+apt-get update -y
+apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     libpcre3-dev \
     libssl-dev \
     zlib1g-dev \
     ca-certificates
+rm -rf /var/lib/apt/lists/*
 
-RUN BUILD_DIR=$(mktemp -d) && \
-    cd "${BUILD_DIR}" && \
-    curl -sSfL "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz" -o haproxy.tar.gz && \
-    tar -xzf haproxy.tar.gz --strip-components=1 && \
-    make TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j"$(nproc)" && \
-    make install
+# Install HAProxy from source
+HAPROXY_VERSION="2.8.12"
+BUILD_DIR=$(mktemp -d)
+curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
+make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
+make -C "${BUILD_DIR}" install
+rm -rf "${BUILD_DIR}"
 
-# --- Final Stage ---
-FROM base-deps
-ARG RAY_UID=1000
+EOF
 
-RUN mkdir -p /tmp/ray /var/lib/ray && \
-    chown -R "${RAY_UID}" /tmp/ray /var/lib/ray
+# Install HAProxy runtime dependency
+RUN apt-get install socat && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy HAProxy from the build stage and set up user/directories.
 COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
 RUN groupadd -r haproxy || true && \
     useradd -r -g haproxy haproxy || true && \
     mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
-    chown -R haproxy:haproxy /run/haproxy
+    chown -R haproxy:haproxy /run/haproxy && \
+    echo "ray ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy" | tee /etc/sudoers.d/haproxy-ray
+
+ARG RAY_UID=1000
+
+RUN mkdir -p /tmp/ray /var/lib/ray && \
+    chown -R "${RAY_UID}" /tmp/ray /var/lib/ray
 
 # Update PATH
 ENV PATH="/usr/local/sbin:$PATH"
