@@ -144,4 +144,46 @@ EOF
 
 ENV PATH="/home/ray/anaconda3/bin:$PATH"
 
+# --- HAProxy Build Stage ---
+FROM debian:bullseye as haproxy-builder
+
+ARG HAPROXY_VERSION="2.8.12"
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libpcre3-dev \
+    libssl-dev \
+    zlib1g-dev \
+    ca-certificates
+
+RUN BUILD_DIR=$(mktemp -d) && \
+    cd "${BUILD_DIR}" && \
+    curl -sSfL "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz" -o haproxy.tar.gz && \
+    tar -xzf haproxy.tar.gz --strip-components=1 && \
+    make TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j"$(nproc)" && \
+    make install
+
+# --- Final Stage ---
+FROM base-deps
+ARG RAY_UID=1000
+
+RUN mkdir -p /tmp/ray /var/lib/ray && \
+    chown -R "${RAY_UID}" /tmp/ray /var/lib/ray
+
+# Copy HAProxy from the build stage and set up user/directories.
+COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
+RUN groupadd -r haproxy || true && \
+    useradd -r -g haproxy haproxy || true && \
+    mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
+    chown -R haproxy:haproxy /run/haproxy
+
+# Update PATH
+ENV PATH="/usr/local/sbin:$PATH"
+
+USER $RAY_UID
+WORKDIR /home/ray
+
 CMD ["bash"]
