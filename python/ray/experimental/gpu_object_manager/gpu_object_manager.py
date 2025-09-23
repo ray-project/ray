@@ -192,6 +192,7 @@ class GPUObjectManager:
             ref_info_map.pop(ref_info.send_ref.hex(), None)
         ref_info_map.pop(ref_info.recv_ref.hex(), None)
 
+        # TODO(#51276): Kill all actors in the collective group when we support more collective operations
         ray.kill(ref_info.src_actor)
         ray.kill(ref_info.dst_actor)
 
