@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "mock/ray/gcs_rpc_client/accessor.h"
+#include "mock/ray/gcs_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 
 namespace ray {

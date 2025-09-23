@@ -13,7 +13,7 @@
 // limitations under the License.
 #pragma once
 #include "gmock/gmock.h"
-#include "mock/ray/gcs_rpc_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 
 namespace ray::core {
 

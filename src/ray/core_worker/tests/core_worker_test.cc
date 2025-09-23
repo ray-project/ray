@@ -26,7 +26,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
-#include "mock/ray/gcs_rpc_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/plasma/client.h"
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"

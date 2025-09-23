@@ -23,7 +23,7 @@
 
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
-#include "mock/ray/gcs_rpc_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "mock/ray/raylet/local_lease_manager.h"
