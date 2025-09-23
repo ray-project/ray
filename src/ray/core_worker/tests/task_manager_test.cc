@@ -2996,11 +2996,9 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
         stored_in_plasma.insert(object_id);
         return Status::OK();
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -3010,7 +3008,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       *task_event_buffer_mock_.get(),
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
 
   // Create a task with retries enabled
   rpc::Address caller_address;
@@ -3076,11 +3075,9 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
         stored_in_plasma.insert(object_id);
         return Status::OK();
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -3090,7 +3087,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       *task_event_buffer_mock_.get(),
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
 
   // Create a task that will be retried
   rpc::Address caller_address;

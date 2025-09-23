@@ -25,7 +25,6 @@
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_manager.h"
-#include "ray/util/env.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -38,11 +37,6 @@ constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 
 // Throttle task failure logs to once this interval.
 constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
-
-// Environment variable to disable the feature of outputting error log if the task is
-// still retryable.
-constexpr char kDisableOutputErrorLogIfStillRetryEnv[] =
-    "RAY_DISABLE_OUTPUT_ERROR_LOG_IF_STILL_RETRY";
 
 namespace {
 
@@ -1211,7 +1205,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
-      if (!ray::IsEnvTrue(kDisableOutputErrorLogIfStillRetryEnv)) {
+      bool disable_output_error_log_if_still_retry =
+          RayConfig::instance().disable_output_error_log_if_still_retry();
+      if (!disable_output_error_log_if_still_retry) {
         std::string num_retries_left_str;
         if (task_failed_due_to_oom) {
           num_retries_left_str = num_oom_retries_left == -1
