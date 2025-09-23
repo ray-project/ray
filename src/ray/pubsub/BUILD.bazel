@@ -98,7 +98,7 @@ ray_cc_library(
     hdrs = ["python_gcs_subscriber.h"],
     deps = [
         "//src/ray/common:status",
-        "//src/ray/gcs_client:rpc_client",
+        "//src/ray/gcs_rpc_client:rpc_client",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:pubsub_cc_proto",
         "//src/ray/util:visibility",
