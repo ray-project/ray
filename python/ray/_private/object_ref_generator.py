@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-
 import asyncio
 import collections
-
 from typing import TYPE_CHECKING, Deque, Iterator, Optional
 
 import ray
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.exceptions import ObjectRefStreamEndOfStreamError
 
 if TYPE_CHECKING:
     from ray._private.worker import Worker
-from ray.exceptions import ObjectRefStreamEndOfStreamError
 
 
 @DeveloperAPI
@@ -28,6 +26,7 @@ class DynamicObjectRefGenerator:
 
     def __len__(self) -> int:
         return len(self._refs)
+
 
 @PublicAPI
 class ObjectRefGenerator:
@@ -46,6 +45,7 @@ class ObjectRefGenerator:
     >>> next(gen)
     >>> await gen.__anext__()
     """
+    
     def __init__(self, generator_ref: ray.ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
