@@ -20,14 +20,11 @@ import psutil
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.parametrize(
-    "shutdown_only",
-    [{"include_dashboard": True}],
-    indirect=True,
-)
 def test_global_state_api(shutdown_only):
 
-    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+    ray.init(
+        num_cpus=5, num_gpus=3, resources={"CustomResource": 1}, include_dashboard=True
+    )
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3

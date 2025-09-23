@@ -1681,16 +1681,11 @@ def test_one_liner_actor_method_invocation(shutdown_only):
     client_test_enabled(),
     reason="Out of scope actor cleanup doesn't work with Ray client.",
 )
-@pytest.mark.parametrize(
-    "shutdown_only",
-    [{"include_dashboard": True}],
-    indirect=True,
-)
 def test_get_actor_after_same_name_actor_dead(shutdown_only):
     ACTOR_NAME = "test_actor"
     NAMESPACE_NAME = "test_namespace"
 
-    ray.init(namespace=NAMESPACE_NAME)
+    ray.init(namespace=NAMESPACE_NAME, include_dashboard=True)
 
     @ray.remote
     class Actor:
