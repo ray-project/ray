@@ -164,7 +164,7 @@ Here is an example of what can go wrong:
 In this example, we pass the stored tensor back to the `sender` actor, which modifies it in place.
 Then, we pass the same tensor to the `receiver` actor, which will now read the modified tensor instead of the original.
 That's why the assertion fails, because `sender.increment_and_sum` and `receiver.increment_and_sum` receive different tensor values.
-To help you catch these kinds of errors, Ray also prints a warning when passing RDT objects to the actor that produced them, and a different actor.
+To help you catch these kinds of errors, Ray also prints a warning when passing RDT objects to the actor that produced them and a different actor.
 
 To fix this kind of error, use the :func:`ray.experimental.wait_tensor_freed <ray.experimental.wait_tensor_freed>` function to wait for Ray to release all references to the tensor, so that the actor can safely write to the tensor again.
 :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will unblock once all dependent tasks have finished executing and all corresponding `ObjectRefs` have gone out of scope.
