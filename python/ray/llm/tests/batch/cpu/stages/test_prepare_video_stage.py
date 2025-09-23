@@ -324,10 +324,18 @@ async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
 
                     def to_image(self):
                         class _I:
-                            width = 10
-                            height = 10
+                            # Track logical size to reflect resize in numpy conversion
+                            def __init__(self):
+                                self.width = 10
+                                self.height = 10
 
-                            def resize(self, *a, **k):
+                            def resize(self, size, *args, **kwargs):
+                                # size is (W, H)
+                                try:
+                                    w, h = size
+                                    self.width, self.height = int(w), int(h)
+                                except Exception:
+                                    pass
                                 return self
 
                             def crop(self, *a, **k):
@@ -335,6 +343,16 @@ async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
 
                             def convert(self, *a, **k):
                                 return self
+
+                            # Provide numpy array interface to make np.array(img) valid
+                            def __array__(self, dtype=None):
+                                import numpy as _np
+
+                                h, w = int(self.height), int(self.width)
+                                arr = _np.zeros((h, w, 3), dtype=_np.uint8)
+                                if dtype is not None:
+                                    return arr.astype(dtype)
+                                return arr
 
                         return _I()
 

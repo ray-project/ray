@@ -232,6 +232,7 @@ class VideoProcessor:
 
             frames: List[FrameType] = []
             timestamps: List[float] = []
+            allow_zero_samples = False
 
             # Two sampling modes: by fixed fps or by a fixed number of frames.
             s = self._sampling
@@ -243,20 +244,36 @@ class VideoProcessor:
                     and self._max_sampled_frames >= 0
                 ):
                     n = min(n, self._max_sampled_frames)
-                decoded = 0
-                for frame in container.decode(video=vstream.index):
-                    decoded += 1
-                    # Compute timestamp in seconds when available
-                    if getattr(frame, "pts", None) is None:
-                        current_ts = len(timestamps) / float(s.fps or 30.0)
-                    else:
-                        current_ts = float(frame.pts * vstream.time_base)
-                    frames.append(self._format_frame(frame))
-                    timestamps.append(current_ts)
-                    if len(frames) >= n:
-                        break
-                    if decoded >= _MAX_DECODE_FRAMES:
-                        break
+                if n == 0:
+                    # Explicitly allow zero-frame result when capped to 0.
+                    allow_zero_samples = True
+                else:
+                    decoded = 0
+                    for frame in container.decode(video=vstream.index):
+                        decoded += 1
+                        # Compute timestamp in seconds when available
+                        if getattr(frame, "pts", None) is None:
+                            # Prefer stream average_rate if available; otherwise use frame index as seconds.
+                            fps_guess = None
+                            try:
+                                fps_guess = (
+                                    float(getattr(vstream, "average_rate", 0)) or None
+                                )
+                            except Exception:
+                                fps_guess = None
+                            current_ts = (
+                                len(timestamps) / fps_guess
+                                if fps_guess
+                                else float(len(timestamps))
+                            )
+                        else:
+                            current_ts = float(frame.pts * vstream.time_base)
+                        frames.append(self._format_frame(frame))
+                        timestamps.append(current_ts)
+                        if len(frames) >= n:
+                            break
+                        if decoded >= _MAX_DECODE_FRAMES:
+                            break
             else:
                 # FPS mode: build timestamp targets and pick nearest frames crossing thresholds.
                 targets = self._build_targets(container, vstream)
@@ -267,30 +284,30 @@ class VideoProcessor:
                 ):
                     targets = targets[: self._max_sampled_frames]
 
-                target_idx = 0
-                next_target = targets[target_idx] if targets else None
+                if not targets:
+                    allow_zero_samples = True
+                else:
+                    target_idx = 0
+                    next_target = targets[target_idx]
 
-                decoded = 0
-                for frame in container.decode(video=vstream.index):
-                    decoded += 1
-                    if getattr(frame, "pts", None) is None:
-                        current_ts = len(timestamps) / (s.fps or 30.0)
-                    else:
-                        current_ts = float(frame.pts * vstream.time_base)
+                    decoded = 0
+                    for frame in container.decode(video=vstream.index):
+                        decoded += 1
+                        if getattr(frame, "pts", None) is None:
+                            current_ts = len(timestamps) / (s.fps or 30.0)
+                        else:
+                            current_ts = float(frame.pts * vstream.time_base)
 
-                    if next_target is None:
-                        break
+                        if current_ts + 1e-6 >= next_target:
+                            frames.append(self._format_frame(frame))
+                            timestamps.append(current_ts)
+                            target_idx += 1
+                            if target_idx >= len(targets):
+                                break
+                            next_target = targets[target_idx]
 
-                    if current_ts + 1e-6 >= next_target:
-                        frames.append(self._format_frame(frame))
-                        timestamps.append(current_ts)
-                        target_idx += 1
-                        if target_idx >= len(targets):
+                        if decoded >= _MAX_DECODE_FRAMES:
                             break
-                        next_target = targets[target_idx]
-
-                    if decoded >= _MAX_DECODE_FRAMES:
-                        break
         finally:
             # Ensure container is closed even on exceptions
             try:
@@ -301,8 +318,8 @@ class VideoProcessor:
                     f"Failed to close PyAV container for source {self._source_repr(source, resolved, is_memory)}: {e}"
                 ) from e
 
-        # Strict: no implicit fallback. If no frames sampled, treat as failure.
-        if not frames:
+        # Strict: no implicit fallback. If no frames sampled, treat as failure unless zero was explicitly requested via cap.
+        if not frames and not allow_zero_samples:
             raise ValueError("No frames sampled")
 
         w = h = None
