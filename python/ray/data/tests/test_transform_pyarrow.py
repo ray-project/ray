@@ -612,20 +612,25 @@ def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_sch
 
 def _sort_schema_fields(schema):
     """Helper function to recursively sort schema fields by name for deterministic comparison."""
+
     def _sort_recursively(data_type):
         if pa.types.is_struct(data_type):
-            return pa.struct([
-                field.with_type(_sort_recursively(field.type))
-                for field in sorted(data_type, key=lambda f: f.name)
-            ])
+            return pa.struct(
+                [
+                    field.with_type(_sort_recursively(field.type))
+                    for field in sorted(data_type, key=lambda f: f.name)
+                ]
+            )
         if pa.types.is_list(data_type):
             return pa.list_(_sort_recursively(data_type.value_type))
         return data_type
 
-    return pa.schema([
-        field.with_type(_sort_recursively(field.type))
-        for field in sorted(schema, key=lambda f: f.name)
-    ])
+    return pa.schema(
+        [
+            field.with_type(_sort_recursively(field.type))
+            for field in sorted(schema, key=lambda f: f.name)
+        ]
+    )
 
 
 @pytest.mark.skipif(
