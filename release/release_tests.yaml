@@ -4070,6 +4070,7 @@
     byod:
       type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
       post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
+      python_depset: e2e_xgboost_py311_cu124.lock # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:

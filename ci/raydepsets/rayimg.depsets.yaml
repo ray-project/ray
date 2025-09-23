@@ -22,6 +22,7 @@ depsets:
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
     operation: compile
     append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --find-links=.whl/
     build_arg_sets:
