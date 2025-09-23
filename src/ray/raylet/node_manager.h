@@ -52,6 +52,7 @@
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/util/throttler.h"
 
 namespace ray::raylet {

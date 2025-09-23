@@ -38,6 +38,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:node_manager_cc_grpc",
         "//src/ray/rpc:retryable_grpc_client",
+        "//src/ray/rpc:rpc_callback_types",
         "//src/ray/util:logging",
     ],
 )
@@ -53,6 +54,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/common/scheduling:scheduling_ids",
+        "//src/ray/rpc:rpc_callback_types",
         "@com_google_absl//absl/time",
     ],
 )

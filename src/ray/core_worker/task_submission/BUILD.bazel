@@ -71,6 +71,7 @@ ray_cc_library(
         "//src/ray/common:protobuf_utils",
         "//src/ray/core_worker:actor_creator",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/rpc:rpc_callback_types",
         "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

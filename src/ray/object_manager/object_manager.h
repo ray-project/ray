@@ -39,6 +39,10 @@
 
 namespace ray {
 
+namespace rpc {
+class ClientCallManager;
+}
+
 struct ObjectManagerConfig {
   /// The IP address this object manager is running on.
   std::string object_manager_address;

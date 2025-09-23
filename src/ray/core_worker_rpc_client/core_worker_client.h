@@ -24,6 +24,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/rpc/retryable_grpc_client.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 

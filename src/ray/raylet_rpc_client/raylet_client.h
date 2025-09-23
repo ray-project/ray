@@ -25,6 +25,7 @@
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/retryable_grpc_client.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 

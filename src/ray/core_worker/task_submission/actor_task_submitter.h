@@ -32,6 +32,7 @@
 #include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace core {
