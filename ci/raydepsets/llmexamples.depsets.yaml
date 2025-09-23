@@ -1,0 +1,70 @@
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+
+depsets:
+  - name: e2e_timeseries_compiled_depset_${PYTHON_SHORT}
+    packages:
+      - ray[all]==100.0.0-dev
+    constraints:
+      - doc/source/ray-overview/examples/e2e-timeseries/requirements.txt
+    output: python/deplocks/llmexamples/e2e_timeseries_compiled_py311.lock
+    operation: compile
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --find-links=.whl/
+    build_arg_sets:
+      - py311
+
+  - name: e2e_timeseries_final_depset_${PYTHON_SHORT}
+    source_depset: e2e_timeseries_compiled_depset_${PYTHON_SHORT}
+    requirements:
+      - doc/source/ray-overview/examples/e2e-timeseries/requirements.txt
+    output: release/ray_release/byod/e2e_timeseries_py311_cu123.lock
+    operation: expand
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+    build_arg_sets:
+      - py311
+
+# build_arg_sets:
+#   py311:
+#     PYTHON_VERSION: "3.11"
+#     PYTHON_SHORT: "311"
+
+
+# depsets:
+#   - name: e2e_timeseries_depset_${PYTHON_SHORT}
+#     requirements:
+#       - python/deplocks/ray_img/ray_img_py311.lock
+#     constraints:
+#       - doc/source/ray-overview/examples/e2e-timeseries/requirements.txt
+#     operation: compile
+#     output: release/ray_release/byod/e2e_timeseries_py311_cu123.lock
+#     append_flags:
+#       - --python-version=${PYTHON_VERSION}
+#     build_arg_sets:
+#       - py311
+
+  # - name: e2e_timeseries_depset_${PYTHON_SHORT}
+  #   depsets:
+  #     - e2e_timeseries_depset_${PYTHON_SHORT}
+  #   requirements:
+  #     - doc/source/ray-overview/examples/e2e-timeseries/requirements.txt
+  #   operation: expand
+  #   output: release/ray_release/byod/e2e_timeseries_py311_cu123.lock
+  #   append_flags:
+  #     - --python-version=${PYTHON_VERSION}
+  #   build_arg_sets:
+  #     - py311

@@ -7,12 +7,5 @@
 set -exo pipefail
 
 # Install Python dependencies.
-pip3 install --no-cache-dir \
-    aiohttp==3.11.16 \
-    nbformat==5.9.2 \
-    numpy==1.26.4 \
-    pandas==2.3.0 \
-    pyyaml==6.0.1 \
-    s3fs==2023.5.0 \
-    scikit-learn==1.3.2 \
-    torch==2.3.0
+
+uv pip install -r e2e_timeseries_py311_cu123.lock --system --no-deps --index-strategy unsafe-best-match
