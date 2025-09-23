@@ -181,15 +181,24 @@ USER root
 # Copy HAProxy binary from builder stage
 COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
 
-# Install HAProxy runtime dependency
-RUN apt-get update && apt-get install -y --no-install-recommends socat
+# Install HAProxy runtime dependency and setup
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
 
-RUN groupadd -r haproxy || true && \
-    useradd -r -g haproxy haproxy || true && \
-    mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
-    chown -R haproxy:haproxy /run/haproxy && \
-    echo "ray ALL=(ALL) NOPASSWD: /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg -D -p /run/haproxy/haproxy.pid" | tee /etc/sudoers.d/haproxy-ray && \
-    rm -rf /var/lib/apt/lists/*
+apt-get update -y
+apt-get install -y --no-install-recommends socat
+
+groupadd -r haproxy || true
+useradd -r -g haproxy haproxy || true
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+chown -R haproxy:haproxy /run/haproxy
+
+echo "ray ALL=(ALL) NOPASSWD: /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg -D -p /run/haproxy/haproxy.pid" | tee /etc/sudoers.d/haproxy-ray
+
+rm -rf /var/lib/apt/lists/*
+
+EOF
 
 # Update PATH to include both anaconda3 and HAProxy
 ENV PATH="/home/ray/anaconda3/bin:/usr/local/sbin:$PATH"
