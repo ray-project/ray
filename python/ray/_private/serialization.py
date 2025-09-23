@@ -694,6 +694,7 @@ class SerializationContext:
             from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
             TorchTensorType().register_custom_serializer()
+            TorchTensorType().register_custom_serializer_for_mesh()
             self._torch_custom_serializer_registered = True
 
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)

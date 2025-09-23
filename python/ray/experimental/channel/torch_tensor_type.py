@@ -133,6 +133,24 @@ class TorchTensorType(ChannelOutputType):
             deserializer=deserialize,
         )
 
+    def register_custom_serializer_for_mesh(self) -> None:
+        from torch.distributed.device_mesh import DeviceMesh
+
+        def serialize(t):
+            ctx = ChannelContext.get_current()
+            return ctx.serialization_context.serialize_mesh(t)
+
+        def deserialize(b):
+            ctx = ChannelContext.get_current()
+            dt = ctx.serialization_context.deserialize_mesh(b)
+            return dt
+
+        ray.util.serialization.register_serializer(
+            DeviceMesh,
+            serializer=serialize,
+            deserializer=deserialize,
+        )
+
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
