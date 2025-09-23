@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "ray/flatbuffers/node_manager_generated.h"
+#include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 

@@ -14,16 +14,15 @@
 
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
-#include <gtest/gtest.h>
-
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "mock/ray/raylet_client/raylet_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/fake_core_worker_client.h"
 
 namespace ray {
 namespace rpc {
@@ -32,7 +31,7 @@ using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
 
-class MockCoreWorkerClient : public CoreWorkerClientInterface {
+class MockCoreWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   explicit MockCoreWorkerClient(
       std::function<void()> unavailable_timeout_callback = nullptr)
