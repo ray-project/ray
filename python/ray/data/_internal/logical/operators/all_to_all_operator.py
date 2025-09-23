@@ -111,6 +111,7 @@ class Repartition(AbstractAllToAll):
         shuffle: bool,
         keys: Optional[List[str]] = None,
         sort: bool = False,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         if shuffle:
             sub_progress_bar_names = [
@@ -126,6 +127,7 @@ class Repartition(AbstractAllToAll):
             input_op,
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
+            ray_remote_args=ray_remote_args,
         )
         self._shuffle = shuffle
         self._keys = keys

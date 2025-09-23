@@ -306,6 +306,24 @@ def test_streaming_repartition_write_no_operator_fusion(
     assert partition_1_ds.count() == 20, "Expected 20 rows in partition 1"
 
 
+def test_repartition_ray_remote_args(ray_start_regular_shared_2_cpus):
+    """Test that repartition operations accept ray_remote_args parameter."""
+    input_ds = ray.data.range(100)
+
+    ds = input_ds.repartition(
+        target_num_rows_per_block=20,
+        num_cpus=1,
+        max_retries=2,
+        retry_exceptions=[OSError],
+    )
+    assert ds.sum() == 4950
+
+    ds = input_ds.repartition(
+        num_blocks=20, num_cpus=1, max_retries=2, retry_exceptions=[OSError]
+    )
+    assert ds.materialize().num_blocks() == 20
+
+
 if __name__ == "__main__":
     import sys
 

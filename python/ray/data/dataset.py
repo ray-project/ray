@@ -1552,6 +1552,7 @@ class Dataset:
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
+        **ray_remote_args,
     ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`.
@@ -1611,6 +1612,7 @@ class Dataset:
                 is set to True.
             sort: Whether the blocks should be sorted after repartitioning. Note,
                 that by default blocks will be sorted in the ascending order.
+            **ray_remote_args: Additional arguments to pass to :func:`ray.remote`.
 
         Note that you must set either `num_blocks` or `target_num_rows_per_block`
         but not both.
@@ -1656,6 +1658,7 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
+                ray_remote_args=ray_remote_args,
             )
         else:
             op = Repartition(
@@ -1664,6 +1667,7 @@ class Dataset:
                 shuffle=shuffle,
                 keys=keys,
                 sort=sort,
+                ray_remote_args=ray_remote_args,
             )
 
         logical_plan = LogicalPlan(op, self.context)

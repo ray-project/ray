@@ -342,16 +342,21 @@ class FlatMap(AbstractUDFMap):
 class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
     Args:
+        input_op: The operator preceding this operator in the plan DAG.
         target_num_rows_per_block: The target number of rows per block granularity for
            streaming repartition.
+        ray_remote_args: Args to provide to :func:`ray.remote`.
     """
 
     def __init__(
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__("StreamingRepartition", input_op)
+        super().__init__(
+            "StreamingRepartition", input_op, ray_remote_args=ray_remote_args
+        )
         self._target_num_rows_per_block = target_num_rows_per_block
 
     @property
