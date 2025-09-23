@@ -377,7 +377,7 @@ def test_nonserializable_trainable():
         Tuner(lambda config: print(lock))
 
 
-# TODO: Delete the `trainer` variant once V1 is fully removed.
+# TODO: [V2] Delete the `trainer` variant once V1 is fully removed.
 def _test_no_chdir(runner_type, runtime_env, use_deprecated_config=False):
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
