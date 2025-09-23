@@ -8,8 +8,8 @@ from typing import Optional, Deque, Iterator, TYPE_CHECKING
 
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
+import ray
 if TYPE_CHECKING:
-    import ray
     from ray._private.worker import Worker
 from ray.exceptions import ObjectRefStreamEndOfStreamError
 
