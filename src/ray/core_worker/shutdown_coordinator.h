@@ -43,17 +43,13 @@ class ShutdownExecutorInterface {
   virtual void ExecuteForceShutdown(std::string_view exit_type,
                                     std::string_view detail) = 0;
 
-  virtual void ExecuteWorkerExit(std::string_view exit_type,
-                                 std::string_view detail,
-                                 std::chrono::milliseconds timeout_ms) = 0;
-
   virtual void ExecuteExit(std::string_view exit_type,
                            std::string_view detail,
                            std::chrono::milliseconds timeout_ms,
                            const std::shared_ptr<::ray::LocalMemoryBuffer>
                                &creation_task_exception_pb_bytes) = 0;
 
-  virtual void ExecuteHandleExit(std::string_view exit_type,
+  virtual void ExecuteExitIfIdle(std::string_view exit_type,
                                  std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
