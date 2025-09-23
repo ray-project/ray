@@ -274,6 +274,7 @@ if setup_spec.type == SetupType.RAY:
             "starlette",
             "fastapi",
             "watchfiles",
+            "celery",
         ],
         "tune": [
             "pandas",
@@ -301,17 +302,6 @@ if setup_spec.type == SetupType.RAY:
                 "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
                 "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
                 "pyOpenSSL",
-            ]
-        )
-    )
-
-    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
-    # allow asynchronously execute their code, via the use of celery task processor.
-    setup_spec.extras["serve-async-inference"] = list(
-        set(
-            setup_spec.extras["serve"]
-            + [
-                "celery",
             ]
         )
     )
