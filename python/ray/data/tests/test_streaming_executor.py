@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._raylet import NodeID
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
@@ -506,21 +507,23 @@ def test_configure_output_locality(mock_scale_up):
     assert s2.node_id == ray.get_runtime_context().get_node_id()
 
     # Multi node locality.
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
     build_streaming_topology(
-        o3, ExecutionOptions(locality_with_output=["node1", "node2"])
+        o3, ExecutionOptions(locality_with_output=[node_id_1, node_id_2])
     )
     s1a = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
     s1b = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
     s1c = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s1a.node_id == "node1"
-    assert s1b.node_id == "node2"
-    assert s1c.node_id == "node1"
+    assert s1a.node_id == node_id_1
+    assert s1b.node_id == node_id_2
+    assert s1c.node_id == node_id_1
     s2a = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
     s2b = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
     s2c = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s2a.node_id == "node1"
-    assert s2b.node_id == "node2"
-    assert s2c.node_id == "node1"
+    assert s2a.node_id == node_id_1
+    assert s2b.node_id == node_id_2
+    assert s2c.node_id == node_id_1
 
 
 class OpBufferQueueTest(unittest.TestCase):
