@@ -78,7 +78,6 @@ sudo make -C "${BUILD_DIR}" install
 rm -rf "${BUILD_DIR}"
 
 sudo apt-get purge -y --auto-remove "${HAPROXY_BUILD_DEPS[@]}"
-sudo rm -rf /var/lib/apt/lists/*
 
 sudo groupadd -r haproxy || true
 sudo useradd -r -g haproxy haproxy || true
@@ -223,9 +222,8 @@ else
     echo "Skip installing aws-ofi-nccl"
 fi
 
-# Remove apt sources so that it won't run into apt update issues when running
-# the image.
 sudo rm -rf /etc/apt/sources.list.d/*
+sudo rm -rf /var/lib/apt/lists/*
 
 EOF
 
