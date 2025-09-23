@@ -28,7 +28,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/pubsub/subscriber_interface.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 

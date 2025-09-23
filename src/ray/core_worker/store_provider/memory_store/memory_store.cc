@@ -22,6 +22,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/stats/tag_defs.h"
 
 namespace ray {
