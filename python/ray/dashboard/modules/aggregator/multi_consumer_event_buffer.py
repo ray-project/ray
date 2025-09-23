@@ -33,7 +33,6 @@ class MultiConsumerEventBuffer:
         max_size: Maximum number of events to store in the buffer.
         max_batch_size: Maximum number of events to return in a batch when calling wait_for_batch.
         common_metric_tags: Tags to add to all metrics.
-        consumer_tag_key: Key to use for the consumer tag in the metrics.
     """
 
     def __init__(
