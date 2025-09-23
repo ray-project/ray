@@ -1,11 +1,12 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 from ray.experimental.util.types import Device
 
 if TYPE_CHECKING:
     import numpy as np
     import torch
+    from torch.distributed.device_mesh import DeviceMesh
 
 
 _TORCH_WARNING_FILTER_ACTIVATE = True
@@ -90,6 +91,28 @@ class _SerializationContext:
         self._out_of_band_tensors = tensors
         self._deserialized_tensor_placeholders = set()
         return prev_tensors, deserialized_tensor_placeholders
+
+    def serialize_mesh(
+        self, dm: "DeviceMesh"
+    ) -> Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]]]:
+        mesh_np = dm.mesh.numpy().copy()
+        dim_group_names = (
+            dm._dim_group_names if hasattr(dm, "_dim_group_names") else None
+        )
+        return dm.device_type, mesh_np, dm.mesh_dim_names, dim_group_names
+
+    def deserialize_mesh(
+        self, val: Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]]]
+    ) -> "DeviceMesh":
+        from torch.distributed.device_mesh import DeviceMesh
+
+        device_type, mesh_np, mesh_dim_names, dim_group_names = val
+        dm = DeviceMesh(
+            device_type, mesh_np, mesh_dim_names=mesh_dim_names, _init_backend=False
+        )
+        if dim_group_names is not None:
+            dm._dim_group_names = dim_group_names
+        return dm
 
     def serialize_tensor(
         self, tensor: "torch.Tensor"
