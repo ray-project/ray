@@ -42,7 +42,6 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaStateContainer,
 )
-from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.test_utils import (
     MockActorHandle,
     MockClusterNodeInfoCache,
@@ -53,6 +52,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.serve.exceptions import DeploymentIsBeingDeletedError
 from ray.util.placement_group import validate_placement_group
 
 # Global variable that is fetched during controller recovery that

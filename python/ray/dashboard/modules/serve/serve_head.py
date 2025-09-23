@@ -203,7 +203,7 @@ class ServeHead(SubprocessModule):
     @validate_endpoint()
     async def scale_deployment(self, req: Request) -> Response:
         from ray.serve._private.common import DeploymentID
-        from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+        from ray.serve.exceptions import DeploymentIsBeingDeletedError
         from ray.serve.schema import ScaleDeploymentRequest
 
         # Extract path parameters
