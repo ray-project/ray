@@ -28,6 +28,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 

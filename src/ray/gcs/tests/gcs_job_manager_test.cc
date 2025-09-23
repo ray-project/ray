@@ -95,9 +95,9 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
 
   // Fake metrics for testing
-  ray::observability::FakeMetric fake_running_job_gauge_;
-  ray::observability::FakeMetric fake_finished_job_counter_;
-  ray::observability::FakeMetric fake_job_duration_in_seconds_gauge_;
+  ray::observability::FakeGauge fake_running_job_gauge_;
+  ray::observability::FakeCounter fake_finished_job_counter_;
+  ray::observability::FakeGauge fake_job_duration_in_seconds_gauge_;
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
@@ -636,9 +636,9 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
                                      *worker_client_pool_,
                                      *fake_ray_event_recorder_,
                                      "test_session_name",
-                                     fake_running_job_counter_,
+                                     fake_running_job_gauge_,
                                      fake_finished_job_counter_,
-                                     fake_job_duration_in_seconds_counter_);
+                                     fake_job_duration_in_seconds_gauge_);
 
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);

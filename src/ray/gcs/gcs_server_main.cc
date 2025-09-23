@@ -178,6 +178,7 @@ int main(int argc, char *argv[]) {
       ray::gcs::GetPlacementGroupCreationLatencyInMsMetric()};
   ray::stats::Histogram placement_group_scheduling_latency_in_ms_histogram{
       ray::gcs::GetPlacementGroupSchedulingLatencyInMsMetric()};
+  ray::stats::Gauge placement_group_count_gauge{ray::gcs::GetPlacementGroupCountMetric()};
   ray::stats::Gauge task_events_reported_gauge{
       ray::gcs::GetTaskManagerTaskEventsReportedMetric()};
   ray::stats::Gauge task_events_dropped_gauge{
@@ -201,6 +202,7 @@ int main(int argc, char *argv[]) {
                                  placement_group_gauge,
                                  placement_group_creation_latency_in_ms_histogram,
                                  placement_group_scheduling_latency_in_ms_histogram,
+                                 placement_group_count_gauge,
                                  task_events_reported_gauge,
                                  task_events_dropped_gauge,
                                  task_events_stored_gauge,

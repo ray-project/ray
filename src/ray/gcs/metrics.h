@@ -52,7 +52,7 @@ inline ray::stats::Gauge GetPlacementGroupMetric() {
       /*description=*/"Number of placement groups broken down by state.",
       /*unit=*/"",
       // State: from rpc::PlacementGroupData::PlacementGroupState.
-      /*tag_keys=*/{"State"},
+      /*tag_keys=*/{"State", "Source"},
   };
 }
 
@@ -73,6 +73,17 @@ inline ray::stats::Histogram GetPlacementGroupSchedulingLatencyInMsMetric() {
       /*unit=*/"",
       /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
       /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetPlacementGroupCountMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_placement_group_count",
+      /*description=*/
+      "Number of placement groups broken down by state in {Registered, Pending, "
+      "Infeasible}",
+      /*unit=*/"",
+      /*tag_keys=*/{"State"},
   };
 }
 
