@@ -4,6 +4,7 @@ import html
 import itertools
 import logging
 import time
+import re
 import warnings
 from typing import (
     TYPE_CHECKING,
@@ -118,6 +119,24 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
+
+
+def parse_size_string(size_str: str) -> int:
+    """Parse a human-readable size string to bytes (e.g., "128mb" -> 134217728)."""
+    size_str = size_str.strip().lower()
+    match = re.match(r'^(\d+(?:\.\d+)?)\s*([kmgtpb]?b?)$', size_str)
+    if not match:
+        raise ValueError(f"Invalid size format: {size_str!r}")
+    
+    number, unit = match.groups()
+    multipliers = {'b': 1, 'kb': 1024, 'mb': 1024**2, 'gb': 1024**3, 'tb': 1024**4, 'pb': 1024**5}
+    unit = unit or 'b'
+    
+    if unit not in multipliers:
+        raise ValueError(f"Unsupported unit: {unit!r}")
+    
+    return int(float(number) * multipliers[unit])
+
 
 if TYPE_CHECKING:
     import daft
@@ -1500,6 +1519,7 @@ class Dataset:
         self,
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
+        target_num_bytes_per_block: Optional[Union[int, str]] = None,
         *,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
@@ -1547,6 +1567,16 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
+            target_num_bytes_per_block: [Experimental] The target number of bytes per block to
+                repartition. Note that either `num_blocks` or
+                `target_num_bytes_per_block` must be set, but not both. When
+                `target_num_bytes_per_block` is set, it only repartitions
+                :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
+                `target_num_bytes_per_block`. Note that the system will internally
+                figure out the number of bytes per :ref:`blocks <dataset_concept>` for
+                optimal execution, based on the `target_num_bytes_per_block`. This is
+                the current behavior because of the implementation and may change in
+                the future.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1561,8 +1591,8 @@ class Dataset:
             sort: Whether the blocks should be sorted after repartitioning. Note,
                 that by default blocks will be sorted in the ascending order.
 
-        Note that you must set either `num_blocks` or `target_num_rows_per_block`
-        but not both.
+        Note that you must set exactly one of `num_blocks`, `target_num_rows_per_block`,
+        or `target_num_bytes_per_block`, but not multiple.
         Additionally note that this operation materializes the entire dataset in memory
         when you set shuffle to True.
 
@@ -1570,52 +1600,55 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        if target_num_rows_per_block is not None:
+        # Parse string sizes to integers
+        if isinstance(target_num_bytes_per_block, str):
+            target_num_bytes_per_block = parse_size_string(target_num_bytes_per_block)
+
+        # Basic validation
+        param_count = sum(x is not None for x in [num_blocks, target_num_rows_per_block, target_num_bytes_per_block])
+        
+        if param_count == 0:
+            # Default to 128MB blocks when no parameters provided
+            from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
+            target_num_bytes_per_block = DEFAULT_TARGET_MAX_BLOCK_SIZE
+        elif param_count > 1:
+            raise ValueError(
+                "Only one of `num_blocks`, `target_num_rows_per_block`, or "
+                "`target_num_bytes_per_block` must be set, but not multiple."
+            )
+
+        # Streaming repartition (rows or bytes) is incompatible with shuffle
+        is_streaming = target_num_rows_per_block is not None or target_num_bytes_per_block is not None
+        if is_streaming and shuffle:
+            param_name = "target_num_rows_per_block" if target_num_rows_per_block else "target_num_bytes_per_block"
+            raise ValueError(f"`shuffle` must be False when `{param_name}` is set.")
+
+        # Warn about ignored parameters for streaming repartition
+        if is_streaming:
             if keys is not None:
-                warnings.warn(
-                    "`keys` is ignored when `target_num_rows_per_block` is set."
-                )
-            if sort is not False:
-                warnings.warn(
-                    "`sort` is ignored when `target_num_rows_per_block` is set."
-                )
-            if shuffle:
-                warnings.warn(
-                    "`shuffle` is ignored when `target_num_rows_per_block` is set."
-                )
-
-        if (num_blocks is None) and (target_num_rows_per_block is None):
-            raise ValueError(
-                "Either `num_blocks` or `target_num_rows_per_block` must be set"
-            )
-
-        if (num_blocks is not None) and (target_num_rows_per_block is not None):
-            raise ValueError(
-                "Only one of `num_blocks` or `target_num_rows_per_block` must be set, "
-                "but not both."
-            )
-
-        if target_num_rows_per_block is not None and shuffle:
-            raise ValueError(
-                "`shuffle` must be False when `target_num_rows_per_block` is set."
-            )
+                param_name = "target_num_rows_per_block" if target_num_rows_per_block else "target_num_bytes_per_block"
+                warnings.warn(f"`keys` is ignored when `{param_name}` is set.")
+            if sort:
+                param_name = "target_num_rows_per_block" if target_num_rows_per_block else "target_num_bytes_per_block"
+                warnings.warn(f"`sort` is ignored when `{param_name}` is set.")
 
         plan = self._plan.copy()
+        
+        # Choose operator based on parameters
         if target_num_rows_per_block is not None:
-            op = StreamingRepartition(
-                self._logical_plan.dag,
-                target_num_rows_per_block=target_num_rows_per_block,
-            )
+            op = StreamingRepartition(self._logical_plan.dag, target_num_rows_per_block=target_num_rows_per_block)
+        elif target_num_bytes_per_block is not None:
+            op = StreamingRepartition(self._logical_plan.dag, target_num_rows_per_block=10000)  # High value for byte control
         else:
-            op = Repartition(
-                self._logical_plan.dag,
-                num_outputs=num_blocks,
-                shuffle=shuffle,
-                keys=keys,
-                sort=sort,
-            )
+            op = Repartition(self._logical_plan.dag, num_outputs=num_blocks, shuffle=shuffle, keys=keys, sort=sort)
 
-        logical_plan = LogicalPlan(op, self.context)
+        # Set target block size for byte-based repartitioning
+        context = self.context
+        if target_num_bytes_per_block is not None:
+            context = copy.copy(self.context)
+            context.target_max_block_size = target_num_bytes_per_block
+        
+        logical_plan = LogicalPlan(op, context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
