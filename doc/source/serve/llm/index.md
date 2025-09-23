@@ -62,9 +62,9 @@ Cache-aware request routing <prefix-aware-request-router>
 
 ## Examples
 
-- [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html)
-- [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html)
-- [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html)
-- [Deploy a vision LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/vision-llm/README.html)
-- [Deploy a reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/reasoning-llm/README.html)
-- [Deploy a hybrid reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README.html)
+- {doc}`Deploy a small-sized LLM <../tutorials/deployment-serve-llm/small-size-llm/README>`
+- {doc}`Deploy a medium-sized LLM <../tutorials/deployment-serve-llm/medium-size-llm/README>`
+- {doc}`Deploy a large-sized LLM <../tutorials/deployment-serve-llm/large-size-llm/README>`
+- {doc}`Deploy a vision LLM <../tutorials/deployment-serve-llm/vision-llm/README>`
+- {doc}`Deploy a reasoning LLM <../tutorials/deployment-serve-llm/reasoning-llm/README>`
+- {doc}`Deploy a hybrid reasoning LLM <../tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`
