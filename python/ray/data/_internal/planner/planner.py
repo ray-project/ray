@@ -104,7 +104,6 @@ def plan_join_op(
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
-    assert logical_op._num_outputs is not None
     return JoinOperator(
         data_context=data_context,
         left_input_op=physical_children[0],

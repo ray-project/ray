@@ -14,6 +14,7 @@
 
 #include "ray/stats/metric_defs.h"
 
+#include "ray/stats/tag_defs.h"
 #include "ray/util/size_literals.h"
 
 using namespace ray::literals;
@@ -43,13 +44,14 @@ namespace ray::stats {
 /// we use the "Source" required label.
 DEFINE_stats(
     actors,
-    "Current number of actors currently in a particular state.",
+    "An actor can be in one of DEPENDENCIES_UNREADY, PENDING_CREATION, ALIVE, "
+    "ALIVE_IDLE, ALIVE_RUNNING_TASKS, RESTARTING, or DEAD states. "
+    "An actor is considered ALIVE_IDLE if it is not executing any tasks.",
     // State: the actor state, which is from rpc::ActorTableData::ActorState,
-    // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
-    // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
-    // Name: the name of actor class (Keep in sync with the TASK_OR_ACTOR_NAME_TAG_KEY in
-    // python/ray/_private/telemetry/metric_cardinality.py) Source: component reporting,
-    // e.g., "gcs" or "executor".
+    // For ALIVE actor the sub-state can be ALIVE_IDLE, ALIVE_RUNNING_TASKS.
+    // Name: the name of actor class (Keep in sync with the
+    // TASK_OR_ACTOR_NAME_TAG_KEY in python/ray/_private/telemetry/metric_cardinality.py)
+    // Source: component reporting, e.g., "gcs" or "executor".
     ("State", "Name", "Source", "JobId"),
     (),
     ray::stats::GAUGE);

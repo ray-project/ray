@@ -14,6 +14,7 @@
 
 #include "ray/common/cgroup2/cgroup_manager.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -25,22 +26,24 @@
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/cgroup2/scoped_cgroup_operation.h"
 #include "ray/common/status_or.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
-CgroupManager::CgroupManager(std::string base_cgroup_path,
+CgroupManager::CgroupManager(std::string base_cgroup,
                              const std::string &node_id,
                              std::unique_ptr<CgroupDriverInterface> cgroup_driver)
-    : base_cgroup_path_(std::move(base_cgroup_path)),
-      cgroup_driver_(std::move(cgroup_driver)) {
-  node_cgroup_path_ = base_cgroup_path_ + std::filesystem::path::preferred_separator +
-                      absl::StrFormat("%s_%s", kNodeCgroupName, node_id);
-  system_cgroup_path_ =
-      node_cgroup_path_ + std::filesystem::path::preferred_separator + kSystemCgroupName;
-
-  application_cgroup_path_ = node_cgroup_path_ +
-                             std::filesystem::path::preferred_separator +
-                             kApplicationCgroupName;
+    : base_cgroup_(std::move(base_cgroup)), cgroup_driver_(std::move(cgroup_driver)) {
+  node_cgroup_ = base_cgroup_ + std::filesystem::path::preferred_separator +
+                 absl::StrFormat("%s_%s", kNodeCgroupName, node_id);
+  system_cgroup_ =
+      node_cgroup_ + std::filesystem::path::preferred_separator + kSystemCgroupName;
+  system_leaf_cgroup_ =
+      system_cgroup_ + std::filesystem::path::preferred_separator + kLeafCgroupName;
+  application_cgroup_ =
+      node_cgroup_ + std::filesystem::path::preferred_separator + kApplicationCgroupName;
+  application_leaf_cgroup_ =
+      application_cgroup_ + std::filesystem::path::preferred_separator + kLeafCgroupName;
 }
 
 CgroupManager::~CgroupManager() {
@@ -49,8 +52,28 @@ CgroupManager::~CgroupManager() {
   }
 }
 
+CgroupManager::CgroupManager(CgroupManager &&other)
+    : node_cgroup_(std::move(other.node_cgroup_)),
+      system_cgroup_(std::move(other.system_cgroup_)),
+      system_leaf_cgroup_(std::move(other.system_leaf_cgroup_)),
+      application_cgroup_(std::move(other.application_cgroup_)),
+      application_leaf_cgroup_(std::move(other.application_leaf_cgroup_)),
+      cleanup_operations_(std::move(other.cleanup_operations_)),
+      cgroup_driver_(std::move(other.cgroup_driver_)) {}
+
+CgroupManager &CgroupManager::operator=(CgroupManager &&other) {
+  node_cgroup_ = std::move(other.node_cgroup_);
+  system_cgroup_ = std::move(other.system_cgroup_);
+  system_leaf_cgroup_ = std::move(other.system_leaf_cgroup_);
+  application_cgroup_ = std::move(other.application_cgroup_);
+  application_leaf_cgroup_ = std::move(other.application_leaf_cgroup_);
+  cleanup_operations_ = std::move(other.cleanup_operations_);
+  cgroup_driver_ = std::move(other.cgroup_driver_);
+  return *this;
+}
+
 StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
-    std::string base_cgroup_path,
+    std::string base_cgroup,
     const std::string &node_id,
     const int64_t system_reserved_cpu_weight,
     const int64_t system_reserved_memory_bytes,
@@ -74,9 +97,9 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
                         memory_min_constraint_.Max()));
   }
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroupv2Enabled());
-  RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroup(base_cgroup_path));
+  RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroup(base_cgroup));
   StatusOr<std::unordered_set<std::string>> available_controllers =
-      cgroup_driver->GetAvailableControllers(base_cgroup_path);
+      cgroup_driver->GetAvailableControllers(base_cgroup);
 
   if (!available_controllers.ok()) {
     return available_controllers.status();
@@ -97,15 +120,15 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
           "https://docs.kernel.org/admin-guide/cgroup-v2.html#controlling-controllers "
           "for more details. Available controllers: %s. Required controllers: "
           "%s.",
-          base_cgroup_path,
-          base_cgroup_path,
+          base_cgroup,
+          base_cgroup,
           available_controllers_str,
           supported_controllers_str));
     }
   }
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::unique_ptr<CgroupManager>(
-      new CgroupManager(std::move(base_cgroup_path), node_id, std::move(cgroup_driver)));
+      new CgroupManager(std::move(base_cgroup), node_id, std::move(cgroup_driver)));
 
   RAY_RETURN_NOT_OK(cgroup_manager->Initialize(system_reserved_cpu_weight,
                                                system_reserved_memory_bytes));
@@ -190,15 +213,15 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
       "enabled. "
       "The system cgroup at '%s' will have constraints [%s=%lld, %s=%lld]. "
       "The application cgroup '%s' will have constraints [%s=%lld].",
-      base_cgroup_path_,
-      node_cgroup_path_,
+      base_cgroup_,
+      node_cgroup_,
       supported_controllers,
-      system_cgroup_path_,
+      system_cgroup_,
       cpu_weight_constraint_.name_,
       system_reserved_cpu_weight,
       memory_min_constraint_.name_,
       system_reserved_memory_bytes,
-      application_cgroup_path_,
+      application_cgroup_,
       cpu_weight_constraint_.name_,
       application_cgroup_cpu_weight);
 
@@ -208,55 +231,83 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   //     ray_node_<node_id>
   //       |           |
   //     system     application
-  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(node_cgroup_path_));
-  RegisterDeleteCgroup(node_cgroup_path_);
+  //       |           |
+  //      leaf        leaf
+  //
+  // There need to be two cgroups as leaf nodes because of the no
+  // internal processes constraint.
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(node_cgroup_));
+  RegisterDeleteCgroup(node_cgroup_);
 
-  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(system_cgroup_path_));
-  RegisterDeleteCgroup(system_cgroup_path_);
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(system_cgroup_));
+  RegisterDeleteCgroup(system_cgroup_);
 
-  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(application_cgroup_path_));
-  RegisterDeleteCgroup(application_cgroup_path_);
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(system_leaf_cgroup_));
+  RegisterDeleteCgroup(system_leaf_cgroup_);
 
-  // Move all processes from the base_cgroup into the system_cgroup to make sure
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(application_cgroup_));
+  RegisterDeleteCgroup(application_cgroup_);
+
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(application_leaf_cgroup_));
+  RegisterDeleteCgroup(application_leaf_cgroup_);
+
+  // Move all processes from the base_cgroup into the system_leaf_cgroup to make sure
   // that the no internal process constraint is not violated. This is relevant
-  // when the base_cgroup_path is not a root cgroup for the system. This is likely
+  // when the base_cgroup is not a root cgroup for the system. This is likely
   // the case if Ray is running inside a container.
-  RAY_RETURN_NOT_OK(
-      cgroup_driver_->MoveAllProcesses(base_cgroup_path_, system_cgroup_path_));
-  RegisterMoveAllProcesses(system_cgroup_path_, base_cgroup_path_);
+  RAY_RETURN_NOT_OK(cgroup_driver_->MoveAllProcesses(base_cgroup_, system_leaf_cgroup_));
+  RegisterMoveAllProcesses(system_leaf_cgroup_, base_cgroup_);
 
   for (const auto &ctrl : supported_controllers_) {
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(base_cgroup_path_, ctrl));
-    RegisterDisableController(base_cgroup_path_, ctrl);
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(node_cgroup_path_, ctrl));
-    RegisterDisableController(node_cgroup_path_, ctrl);
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(system_cgroup_path_, ctrl));
-    RegisterDisableController(system_cgroup_path_, ctrl);
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(application_cgroup_path_, ctrl));
-    RegisterDisableController(application_cgroup_path_, ctrl);
+    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(base_cgroup_, ctrl));
+    RegisterDisableController(base_cgroup_, ctrl);
+    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(node_cgroup_, ctrl));
+    RegisterDisableController(node_cgroup_, ctrl);
+    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(system_cgroup_, ctrl));
+    RegisterDisableController(system_cgroup_, ctrl);
+    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(application_cgroup_, ctrl));
+    RegisterDisableController(application_cgroup_, ctrl);
   }
 
   RAY_RETURN_NOT_OK(
-      cgroup_driver_->AddConstraint(system_cgroup_path_,
+      cgroup_driver_->AddConstraint(system_cgroup_,
                                     cpu_weight_constraint_.controller_,
                                     cpu_weight_constraint_.name_,
                                     std::to_string(system_reserved_cpu_weight)));
-  RegisterRemoveConstraint(system_cgroup_path_, cpu_weight_constraint_);
+  RegisterRemoveConstraint(system_cgroup_, cpu_weight_constraint_);
 
   RAY_RETURN_NOT_OK(
-      cgroup_driver_->AddConstraint(system_cgroup_path_,
+      cgroup_driver_->AddConstraint(system_cgroup_,
                                     memory_min_constraint_.controller_,
                                     memory_min_constraint_.name_,
                                     std::to_string(system_reserved_memory_bytes)));
-  RegisterRemoveConstraint(system_cgroup_path_, memory_min_constraint_);
+  RegisterRemoveConstraint(system_cgroup_, memory_min_constraint_);
 
   RAY_RETURN_NOT_OK(
-      cgroup_driver_->AddConstraint(application_cgroup_path_,
+      cgroup_driver_->AddConstraint(application_cgroup_,
                                     cpu_weight_constraint_.controller_,
                                     cpu_weight_constraint_.name_,
                                     std::to_string(application_cgroup_cpu_weight)));
-  RegisterRemoveConstraint(application_cgroup_path_, cpu_weight_constraint_);
+  RegisterRemoveConstraint(application_cgroup_, cpu_weight_constraint_);
 
   return Status::OK();
+}
+
+Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
+  Status s = cgroup_driver_->AddProcessToCgroup(system_leaf_cgroup_, pid);
+  // TODO(#54703): Add link to OSS documentation once available.
+  RAY_CHECK(!s.IsNotFound()) << "Failed to move process " << pid << " into system cgroup "
+                             << system_leaf_cgroup_
+                             << " because the cgroup was not found. "
+                                "If resource isolation is enabled, Ray's cgroup "
+                                "hierarchy must not be modified "
+                                "while Ray is running.";
+  RAY_CHECK(!s.IsPermissionDenied())
+      << "Failed to move process " << pid << " into system cgroup " << system_leaf_cgroup_
+      << " because Ray does not have read, write, and execute "
+         "permissions for the cgroup. If resource isolation is enabled, Ray's cgroup "
+         "hierarchy must not be modified while Ray is running.";
+
+  return s;
 }
 }  // namespace ray

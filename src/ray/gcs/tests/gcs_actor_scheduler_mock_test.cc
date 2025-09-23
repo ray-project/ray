@@ -23,8 +23,10 @@
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
@@ -46,8 +48,14 @@ class GcsActorSchedulerMockTest : public Test {
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
-    gcs_node_manager = std::make_unique<GcsNodeManager>(
-        nullptr, nullptr, io_context, client_pool.get(), ClusterID::Nil());
+    gcs_node_manager =
+        std::make_unique<GcsNodeManager>(nullptr,
+                                         nullptr,
+                                         io_context,
+                                         client_pool.get(),
+                                         ClusterID::Nil(),
+                                         /*ray_event_recorder=*/fake_ray_event_recorder_,
+                                         /*session_name=*/"");
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         io_context,
@@ -99,6 +107,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::unique_ptr<rpc::RayletClientPool> client_pool;
+  observability::FakeRayEventRecorder fake_ray_event_recorder_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
   MockCallback schedule_failure_handler;
@@ -119,7 +128,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec(), counter);
+  auto actor = std::make_shared<GcsActor>(
+      actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "");
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> cb;
   EXPECT_CALL(*raylet_client,
               RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
@@ -147,7 +157,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec(), counter);
+  auto actor = std::make_shared<GcsActor>(
+      actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "");
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));

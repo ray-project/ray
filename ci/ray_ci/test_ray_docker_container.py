@@ -341,6 +341,31 @@ class TestRayDockerContainer(RayCITestBase):
                 "rayproject/ray:nightly",
             ]
 
+        container = RayDockerContainer(v, "cpu", "ray-extra")
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
+            assert container._get_image_names() == [
+                f"rayproject/ray:{sha}-extra-{pv}-cpu",
+                f"rayproject/ray:{sha}-extra-cpu",
+                f"rayproject/ray:{sha}-extra-{pv}",
+                f"rayproject/ray:{sha}-extra",
+                f"rayproject/ray:{rayci_build_id}-extra-{pv}-cpu",
+                f"rayproject/ray:{rayci_build_id}-extra-cpu",
+                f"rayproject/ray:{rayci_build_id}-extra-{pv}",
+                f"rayproject/ray:{rayci_build_id}-extra",
+            ]
+
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
+            assert container._get_image_names() == [
+                f"rayproject/ray:nightly.{formatted_date}.{sha}-extra-{pv}-cpu",
+                f"rayproject/ray:nightly.{formatted_date}.{sha}-extra-cpu",
+                f"rayproject/ray:nightly.{formatted_date}.{sha}-extra-{pv}",
+                f"rayproject/ray:nightly.{formatted_date}.{sha}-extra",
+                f"rayproject/ray:nightly-extra-{pv}-cpu",
+                "rayproject/ray:nightly-extra-cpu",
+                f"rayproject/ray:nightly-extra-{pv}",
+                "rayproject/ray:nightly-extra",
+            ]
+
         v = "3.11"
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray-llm")
@@ -354,6 +379,19 @@ class TestRayDockerContainer(RayCITestBase):
             assert container._get_image_names() == [
                 f"rayproject/ray-llm:nightly.{formatted_date}.{sha}-{pv}-cu128",
                 f"rayproject/ray-llm:nightly-{pv}-cu128",
+            ]
+
+        container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray-llm-extra")
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
+            assert container._get_image_names() == [
+                f"rayproject/ray-llm:{sha}-extra-{pv}-cu128",
+                f"rayproject/ray-llm:{rayci_build_id}-extra-{pv}-cu128",
+            ]
+
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
+            assert container._get_image_names() == [
+                f"rayproject/ray-llm:nightly.{formatted_date}.{sha}-extra-{pv}-cu128",
+                f"rayproject/ray-llm:nightly-extra-{pv}-cu128",
             ]
 
         v = self.get_non_default_python()
@@ -377,6 +415,17 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-ml:nightly-{pv}-cu121",
                 f"rayproject/ray-ml:nightly-{pv}-gpu",
                 f"rayproject/ray-ml:nightly-{pv}",
+            ]
+
+        container = RayDockerContainer(v, "cu12.1.1-cudnn8", "ray-ml-extra")
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
+            assert container._get_image_names() == [
+                f"rayproject/ray-ml:{sha}-extra-{pv}-cu121",
+                f"rayproject/ray-ml:{sha}-extra-{pv}-gpu",
+                f"rayproject/ray-ml:{sha}-extra-{pv}",
+                f"rayproject/ray-ml:{rayci_build_id}-extra-{pv}-cu121",
+                f"rayproject/ray-ml:{rayci_build_id}-extra-{pv}-gpu",
+                f"rayproject/ray-ml:{rayci_build_id}-extra-{pv}",
             ]
 
         release_version = "1.0.0"

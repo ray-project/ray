@@ -24,7 +24,7 @@ from ray.includes.optional cimport (
     optional
 )
 
-cdef extern from "ray/gcs_client/global_state_accessor.h" nogil:
+cdef extern from "ray/gcs_rpc_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
         CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
