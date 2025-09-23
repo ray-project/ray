@@ -52,7 +52,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
         ),
     ),
     batch_size=16,
-    # accelerator_type="L4",
+    accelerator_type="L4",
     concurrency=1,
     has_image=True,
 )
@@ -177,7 +177,7 @@ def create_vlm_config():
             # "env_vars": {"HF_TOKEN": "your-hf-token-here"}  # Token not needed for public models
         },
         batch_size=1,
-        # accelerator_type="L4",
+        accelerator_type="L4",
         concurrency=1,
         has_image=True,
     )
@@ -203,5 +203,13 @@ def run_vlm_example():
 # __vlm_example_end__
 
 if __name__ == "__main__":
-    # Run the example VLM workflow
-    run_vlm_example()
+    # Run the example VLM workflow only if GPU is available
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            run_vlm_example()
+        else:
+            print("Skipping VLM example run (no GPU available)")
+    except Exception as e:
+        print(f"Skipping VLM example run due to environment error: {e}")

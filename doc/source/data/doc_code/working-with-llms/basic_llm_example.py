@@ -53,8 +53,16 @@ processor = build_llm_processor(
 ds = ray.data.from_items(["Start of the haiku is: Complete this for me..."])
 
 if __name__ == "__main__":
-    ds = processor(ds)
-    ds.show(limit=1)
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            ds = processor(ds)
+            ds.show(limit=1)
+        else:
+            print("Skipping basic LLM run (no GPU available)")
+    except Exception as e:
+        print(f"Skipping basic LLM run due to environment error: {e}")
 
 # __hf_token_config_example_start__
 # Configuration with Hugging Face token
@@ -82,7 +90,7 @@ config = vLLMEngineProcessorConfig(
     },
     concurrency=1,
     batch_size=32,
-    # accelerator_type="L4",
+    accelerator_type="L4",
 )
 # __parallel_config_example_end__
 
