@@ -21,8 +21,8 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray {
 namespace rpc {
@@ -41,8 +41,8 @@ class MockRayletClient : public FakeRayletClient {
 
 namespace {
 
-rpc::Address CreateRandomAddress(const std::string &addr) {
-  rpc::Address address;
+Address CreateRandomAddress(const std::string &addr) {
+  Address address;
   address.set_ip_address(addr);
   address.set_node_id(NodeID::FromRandom().Binary());
   address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -59,11 +59,11 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
 
   bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
-  MOCK_METHOD(const rpc::GcsNodeInfo *, Get, (const NodeID &, bool), (const, override));
+  MOCK_METHOD(const GcsNodeInfo *, Get, (const NodeID &, bool), (const, override));
 
   MOCK_METHOD(void,
               AsyncGetAll,
-              (const gcs::MultiItemCallback<rpc::GcsNodeInfo> &,
+              (const gcs::MultiItemCallback<GcsNodeInfo> &,
                int64_t,
                const std::vector<NodeID> &),
               (override));
@@ -90,7 +90,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
       : is_subscribed_to_node_change_(GetParam()),
         gcs_client_(is_subscribed_to_node_change_),
         raylet_client_pool_(
-            std::make_unique<RayletClientPool>([this](const rpc::Address &addr) {
+            std::make_unique<RayletClientPool>([this](const Address &addr) {
               return std::make_shared<MockRayletClient>(
                   RayletClientPool::GetDefaultUnavailableTimeoutCallback(
                       &this->gcs_client_, this->raylet_client_pool_.get(), addr));
@@ -112,13 +112,12 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   //    had to discard to keep its cache size in check, should disconnect.
 
   auto &mock_node_accessor = gcs_client_.MockNodeAccessor();
-  auto invoke_with_node_info_vector = [](std::vector<rpc::GcsNodeInfo> node_info_vector) {
-    return Invoke(
-        [node_info_vector](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                           int64_t,
-                           const std::vector<NodeID> &) {
-          callback(Status::OK(), node_info_vector);
-        });
+  auto invoke_with_node_info_vector = [](std::vector<GcsNodeInfo> node_info_vector) {
+    return Invoke([node_info_vector](const gcs::MultiItemCallback<GcsNodeInfo> &callback,
+                                     int64_t,
+                                     const std::vector<NodeID> &) {
+      callback(Status::OK(), node_info_vector);
+    });
   };
 
   auto raylet_client_1_address = CreateRandomAddress("1");
@@ -133,10 +132,10 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
       raylet_client_pool_->GetOrConnectByAddress(raylet_client_2_address).get());
   ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_2_node_id).get(), raylet_client_2);
 
-  rpc::GcsNodeInfo node_info_alive;
-  node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
-  rpc::GcsNodeInfo node_info_dead;
-  node_info_dead.set_state(rpc::GcsNodeInfo::DEAD);
+  GcsNodeInfo node_info_alive;
+  node_info_alive.set_state(GcsNodeInfo::ALIVE);
+  GcsNodeInfo node_info_dead;
+  node_info_dead.set_state(GcsNodeInfo::DEAD);
   if (is_subscribed_to_node_change_) {
     EXPECT_CALL(mock_node_accessor,
                 Get(raylet_client_1_node_id, /*filter_dead_nodes=*/false))

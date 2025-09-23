@@ -32,6 +32,7 @@
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/gcs_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
