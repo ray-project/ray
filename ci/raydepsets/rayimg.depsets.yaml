@@ -16,7 +16,7 @@ build_arg_sets:
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
     packages:
-      - ray[all]==100.0.0-dev
+      - ray[all]==100.0.0.dev0
     constraints:
       - python/requirements_compiled.txt
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
@@ -30,3 +30,5 @@ depsets:
       - py310
       - py311
       - py312
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
