@@ -4,11 +4,11 @@ from __future__ import annotations
 import asyncio
 import collections
 
-from typing import Optional, Deque, Iterator, TYPE_CHECKING
-
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from typing import TYPE_CHECKING, Deque, Iterator, Optional
 
 import ray
+from ray.util.annotations import PublicAPI, DeveloperAPI
+
 if TYPE_CHECKING:
     from ray._private.worker import Worker
 from ray.exceptions import ObjectRefStreamEndOfStreamError
@@ -128,8 +128,7 @@ class ObjectRefGenerator:
         if self.is_finished():
             return False
 
-        expected_ref, is_ready = core_worker.peek_object_ref_stream(
-            self._generator_ref)
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
 
         if is_ready:
             return True
@@ -184,7 +183,7 @@ class ObjectRefGenerator:
         core_worker = self.worker.core_worker
         return core_worker.peek_object_ref_stream(self._generator_ref)[0]
 
-    def _next_sync(self,timeout_s: Optional[int | float] = None) -> ray.ObjectRef:
+    def _next_sync(self, timeout_s: Optional[int | float] = None) -> ray.ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -250,7 +249,7 @@ class ObjectRefGenerator:
         except Exception:
             pass
 
-    async def _next_async(self,timeout_s: Optional[int | float] = None):
+    async def _next_async(self, timeout_s: Optional[int | float] = None):
         """Same API as _next_sync, but it is for async context."""
         core_worker = self.worker.core_worker
         ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
@@ -258,7 +257,7 @@ class ObjectRefGenerator:
         if not is_ready:
             # TODO(swang): Avoid fetching the value.
             ready, unready = await asyncio.wait(
-                [asyncio.create_task(self._suppress_exceptions(ref))],timeout=timeout_s
+                [asyncio.create_task(self._suppress_exceptions(ref))], timeout=timeout_s
             )
             if len(unready) > 0:
                 return ray.ObjectRef.nil()
