@@ -17,6 +17,7 @@ build_arg_sets:
     - --python-version=3.11
     - --unsafe-package ray
     - --python-platform=linux
+    - --extra-index-url https://download.pytorch.org/whl/cpu
   build_arg_sets:
     - cpu
     - cu121
