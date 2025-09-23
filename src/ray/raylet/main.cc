@@ -303,7 +303,13 @@ int main(int argc, char *argv[]) {
 #endif
 
     // Move system processes into the system cgroup.
-    std::vector<std::string> system_pids_to_move = absl::StrSplit(system_pids, ",");
+    // TODO(#54703): This logic needs to be hardened and moved out of main.cc. E.g.
+    // if system_pids is ",,,,,,", this will log an error for each empty
+    // string.
+    std::vector<std::string> system_pids_to_move;
+    if (!system_pids.empty()) {
+      system_pids_to_move = std::move(absl::StrSplit(system_pids, ","));
+    }
     system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
     for (const auto &pid : system_pids_to_move) {
       ray::Status s = cgroup_manager->AddProcessToSystemCgroup(pid);
