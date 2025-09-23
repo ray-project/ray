@@ -61,7 +61,6 @@ from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIte
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.cache.dataset_cache import (
     cache_result,
-    invalidate_cache_on_transform,
 )
 from ray.data._internal.operation_decorators import (
     transform,
@@ -873,6 +872,7 @@ class Dataset:
             logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     @transform()
     def add_column(
         self,
@@ -989,6 +989,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     @transform()
     def drop_columns(
         self,
@@ -1047,6 +1048,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     @transform()
     def select_columns(
         self,
@@ -1131,6 +1133,7 @@ class Dataset:
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     @transform()
     def rename_columns(
         self,

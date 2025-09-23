@@ -1498,7 +1498,26 @@ def _get_cache() -> DatasetCache:
     if _global_cache is None:
         # Configure cache based on DataContext settings
         context = DataContext.get_current()
-        max_entries = getattr(context, "dataset_cache_max_entries", 10000)
+
+        # DataContext provides dataset_cache_max_size_bytes, not max_entries
+        # Convert bytes to a reasonable entry count estimate
+        max_size_bytes = getattr(
+            context, "dataset_cache_max_size_bytes", 1024 * 1024 * 1024
+        )  # 1GB default
+
+        # Estimate entries based on typical cache entry size
+        # Assume average entry is ~10KB (mix of small metadata and medium results)
+        avg_entry_size_estimate = 10 * 1024  # 10KB
+        estimated_max_entries = max(
+            100, max_size_bytes // avg_entry_size_estimate
+        )  # At least 100 entries
+
+        # Cap at reasonable maximum to avoid excessive memory overhead
+        max_entries = min(estimated_max_entries, 50000)  # Cap at 50K entries
+
+        logger.debug(
+            f"Configuring dataset cache: {max_size_bytes} bytes -> {max_entries} entries (estimated)"
+        )
         _global_cache = DatasetCache(max_entries)
     return _global_cache
 
