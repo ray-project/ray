@@ -1,7 +1,10 @@
+import os
+import socket
+import time
 import sys
 import threading
 from contextlib import contextmanager
-from typing import List
+from typing import Callable, List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +12,8 @@ from click.testing import CliRunner
 
 import ray
 import ray.scripts.scripts as scripts
+import ray._private.services as services
+from ray._private.test_utils import get_current_unused_port
 
 
 @contextmanager
@@ -36,7 +41,17 @@ def _setup_mock_network_utils(curr_ip, head_ip):
 def _run_head_and_workers(
     symmetric_run_cmd, args: List[str], head_ip: str, worker_ips: List[str]
 ):
-    """Run symmetric_run concurrently on head and worker nodes."""
+    """Run symmetric_run concurrently on head and worker nodes.
+    
+    Worker nodes use `ray start --block` to wait for the cluster to be ready, which means
+    that we can't call `runner.invoke()` for the workers because it will block forever.
+    Instead, we need to call the `runner.invoke()` for each 'node' in a separate thread.
+
+    We use thread-safe shared state using Event and Lock. In order to get different behavior
+    for each call, we do mock isolation for each call.
+
+    Finally, we end with a cleanup step to kill any failed threads.
+    """
     expected_workers = len(worker_ips)
     head_ready = threading.Event()
     workers_ready = threading.Event()

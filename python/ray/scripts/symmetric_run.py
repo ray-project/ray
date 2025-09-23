@@ -152,6 +152,7 @@ def symmetric_run(ctx, address, min_nodes, ray_args_and_entrypoint):
         raise click.ClickException(
             "No separator '--' found in arguments. Please use '--' to "
             "separate Ray start arguments and the entrypoint command."
+            f" Got arguments: {raw_args}"
         )
 
     run_and_start_args = raw_args[:separator]
