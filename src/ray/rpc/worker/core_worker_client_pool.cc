@@ -37,7 +37,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     auto check_worker_alive = [raylet_client_pool,
                                worker_client_pool,
                                worker_id,
-                               node_id](const rpc::GcsNodeInfo &node_info) {
+                               node_id](const rpc::GcsNodeAddressAndLiveness &node_info) {
       auto raylet_addr = RayletClientPool::GenerateRayletAddress(
           node_id, node_info.node_manager_address(), node_info.node_manager_port());
       auto raylet_client = raylet_client_pool->GetOrConnectByAddress(raylet_addr);
@@ -61,12 +61,12 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
 
     auto gcs_check_node_alive =
         [check_worker_alive, node_id, worker_id, worker_client_pool, gcs_client]() {
-          gcs_client->Nodes().AsyncGetAll(
+          gcs_client->Nodes().AsyncGetAllNodeAddressAndLiveness(
               [check_worker_alive = std::move(check_worker_alive),
                worker_id,
                node_id,
                worker_client_pool](const Status &status,
-                                   std::vector<rpc::GcsNodeInfo> &&nodes) {
+                                   std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) {
                 if (!status.ok()) {
                   // Will try again when unavailable timeout callback is retried.
                   RAY_LOG(INFO) << "Failed to get node info from GCS";
@@ -92,7 +92,8 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
         };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
-      auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+      auto *node_info = gcs_client->Nodes().GetNodeAddressAndLiveness(
+          node_id, /*filter_dead_nodes=*/false);
       if (node_info == nullptr) {
         // Node could be dead or info may have not made it to the subscriber cache yet.
         // Check with the GCS to confirm if the node is dead.

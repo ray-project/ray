@@ -451,7 +451,7 @@ void GcsServer::InitClusterLeaseManager() {
       *cluster_resource_scheduler_,
       /*get_node_info=*/
       [this](const NodeID &node_id) {
-        auto node = gcs_node_manager_->GetAliveNode(node_id);
+        auto node = gcs_node_manager_->GetNodeAddressAndLiveness(node_id);
         return node.has_value() ? node.value().get() : nullptr;
       },
       /*announce_infeasible_task=*/nullptr,

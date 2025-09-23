@@ -403,7 +403,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 #if defined(__APPLE__) || defined(__linux__)
   auto raylet_channel_client_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
-    auto node_info = core_worker->gcs_client_->Nodes().Get(node_id);
+    auto node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node_info->node_manager_address(), node_info->node_manager_port());
@@ -513,7 +513,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto node_addr_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
     std::optional<rpc::Address> address_opt;
-    if (auto node_info = core_worker->gcs_client_->Nodes().Get(node_id)) {
+    if (auto node_info =
+            core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id)) {
       auto &address = address_opt.emplace();
       address.set_node_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
@@ -584,8 +585,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     if (object_locations.has_value()) {
       locations.reserve(object_locations->size());
       for (const auto &node_id : *object_locations) {
-        auto *node_info =
-            core_worker->gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+        auto *node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
+            node_id, /*filter_dead_nodes=*/false);
         if (node_info == nullptr) {
           // Unsure if the node is dead, so we need to confirm with the GCS. This should
           // be rare, the only foreseeable reasons are:
@@ -609,9 +610,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       callback(object_id, std::move(locations));
       return;
     }
-    core_worker->gcs_client_->Nodes().AsyncGetAll(
+    core_worker->gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
         [callback, object_id, locations = std::move(locations)](
-            const Status &, const std::vector<rpc::GcsNodeInfo> &node_infos) mutable {
+            const Status &,
+            const std::vector<rpc::GcsNodeAddressAndLiveness> &node_infos) mutable {
           for (const auto &node_info : node_infos) {
             if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
               rpc::Address addr;

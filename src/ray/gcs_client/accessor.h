@@ -355,6 +355,11 @@ class NodeInfoAccessor {
                            int64_t timeout_ms,
                            const std::vector<NodeID> &node_ids = {});
 
+  virtual void AsyncGetAllNodeAddressAndLiveness(
+      const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+      int64_t timeout_ms,
+      const std::vector<NodeID> &node_ids = {});
+
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
   /// \param subscribe Callback that will be called if a node is

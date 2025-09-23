@@ -132,6 +132,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
+  std::optional<std::shared_ptr<rpc::GcsNodeAddressAndLiveness>>
+  GetNodeAddressAndLiveness(const NodeID &node_id) const;
+
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.

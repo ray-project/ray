@@ -466,6 +466,17 @@ std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
+std::optional<std::shared_ptr<rpc::GcsNodeAddressAndLiveness>>
+GcsNodeManager::GetNodeAddressAndLiveness(const ray::NodeID &node_id) const {
+  auto iter = alive_nodes_.find(node_id);
+  if (iter == alive_nodes_.end()) {
+    return {};
+  }
+
+  return std::make_shared<rpc::GcsNodeAddressAndLiveness>(
+      ConvertToGcsNodeAddressAndLiveness(*iter->second.get()));
+}
+
 rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   auto iter = draining_nodes_.find(node_id);
   rpc::NodeDeathInfo death_info;

@@ -603,6 +603,30 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
   return Status::OK();
 }
 
+void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
+    const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+    int64_t timeout_ms,
+    const std::vector<NodeID> &node_ids) {
+  RAY_LOG(DEBUG) << "Getting information of all nodes.";
+  rpc::GetAllNodeAddressAndLivenessRequest request;
+  for (const auto &node_id : node_ids) {
+    request.add_node_selectors()->set_node_id(node_id.Binary());
+  }
+  client_impl_->GetGcsRpcClient().GetAllNodeAddressAndLiveness(
+      std::move(request),
+      [callback](const Status &status, rpc::GetAllNodeAddressAndLivenessReply &&reply) {
+        std::vector<rpc::GcsNodeAddressAndLiveness> result;
+        result.reserve((reply.node_info_list_size()));
+        for (int index = 0; index < reply.node_info_list_size(); ++index) {
+          result.emplace_back(reply.node_info_list(index));
+        }
+        callback(status, std::move(result));
+        RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
+                       << status;
+      },
+      timeout_ms);
+}
+
 void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                                    int64_t timeout_ms,
                                    const std::vector<NodeID> &node_ids) {

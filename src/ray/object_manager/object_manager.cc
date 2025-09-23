@@ -645,7 +645,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
         rpc_clients;
     // TODO(#56414): optimize this so we don't have to send a free objects request for
     // every object to every node
-    const auto &node_info_map = gcs_client_.Nodes().GetAll();
+    const auto &node_info_map = gcs_client_.Nodes().GetAllNodeAddressAndLiveness();
     for (const auto &[node_id, _] : node_info_map) {
       if (node_id == self_node_id_) {
         continue;
@@ -720,7 +720,8 @@ std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
   if (it != remote_object_manager_clients_.end()) {
     return it->second;
   }
-  auto *node_info = gcs_client_.Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+  auto *node_info =
+      gcs_client_.Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
   if (node_info == nullptr) {
     return nullptr;
   }
