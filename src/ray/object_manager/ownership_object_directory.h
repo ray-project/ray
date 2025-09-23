@@ -23,11 +23,10 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/pubsub/subscriber.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "ray/stats/metric.h"
 
 namespace ray {

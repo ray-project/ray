@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray._private.custom_types import TensorTransportEnum
 from ray.util.collective.types import (
     Backend,
     CommunicatorMetadata,
@@ -48,7 +47,6 @@ class TensorTransportManager(ABC):
     def get_tensor_transport_metadata(
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        tensor_transport: TensorTransportEnum,
     ) -> TensorTransportMetadata:
         """
         Get the tensor transport metadata for the GPU object.
@@ -58,10 +56,24 @@ class TensorTransportManager(ABC):
         Args:
             src_actor: The actor that runs this function.
             obj_id: The ID of the GPU object to get metadata for
-            tensor_transport: The tensor transport protocol to use for the GPU object.
 
         Returns:
             TensorTransportMetadata: A named tuple containing the tensor metadata.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def extract_tensor_transport_metadata(
+        gpu_object: List["torch.Tensor"],
+    ) -> TensorTransportMetadata:
+        """
+        Extract the tensor transport metadata from the GPU object.
+
+        Args:
+            gpu_object: The GPU object to extract the tensor transport metadata from.
+
+        Returns:
+            TensorTransportMetadata: The tensor transport metadata.
         """
 
     @staticmethod
@@ -83,70 +95,6 @@ class TensorTransportManager(ABC):
         Returns:
             CommunicatorMetadata: The communicator metadata.
         """
-
-    @staticmethod
-    def send_object(
-        src_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        tensor_transport_meta: TensorTransportMetadata,
-        communicator_metadata_ref: CommunicatorMetadata,
-    ):
-        """
-        Send the GPU object to the destination actor.
-
-        Args:
-            src_actor: The actor that runs this function.
-            obj_id: The ID of the GPU object to send.
-            tensor_transport_meta: The tensor transport metadata for the GPU object.
-            communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
-        """
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
-
-        # Send tensors stored in the `src_actor`'s GPU object store to the
-        # destination rank `dst_rank`.
-        # NOTE(swang): We put this task on the background thread to avoid tasks
-        # executing on the main thread blocking the data transfer.
-        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_send__,
-            obj_id,
-            tensor_transport_meta,
-            communicator_metadata_ref,
-        )
-
-    @staticmethod
-    def recv_object(
-        dst_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        tensor_transport_metadata_ref: TensorTransportMetadata,
-        communicator_metadata_ref: CommunicatorMetadata,
-    ):
-        """
-        Receive the GPU object from the source actor.
-        This function receives tensors from the source rank and stores them in the
-        `dst_actor`'s GPU object store.
-
-        Args:
-            dst_actor: The actor that runs this function.
-            obj_id: The ID of the GPU object to receive.
-            tensor_transport_metadata_ref: The ObjectRef of tensor transport metadata for the GPU object.
-            communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
-        """
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
-
-        # Receive tensors from the source rank and store them in the
-        # `dst_actor`'s GPU object store.
-        #
-        # NOTE(swang): We put this task on the background thread to avoid tasks
-        # executing on the main thread blocking the data transfer. Technically,
-        # this is only needed for the sender task, but we put the receiver task
-        # on the same background thread to ensure that all communication
-        # operations are executed in a global order.
-        dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_recv__,
-            obj_id,
-            tensor_transport_metadata_ref,
-            communicator_metadata_ref,
-        )
 
     @staticmethod
     @abstractmethod

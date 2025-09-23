@@ -16,6 +16,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Generator,
     Iterable,
     Iterator,
@@ -32,6 +33,7 @@ import pyarrow
 from packaging.version import parse as parse_version
 
 import ray
+from ray._common.retry import call_with_retry
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
@@ -1414,46 +1416,6 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         )
 
 
-def call_with_retry(
-    f: Callable[[], Any],
-    description: str,
-    *,
-    match: Optional[List[str]] = None,
-    max_attempts: int = 10,
-    max_backoff_s: int = 32,
-) -> Any:
-    """Retry a function with exponential backoff.
-
-    Args:
-        f: The function to retry.
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
-        description: An imperitive description of the function being retried. For
-            example, "open the file".
-        max_attempts: The maximum number of attempts to retry.
-        max_backoff_s: The maximum number of seconds to backoff.
-    """
-    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
-
-    for i in range(max_attempts):
-        try:
-            return f()
-        except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
-            if is_retryable and i + 1 < max_attempts:
-                # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
-                logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
-                )
-                time.sleep(backoff)
-            else:
-                logger.debug(
-                    f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
-                )
-                raise e from None
-
-
 def iterate_with_retry(
     iterable_factory: Callable[[], Iterable],
     description: str,
@@ -1752,3 +1714,30 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
 
     return actual_items_counts == expected_items_counts
+
+
+def merge_resources_to_ray_remote_args(
+    num_cpus: Optional[int],
+    num_gpus: Optional[int],
+    memory: Optional[int],
+    ray_remote_args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert the given resources to Ray remote args.
+
+    Args:
+        num_cpus: The number of CPUs to be added to the Ray remote args.
+        num_gpus: The number of GPUs to be added to the Ray remote args.
+        memory: The memory to be added to the Ray remote args.
+        ray_remote_args: The Ray remote args to be merged.
+
+    Returns:
+        The converted arguments.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if num_cpus is not None:
+        ray_remote_args["num_cpus"] = num_cpus
+    if num_gpus is not None:
+        ray_remote_args["num_gpus"] = num_gpus
+    if memory is not None:
+        ray_remote_args["memory"] = memory
+    return ray_remote_args

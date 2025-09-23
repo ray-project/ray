@@ -786,6 +786,7 @@ cdef int prepare_labels(
     if label_dict is None:
         return 0
 
+    label_map[0].reserve(len(label_dict))
     for key, value in label_dict.items():
         if not isinstance(key, str):
             raise ValueError(f"Label key must be string, but got {type(key)}")
@@ -802,6 +803,7 @@ cdef int prepare_label_selector(
     if label_selector_dict is None:
         return 0
 
+    label_selector[0].reserve(len(label_selector_dict))
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
             raise ValueError(f"Label selector key type must be string, but got {type(key)}")
@@ -829,6 +831,7 @@ cdef int prepare_resources(
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
 
+    resource_map[0].reserve(len(resource_dict))
     for key, value in resource_dict.items():
         if not (isinstance(value, int) or isinstance(value, float)):
             raise ValueError("Resource quantities may only be ints or floats.")
@@ -855,6 +858,7 @@ cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
         c_vector[CFunctionDescriptor] fd_list
         CRayFunction ray_function
 
+    fd_list.reserve(len(pyfd_list))
     for pyfd in pyfd_list:
         fd_list.push_back(CFunctionDescriptorBuilder.BuildPython(
             pyfd.module_name, pyfd.class_name, pyfd.function_name, b""))
@@ -866,17 +870,16 @@ cdef int prepare_actor_concurrency_groups(
         c_vector[CConcurrencyGroup] *concurrency_groups):
 
     cdef:
-        CConcurrencyGroup cg
         c_vector[CFunctionDescriptor] c_fd_list
 
     if concurrency_groups_dict is None:
         raise ValueError("Must provide it...")
 
+    concurrency_groups.reserve(len(concurrency_groups_dict))
     for key, value in concurrency_groups_dict.items():
         c_fd_list = prepare_function_descriptors(value["function_descriptors"])
-        cg = CConcurrencyGroup(
-            key.encode("ascii"), value["max_concurrency"], c_fd_list)
-        concurrency_groups.push_back(cg)
+        concurrency_groups.push_back(CConcurrencyGroup(
+            key.encode("ascii"), value["max_concurrency"], move(c_fd_list)))
     return 1
 
 
@@ -3003,7 +3006,7 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
+                  worker_launch_time_ms, worker_launched_time_ms, debug_source):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3059,7 +3062,6 @@ cdef class CoreWorker:
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
-        options.enable_resource_isolation = enable_resource_isolation
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -3423,11 +3425,12 @@ cdef class CoreWorker:
             owner_address,
             c_bool inline_small_object,
             c_bool _is_experimental_channel,
+            int tensor_transport_val=0
     ):
         """Create an object reference with the current worker as the owner.
         """
         created_object = self.put_serialized_object_and_increment_local_ref(
-            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel, tensor_transport_val)
         if owner_address is None:
             owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
@@ -3436,7 +3439,8 @@ cdef class CoreWorker:
         return ObjectRef(
             created_object,
             owner_address,
-            skip_adding_local_ref=True
+            skip_adding_local_ref=True,
+            tensor_transport_val=tensor_transport_val
         )
 
     def put_serialized_object_and_increment_local_ref(
@@ -3446,6 +3450,7 @@ cdef class CoreWorker:
             owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,
+            int tensor_transport_val=0
             ):
         cdef:
             CObjectID c_object_id
@@ -3459,6 +3464,7 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
 
+        c_tensor_transport_val = <CTensorTransport>tensor_transport_val
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                 .CreateOwnedAndIncrementLocalRef(
@@ -3469,7 +3475,8 @@ cdef class CoreWorker:
                     &c_object_id,
                     &data,
                     c_owner_address,
-                    inline_small_object))
+                    inline_small_object,
+                    c_tensor_transport_val))
 
         if (data.get() == NULL):
             # Object already exists
@@ -3833,6 +3840,7 @@ cdef class CoreWorker:
                      labels,
                      label_selector,
                      c_bool allow_out_of_order_execution,
+                     c_bool enable_tensor_transport,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3887,6 +3895,7 @@ cdef class CoreWorker:
                         c_concurrency_groups,
                         allow_out_of_order_execution,
                         max_pending_calls,
+                        enable_tensor_transport,
                         enable_task_events,
                         c_labels,
                         c_label_selector),
@@ -4166,6 +4175,7 @@ cdef class CoreWorker:
         max_task_retries = dereference(c_actor_handle).MaxTaskRetries()
         enable_task_events = dereference(c_actor_handle).EnableTaskEvents()
         allow_out_of_order_execution = dereference(c_actor_handle).AllowOutOfOrderExecution()
+        enable_tensor_transport = dereference(c_actor_handle).EnableTensorTransport()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -4189,11 +4199,7 @@ cdef class CoreWorker:
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          method_meta.enable_task_events,
-                                         # TODO(swang): Pass
-                                         # enable_tensor_transport when
-                                         # serializing an ActorHandle and
-                                         # sending to another actor.
-                                         False,  # enable_tensor_transport
+                                         enable_tensor_transport,
                                          method_meta.method_name_to_tensor_transport,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
@@ -4471,7 +4477,9 @@ cdef class CoreWorker:
             if <int>c_tensor_transport != <int>TENSOR_TRANSPORT_OBJECT_STORE:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
-                serialized_object = context.serialize_and_store_gpu_objects(output, return_id.Hex())
+                serialized_object, tensors = context.serialize_gpu_objects(output)
+                context.store_gpu_objects(return_id.Hex().decode("ascii"), tensors)
+
             else:
                 serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes

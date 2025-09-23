@@ -33,11 +33,14 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/container_util.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
@@ -143,13 +146,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto worker_context = std::make_unique<WorkerContext>(
       options.worker_type, worker_id, GetProcessJobID(options));
   auto pid = getpid();
-
-  // Move worker process into cgroup on startup.
-  AppProcCgroupMetadata app_cgroup_metadata;
-  app_cgroup_metadata.pid = pid;
-  app_cgroup_metadata.max_memory = kUnlimitedCgroupMemory;
-  GetCgroupSetup(options.enable_resource_isolation)
-      .ApplyCgroupContext(app_cgroup_metadata);
 
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options.debug_source;
 

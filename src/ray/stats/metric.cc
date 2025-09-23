@@ -116,15 +116,16 @@ void Metric::Record(double value, TagsType tags) {
   if (::RayConfig::instance().enable_open_telemetry()) {
     // Collect tags from both the metric-specific tags and the global tags.
     absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
-    std::unordered_set<std::string> tag_keys_set;
+    // Add default values for missing tag keys.
     for (const auto &tag_key : tag_keys_) {
-      tag_keys_set.insert(tag_key.name());
+      open_telemetry_tags[tag_key.name()] = "";
     }
     // Insert metric-specific tags that match the expected keys.
     for (const auto &tag : tags) {
       const std::string &key = tag.first.name();
-      if (tag_keys_set.count(key)) {
-        open_telemetry_tags[key] = tag.second;
+      auto it = open_telemetry_tags.find(key);
+      if (it != open_telemetry_tags.end()) {
+        it->second = tag.second;
       }
     }
     // Add global tags, overwriting any existing tag keys.
@@ -161,24 +162,22 @@ void Metric::Record(double value, TagsType tags) {
 }
 
 void Metric::Record(double value,
-                    const std::unordered_map<std::string_view, std::string> &tags) {
+                    std::vector<std::pair<std::string_view, std::string>> tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
-  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
-    return tags_pair_vec.emplace_back(TagKeyType::Register(tag.first),
-                                      std::move(tag.second));
-  });
+  for (auto &tag : tags) {
+    tags_pair_vec.emplace_back(TagKeyType::Register(tag.first), std::move(tag.second));
+  }
   Record(value, std::move(tags_pair_vec));
 }
 
-void Metric::Record(double value,
-                    const std::unordered_map<std::string, std::string> &tags) {
+void Metric::RecordForCython(double value,
+                             std::vector<std::pair<std::string, std::string>> tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
-  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
-    return tags_pair_vec.emplace_back(TagKeyType::Register(tag.first),
-                                      std::move(tag.second));
-  });
+  for (auto &tag : tags) {
+    tags_pair_vec.emplace_back(TagKeyType::Register(tag.first), std::move(tag.second));
+  }
   Record(value, std::move(tags_pair_vec));
 }
 
