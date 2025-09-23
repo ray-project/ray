@@ -56,7 +56,7 @@ results per each added tree in GBDTs, etc.) using early stopping usually allows 
 more configurations, as unpromising trials are pruned before they run their full course.
 Please note that not all search algorithms can use information from pruned trials.
 Early stopping cannot be used without incremental results - in case of the functional API,
-that means that ``session.report()`` has to be called more than once - usually in a loop.
+that means that ``tune.report()`` has to be called more than once - usually in a loop.
 
 **If your model is small**, you can usually try to run many different configurations.
 A **random search** can be used to generate configurations. You can also grid search
@@ -171,7 +171,7 @@ the a and b variables and use them afterwards.
 How does early termination (e.g. Hyperband/ASHA) work?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Early termination algorithms look at the intermediately reported values,
-e.g. what is reported to them via ``session.report()`` after each training
+e.g. what is reported to them via ``tune.report()`` after each training
 epoch. After a certain number of steps, they then remove the worst
 performing trials and keep only the best performing trials. Goodness of a trial
 is determined by ordering them by the objective metric, for instance accuracy
@@ -188,8 +188,8 @@ Why are all my trials returning "1" iteration?
 
 **This is most likely applicable for the Tune function API.**
 
-Ray Tune counts iterations internally every time ``session.report()`` is
-called. If you only call ``session.report()`` once at the end of the training,
+Ray Tune counts iterations internally every time ``tune.report()`` is
+called. If you only call ``tune.report()`` once at the end of the training,
 the counter has only been incremented once. If you're using the class API,
 the counter is increased after calling ``step()``.
 
@@ -203,7 +203,7 @@ What are all these extra outputs?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You'll notice that Ray Tune not only reports hyperparameters (from the
-``config``) or metrics (passed to ``session.report()``), but also some other
+``config``) or metrics (passed to ``tune.report()``), but also some other
 outputs.
 
 .. code-block:: bash
@@ -446,7 +446,7 @@ dictionary should only contain primitive types, like numbers or strings.
 **The Trial result is very large**
 
 This is the case if you return objects, data, or other large objects via the return value of ``step()`` in
-your class trainable or to ``session.report()`` in your function trainable. The effect is the same as above:
+your class trainable or to ``tune.report()`` in your function trainable. The effect is the same as above:
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
