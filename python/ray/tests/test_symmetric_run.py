@@ -43,7 +43,6 @@ def _run_head_and_workers(
     worker_counter = {"count": 0}
     counter_lock = threading.Lock()
     address_arg = args[args.index("--address") + 1]
-    port = int(address_arg.split(":")[1])
 
     def mark_worker_ready():
         with counter_lock:
