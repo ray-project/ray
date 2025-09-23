@@ -7,6 +7,7 @@ from typing import Optional, Deque, Iterator
 
 import ray
 from ray.exceptions import ObjectRefStreamEndOfStreamError
+from ray._private.worker import Worker
 
 @DeveloperAPI
 class DynamicObjectRefGenerator:
