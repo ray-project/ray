@@ -16,21 +16,21 @@
 
 #include <list>
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/rpc/raylet/raylet_client_interface.h"
 #include "ray/rpc/raylet/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 
 namespace ray {
 namespace rpc {
-
+using CoreWorkerClientFactoryFn =
+    std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>;
 class CoreWorkerClientPool {
  public:
   CoreWorkerClientPool() = delete;

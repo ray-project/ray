@@ -26,13 +26,14 @@
 #include <vector>
 
 #include "absl/time/time.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/rpc/worker/fake_core_worker_client.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
@@ -54,7 +55,7 @@ constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   MockWorkerClient() = default;
 

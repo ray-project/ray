@@ -56,6 +56,27 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_subscriber",
+    hdrs = ["fake_subscriber.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":subscriber_interface",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "//src/ray/rpc:client_call",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_publisher",
+    hdrs = ["fake_publisher.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":publisher_interface",
+        "//src/ray/common:asio",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_publisher",
     srcs = ["gcs_publisher.cc"],
     hdrs = ["gcs_publisher.h"],
@@ -82,9 +103,9 @@ ray_cc_library(
     hdrs = ["python_gcs_subscriber.h"],
     deps = [
         "//src/ray/common:status",
+        "//src/ray/gcs_client:rpc_client",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:pubsub_cc_proto",
-        "//src/ray/rpc:gcs_client",
         "//src/ray/util:visibility",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/synchronization",

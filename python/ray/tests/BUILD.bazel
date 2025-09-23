@@ -88,6 +88,7 @@ py_test_module_list(
     files = [
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
+        "test_task_metrics.py",
     ],
     name_suffix = "_otel",
     tags = [
@@ -750,6 +751,7 @@ py_test_module_list(
     files = [
         "test_autoscaler_gcp.py",
         "test_autoscaler_util.py",
+        "test_azure_path_serialization.py",
     ],
     tags = [
         "exclusive",
@@ -881,6 +883,7 @@ py_test_module_list(
         "test_failure_2.py",
         "test_generators.py",
         "test_multi_node.py",
+        "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
         "test_raylet_fault_tolerance.py",
@@ -1064,21 +1067,6 @@ py_test_module_list(
     tags = [
         "exclusive",
         "post_wheel_build",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_resource_isolation_config",
-    size = "medium",
-    srcs = ["test_resource_isolation_config.py"],
-    tags = [
-        "exclusive",
-        "no_windows",
         "team:core",
     ],
     deps = [

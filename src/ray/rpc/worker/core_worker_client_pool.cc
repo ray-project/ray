@@ -15,10 +15,11 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
+#include "ray/common/status.h"
+#include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
 namespace ray {
@@ -39,8 +40,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
                                node_id](const rpc::GcsNodeInfo &node_info) {
       auto raylet_addr = RayletClientPool::GenerateRayletAddress(
           node_id, node_info.node_manager_address(), node_info.node_manager_port());
-      auto raylet_client =
-          raylet_client_pool->GetOrConnectByAddress(std::move(raylet_addr));
+      auto raylet_client = raylet_client_pool->GetOrConnectByAddress(raylet_addr);
       raylet_client->IsLocalWorkerDead(
           worker_id,
           [worker_client_pool, worker_id, node_id](const Status &status,
