@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
-from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 from ray.llm._internal.batch.stages._util import HTTPConnection
+from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
 # Upper bound for the number of sampling targets generated in fps/num_frames modes.
 # Prevents excessive memory/time when duration is very long or unknown.

@@ -2,8 +2,8 @@ import io
 import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
 import numpy as np
+import pytest
 
 from ray.llm._internal.batch.stages.prepare_video_stage import (
     PrepareVideoUDF,
@@ -903,9 +903,10 @@ async def test_e2e_preprocess_resize_numpy_channels_first(tmp_path):
 
 @pytest.mark.asyncio
 async def test_e2e_max_sampled_frames_cap(tmp_path):
+    import asyncio
+
     import av
     import numpy as np
-    import asyncio
 
     path = tmp_path / "synth_cap.mp4"
     out = av.open(str(path), mode="w")

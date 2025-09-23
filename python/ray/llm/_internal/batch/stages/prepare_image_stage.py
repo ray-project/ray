@@ -14,11 +14,11 @@ from typing import (
     Union,
 )
 
+from ray.llm._internal.batch.stages import _util as _stages_util
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.stages import _util as _stages_util
 
 # TODO: Remove the guard once Pillow is added into the dependencies.
 if TYPE_CHECKING:
