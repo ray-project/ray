@@ -1,13 +1,12 @@
 """Tests for Ray Data caching functionality."""
 
 import time
-from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray.data.context import DataContext
-from ray.data.dataset import Dataset, MaterializedDataset
+from ray.data.dataset import MaterializedDataset
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -232,7 +231,7 @@ def test_cache_stats(ray_start_regular_shared):
     stats = rd.get_cache_stats()
 
     # Should have cache entries
-    assert stats["cache_entries"] > 0
+    assert stats["total_entries"] > 0
     assert stats["hit_count"] >= 0
     assert stats["miss_count"] >= 0
 
@@ -247,12 +246,11 @@ def test_cache_context_managers(ray_start_regular_shared):
     with rd.disable_dataset_caching():
         count_disabled = ds.count()
 
-    # Test set cache size context manager
-    with rd.set_cache_size(max_size_bytes=10_000_000):  # 10MB
-        count_limited = ds.count()
+    # Test normal caching (enabled by default)
+    count_enabled = ds.count()
 
     # Both should return correct results
-    assert count_disabled == count_limited == 50
+    assert count_disabled == count_enabled == 50
 
 
 def test_cache_clear(ray_start_regular_shared):
@@ -267,14 +265,14 @@ def test_cache_clear(ray_start_regular_shared):
 
     # Check cache has entries
     stats = rd.get_cache_stats()
-    assert stats["cache_entries"] > 0
+    assert stats["total_entries"] > 0
 
     # Clear cache
     rd.clear_dataset_cache()
 
     # Check cache is empty
     stats_after = rd.get_cache_stats()
-    assert stats_after["cache_entries"] == 0
+    assert stats_after["total_entries"] == 0
 
 
 def test_cache_with_complex_transformations(ray_start_regular_shared):

@@ -1260,6 +1260,7 @@ class Dataset:
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     @row_and_schema_change()
     def flat_map(
         self,
@@ -1671,6 +1672,7 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=SSR_API_GROUP)
     @shuffle()
     def random_shuffle(
         self,
@@ -2463,6 +2465,7 @@ class Dataset:
             )
         return ds_length
 
+    @PublicAPI(api_group=SMJ_API_GROUP)
     @combine()
     def union(self, *other: List["Dataset"]) -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
@@ -2509,6 +2512,7 @@ class Dataset:
             logical_plan,
         )
 
+    @PublicAPI(api_group=SMJ_API_GROUP)
     @combine()
     def join(
         self,
@@ -2684,6 +2688,7 @@ class Dataset:
 
         return Dataset(plan, LogicalPlan(op, self.context))
 
+    @PublicAPI(api_group=GGA_API_GROUP)
     @aggregate()
     def groupby(
         self,
@@ -3178,6 +3183,7 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     @limit_op()
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
