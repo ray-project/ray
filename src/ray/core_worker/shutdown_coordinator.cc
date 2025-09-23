@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -45,7 +46,7 @@ bool ShutdownCoordinator::RequestShutdown(
   bool should_execute = false;
   bool execute_force = force_shutdown;
   {
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
     if (state_ == ShutdownState::kShutdown) {
       return false;
     }
@@ -82,7 +83,7 @@ bool ShutdownCoordinator::RequestShutdown(
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   if (state_ != ShutdownState::kShuttingDown) {
     return false;
   }
@@ -91,7 +92,7 @@ bool ShutdownCoordinator::TryTransitionToDisconnecting() {
 }
 
 bool ShutdownCoordinator::TryTransitionToShutdown() {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   if (state_ != ShutdownState::kShuttingDown && state_ != ShutdownState::kDisconnecting) {
     return false;
   }
@@ -100,17 +101,17 @@ bool ShutdownCoordinator::TryTransitionToShutdown() {
 }
 
 ShutdownState ShutdownCoordinator::GetState() const {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   return state_;
 }
 
 ShutdownReason ShutdownCoordinator::GetReason() const {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   return reason_;
 }
 
 bool ShutdownCoordinator::ShouldEarlyExit() const {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   return state_ != ShutdownState::kRunning;
 }
 
@@ -177,7 +178,7 @@ void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
   // Force shutdown bypasses normal state transitions and terminates immediately
   // This ensures that force shutdowns can interrupt hanging graceful shutdowns
   {
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
     if (force_executed_) {
       return;
     }
@@ -223,11 +224,11 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(
              reason == ShutdownReason::kOutOfMemory ||
              reason == ShutdownReason::kActorKilled) {
     TryTransitionToDisconnecting();
-    executor_->ExecuteExit(GetExitTypeString(), detail, timeout_ms, nullptr);
+    executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
   } else if (reason == ShutdownReason::kIdleTimeout ||
              reason == ShutdownReason::kJobFinished) {
     TryTransitionToDisconnecting();
-    executor_->ExecuteExitIfIdle(GetExitTypeString(), detail, timeout_ms);
+    executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
   } else {
     ExecuteGracefulShutdown(detail, timeout_ms);
   }
