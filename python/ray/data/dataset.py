@@ -2539,14 +2539,28 @@ class Dataset:
             bucket_arr = pa.array([key_to_bucket(key) for key in keys], type=pa.bool_())
             return batch.append_column(_TRAIN_TEST_SPLIT_COLUMN, bucket_arr)
 
-        def bernoulli_split(batch, test_proportion: float, seed: int | None):
+        def bernoulli_split(batch, test_proportion: float, seed: Optional[int]):
+            """
+            Perform a Bernoulli split on a batch: each row goes to train with probability (1 - test_proportion),
+            or to test otherwise.
+
+            This version ensures that the random choices are **stable per Ray task execution** by seeding
+            the RNG with a combination of a user-specified seed and the Ray task ID.
+            """
             # Build a stable per-task seed so re-execution gives identical masks
             base = 0 if seed is None else seed
+            # Each Ray task that processes a batch has a unique, stable ID (UUID-like).
+            # We grab the last 16 hex digits of the task_id to create a 32-bit integer.
+            # This ensures *different tasks* don't reuse the same RNG sequence.
             task_id_str = ray.get_runtime_context().get_task_id()
-            # task_id is stable for a given execution of the upstream block
             task_bits = int(task_id_str[-16:], 16) & 0xFFFFFFFF
-
+            # Combine the base seed with the per-task component via XOR.
+            # This way, the seed is:
+            #   - consistent across re-executions of the *same task* (determinism),
+            #   - different across *different tasks* (no duplicated RNG streams).
+            # Use numpy's Generator API (preferred over np.random.seed for thread safety).
             rng = np.random.default_rng(base ^ task_bits)
+            # Draw Bernoulli samples: 1 = train, 0 = test
             is_train = rng.random(batch.num_rows) < (1 - test_proportion)
             return batch.append_column(
                 _TRAIN_TEST_SPLIT_COLUMN, pa.array(is_train, type=pa.bool_())
