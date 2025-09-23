@@ -5,14 +5,16 @@ from abc import abstractmethod
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.metrics.stats.stats_base import Stats
+from ray.rllib.utils.metrics.stats.series import SeriesStats
 
 torch, _ = try_import_torch()
 
 
 @DeveloperAPI
-class PercentilesStats(Stats):
-    """A Stats object that tracks percentiles of the values."""
+class PercentilesStats(SeriesStats):
+    """A Stats object that tracks percentiles of a series of values."""
+
+    stats_cls_identifier = "percentiles"
 
     def __init__(
         self,
@@ -82,16 +84,6 @@ class PercentilesStats(Stats):
             "Cannot format percentiles object because percentiles are not reduced to a single value."
         )
 
-    def _push(self, value: Any) -> None:
-        """Pushes a value into this Stats object.
-
-        Args:
-            value: The value to be pushed. Can be of any type.
-        """
-        self.values.append(value)
-        if len(self.values) > self._window:
-            self.values.popleft()
-
     @property
     def reduced_values(self, values=None) -> Tuple[Any, Any]:
         """A non-committed reduction procedure on given values (or `self.values`).
@@ -116,7 +108,7 @@ class PercentilesStats(Stats):
         return values, values
 
     @abstractmethod
-    def _merge_in_parallel(self, *others: "Stats") -> None:
+    def _merge_in_parallel(self, *others: "PercentilesStats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
 
         Thereby, the newly incoming values of `others` are treated equally with respect
@@ -138,7 +130,7 @@ class PercentilesStats(Stats):
         # and then pick the correct percentiles
         lists_to_merge = [list(self.values), *[list(o.values) for o in others]]
         merged = list(heapq.merge(*lists_to_merge))
-        self._set_values(merged)
+        self._set_buffer(merged)
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
@@ -164,11 +156,22 @@ class PercentilesStats(Stats):
             f"clear_on_reduce={self._clear_on_reduce})"
         )
 
-    def _get_init_args(self, state=None) -> Dict[str, Any]:
+    @abstractmethod
+    def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
         """Returns the initialization arguments for this Stats object."""
-        init_args = self._get_base_stats_init_args(stats_object=self, state=state)
-        init_args["percentiles"] = self._percentiles
-        return init_args
+        super_args = super()._get_init_args(stats_object=stats_object, state=state)
+        if state is not None:
+            return {
+                **super_args,
+                "percentiles": state["percentiles"],
+            }
+        elif stats_object is not None:
+            return {
+                **super_args,
+                "percentiles": stats_object._percentiles,
+            }
+        else:
+            raise ValueError("Either stats_object or state must be provided")
 
 
 @DeveloperAPI

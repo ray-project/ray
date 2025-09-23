@@ -90,27 +90,27 @@ def test_ema(logger):
 def test_windowed_reduction(logger):
     """Test window-based reduction with various window sizes."""
     # Test with window=2
-    logger.log_value("window_loss", 0.1, window=2)
-    logger.log_value("window_loss", 0.2, window=2)
-    logger.log_value("window_loss", 0.3, window=2)
+    logger.log_value("window_loss", 0.1, window=2, clear_on_reduce=True)
+    logger.log_value("window_loss", 0.2)
+    logger.log_value("window_loss", 0.3)
     check(logger.peek("window_loss"), 0.25)  # mean of [0.2, 0.3]
 
     # Test with window=3
-    logger.log_value("window3_loss", 0.1, window=3)
-    logger.log_value("window3_loss", 0.2, window=3)
-    logger.log_value("window3_loss", 0.3, window=3)
-    logger.log_value("window3_loss", 0.4, window=3)
+    logger.log_value("window3_loss", 0.1, window=3, clear_on_reduce=True)
+    logger.log_value("window3_loss", 0.2)
+    logger.log_value("window3_loss", 0.3)
+    logger.log_value("window3_loss", 0.4)
     check(logger.peek("window3_loss"), 0.3)  # mean of [0.2, 0.3, 0.4]
 
     # Test window with different reduction methods
-    logger.log_value("window_min", 0.3, window=2, reduce="min")
-    logger.log_value("window_min", 0.1, window=2)
-    logger.log_value("window_min", 0.2, window=2)
+    logger.log_value("window_min", 0.3, window=2, reduce="min", clear_on_reduce=True)
+    logger.log_value("window_min", 0.1)
+    logger.log_value("window_min", 0.2)
     check(logger.peek("window_min"), 0.1)  # min of [0.1, 0.2]
 
-    logger.log_value("window_sum", 10, window=2, reduce="sum")
-    logger.log_value("window_sum", 20, window=2)
-    logger.log_value("window_sum", 30, window=2)
+    logger.log_value("window_sum", 10, window=2, reduce="sum", clear_on_reduce=True)
+    logger.log_value("window_sum", 20)
+    logger.log_value("window_sum", 30)
     check(logger.peek("window_sum"), 50)  # sum of [20, 30]
 
 
@@ -157,11 +157,11 @@ def test_tensor_mode(logger):
 def test_time_logging(logger):
     """Test time logging functionality."""
     # Test time logging with EMA
-    with logger.log_time("block_time", ema_coeff=0.1):
+    with logger.log_time("block_time", reduce="mean", ema_coeff=0.1):
         time.sleep(0.1)
 
     # Test time logging with window
-    with logger.log_time("window_time", window=2):
+    with logger.log_time("window_time", reduce="mean", window=2):
         time.sleep(0.2)
 
     # Check that times are approximately correct
@@ -196,7 +196,7 @@ def test_state_management(logger):
 def test_aggregate(logger):
     """Test merging multiple stats dictionaries."""
     # Create two loggers with different values
-    logger1 = MetricsLogger()
+    logger1 = MetricsLogger(root=True)
     logger1.log_value("loss", 0.1, window=2)
     logger1.log_value("loss", 0.2, window=2)
 

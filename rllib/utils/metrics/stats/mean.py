@@ -4,14 +4,16 @@ import numpy as np
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.metrics.stats.stats_base import Stats
+from ray.rllib.utils.metrics.stats.series import SeriesStats
 
 torch, _ = try_import_torch()
 
 
 @DeveloperAPI
-class MeanStats(Stats):
-    """A Stats object that tracks the mean of the values."""
+class MeanStats(SeriesStats):
+    """A Stats object that tracks the mean of a series of values."""
+
+    stats_cls_identifier = "mean"
 
     def __init__(
         self,
@@ -23,8 +25,7 @@ class MeanStats(Stats):
         """Initializes a MeanStats instance.
 
         Args:
-            ema_coeff: The EMA coefficient to use if no `window` is provided. Defaults to
-                0.05.
+            ema_coeff: The EMA coefficient to use if no `window` is provided. Defaults to 0.05.
             sum_up_parallel_values: If True, the mean is computed by summing up the values and dividing by the number of values.
         """
         super().__init__(*args, **kwargs)
@@ -41,17 +42,6 @@ class MeanStats(Stats):
 
         self._ema_coeff = ema_coeff
         self._sum_up_parallel_values = sum_up_parallel_values
-
-    def _push(self, value: Any) -> None:
-        """Pushes a value into this Stats object.
-
-        Args:
-            value: The value to be pushed. Can be of any type.
-        """
-        # For windowed operations, append to values and trim if needed
-        self.values.append(value)
-        if self._window is not None and len(self.values) > self._window:
-            self.values.popleft()
 
     @property
     def reduced_values(self, values=None) -> Tuple[Any, Any]:
@@ -74,14 +64,17 @@ class MeanStats(Stats):
         if len(values) == 0:
             return [0], []
 
-        # Perform EMA reduction over all values in internal values list.
-        mean_value = values[0]
-        for v in values[1:]:
-            mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
+        if self._ema_coeff is not None:
+            # Perform EMA reduction over all values in internal values list.
+            mean_value = values[0]
+            for v in values[1:]:
+                mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
+            return [mean_value], [mean_value]
+        else:
+            # Perform windowed reduction over all values in internal values list.
+            return [np.nanmean(values)], values
 
-        return [mean_value], [mean_value]
-
-    def _merge_in_parallel(self, *stats: "Stats") -> List[Union[int, float]]:
+    def _merge_in_parallel(self, *stats: "MeanStats") -> List[Union[int, float]]:
         new_values = []
         tmp_values = []
 
@@ -108,13 +101,30 @@ class MeanStats(Stats):
     def __repr__(self) -> str:
         return (
             f"MeanStats({self.peek()}; window={self._window}; len={len(self)}; "
-            f"clear_on_reduce={self._clear_on_reduce}); sum_up_parallel_values={self._sum_up_parallel_values})"
+            f"sum_up_parallel_values={self._sum_up_parallel_values})"
         )
 
-    def _get_init_args(self, state=None) -> Dict[str, Any]:
-        """Returns the initialization arguments for this Stats object."""
-        init_args = self._get_base_stats_init_args(stats_object=self, state=state)
-        init_args["sum_up_parallel_values"] = self._sum_up_parallel_values
-        init_args["ema_coeff"] = self._ema_coeff
+    def get_state(self) -> Dict[str, Any]:
+        state = super().get_state()
+        state["sum_up_parallel_values"] = self._sum_up_parallel_values
+        state["ema_coeff"] = self._ema_coeff
+        return state
 
-        return init_args
+    @staticmethod
+    def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
+        """Returns the initialization arguments for this Stats object."""
+        super_args = SeriesStats._get_init_args(stats_object=stats_object, state=state)
+        if state is not None:
+            return {
+                **super_args,
+                "sum_up_parallel_values": state["sum_up_parallel_values"],
+                "ema_coeff": state["ema_coeff"],
+            }
+        if stats_object is not None:
+            return {
+                **super_args,
+                "sum_up_parallel_values": stats_object._sum_up_parallel_values,
+                "ema_coeff": stats_object._ema_coeff,
+            }
+        else:
+            raise ValueError("Either stats_object or state must be provided")
