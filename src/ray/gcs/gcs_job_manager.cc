@@ -184,7 +184,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     auto iter = running_job_start_times_.find(job_id);
     if (iter != running_job_start_times_.end()) {
       running_job_start_times_.erase(iter);
-      job_duration_in_seconds_counter_.Record(
+      job_duration_in_seconds_gauge_.Record(
           (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
           {{"JobId"sv, job_id.Hex()}});
       ++finished_jobs_count_;
@@ -518,8 +518,8 @@ void GcsJobManager::RecordMetrics() {
   finished_job_counter_.Record(finished_jobs_count_);
 
   for (const auto &[job_id, start_time] : running_job_start_times_) {
-    job_duration_in_seconds_counter_.Record((current_sys_time_ms() - start_time) / 1000.0,
-                                            {{"JobId"sv, job_id.Hex()}});
+    job_duration_in_seconds_gauge_.Record((current_sys_time_ms() - start_time) / 1000.0,
+                                          {{"JobId"sv, job_id.Hex()}});
   }
 }
 

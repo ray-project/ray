@@ -71,6 +71,7 @@ GcsServer::GcsServer(
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
         &placement_group_scheduling_latency_in_ms_histogram,
+    ray::observability::MetricInterface &placement_group_count_gauge,
     ray::observability::MetricInterface &task_events_reported_gauge,
     ray::observability::MetricInterface &task_events_dropped_gauge,
     ray::observability::MetricInterface &task_events_stored_gauge,
@@ -161,6 +162,7 @@ GcsServer::GcsServer(
           placement_group_creation_latency_in_ms_histogram),
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
+      placement_group_count_gauge_(placement_group_count_gauge),
       task_events_reported_gauge_(task_events_reported_gauge),
       task_events_dropped_gauge_(task_events_dropped_gauge),
       task_events_stored_gauge_(task_events_stored_gauge),
@@ -588,7 +590,8 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       },
       placement_group_gauge_,
       placement_group_creation_latency_in_ms_histogram_,
-      placement_group_scheduling_latency_in_ms_histogram_);
+      placement_group_scheduling_latency_in_ms_histogram_,
+      placement_group_count_gauge_);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(

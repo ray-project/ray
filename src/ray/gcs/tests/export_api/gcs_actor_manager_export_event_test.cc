@@ -33,8 +33,8 @@
 #include "ray/gcs/gcs_actor_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/event.h"
 
@@ -277,8 +277,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
-  ray::observability::FakeMetric actor_by_state_gauge_;
-  ray::observability::FakeMetric gcs_actor_by_state_gauge_;
+  ray::observability::FakeGauge actor_by_state_gauge_;
+  ray::observability::FakeGauge gcs_actor_by_state_gauge_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

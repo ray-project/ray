@@ -239,8 +239,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
-  ray::observability::FakeMetric fake_actor_by_state_gauge_;
-  ray::observability::FakeMetric fake_gcs_actor_by_state_gauge_;
+  ray::observability::FakeGauge fake_actor_by_state_gauge_;
+  ray::observability::FakeGauge fake_gcs_actor_by_state_gauge_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

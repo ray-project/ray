@@ -111,6 +111,7 @@ class GcsServer {
           &placement_group_creation_latency_in_ms_histogram,
       ray::observability::MetricInterface
           &placement_group_scheduling_latency_in_ms_histogram,
+      ray::observability::MetricInterface &placement_group_count_gauge,
       ray::observability::MetricInterface &task_events_reported_gauge,
       ray::observability::MetricInterface &task_events_dropped_gauge,
       ray::observability::MetricInterface &task_events_stored_gauge,
@@ -334,6 +335,7 @@ class GcsServer {
   ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram_;
   ray::observability::MetricInterface
       &placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::MetricInterface &placement_group_count_gauge_;
   ray::observability::MetricInterface &task_events_reported_gauge_;
   ray::observability::MetricInterface &task_events_dropped_gauge_;
   ray::observability::MetricInterface &task_events_stored_gauge_;

@@ -32,7 +32,25 @@ namespace ray {
 class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  public:
   GlobalStateAccessorTest()
-      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
+      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()),
+        fake_actor_by_state_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_gcs_actor_by_state_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_running_job_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_finished_job_counter_(std::make_unique<observability::FakeCounter>()),
+        fake_job_duration_in_seconds_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_placement_group_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_placement_group_creation_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeHistogram>()),
+        fake_placement_group_scheduling_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeHistogram>()),
+        fake_placement_group_count_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_task_events_reported_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_task_events_dropped_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_task_events_stored_gauge_(std::make_unique<observability::FakeGauge>()),
+        fake_storage_operation_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeHistogram>()),
+        fake_storage_operation_count_counter_(
+            std::make_unique<observability::FakeCounter>()) {
     if (GetParam()) {
       RayConfig::instance().gcs_storage() = "memory";
     } else {
@@ -67,7 +85,23 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     }
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(
-        new gcs::GcsServer(config, *io_service_, *fake_dropped_events_counter_));
+        new gcs::GcsServer(config,
+                           *io_service_,
+                           *fake_actor_by_state_gauge_,
+                           *fake_gcs_actor_by_state_gauge_,
+                           *fake_running_job_gauge_,
+                           *fake_finished_job_counter_,
+                           *fake_job_duration_in_seconds_gauge_,
+                           *fake_placement_group_gauge_,
+                           *fake_placement_group_creation_latency_in_ms_histogram_,
+                           *fake_placement_group_scheduling_latency_in_ms_histogram_,
+                           *fake_placement_group_count_gauge_,
+                           *fake_task_events_reported_gauge_,
+                           *fake_task_events_dropped_gauge_,
+                           *fake_task_events_stored_gauge_,
+                           *fake_storage_operation_latency_in_ms_histogram_,
+                           *fake_storage_operation_count_counter_,
+                           *fake_dropped_events_counter_));
     gcs_server_->Start();
     work_ = std::make_unique<
         boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
@@ -121,8 +155,25 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
 
-  // Fake metric for testing.
+  // Fake metrics for testing.
   std::unique_ptr<observability::FakeCounter> fake_dropped_events_counter_;
+  std::unique_ptr<observability::FakeGauge> fake_actor_by_state_gauge_;
+  std::unique_ptr<observability::FakeGauge> fake_gcs_actor_by_state_gauge_;
+  std::unique_ptr<observability::FakeGauge> fake_running_job_gauge_;
+  std::unique_ptr<observability::FakeCounter> fake_finished_job_counter_;
+  std::unique_ptr<observability::FakeGauge> fake_job_duration_in_seconds_gauge_;
+  std::unique_ptr<observability::FakeGauge> fake_placement_group_gauge_;
+  std::unique_ptr<observability::FakeHistogram>
+      fake_placement_group_creation_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeHistogram>
+      fake_placement_group_scheduling_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeGauge> fake_placement_group_count_gauge_;
+  std::unique_ptr<observability::FakeGauge> fake_task_events_reported_gauge_;
+  std::unique_ptr<observability::FakeGauge> fake_task_events_dropped_gauge_;
+  std::unique_ptr<observability::FakeGauge> fake_task_events_stored_gauge_;
+  std::unique_ptr<observability::FakeHistogram>
+      fake_storage_operation_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeCounter> fake_storage_operation_count_counter_;
 
   std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 
