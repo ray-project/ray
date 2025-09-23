@@ -7,7 +7,7 @@ llm_config = LLMConfig(
         model_id="my-qwq-32B",
         model_source="Qwen/QwQ-32B",
     ),
-    accelerator_type="L40S",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
