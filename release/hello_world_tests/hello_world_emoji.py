@@ -4,7 +4,7 @@ import emoji
 
 @ray.remote
 def hello_world_emoji():
-    return emoji.emojize(":orange_heart:")
+    return emoji.emojize(":globe_showing_Americas:")
 
 
 def main():
