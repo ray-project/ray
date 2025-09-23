@@ -30,10 +30,7 @@
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
-#include "ray/rpc/grpc_server.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/logging.h"
+#include "ray/rpc/utils.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -345,8 +342,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                    const std::function<void(const ObjectID &)> callback)
       override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Set a callback for when we are no longer borrowing this object (when our
-  /// ref count goes to 0).
+  /// So we call PublishRefRemovedInternal when we are no longer borrowing this object
+  /// (when our ref count goes to 0).
   ///
   /// \param[in] object_id The object ID to set the callback for.
   /// \param[in] contained_in_id The object ID that contains object_id, if any.
@@ -354,13 +351,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// submitted. Then, as long as we have contained_in_id in scope, we are
   /// borrowing object_id.
   /// \param[in] owner_address The owner of object_id's address.
-  /// \param[in] ref_removed_callback The callback to call when we are no
-  /// longer borrowing the object.
-  void SetRefRemovedCallback(const ObjectID &object_id,
-                             const ObjectID &contained_in_id,
-                             const rpc::Address &owner_address,
-                             const ReferenceRemovedCallback &ref_removed_callback)
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  void SubscribeRefRemoved(const ObjectID &object_id,
+                           const ObjectID &contained_in_id,
+                           const rpc::Address &owner_address) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback to call whenever a Reference that we own is deleted. A
   /// Reference can only be deleted if:
@@ -371,12 +364,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] callback The callback to call.
   void SetReleaseLineageCallback(const LineageReleasedCallback &callback);
 
-  /// Respond to the object's owner once we are no longer borrowing it.  The
-  /// sender is the owner of the object ID. We will send the reply when our
-  /// RefCount() for the object ID goes to 0.
-  ///
-  /// \param[in] object_id The object that we were borrowing.
-  void HandleRefRemoved(const ObjectID &object_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  /// Just calls PublishRefRemovedInternal with a lock.
+  void PublishRefRemoved(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const ABSL_LOCKS_EXCLUDED(mutex_);
@@ -646,7 +635,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Constructor for a reference whose origin is unknown.
     Reference() = default;
     Reference(std::string call_site, int64_t object_size)
-        : call_site(std::move(call_site)), object_size(object_size) {}
+        : call_site_(std::move(call_site)), object_size_(object_size) {}
     /// Constructor for a reference that we created.
     Reference(rpc::Address owner_address,
               std::string call_site,
@@ -654,14 +643,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
               bool is_reconstructable,
               std::optional<NodeID> pinned_at_node_id,
               rpc::TensorTransport tensor_transport)
-        : call_site(std::move(call_site)),
-          object_size(object_size),
-          owner_address(std::move(owner_address)),
-          pinned_at_node_id(std::move(pinned_at_node_id)),
-          tensor_transport(tensor_transport),
-          owned_by_us(true),
-          is_reconstructable(is_reconstructable),
-          pending_creation(!pinned_at_node_id.has_value()) {}
+        : call_site_(std::move(call_site)),
+          object_size_(object_size),
+          owner_address_(std::move(owner_address)),
+          pinned_at_node_id_(std::move(pinned_at_node_id)),
+          tensor_transport_(tensor_transport),
+          owned_by_us_(true),
+          is_reconstructable_(is_reconstructable),
+          pending_creation_(!pinned_at_node_id_.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -694,7 +683,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
-      if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
+      if (lineage_pinning_enabled && owned_by_us_ && !is_reconstructable_) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -756,9 +745,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::string DebugString() const;
 
     /// Description of the call site where the reference was created.
-    std::string call_site = "<unknown>";
+    std::string call_site_ = "<unknown>";
     /// Object size if known, otherwise -1;
-    int64_t object_size = -1;
+    int64_t object_size_ = -1;
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
@@ -766,25 +755,25 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
-    std::optional<rpc::Address> owner_address;
+    std::optional<rpc::Address> owner_address_;
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
-    std::optional<NodeID> pinned_at_node_id;
+    std::optional<NodeID> pinned_at_node_id_;
     /// TODO(kevin85421): Make tensor_transport a required field for all constructors.
     ///
     /// The transport used for the object.
-    rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE;
+    rpc::TensorTransport tensor_transport_ = rpc::TensorTransport::OBJECT_STORE;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
-    bool owned_by_us = false;
+    bool owned_by_us_ = false;
 
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage. This should be set to false if the object was created
     // by ray.put(), a task that cannot be retried, or its lineage was evicted.
-    bool is_reconstructable = false;
+    bool is_reconstructable_ = false;
     /// Whether the lineage of this object was evicted due to memory pressure.
     bool lineage_evicted = false;
     /// The number of tasks that depend on this object that may be retried in
@@ -815,9 +804,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Callback that will be called when the object ref is deleted
     /// from the reference table (all refs including lineage ref count go to 0).
     std::function<void(const ObjectID &)> on_object_ref_delete;
-    /// Callback that is called when this process is no longer a borrower
-    /// (RefCount() == 0).
-    std::function<void(const ObjectID &)> on_ref_removed;
+    /// If this is set, we'll call PublishRefRemovedInternal when this process is no
+    /// longer a borrower (RefCount() == 0).
+    bool publish_ref_removed = false;
 
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
@@ -843,7 +832,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     bool has_nested_refs_to_report = false;
 
     /// Whether the task that creates this object is scheduled/executing.
-    bool pending_creation = false;
+    bool pending_creation_ = false;
 
     /// Whether or not this object was spilled.
     bool did_spill = false;
@@ -988,6 +977,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// iterator.
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
                                std::vector<ObjectID> *deleted)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// To respond to the object's owner once we are no longer borrowing it.  The
+  /// sender is the owner of the object ID. We will send the reply when our
+  /// RefCount() for the object ID goes to 0.
+  void PublishRefRemovedInternal(const ObjectID &object_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Erase the Reference from the table. Assumes that the entry has no more

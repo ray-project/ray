@@ -2,13 +2,28 @@ import pytest
 
 import ray
 from ray.tests.conftest import _ray_start_cluster
-from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
-from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
+from ray.train.v2._internal.constants import (
+    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
+    is_v2_enabled,
+)
 from ray.train.v2.jax import JaxTrainer
+
+assert is_v2_enabled()
 
 
 @pytest.fixture
-def ray_tpu_single_host(monkeypatch):
+def jax_runtime_env():
+    return {
+        "pip": ["jax"],
+        "env_vars": {
+            "JAX_PLATFORMS": "cpu",
+        },
+    }
+
+
+@pytest.fixture
+def ray_tpu_single_host(monkeypatch, jax_runtime_env):
     """Start a mock single-host TPU Ray cluster with 2x4 v6e (8 chips per host)."""
     with _ray_start_cluster() as cluster:
         monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-8")
@@ -19,14 +34,14 @@ def ray_tpu_single_host(monkeypatch):
             resources={"TPU": 8},
         )
 
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, runtime_env=jax_runtime_env)
 
         yield cluster
         ray.shutdown()
 
 
 @pytest.fixture
-def ray_tpu_multi_host(monkeypatch):
+def ray_tpu_multi_host(monkeypatch, jax_runtime_env):
     """Start a simulated multi-host TPU Ray cluster."""
     with _ray_start_cluster() as cluster:
         monkeypatch.setenv("TPU_NAME", "test-slice-1")
@@ -44,7 +59,7 @@ def ray_tpu_multi_host(monkeypatch):
             resources={"TPU": 4},
         )
 
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, runtime_env=jax_runtime_env)
 
         yield cluster
         ray.shutdown()
@@ -78,12 +93,6 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
-            worker_runtime_env={
-                "pip": ["jax"],
-                "env_vars": {
-                    "JAX_PLATFORMS": "cpu",
-                },
-            },
         ),
     )
     result = trainer.fit()
@@ -109,12 +118,6 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
-            worker_runtime_env={
-                "pip": ["jax"],
-                "env_vars": {
-                    "JAX_PLATFORMS": "cpu",
-                },
-            },
         ),
     )
     result = trainer.fit()

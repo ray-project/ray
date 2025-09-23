@@ -41,20 +41,17 @@ def generate_repartition_fn(
         map_transformer: Optional["MapTransformer"] = ctx.upstream_map_transformer
         upstream_map_fn = None
         if map_transformer:
-            # NOTE(swang): We override the target block size with infinity, to
-            # prevent the upstream map from slicing its output into smaller
-            # blocks. Since the shuffle task will just fuse these back
-            # together, the extra slicing and re-fusing can add high memory
-            # overhead. This can be removed once dynamic block splitting is
-            # supported for all-to-all ops.
-            # See https://github.com/ray-project/ray/issues/40518.
-            map_transformer.set_target_max_block_size(float("inf"))
+            # NOTE: We override target max-block sizing of the previous
+            #       transformation to avoid unnecessary block shaping (if any)
+            map_transformer.override_target_max_block_size(None)
 
             def upstream_map_fn(blocks):
                 return map_transformer.apply_transform(blocks, ctx)
 
         shuffle_spec = ShuffleTaskSpec(
-            ctx.target_max_block_size,
+            target_shuffle_max_block_size=(
+                ctx.target_max_block_size_override or data_context.target_max_block_size
+            ),
             random_shuffle=False,
             upstream_map_fn=upstream_map_fn,
         )
@@ -77,7 +74,12 @@ def generate_repartition_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
     ) -> AllToAllTransformFnResult:
-        shuffle_spec = ShuffleTaskSpec(ctx.target_max_block_size, random_shuffle=False)
+        shuffle_spec = ShuffleTaskSpec(
+            target_shuffle_max_block_size=(
+                ctx.target_max_block_size_override or data_context.target_max_block_size
+            ),
+            random_shuffle=False,
+        )
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
         return scheduler.execute(refs, num_outputs, ctx)
 

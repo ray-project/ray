@@ -11,9 +11,10 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter, TextFormatter
+from ray._common.network_utils import build_address
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.utils import remove_ray_internal_flags_from_env
 from ray._raylet import GcsClient
@@ -24,8 +25,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
-from ray.job_submission import JobStatus
-from ray._common.network_utils import build_address
+from ray.job_submission import JobErrorType, JobStatus
 
 import psutil
 
@@ -450,6 +450,7 @@ class JobSupervisor:
                         JobStatus.FAILED,
                         message=message,
                         driver_exit_code=return_code,
+                        error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
                     )
         except Exception:
             self._logger.error(
@@ -461,6 +462,7 @@ class JobSupervisor:
                     self._job_id,
                     JobStatus.FAILED,
                     message=traceback.format_exc(),
+                    error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_START_ERROR,
                 )
             except Exception:
                 self._logger.error(

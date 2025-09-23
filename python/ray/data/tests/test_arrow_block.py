@@ -16,7 +16,6 @@ from ray._private.test_utils import run_string_as_driver
 from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
-from ray.data import DataContext
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
@@ -26,6 +25,7 @@ from ray.data._internal.arrow_block import (
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
@@ -542,6 +542,7 @@ def test_arrow_nan_element():
     "table_data,max_chunk_size_bytes,expected",
     [
         ({"a": []}, 100, None),
+        ({"a": list(range(100))}, 7, 1),
         ({"a": list(range(100))}, 10, 1),
         ({"a": list(range(100))}, 25, 3),
         ({"a": list(range(100))}, 50, 6),

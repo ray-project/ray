@@ -17,7 +17,7 @@
 
 #include "../config_internal.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/gcs/gcs_client/global_state_accessor.h"
+#include "ray/gcs_rpc_client/global_state_accessor.h"
 #include "util.h"
 
 namespace ray {

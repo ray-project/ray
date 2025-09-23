@@ -10,12 +10,11 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import run_string_as_driver
-from ray.tests.test_object_spilling import is_dir_empty
 from ray._private.external_storage import (
     FileSystemStorage,
 )
-
+from ray._private.test_utils import run_string_as_driver
+from ray.tests.test_object_spilling import is_dir_empty
 
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
@@ -212,6 +211,8 @@ def test_delete_objects_multi_node(
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
+            # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+            "core_worker_rpc_server_reconnect_timeout_s": 0,
         },
     )
     ray.init(address=cluster.address)

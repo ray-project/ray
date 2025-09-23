@@ -1,11 +1,10 @@
-import time
-import signal
 import json
 import os
 import pathlib
-import sys
 import re
-import requests
+import signal
+import sys
+import time
 import warnings
 from collections import defaultdict
 from pprint import pformat
@@ -13,12 +12,26 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-
+import requests
 from google.protobuf.timestamp_pb2 import Timestamp
+
 import ray
-from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
-    get_event_aggregator_grpc_stub,
+from ray._common.network_utils import build_address
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.metrics_agent import (
+    Gauge as MetricsAgentGauge,
+    PrometheusServiceDiscoveryWriter,
 )
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._private.test_utils import (
+    PrometheusTimeseries,
+    fetch_prometheus_metric_timeseries,
+    fetch_prometheus_timeseries,
+    find_free_port,
+    get_log_batch,
+    raw_metric_timeseries,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_event_aggregator_service_pb2 import (
@@ -26,22 +39,12 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     RayEventsData,
     TaskEventsMetadata,
 )
-from ray.util.state import list_nodes
-from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray._private.metrics_agent import Gauge as MetricsAgentGauge
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
-    fetch_prometheus,
-    fetch_prometheus_metrics,
-    get_log_batch,
-    raw_metrics,
-    find_free_port,
-)
-from ray._common.network_utils import build_address
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
+    get_event_aggregator_grpc_stub,
+)
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
+from ray.util.state import list_nodes
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -193,6 +196,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Add a head node.
     cluster.add_node(
         _system_config={
+            "metrics_report_interval_ms": 1000,
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
@@ -269,10 +273,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
-@pytest.mark.skipif(
-    os.environ.get("RAY_enable_open_telemetry") == "1" and sys.platform == "darwin",
-    reason="OpenTelemetry is not working on macOS yet.",
-)
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
@@ -281,12 +281,17 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         autoscaler_export_addr,
         dashboard_export_addr,
     ) = _setup_cluster_for_test
+    ray_timeseries = PrometheusTimeseries()
+    autoscaler_timeseries = PrometheusTimeseries()
+    dashboard_timeseries = PrometheusTimeseries()
 
     def test_cases():
-        components_dict, metric_descriptors, metric_samples = fetch_prometheus(
-            prom_addresses
-        )
+        fetch_prometheus_timeseries(prom_addresses, ray_timeseries)
+        components_dict = ray_timeseries.components_dict
+        metric_descriptors = ray_timeseries.metric_descriptors
+        metric_samples = ray_timeseries.metric_samples.values()
         metric_names = metric_descriptors.keys()
+
         session_name = ray._private.worker.global_worker.node.session_name
 
         # Raylet should be on every node
@@ -368,9 +373,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert grpc_sample.labels["Component"] != "core_worker"
 
         # Autoscaler metrics
-        (_, autoscaler_metric_descriptors, autoscaler_samples,) = fetch_prometheus(
-            [autoscaler_export_addr]
-        )  # noqa
+        fetch_prometheus_timeseries([autoscaler_export_addr], autoscaler_timeseries)
+        autoscaler_metric_descriptors = autoscaler_timeseries.metric_descriptors
+        autoscaler_samples = autoscaler_timeseries.metric_samples.values()
         autoscaler_metric_names = autoscaler_metric_descriptors.keys()
         for metric in _AUTOSCALER_METRICS:
             # Metric name should appear with some suffix (_count, _total,
@@ -382,7 +387,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert sample.labels["SessionName"] == session_name
 
         # Dashboard metrics
-        _, dashboard_metric_descriptors, _ = fetch_prometheus([dashboard_export_addr])
+        fetch_prometheus_timeseries([dashboard_export_addr], dashboard_timeseries)
+        dashboard_metric_descriptors = dashboard_timeseries.metric_descriptors
         dashboard_metric_names = dashboard_metric_descriptors.keys()
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
@@ -405,7 +411,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             retry_interval_ms=1000,  # Yield resource for other processes
         )
     except RuntimeError:
-        print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
+        # print(f"The components are {pformat(ray_timeseries)}")
         test_cases()  # Should fail assert
 
 
@@ -417,9 +423,11 @@ def test_metrics_export_node_metrics(shutdown_only):
     dashboard_export_addr = build_address(
         addr["node_ip_address"], DASHBOARD_METRIC_PORT
     )
+    node_timeseries = PrometheusTimeseries()
+    dashboard_timeseries = PrometheusTimeseries()
 
     def verify_node_metrics():
-        avail_metrics = raw_metrics(addr)
+        avail_metrics = raw_metric_timeseries(addr, node_timeseries)
 
         components = set()
         for metric in _NODE_COMPONENT_METRICS:
@@ -437,7 +445,9 @@ def test_metrics_export_node_metrics(shutdown_only):
         return True
 
     def verify_dashboard_metrics():
-        avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
+        avail_metrics = fetch_prometheus_metric_timeseries(
+            [dashboard_export_addr], dashboard_timeseries
+        )
         # Run list nodes to trigger dashboard API.
         list_nodes()
 
@@ -496,9 +506,11 @@ def test_metrics_export_event_aggregator_agent(
     metrics_export_port = cluster.head_node.metrics_export_port
     addr = cluster.head_node.node_ip_address
     prom_addresses = [build_address(addr, metrics_export_port)]
+    timeseries = PrometheusTimeseries()
 
     def test_case_stats_exist():
-        _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_descriptors = timeseries.metric_descriptors
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
@@ -510,7 +522,8 @@ def test_metrics_export_event_aggregator_agent(
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
     def test_case_value_correct():
-        _, _, metric_samples = fetch_prometheus(prom_addresses)
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_samples = timeseries.metric_samples.values()
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 3.0,
             "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
@@ -579,133 +592,71 @@ def test_metrics_export_event_aggregator_agent(
 def test_operation_stats(monkeypatch, shutdown_only):
     # Test operation stats are available when flag is on.
     operation_metrics = [
-        "ray_operation_count",
-        "ray_operation_run_time_ms",
-        "ray_operation_queue_time_ms",
+        "ray_operation_count_total",
+        "ray_operation_run_time_ms_bucket",
+        "ray_operation_queue_time_ms_bucket",
         "ray_operation_active_count",
     ]
-    with monkeypatch.context() as m:
-        m.setenv("RAY_event_stats_metrics", "1")
-        addr = ray.init()
 
-        signal = SignalActor.remote()
+    monkeypatch.setenv("RAY_emit_main_service_metrics", "1")
+    timeseries = PrometheusTimeseries()
+    addr = ray.init()
+    remote_signal = SignalActor.remote()
 
-        @ray.remote
-        class Actor:
-            def __init__(self, signal):
-                self.signal = signal
+    @ray.remote
+    class Actor:
+        def __init__(self, signal):
+            self.signal = signal
 
-            def get_worker_id(self):
-                return ray.get_runtime_context().get_worker_id()
+        def get_worker_id(self):
+            return ray.get_runtime_context().get_worker_id()
 
-            def wait(self):
-                ray.get(self.signal.wait.remote())
+        def wait(self):
+            ray.get(self.signal.wait.remote())
 
-        actor = Actor.remote(signal)
-        worker_id = ray.get(actor.get_worker_id.remote())
-        obj_ref = actor.wait.remote()
+    actor = Actor.remote(remote_signal)
+    ray.get(actor.get_worker_id.remote())
+    obj_ref = actor.wait.remote()
 
-        def verify():
-            metrics = raw_metrics(addr)
-            samples = metrics["ray_operation_count"]
-            found = False
+    ray.get(remote_signal.send.remote())
+    ray.get(obj_ref)
+
+    def verify():
+        metrics = raw_metric_timeseries(addr, timeseries)
+
+        samples = metrics["ray_operation_active_count"]
+        found = False
+        for sample in samples:
+            if (
+                sample.labels["Name"] == "gcs_server_main_io_context"
+                and sample.labels["Component"] == "gcs_server"
+            ):
+                found = True
+        if not found:
+            return False
+
+        found = False
+        for sample in samples:
+            if (
+                sample.labels["Name"] == "raylet_main_io_context"
+                and sample.labels["Component"] == "raylet"
+            ):
+                found = True
+        if not found:
+            return False
+
+        metric_names = set(metrics.keys())
+        for op_metric in operation_metrics:
+            assert op_metric in metric_names
+            samples = metrics[op_metric]
+            components = set()
+            print(components)
             for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
+                components.add(sample.labels["Component"])
+            assert {"raylet", "gcs_server"} == components
+        return True
 
-            samples = metrics["ray_operation_active_count"]
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
-
-            return True
-
-        wait_for_condition(verify, timeout=60)
-
-        ray.get(signal.send.remote())
-        ray.get(obj_ref)
-
-        def verify():
-            metrics = raw_metrics(addr)
-
-            samples = metrics["ray_operation_count"]
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
-
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"]
-                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
-
-            samples = metrics["ray_operation_active_count"]
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 0
-            if not found:
-                return False
-
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"]
-                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 0
-            if not found:
-                return False
-
-            metric_names = set(metrics.keys())
-            for op_metric in operation_metrics:
-                assert op_metric in metric_names
-                samples = metrics[op_metric]
-                components = set()
-                for sample in samples:
-                    components.add(sample.labels["Component"])
-            assert {"raylet", "gcs_server", "core_worker"} == components
-            return True
-
-        wait_for_condition(verify, timeout=60)
+    wait_for_condition(verify, timeout=30)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
@@ -717,11 +668,12 @@ def test_histogram(_setup_cluster_for_test):
         autoscaler_export_addr,
         dashboard_export_addr,
     ) = _setup_cluster_for_test
+    timeseries = PrometheusTimeseries()
 
     def test_cases():
-        components_dict, metric_descriptors, metric_samples = fetch_prometheus(
-            prom_addresses
-        )
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_descriptors = timeseries.metric_descriptors
+        metric_samples = timeseries.metric_samples.values()
         metric_names = metric_descriptors.keys()
         custom_histogram_metric_name = "ray_test_histogram_bucket"
         assert custom_histogram_metric_name in metric_names
@@ -756,7 +708,7 @@ def test_histogram(_setup_cluster_for_test):
             retry_interval_ms=1000,  # Yield resource for other processes
         )
     except RuntimeError:
-        print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
+        print(f"The components are {pformat(timeseries)}")
         test_cases()  # Should fail assert
 
 
@@ -768,6 +720,7 @@ def test_histogram(_setup_cluster_for_test):
 def test_counter_exported_as_gauge(shutdown_only):
     # Test to make sure Counter emits the right Prometheus metrics
     context = ray.init()
+    timeseries = PrometheusTimeseries()
 
     @ray.remote
     class Actor:
@@ -787,7 +740,9 @@ def test_counter_exported_as_gauge(shutdown_only):
         metrics_page = "localhost:{}".format(
             context.address_info["metrics_export_port"]
         )
-        _, metric_descriptors, metric_samples = fetch_prometheus([metrics_page])
+        fetch_prometheus_timeseries([metrics_page], timeseries)
+        metric_descriptors = timeseries.metric_descriptors
+        metric_samples = timeseries.metric_samples.values()
         metric_samples_by_name = defaultdict(list)
         for metric_sample in metric_samples:
             metric_samples_by_name[metric_sample.name].append(metric_sample)
@@ -821,6 +776,7 @@ def test_counter(monkeypatch, shutdown_only):
     # if RAY_EXPORT_COUNTER_AS_GAUGE is 0
     monkeypatch.setenv("RAY_EXPORT_COUNTER_AS_GAUGE", "0")
     context = ray.init()
+    timeseries = PrometheusTimeseries()
 
     @ray.remote
     class Actor:
@@ -834,7 +790,8 @@ def test_counter(monkeypatch, shutdown_only):
         metrics_page = "localhost:{}".format(
             context.address_info["metrics_export_port"]
         )
-        _, metric_descriptors, _ = fetch_prometheus([metrics_page])
+        fetch_prometheus_timeseries([metrics_page], timeseries)
+        metric_descriptors = timeseries.metric_descriptors
 
         assert "ray_test_counter" not in metric_descriptors
         assert "ray_test_counter_total" in metric_descriptors
@@ -852,6 +809,7 @@ def test_per_func_name_stats(shutdown_only):
         "ray_component_rss_mb",
         "ray_component_num_fds",
     ]
+    timeseries = PrometheusTimeseries()
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux
         comp_metrics.append("ray_component_uss_mb")
@@ -887,7 +845,7 @@ def test_per_func_name_stats(shutdown_only):
     ray.get(do_nothing.remote())
 
     def verify_components():
-        metrics = raw_metrics(addr)
+        metrics = raw_metric_timeseries(addr, timeseries)
         metric_names = set(metrics.keys())
         components = set()
         for metric in comp_metrics:
@@ -908,7 +866,7 @@ def test_per_func_name_stats(shutdown_only):
     wait_for_condition(verify_components, timeout=30)
 
     def verify_mem_usage():
-        metrics = raw_metrics(addr)
+        metrics = raw_metric_timeseries(addr, timeseries)
         for metric in comp_metrics:
             samples = metrics[metric]
             for sample in samples:
@@ -931,7 +889,7 @@ def test_per_func_name_stats(shutdown_only):
     os.kill(pid, signal.SIGKILL)
 
     def verify_mem_cleaned():
-        metrics = raw_metrics(addr)
+        metrics = raw_metric_timeseries(addr, timeseries)
         for metric in comp_metrics:
             samples = metrics[metric]
             for sample in samples:
@@ -971,9 +929,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         )
         return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]
 
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
     # Let's update nodes.
@@ -981,9 +940,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         nodes.append(cluster.add_node())
 
     # Make sure service discovery file content is correctly updated.
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
 
@@ -1209,9 +1169,12 @@ def test_custom_metrics_validation(shutdown_only):
 def test_metrics_disablement(_setup_cluster_for_test):
     """Make sure the metrics are not exported when it is disabled."""
     prom_addresses, autoscaler_export_addr, _ = _setup_cluster_for_test
+    timeseries = PrometheusTimeseries()
 
     def verify_metrics_not_collected():
-        components_dict, metric_descriptors, _ = fetch_prometheus(prom_addresses)
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        components_dict = timeseries.components_dict
+        metric_descriptors = timeseries.metric_descriptors
         metric_names = metric_descriptors.keys()
         # Make sure no component is reported.
         for _, comp in components_dict.items():

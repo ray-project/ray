@@ -137,7 +137,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
 
 .. figure:: /images/rllib_use_case.png
 
-   Decentralized distributed proximal polixy optimiation (DD-PPO) architecture.
+   Decentralized distributed proximal policy optimization (DD-PPO) architecture.
 
 Learn more about reinforcement learning with the following resources.
 
@@ -181,4 +181,4 @@ The following highlights feature projects leveraging Ray Core's distributed APIs
 - `[Blog] Highly Available and Scalable Online Applications on Ray at Ant Group <https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant>`_
 - `[Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases <https://www.anyscale.com/blog/ray-forward-2022>`_
 - `[Blog] A new world record on the CloudSort benchmark using Ray <https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting>`_
-- :doc:`[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web-crawler>`
+- :doc:`[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web_crawler>`

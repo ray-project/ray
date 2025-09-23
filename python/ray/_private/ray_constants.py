@@ -107,11 +107,6 @@ DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # Each ObjectRef currently uses about 3KB of caller memory.
 CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
-# Match max_direct_call_object_size in
-# src/ray/common/ray_config_def.h.
-# TODO(swang): Ideally this should be pulled directly from the
-# config in case the user overrides it.
-DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10
@@ -573,11 +568,6 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
 
-# Whether GPU metrics collection via `nvidia-smi` is enabled.
-# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
-# Defaults to False to use pynvml to collect usage.
-RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
-
 # Whether enable OpenTelemetry as the metrics collection backend. The default is
 # using OpenCensus.
 RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
@@ -589,3 +579,5 @@ RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
 FETCH_FAIL_TIMEOUT_SECONDS = (
     env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
+
+RAY_GC_MIN_COLLECT_INTERVAL = env_float("RAY_GC_MIN_COLLECT_INTERVAL_S", 5)

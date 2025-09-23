@@ -196,7 +196,7 @@ Here's a summary of the variations:
 * For MacOS x86_64, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instead of ``macosx_10_15``.
 * For MacOS x86_64, commits predating June 1, 2025 will have ``macosx_10_15`` in the filename instead of ``macosx_12_0``.
 
-.. _apple-silcon-supprt:
+.. _apple-silicon-support:
 
 M1 Mac (Apple Silicon) Support
 ------------------------------
@@ -436,7 +436,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`f99d0ea <https://github.com/ray-project/ray/commit/f99d0ea7c4248f8d64eeb8f914d2742c91cd1948>`_)
+        Ray version: nightly (`0410a5d <https://github.com/ray-project/ray/commit/0410a5d6b2b37a4de5fc71401e95566035b8bd25>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 

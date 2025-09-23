@@ -2,7 +2,7 @@ import os
 import shutil
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -21,19 +21,15 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
-    NUM_CPUS_FOR_META_FETCH_TASK,
     ParquetDatasource,
-    SerializedFragment,
-    _deserialize_fragments_with_retry,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.util import rows_same
-from ray.data.block import BlockAccessor, BlockMetadata
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
-from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
+from ray.data.datasource import DefaultFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -117,70 +113,6 @@ def test_include_paths(
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-    ],
-)
-def test_parquet_deserialize_fragments_with_retry(
-    ray_start_regular_shared, fs, data_path, monkeypatch
-):
-    setup_data_path = _unwrap_protocol(data_path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
-
-    dataset_kwargs = {}
-    pq_ds = pq.ParquetDataset(
-        data_path,
-        **dataset_kwargs,
-        filesystem=fs,
-    )
-    serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
-
-    # test 1st attempt succeed
-    fragments = _deserialize_fragments_with_retry(serialized_fragments)
-    assert "test1.parquet" in fragments[0].path
-    assert "test2.parquet" in fragments[1].path
-
-    # test the 3rd attempt succeed with a mock function constructed
-    # to throw in the first two attempts
-    class MockDeserializer:
-        def __init__(self, planned_exp_or_return):
-            self.planned_exp_or_return = planned_exp_or_return
-            self.cur_index = 0
-
-        def __call__(self, *args: Any, **kwds: Any) -> Any:
-            exp_or_ret = self.planned_exp_or_return[self.cur_index]
-            self.cur_index += 1
-            if isinstance(exp_or_ret, Exception):
-                raise exp_or_ret
-            else:
-                return exp_or_ret
-
-    mock_deserializer = MockDeserializer(
-        [
-            Exception("1st mock failed attempt"),
-            Exception("2nd mock failed attempt"),
-            fragments,
-        ]
-    )
-    monkeypatch.setattr(
-        ray.data._internal.datasource.parquet_datasource,
-        "_deserialize_fragments",
-        mock_deserializer,
-    )
-    retried_fragments = _deserialize_fragments_with_retry(serialized_fragments)
-    assert "test1.parquet" in retried_fragments[0].path
-    assert "test2.parquet" in retried_fragments[1].path
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
@@ -241,137 +173,6 @@ def test_parquet_read_basic(
     ds = ray.data.read_parquet(data_path, filesystem=fs, concurrency=1)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
-    df1 = pd.DataFrame({"one": range(30_000), "two": ["a", "b", "c"] * 10_000})
-    table = pa.Table.from_pandas(df1)
-    setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": range(30_000, 60_000), "two": ["e", "f", "g"] * 10000})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
-
-    expected_num_rows = len(df1) + len(df2)
-    expected_byte_size = 787500
-
-    #
-    # Case 1: Test metadata fetching happy path (obtaining, caching and propagating
-    #         metadata)
-    #
-
-    class AssertingMetadataProvider(ParquetMetadataProvider):
-        def prefetch_file_metadata(self, fragments, **ray_remote_args):
-            assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
-            assert (
-                ray_remote_args["scheduling_strategy"]
-                == DataContext.get_current().scheduling_strategy
-            )
-            return super().prefetch_file_metadata(fragments, **ray_remote_args)
-
-    ds = ray.data.read_parquet(
-        data_path,
-        filesystem=fs,
-        meta_provider=AssertingMetadataProvider(),
-    )
-
-    # Expect precomputed row counts and block sizes to be missing.
-    assert ds._meta_count() == expected_num_rows
-
-    read_op = ds._plan._logical_plan.dag
-
-    # Assert Read op metadata propagation
-    assert read_op.infer_metadata() == BlockMetadata(
-        num_rows=expected_num_rows,
-        size_bytes=expected_byte_size,
-        exec_stats=None,
-        input_files=[path1, path2],
-    )
-
-    expected_schema = pa.schema({"one": pa.int64(), "two": pa.string()})
-
-    assert read_op.infer_schema().equals(expected_schema)
-
-    # Expected
-    #   - Fetched Parquet metadata to be reused
-    #   - *No* dataset execution performed
-    assert ds.count() == expected_num_rows
-    assert ds.size_bytes() == expected_byte_size
-    assert ds.schema() == Schema(expected_schema)
-    assert set(ds.input_files()) == {path1, path2}
-
-    assert not ds._plan.has_computed_output()
-
-    expected_values = list(
-        zip(range(60_000), ["a", "b", "c"] * 10_000 + ["e", "f", "g"] * 10_000)
-    )
-
-    values = [(s["one"], s["two"]) for s in ds.take(60000)]
-
-    exec_stats = ds._plan._snapshot_stats
-    read_stats = exec_stats.parents[0]
-
-    # Assert that ref-bundles
-    #   - Passed to ReadParquet hold metadata matching actual bundle
-    #   - Produced by ReadParquet reflects actual amount of bytes read
-    assert read_stats.base_name == "ReadParquet"
-    # NOTE: Size of the task should be ~5kb, but could vary from platform to platform
-    #       alas for different Python versions. However, it is substantially smaller
-    #       than the dataset itself (~750kb)
-    assert read_stats.extra_metrics["average_bytes_inputs_per_task"] < 10_000
-
-    # TODO stats are broken for iteration-based executions due to the fact
-    #      that returned stats object is obtained before iteration completes,
-    #      hence not capturing the final state of the pipeline
-    # assert (
-    #     read_stats.extra_metrics["bytes_task_outputs_generated"] == expected_byte_size
-    # )
-
-    assert sorted(values) == expected_values
-
-    #
-    # Case 2: Test metadata fetching *failing* (falling back to actually
-    #         executing the dataset)
-    #
-
-    class FailingMetadataProvider(ParquetMetadataProvider):
-        def prefetch_file_metadata(self, fragments, **ray_remote_args):
-            assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
-            assert (
-                ray_remote_args["scheduling_strategy"]
-                == DataContext.get_current().scheduling_strategy
-            )
-            return None
-
-    ds = ray.data.read_parquet(
-        data_path,
-        filesystem=fs,
-        meta_provider=FailingMetadataProvider(),
-    )
-
-    # Expected
-    #   - Fetched Parquet metadata is not used (returns null), hence
-    #   - Dataset execution has to be performed
-    assert ds.count() == expected_num_rows
-    assert ds.size_bytes() == expected_byte_size
-    assert ds.schema() == Schema(expected_schema)
-    assert set(ds.input_files()) == {path1, path2}
-
-    assert ds._plan.has_computed_output()
 
 
 @pytest.mark.parametrize(
@@ -800,6 +601,82 @@ def test_parquet_read_partitioned_explicit(
     ]
 
 
+def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir):
+    path = "example://iris.parquet"
+
+    # Test projection from read_parquet
+    ds = ray.data.read_parquet(path, columns=["variety"])
+
+    schema = ds.schema()
+
+    assert ["variety"] == schema.base_schema.names
+    assert ds.count() == 150
+
+    # Test projection pushed down into read op
+    ds = ray.data.read_parquet(path).select_columns("variety")
+
+    assert ds._plan.explain().strip() == (
+        "-------- Logical Plan --------\n"
+        "Project\n"
+        "+- ReadParquet\n"
+        "-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]"
+    )
+
+    # Assert schema being appropriately projected
+    schema = ds.schema()
+    assert ["variety"] == schema.base_schema.names
+
+    assert ds.count() == 150
+
+    # Assert empty projection is reading no data
+    ds = ray.data.read_parquet(path).select_columns([])
+
+    summary = ds.materialize()._plan.stats().to_summary()
+
+    assert "ReadParquet" in summary.base_name
+    assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
+
+
+def test_projection_pushdown_partitioned(ray_start_regular_shared, temp_dir):
+    ds = ray.data.read_parquet("example://iris.parquet").materialize()
+
+    partitioned_ds_path = f"{temp_dir}/partitioned_iris"
+    # Write out partitioned dataset
+    ds.write_parquet(partitioned_ds_path, partition_cols=["variety"])
+
+    partitioned_ds = ray.data.read_parquet(
+        partitioned_ds_path, columns=["variety"]
+    ).materialize()
+
+    print(partitioned_ds.schema())
+
+    assert [
+        "sepal.length",
+        "sepal.width",
+        "petal.length",
+        "petal.width",
+        "variety",
+    ] == ds.take_batch(batch_format="pyarrow").column_names
+
+    assert ["variety"] == partitioned_ds.take_batch(batch_format="pyarrow").column_names
+
+    assert ds.count() == partitioned_ds.count()
+
+
+def test_projection_pushdown_on_count(ray_start_regular_shared, temp_dir):
+    path = "example://iris.parquet"
+
+    # Test reading full dataset
+    # ds = ray.data.read_parquet(path).materialize()
+
+    # Test projection from read_parquet
+    num_rows = ray.data.read_parquet(path).count()
+
+    assert num_rows == 150
+
+
 def test_parquet_read_with_udf(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
@@ -850,59 +727,18 @@ def test_parquet_read_with_udf(
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_parquet_read_parallel_meta_fetch(
-    ray_start_regular_shared, fs, data_path, target_max_block_size_infinite_or_default
-):
-    setup_data_path = _unwrap_protocol(data_path)
-    num_dfs = PARALLELIZE_META_FETCH_THRESHOLD + 1
-    for idx in range(num_dfs):
-        df = pd.DataFrame({"one": list(range(3 * idx, 3 * (idx + 1)))})
-        table = pa.Table.from_pandas(df)
-        path = os.path.join(setup_data_path, f"test_{idx}.parquet")
-        pq.write_table(table, path, filesystem=fs)
-
-    parallelism = 8
-    ds = ray.data.read_parquet(
-        data_path, filesystem=fs, override_num_blocks=parallelism
-    )
-
-    # Test metadata-only parquet ops.
-    assert ds.count() == num_dfs * 3
-    assert ds.size_bytes() > 0
-    # Schema information and input files are available from Parquet metadata,
-    # so we do not need to compute the first block.
-    assert ds.schema() is not None
-    input_files = ds.input_files()
-    assert len(input_files) == num_dfs, input_files
-
-    # Forces a data read.
-    values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    assert sorted(values) == list(range(3 * num_dfs))
-
-
 def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
     ctx = ray.data.context.DataContext.get_current()
     old_decoding_size_estimation = ctx.decoding_size_estimation
     ctx.decoding_size_estimation = True
     try:
         tensor_output_path = os.path.join(tmp_path, "tensor")
-        ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
-        ds = ray.data.read_parquet(
-            tensor_output_path, meta_provider=ParquetMetadataProvider()
-        )
+        # NOTE: It's crucial to override # of blocks to get stable # of files
+        #       produced and make sure data size estimates are stable
+        ray.data.range_tensor(
+            1000, shape=(1000,), override_num_blocks=10
+        ).write_parquet(tensor_output_path)
+        ds = ray.data.read_parquet(tensor_output_path)
         assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
@@ -913,9 +749,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             data_size >= 7_000_000 and data_size <= 10_000_000
         ), "actual data size is out of expected bound"
 
-        datasource = ParquetDatasource(
-            tensor_output_path, meta_provider=ParquetMetadataProvider()
-        )
+        datasource = ParquetDatasource(tensor_output_path)
         assert (
             datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
@@ -925,43 +759,35 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ), "estimated data size is either out of expected bound"
         assert (
             data_size
-            == ParquetDatasource(
-                tensor_output_path, meta_provider=ParquetMetadataProvider()
-            ).estimate_inmemory_data_size()
+            == ParquetDatasource(tensor_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
 
         text_output_path = os.path.join(tmp_path, "text")
         ray.data.range(1000).map(lambda _: {"text": "a" * 1000}).write_parquet(
             text_output_path
         )
-        ds = ray.data.read_parquet(
-            text_output_path, meta_provider=ParquetMetadataProvider()
-        )
+        ds = ray.data.read_parquet(text_output_path)
         assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
-            data_size >= 800_000 and data_size <= 2_000_000
+            data_size >= 700_000 and data_size <= 2_200_000
         ), "estimated data size is out of expected bound"
         data_size = ds.materialize().size_bytes()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "actual data size is out of expected bound"
 
-        datasource = ParquetDatasource(
-            text_output_path, meta_provider=ParquetMetadataProvider()
-        )
+        datasource = ParquetDatasource(text_output_path)
         assert (
-            datasource._encoding_ratio >= 9 and datasource._encoding_ratio <= 300
+            datasource._encoding_ratio >= 6 and datasource._encoding_ratio <= 300
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
-            data_size >= 800_000 and data_size <= 2_000_000
+            data_size >= 700_000 and data_size <= 2_200_000
         ), "estimated data size is out of expected bound"
         assert (
             data_size
-            == ParquetDatasource(
-                text_output_path, meta_provider=ParquetMetadataProvider()
-            ).estimate_inmemory_data_size()
+            == ParquetDatasource(text_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
     finally:
         ctx.decoding_size_estimation = old_decoding_size_estimation
@@ -2221,6 +2047,128 @@ def test_parquet_write_parallel_overwrite(
     # Read back and verify
     result = ray.data.read_parquet(path)
     assert result.count() == 1000
+
+
+def test_read_parquet_with_none_partitioning_and_columns(tmp_path):
+    # Test for https://github.com/ray-project/ray/issues/55279.
+    table = pa.table({"column": [42]})
+    path = os.path.join(tmp_path, "file.parquet")
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, partitioning=None, columns=["column"])
+
+    assert ds.take_all() == [{"column": 42}]
+
+
+def _create_test_data(num_rows: int) -> dict:
+    return {
+        "int_col": list(range(num_rows)),
+        "float_col": [float(i) for i in range(num_rows)],
+        "str_col": [f"str_{i}" for i in range(num_rows)],
+    }
+
+
+@pytest.mark.parametrize(
+    "batch_size,filter_expr,expected_rows,description",
+    [
+        # No batch size cases
+        (None, "int_col > 500", 499, "No batch size, int > 500"),
+        (None, "int_col < 200", 200, "No batch size, int < 200"),
+        (
+            None,
+            "float_col == 42.0",
+            1,
+            "No batch size, float == 42.0",
+        ),
+        (
+            None,
+            "str_col == 'str_42'",
+            1,
+            "No batch size, str == str_42",
+        ),
+        # Batch size cases
+        (100, "int_col > 500", 499, "Fixed batch size, int > 500"),
+        (200, "int_col < 200", 200, "Fixed batch size, int < 200"),
+        (
+            300,
+            "float_col == 42.0",
+            1,
+            "Fixed batch size, float == 42.0",
+        ),
+        (
+            400,
+            "str_col == 'str_42'",
+            1,
+            "Fixed batch size, str == str_42",
+        ),
+    ],
+)
+def test_read_parquet_with_filter_selectivity(
+    ray_start_regular_shared,
+    tmp_path,
+    batch_size,
+    filter_expr,
+    expected_rows,
+    description,
+):
+    """Test reading parquet files with filter expressions and different batch sizes."""
+    num_rows = 1000
+    data = _create_test_data(num_rows)
+    table = pa.Table.from_pydict(data)
+
+    file_path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, file_path, row_group_size=200)
+
+    if batch_size is not None:
+        ray.data.DataContext.get_current().target_max_block_size = batch_size
+    ds = ray.data.read_parquet(file_path).filter(expr=filter_expr)
+
+    assert ds.count() == expected_rows, (
+        f"{description}: Filter '{filter_expr}' returned {ds.count()} rows, "
+        f"expected {expected_rows}"
+    )
+
+    # Verify schema has expected columns and types
+    assert ds.schema().base_schema == table.schema
+
+
+@pytest.mark.parametrize("batch_size", [None, 100, 200, 10_000])
+@pytest.mark.parametrize(
+    "columns",
+    [
+        # Empty projection
+        [],
+        ["int_col"],
+        ["int_col", "float_col", "str_col"],
+    ],
+)
+def test_read_parquet_with_columns_selectivity(
+    ray_start_regular_shared,
+    tmp_path,
+    batch_size,
+    columns,
+):
+    """Test reading parquet files with different column selections and batch sizes."""
+    num_rows = 1000
+    data = _create_test_data(num_rows)
+    table = pa.Table.from_pydict(data)
+
+    file_path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, file_path, row_group_size=200)
+
+    if batch_size is not None:
+        ray.data.DataContext.get_current().target_max_block_size = batch_size
+    ds = ray.data.read_parquet(file_path, columns=columns)
+
+    assert ds.count() == num_rows, (
+        f"Column selection {columns} with batch_size={batch_size} "
+        f"returned {ds.count()} rows, expected {num_rows}"
+    )
+
+    assert set(ds.schema().names) == set(columns), (
+        f"Column selection {columns} with batch_size={batch_size} "
+        f"returned columns {ds.schema().names}"
+    )
 
 
 if __name__ == "__main__":

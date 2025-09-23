@@ -15,14 +15,15 @@
 #pragma once
 
 #include "gmock/gmock.h"
-#include "ray/pubsub/subscriber_interface.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 
 namespace ray {
 namespace rpc {
 
 class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
  public:
+  MOCK_METHOD(const Address &, Addr, (), (const, override));
+  MOCK_METHOD(bool, IsIdleAfterRPCs, (), (const, override));
   MOCK_METHOD(void,
               PushActorTask,
               (std::unique_ptr<PushTaskRequest> request,
@@ -47,7 +48,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               GetObjectStatus,
-              (const GetObjectStatusRequest &request,
+              (GetObjectStatusRequest && request,
                const ClientCallback<GetObjectStatusReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -57,17 +58,17 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               PubsubLongPolling,
-              (const PubsubLongPollingRequest &request,
+              (PubsubLongPollingRequest && request,
                const ClientCallback<PubsubLongPollingReply> &callback),
               (override));
   MOCK_METHOD(void,
               PubsubCommandBatch,
-              (const PubsubCommandBatchRequest &request,
+              (PubsubCommandBatchRequest && request,
                const ClientCallback<PubsubCommandBatchReply> &callback),
               (override));
   MOCK_METHOD(void,
               UpdateObjectLocationBatch,
-              (const UpdateObjectLocationBatchRequest &request,
+              (UpdateObjectLocationBatchRequest && request,
                const ClientCallback<UpdateObjectLocationBatchReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -128,6 +129,31 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               AssignObjectOwner,
               (const AssignObjectOwnerRequest &request,
                const ClientCallback<AssignObjectOwnerReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              ReportGeneratorItemReturns,
+              (ReportGeneratorItemReturnsRequest && request,
+               const ClientCallback<ReportGeneratorItemReturnsReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              RegisterMutableObjectReader,
+              (const RegisterMutableObjectReaderRequest &request,
+               const ClientCallback<RegisterMutableObjectReaderReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              DeleteObjects,
+              (const DeleteObjectsRequest &request,
+               const ClientCallback<DeleteObjectsReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              RayletNotifyGCSRestart,
+              (const RayletNotifyGCSRestartRequest &request,
+               const ClientCallback<RayletNotifyGCSRestartReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              FreeActorObject,
+              (const FreeActorObjectRequest &request,
+               const ClientCallback<FreeActorObjectReply> &callback),
               (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };

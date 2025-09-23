@@ -6,7 +6,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
 
 .. note::
 
-   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus, and `JobId` (Ray job id, as applicable).
+   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
 
 .. list-table:: Ray System Metrics
    :header-rows: 1
@@ -19,10 +19,10 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See `rpc::TaskState <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583>`_ for more information. The function/method name is available as the Name label. If the task was retried due to failure or reconstruction, the IsRetry label will be set to "1", otherwise "0".
    * - `ray_actors`
      - `Name`, `State`
-     - Current number of actors in a particular state. The State label is described by `rpc::ActorTableData <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L85>`_ proto in gcs.proto. The actor class name is available in the Name label.
+     - Current number of actors in each state described in `rpc::ActorTableData::ActorState <https://github.com/ray-project/ray/blob/b3799a53dcabd8d1a4d20f22faa98e781b0059c7/src/ray/protobuf/gcs.proto#L79>`. ALIVE has two sub-states: ALIVE_IDLE, and ALIVE_RUNNING_TASKS. An actor is considered ALIVE_IDLE if it is not running any tasks.
    * - `ray_resources`
      - `Name`, `State`, `InstanceId`
-     - Logical resource usage for each node of the cluster. Each resource has some quantity that is `in either <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L188>`_ USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
+     - Logical resource usage for each node of the cluster. Each resource has some quantity that is in either `USED or AVAILABLE state <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L188>`_. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
      - `Location`, `ObjectState`, `InstanceId`
      - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, MMAP_DISK, MMAP_SHM, and WORKER_HEAP). Definitions are as follows. SPILLED--Objects that have spilled to disk or a remote Storage solution (for example, AWS S3). The default is the disk. MMAP_DISK--Objects stored on a memory-mapped page on disk. This mode very slow and only happens under severe memory pressure. MMAP_SHM--Objects store on a memory-mapped page in Shared Memory. This mode is the default, in the absence of memory pressure. WORKER_HEAP--Objects, usually smaller, stored in the memory of the Ray Worker process itself. Small objects are stored in the worker heap.

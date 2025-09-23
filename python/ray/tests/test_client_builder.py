@@ -7,9 +7,9 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray.client_builder as client_builder
 import ray.util.client.server.server as ray_client_server
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,

@@ -1,10 +1,11 @@
-from collections import defaultdict, namedtuple
 import gc
 import os
 import re
 import time
 import tracemalloc
+from collections import defaultdict, namedtuple
 from typing import Callable, List, Optional
+
 from ray.util.annotations import DeveloperAPI
 
 _logged = set()
@@ -210,8 +211,8 @@ def _take_snapshot(table, suspicious=None):
 
 
 def _find_memory_leaks_in_table(table):
-    import scipy.stats
     import numpy as np
+    import scipy.stats
 
     suspects = []
 

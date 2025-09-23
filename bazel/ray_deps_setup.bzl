@@ -129,8 +129,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_spdlog",
         build_file = "@io_ray//bazel:spdlog.BUILD",
-        urls = ["https://github.com/gabime/spdlog/archive/v1.12.0.zip"],
-        sha256 = "6174bf8885287422a6c6a0312eb8a30e8d22bcfcee7c48a6d02d1835d7769232",
+        url = "https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.zip",
+        sha256 = "b74274c32c8be5dba70b7006c1d41b7d3e5ff0dff8390c8b6390c1189424e094",
         # spdlog rotation filename format conflict with ray, update the format.
         patches = [
             "@io_ray//thirdparty/patches:spdlog-rotation-file-format.patch",
@@ -255,6 +255,10 @@ def ray_deps_setup():
         urls = [
             "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
         ],
+        patches = [
+            # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
+            "@io_ray//thirdparty/patches:abseil-cpp-shadow.patch",
+        ],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -357,6 +361,8 @@ def ray_deps_setup():
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
         patches = [
             "@io_ray//thirdparty/patches:msgpack-windows-iovec.patch",
+            # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
+            "@io_ray//thirdparty/patches:msgpack-shadow.patch",
         ],
     )
 

@@ -1,7 +1,8 @@
-import ray
 import os
-import time
 import random
+import time
+
+import ray
 
 
 @ray.remote
