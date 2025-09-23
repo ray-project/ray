@@ -26,7 +26,6 @@ import numpy as np
 
 import ray
 import ray.cloudpickle as pickle
-import ray.util.state as STATE
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.util.tensor_extensions.arrow import (
@@ -118,6 +117,7 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.state import list_actors, summarize_actors
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -2089,11 +2089,9 @@ class Dataset:
             """Build a map from a actor to its node_id."""
             actors_state = {
                 actor.actor_id: actor.node_id
-                for actor in STATE.list_actors(
+                for actor in list_actors(
                     detail=True,
-                    limit=STATE.summarize_actors()
-                    .get("cluster", {})
-                    .get("total_actors", 0)
+                    limit=summarize_actors().get("cluster", {}).get("total_actors", 0)
                     + 100,  # fetch current actors. Some staleness is assumed fine.
                 )
             }

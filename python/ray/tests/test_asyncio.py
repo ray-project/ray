@@ -8,13 +8,13 @@ import time
 import pytest
 
 import ray
-import ray.util.state as STATE
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     wait_for_pid_to_exit,
 )
+from ray.util.state import get_actor
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -246,7 +246,7 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     @ray.remote
     def check_actor_gone_now():
         def cond():
-            return STATE.get_actor(id=a._ray_actor_id.hex()).state != "ALIVE"
+            return get_actor(id=a._ray_actor_id.hex()).state != "ALIVE"
 
         wait_for_condition(cond)
 
