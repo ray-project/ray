@@ -133,9 +133,9 @@ class RequestRouterConfig(BaseModel):
             **kwargs: Keyword arguments to pass to BaseModel.
         """
         super().__init__(**kwargs)
-        self._serialize_request_router_cls()
+        self._normalize_request_router_cls()
 
-    def _serialize_request_router_cls(self) -> None:
+    def _normalize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
 
         Import the request router if you pass it in as a string import path.
@@ -149,15 +149,13 @@ class RequestRouterConfig(BaseModel):
             )
 
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
-        request_router_class = import_attr(request_router_path)
 
-        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_request_router_cls)
+        return import_attr(self.request_router_class)
 
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
