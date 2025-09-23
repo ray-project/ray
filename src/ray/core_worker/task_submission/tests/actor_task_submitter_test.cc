@@ -23,7 +23,7 @@
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 
 namespace ray::core {
 
