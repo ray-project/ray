@@ -21,7 +21,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_rpc_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
@@ -30,7 +30,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
-#include "ray/rpc/object_manager/fake_object_manager_client.h"
+#include "ray/object_manager_rpc_client/fake_object_manager_client.h"
 
 namespace ray {
 

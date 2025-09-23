@@ -23,7 +23,7 @@
 
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
-#include "mock/ray/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_rpc_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "mock/ray/raylet/local_lease_manager.h"
@@ -33,15 +33,15 @@
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray::raylet {
 using ::testing::_;

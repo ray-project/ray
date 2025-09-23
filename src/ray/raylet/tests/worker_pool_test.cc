@@ -26,14 +26,14 @@
 #include <vector>
 
 #include "absl/time/time.h"
-#include "mock/ray/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_rpc_client/gcs_client.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/raylet/runtime_env_agent_client.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"

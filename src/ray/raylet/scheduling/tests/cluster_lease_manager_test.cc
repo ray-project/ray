@@ -35,7 +35,7 @@
 #include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
-#include "mock/ray/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_rpc_client/gcs_client.h"
 // clang-format on
 
 namespace ray {

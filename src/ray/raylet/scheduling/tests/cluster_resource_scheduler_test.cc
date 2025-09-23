@@ -28,7 +28,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
-#include "mock/ray/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_rpc_client/gcs_client.h"
 // clang-format on
 using namespace std;  // NOLINT
 

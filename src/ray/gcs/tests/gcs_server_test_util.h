@@ -33,7 +33,7 @@
 #include "ray/gcs/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 
