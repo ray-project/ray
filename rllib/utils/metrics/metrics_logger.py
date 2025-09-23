@@ -3,11 +3,18 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
-from ray.rllib.utils.metrics.stats import Stats, merge_stats
+from ray.rllib.utils.metrics.stats import (
+    merge_stats,
+    Stats,
+    SumStats,
+    MeanStats,
+    MinStats,
+    MaxStats,
+    PercentilesStats,
+)
 from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
-from ray.util import log_once
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -402,81 +409,58 @@ class MetricsLogger:
         with self._threading_lock:
             # `key` doesn't exist -> Automatically create it.
             if not self._key_in_stats(key):
-                self._set_key(
-                    key,
-                    (
-                        Stats(
-                            value,
-                            reduce=reduce,
-                            percentiles=percentiles,
+                if reduce == "mean":
+                    self._set_key(
+                        key,
+                        MeanStats(
                             window=window,
                             ema_coeff=ema_coeff,
                             clear_on_reduce=clear_on_reduce,
                             throughput=with_throughput,
-                            throughput_ema_coeff=throughput_ema_coeff,
-                            reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
-                        )
-                    ),
-                )
-            else:
-                stats = self._get_key(key)
-                if reduce != stats._reduce_method and log_once(f"reduce_warning_{key}"):
-                    logger.warning(
-                        f"reduce should be the same for all logged values under the same key, "
-                        f"but got argument reduce={reduce} while the existing Stats object {key} "
-                        f"has reduce={stats._reduce_method}."
+                        ),
                     )
-                if clear_on_reduce != stats._clear_on_reduce and log_once(
-                    f"clear_on_reduce_warning_{key}"
-                ):
-                    logger.warning(
-                        f"clear_on_reduce should be the same for all logged values under the same key, "
-                        f"but got argument clear_on_reduce={clear_on_reduce} while the existing Stats object {key} "
-                        f"has clear_on_reduce={stats._clear_on_reduce}."
+                elif reduce == "min":
+                    self._set_key(
+                        key,
+                        MinStats(
+                            window=window,
+                            clear_on_reduce=clear_on_reduce,
+                            throughput=with_throughput,
+                        ),
                     )
-                if with_throughput != bool(stats.has_throughput) and log_once(
-                    f"with_throughput_warning_{key}"
-                ):
-                    logger.warning(
-                        f"with_throughput should be the same for all logged values under the same key, "
-                        f"but got argument with_throughput={with_throughput} while the existing Stats object {key} "
-                        f"has has_throughput={stats.has_throughput}. This warning will always be shown if you are using an older checkpoint."
+                elif reduce == "max":
+                    self._set_key(
+                        key,
+                        MaxStats(
+                            window=window,
+                            clear_on_reduce=clear_on_reduce,
+                            throughput=with_throughput,
+                        ),
                     )
-                if throughput_ema_coeff != stats._throughput_ema_coeff and log_once(
-                    f"throughput_ema_coeff_warning_{key}"
-                ):
-                    logger.warning(
-                        f"throughput_ema_coeff should be the same for all logged values under the same key, "
-                        f"but got argument throughput_ema_coeff={throughput_ema_coeff} while the existing Stats object {key} "
-                        f"has throughput_ema_coeff={stats._throughput_ema_coeff}. This warning will always be shown if you are using an older checkpoint."
+                elif reduce == "sum":
+                    self._set_key(
+                        key,
+                        SumStats(
+                            window=window,
+                            clear_on_reduce=clear_on_reduce,
+                            throughput=with_throughput,
+                        ),
                     )
-                if window != stats._window and log_once(f"window_warning_{key}"):
-                    logger.warning(
-                        f"window should be the same for all logged values under the same key, "
-                        f"but got argument window={window} while the existing Stats object {key} "
-                        f"has window={stats._window}."
+                elif reduce is None:
+                    self._set_key(
+                        key,
+                        PercentilesStats(
+                            window=window,
+                            percentiles=percentiles,
+                            clear_on_reduce=clear_on_reduce,
+                            throughput=with_throughput,
+                        ),
                     )
-                if percentiles != getattr(stats, "_percentiles", False) and log_once(
-                    f"percentiles_warning_{key}"
-                ):
-                    logger.warning(
-                        "percentiles should be the same for all logged values under the same key, "
-                        f"but got argument percentiles={percentiles} while the existing Stats object {key} "
-                        f"has percentiles={getattr(stats, '_percentiles', False)}."
-                    )
+                else:
+                    raise ValueError(f"Invalid reduce method: {reduce}")
 
-                if (
-                    reduce_per_index_on_aggregate
-                    != stats._reduce_per_index_on_aggregate
-                    and log_once(f"reduce_per_index_on_aggregate_warning_{key}")
-                ):
-                    logger.warning(
-                        f"reduce_per_index_on_aggregate should be the same for all logged values under the same key, "
-                        f"but got argument reduce_per_index_on_aggregate={reduce_per_index_on_aggregate} while the existing Stats object {key} "
-                        f"has reduce_per_index_on_aggregate={stats._reduce_per_index_on_aggregate}."
-                    )
-
-                stats.push(value)
+            stats = self._get_key(key)
+            stats.push(value)
 
     def log_dict(
         self,
@@ -919,20 +903,55 @@ class MetricsLogger:
             ema_coeff = 0.01
 
         if not self._key_in_stats(key):
-            self._set_key(
-                key,
-                Stats(
-                    init_values=None,
-                    reduce=reduce,
-                    percentiles=percentiles,
-                    window=window,
-                    ema_coeff=ema_coeff,
-                    clear_on_reduce=clear_on_reduce,
-                    throughput=with_throughput,
-                    throughput_ema_coeff=throughput_ema_coeff,
-                    reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
-                ),
-            )
+            if reduce == "mean":
+                self._set_key(
+                    key,
+                    MeanStats(
+                        window=window,
+                        ema_coeff=ema_coeff,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce == "min":
+                self._set_key(
+                    key,
+                    MinStats(
+                        window=window,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce == "max":
+                self._set_key(
+                    key,
+                    MaxStats(
+                        window=window,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce == "sum":
+                self._set_key(
+                    key,
+                    SumStats(
+                        window=window,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce is None:
+                self._set_key(
+                    key,
+                    PercentilesStats(
+                        window=window,
+                        percentiles=percentiles,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            else:
+                raise ValueError(f"Invalid reduce method: {reduce}")
 
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self._get_key(key)

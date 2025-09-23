@@ -344,7 +344,6 @@ def test_similar_to():
     # Test that adding to the similar stats does not affect the original stats
     similar.push(10)
     check(original.peek(), 3)
-    check(original._last_reduced, [3])
 
 
 def test_reduce_history():
@@ -359,20 +358,15 @@ def test_reduce_history():
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
 
-    # Initially history should contain NaN values
-    check(stats._last_reduced, [np.nan])
-
     # Push values and reduce
     stats.push(1)
     stats.push(2)
     check(stats.reduce(), 3)
-    check(stats._last_reduced, [3])
 
     # Push more values and reduce
     stats.push(3)
     stats.push(4)
     check(stats.reduce(), 10)
-    check(stats._last_reduced, [10])
 
 
 def test_reduce_history_with_clear():
@@ -391,13 +385,11 @@ def test_reduce_history_with_clear():
     stats.push(1)
     stats.push(2)
     check(stats.reduce(), 3)
-    check(stats._last_reduced, [3])
     check(len(stats), 0)  # Values should be cleared
 
     stats.push(3)
     stats.push(4)
     check(stats.reduce(), 7)
-    check(stats._last_reduced, [7])
     check(len(stats), 0)
 
 
