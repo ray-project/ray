@@ -146,9 +146,9 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   if (!lease_spec.GetRequiredResources().IsEmpty()) {
     auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value()
-                                  : gcs_node_manager_.SelectNodeRandomly();
+                                  : gcs_node_manager_.SelectRandomAliveNode();
   } else {
-    node = gcs_node_manager_.SelectNodeRandomly();
+    node = gcs_node_manager_.SelectRandomAliveNode();
   }
 
   return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();

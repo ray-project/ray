@@ -70,16 +70,18 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
   rpc::RegisterNodeReply register_reply;
-  std::promise<bool> register_promise;
-  auto send_register_reply_callback = [&register_promise](ray::Status status,
-                                                          std::function<void()> f1,
-                                                          std::function<void()> f2) {
-    register_promise.set_value(true);
+  std::atomic_int callbacks_remaining = 1;
+  auto send_register_reply_callback = [&callbacks_remaining](ray::Status status,
+                                                             std::function<void()> f1,
+                                                             std::function<void()> f2) {
+    callbacks_remaining--;
   };
   // Add a node to the manager
   node_manager.HandleRegisterNode(
       register_request, &register_reply, send_register_reply_callback);
-  register_promise.get_future().get();
+  while (callbacks_remaining > 0) {
+    io_context_->run_one();
+  }
   auto register_events = fake_ray_event_recorder_->FlushBuffer();
 
   // Test the node definition event + alive node lifecycle event
@@ -116,15 +118,17 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
       rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
   rpc::UnregisterNodeReply unregister_reply;
-  std::promise<bool> unregister_promise;
-  auto send_unregister_reply_callback = [&unregister_promise](ray::Status status,
-                                                              std::function<void()> f1,
-                                                              std::function<void()> f2) {
-    unregister_promise.set_value(true);
+  callbacks_remaining = 1;
+  auto send_unregister_reply_callback = [&callbacks_remaining](ray::Status status,
+                                                               std::function<void()> f1,
+                                                               std::function<void()> f2) {
+    callbacks_remaining--;
   };
   node_manager.HandleUnregisterNode(
       unregister_request, &unregister_reply, send_unregister_reply_callback);
-  unregister_promise.get_future().get();
+  while (callbacks_remaining > 0) {
+    io_context_->run_one();
+  }
 
   // Test the dead node lifecycle event
   auto unregister_events = fake_ray_event_recorder_->FlushBuffer();

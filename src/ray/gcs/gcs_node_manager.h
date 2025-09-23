@@ -138,7 +138,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// Selects a random node from the list of alive nodes
   ///
   /// \returns a random node or nullptr if there are no alive nodes
-  std::shared_ptr<const rpc::GcsNodeInfo> SelectNodeRandomly() const;
+  std::shared_ptr<const rpc::GcsNodeInfo> SelectRandomAliveNode() const;
 
   /// Get all dead nodes.
   ///

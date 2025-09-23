@@ -154,8 +154,8 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
 void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
-  reply->set_ray_version(kRayVersion);
   absl::ReaderMutexLock lock(&mutex_);
+  reply->set_ray_version(kRayVersion);
   for (const auto &id : request.node_ids()) {
     const auto node_id = NodeID::FromBinary(id);
     const bool is_alive = alive_nodes_.contains(node_id);
@@ -340,7 +340,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::SelectNodeRandomly() const {
+std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::SelectRandomAliveNode() const {
   absl::ReaderMutexLock lock(&mutex_);
   if (alive_nodes_.empty()) {
     return nullptr;
