@@ -7,8 +7,8 @@ from typing import Optional, Deque, Iterator, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import ray
+    from ray._private.worker import Worker
 from ray.exceptions import ObjectRefStreamEndOfStreamError
-from ray._private.worker import Worker
 
 @DeveloperAPI
 class DynamicObjectRefGenerator:
@@ -207,6 +207,9 @@ class ObjectRefGenerator:
         Args:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
+        Returns:
+            ObjectRef: The next object reference if available, 
+                otherwise returns ObjectRef.nil() when timeout occurs.
         """
         core_worker = self.worker.core_worker
 
