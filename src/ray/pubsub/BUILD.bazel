@@ -4,10 +4,9 @@ ray_cc_library(
     name = "publisher_interface",
     hdrs = ["publisher_interface.h"],
     deps = [
+        "//src/ray/common:id",
         "//src/ray/protobuf:pubsub_cc_grpc",
-        # NOTE(edoakes): we only seem to need `SendReplyCallback` from server_call.h.
-        # We should move that definition to its own target.
-        "//src/ray/rpc:server_call",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 
@@ -16,11 +15,10 @@ ray_cc_library(
     srcs = ["publisher.cc"],
     hdrs = ["publisher.h"],
     deps = [
+        "//src/ray/common:asio",
         "//src/ray/protobuf:pubsub_cc_grpc",
-        # NOTE(edoakes): we only seem to need `SendReplyCallback` from server_call.h.
-        # We should move that definition to its own target.
         "//src/ray/pubsub:publisher_interface",
-        "//src/ray/rpc:server_call",
+        "//src/ray/rpc:rpc_callback_types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -31,11 +29,10 @@ ray_cc_library(
     name = "subscriber_interface",
     hdrs = ["subscriber_interface.h"],
     deps = [
+        "//src/ray/common:id",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:pubsub_cc_grpc",
-        # NOTE(edoakes): we only seem to need `ClientCallback` from client_call.h.
-        # We should move that definition to its own target.
-        "//src/ray/rpc:client_call",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 
@@ -44,11 +41,10 @@ ray_cc_library(
     srcs = ["subscriber.cc"],
     hdrs = ["subscriber.h"],
     deps = [
+        "//src/ray/common:asio",
         "//src/ray/protobuf:pubsub_cc_grpc",
-        # NOTE(edoakes): we only seem to need `ClientCallback` from client_call.h.
-        # We should move that definition to its own target.
-        "//src/ray/rpc:client_call",
         "//src/ray/pubsub:subscriber_interface",
+        "//src/ray/rpc:rpc_callback_types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -62,7 +58,6 @@ ray_cc_library(
     deps = [
         ":subscriber_interface",
         "//src/ray/protobuf:pubsub_cc_proto",
-        "//src/ray/rpc:client_call",
     ],
 )
 
@@ -92,7 +87,7 @@ ray_cc_library(
     hdrs = ["gcs_subscriber.h"],
     deps = [
         ":subscriber_interface",
-        "//src/ray/common:gcs_callbacks",
+        "//src/ray/common:gcs_callback_types",
         "//src/ray/protobuf:gcs_cc_proto",
     ],
 )

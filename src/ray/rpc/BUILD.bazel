@@ -10,8 +10,12 @@ ray_cc_library(
 ray_cc_library(
     name = "client_call",
     hdrs = ["client_call.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        ":__pkg__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
+        ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -41,7 +45,6 @@ ray_cc_library(
     hdrs = ["retryable_grpc_client.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":client_call",
         ":grpc_client",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings:str_format",
@@ -92,8 +95,9 @@ ray_cc_library(
     name = "server_call",
     srcs = ["server_call.cc"],
     hdrs = ["server_call.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
+        ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -131,7 +135,6 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grpc_server",
-        ":server_call",
         "//src/ray/protobuf:node_manager_cc_grpc",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -161,5 +164,14 @@ ray_cc_library(
     deps = [
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "rpc_callback_types",
+    hdrs = ["rpc_callback_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
     ],
 )

@@ -26,7 +26,7 @@
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace rpc {

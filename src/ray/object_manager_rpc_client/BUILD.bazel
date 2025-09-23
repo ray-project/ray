@@ -24,6 +24,22 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "object_manager_server",
+    hdrs = [
+        "object_manager_server.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/object_manager:object_manager_grpc_client_manager",
+        "//src/ray/protobuf:object_manager_cc_grpc",
+        "//src/ray/rpc:grpc_server",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
     name = "fake_object_manager_client",
     hdrs = ["fake_object_manager_client.h"],
     deps = [
