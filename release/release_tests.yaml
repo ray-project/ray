@@ -1839,135 +1839,25 @@
   alert: default
 
 
-- name: xgboost_train_batch_inference_benchmark_10G
+- name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
-  frequency: nightly
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_aws_1worker.yaml
-
-  run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "xgboost" --size=10G
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_1worker.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
-- name: xgboost_train_batch_inference_benchmark_100G
-  group: Train tests
-  working_dir: train_tests/xgboost_lightgbm
+  matrix:
+    setup:
+      framework: [xgboost, lightgbm]
+      size: [10G, 100G]
 
   frequency: nightly-3x
   team: ml
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_aws_10workers.yaml
+    cluster_compute: compute_aws_{{size}}.yaml
 
   run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "xgboost" --size=100G
-
-    wait_for_nodes:
-      num_nodes: 11
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_10workers.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
-
-- name: lightgbm_train_batch_inference_benchmark_10G
-  group: Train tests
-  working_dir: train_tests/xgboost_lightgbm
-
-  frequency: nightly
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_aws_1worker.yaml
-
-  run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "lightgbm" --size=10G
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_1worker.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
-
-- name: lightgbm_train_batch_inference_benchmark_100G
-  group: Train tests
-  working_dir: train_tests/xgboost_lightgbm
-
-  frequency: nightly-3x
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_aws_10workers.yaml
-
-  run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "lightgbm" --size=100G
-
-    wait_for_nodes:
-      num_nodes: 11
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_10workers.yaml
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python train_batch_inference_benchmark.py "{{framework}}" --size={{size}}
 
   smoke_test:
     frequency: manual
