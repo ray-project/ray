@@ -22,6 +22,7 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
+from ray._raylet import NodeID
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
@@ -61,6 +62,7 @@ async def test_get_scheduling_strategy(
     gcs_client = ray._private.worker.global_worker.gcs_client
 
     job_manager = JobManager(gcs_client, tmp_path)
+    node_id = NodeID.from_random().hex()
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_client.async_internal_kv_del(
@@ -74,7 +76,7 @@ async def test_get_scheduling_strategy(
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_client.async_internal_kv_put(
         KV_HEAD_NODE_ID_KEY,
-        "123456".encode(),
+        node_id.encode(),
         True,
         namespace=KV_NAMESPACE_JOB,
     )
@@ -82,7 +84,7 @@ async def test_get_scheduling_strategy(
     if resources_specified:
         assert strategy == "DEFAULT"
     else:
-        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        expected_strategy = NodeAffinitySchedulingStrategy(node_id, soft=False)
         assert expected_strategy.node_id == strategy.node_id
         assert expected_strategy.soft == strategy.soft
 
