@@ -101,7 +101,7 @@ def _run_head_and_workers(
                 t.start()
 
             for t in threads:
-                t.join(timeout=120)  # TODO: reduce timeout
+                t.join(timeout=15)
     finally:
         head_ready.set()
         workers_ready.set()
