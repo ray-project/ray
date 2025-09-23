@@ -27,12 +27,12 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
 
 namespace ray {
 namespace gcs {
