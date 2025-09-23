@@ -12,7 +12,7 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Flarge-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/large-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a href="https://github.com/ray-proj    ect/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/large-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 A large LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. When higher latency, complexity, and cost are acceptable trade-offs because you require state-of-the-art results.
@@ -331,8 +331,8 @@ Quantizing or distilling your model reduces its memory footprint, freeing up spa
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
 **Scale with more replicas**  
-In addition to tuning per-GPU concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
-Each replica runs on its own GPU, so raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
+In addition to tuning per-replica concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
+Raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
 ```yaml
 deployment_config:
   autoscaling_config:

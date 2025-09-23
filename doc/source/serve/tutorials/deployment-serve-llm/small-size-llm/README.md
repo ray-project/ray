@@ -289,8 +289,8 @@ Distribute the model across multiple GPUs with `tensor_parallel_size > 1`.
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
 **Scale with more Replicas**  
-In addition to tuning per-GPU concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
-Each replica runs on its own GPU, so raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
+In addition to tuning per-replica concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
+Raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
 ```yaml
 deployment_config:
   autoscaling_config:

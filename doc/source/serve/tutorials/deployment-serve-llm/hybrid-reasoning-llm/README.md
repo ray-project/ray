@@ -138,6 +138,7 @@ llm_config = LLMConfig(
     accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
+            # Increase number of replicas for higher throughput/concurrency.
             min_replicas=1,
             max_replicas=2,
         )
@@ -145,7 +146,7 @@ llm_config = LLMConfig(
     ### Uncomment if your model is gated and needs your Hugging Face token to access it.
     # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
-        # 4 GPUs is enough but you can increase tensor_parallel_size to more GPUs for better concurrency.
+        # 4 GPUs is enough but you can increase tensor_parallel_size to fit larger models.
         tensor_parallel_size=4, max_model_len=32768, reasoning_parser="qwen3"
     ),
 )
