@@ -4223,7 +4223,7 @@
 
   cluster:
     byod:
-      type: cu124
+      type: cu123
       post_build_script: byod_e2e_timeseries.sh
       python_depset: e2e_timeseries_py311_cu124.lock
     cluster_compute: ci/aws.yaml
