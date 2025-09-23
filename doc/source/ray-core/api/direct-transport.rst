@@ -34,4 +34,4 @@ Advanced APIs
     :nosignatures:
     :toctree: doc/
 
-    ray.experimental.collective.wait_tensor_freed
+    ray.experimental.wait_tensor_freed
