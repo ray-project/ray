@@ -209,9 +209,14 @@ class ProcessFD {
 
     pid = pipefds[1] != -1 ? fork() : -1;
 
+    // The process was forked successfully and we're executing in the child
+    // process.
+    if (pid == 0) {
+      add_to_cgroup(std::to_string(getpid()));
+    }
+
     // If we don't pipe to stdin close pipes that are not needed.
     if (pid <= 0 && pipefds[0] != -1) {
-      add_to_cgroup(std::to_string(getpid()));
       close(pipefds[0]);  // not the parent, so close the read end of the pipe
       pipefds[0] = -1;
     }
