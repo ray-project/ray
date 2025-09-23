@@ -44,7 +44,7 @@ class DTensorTestActor:
         )
         self.mesh = init_device_mesh("cuda", (self.world_size,))
 
-    # @ray.method(tensor_transport="nccl")
+    @ray.method(tensor_transport="nccl")
     def create_dtensor(self, M: int = 4, N: int = 2):
         """Create a distributed tensor sharded across the mesh."""
         global_tensor = torch.arange(M * N, dtype=torch.float32, device="cuda").view(
