@@ -2876,27 +2876,32 @@ def unify_schemas_nested_struct_tensors_schemas():
     return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
 
 
-def test_concat_with_mixed_tensor_types_and_native_pyarrow_types():
-    num_rows = 512
+@pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
+def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
+    use_arrow_tensor_v2, restore_data_context
+):
+    DataContext.get_current().use_arrow_tensor_v2 = use_arrow_tensor_v2
+
+    num_rows = 1024
 
     # Block A: int is uint64; tensor = Ray tensor extension
     t_uint = pa.table(
         {
-            "int": pa.array(np.zeros(num_rows, dtype=np.uint64), type=pa.uint64()),
+            "int": pa.array(np.zeros(num_rows // 2, dtype=np.uint64), type=pa.uint64()),
             "tensor": ArrowTensorArray.from_numpy(
-                np.zeros((num_rows, 3, 3), dtype=np.float32)
+                np.zeros((num_rows // 2, 3, 3), dtype=np.float32)
             ),
         }
     )
 
     # Block B: int is float64 with NaNs; tensor = same extension type
-    f = np.ones(num_rows, dtype=np.float64)
+    f = np.ones(num_rows // 2, dtype=np.float64)
     f[::8] = np.nan
     t_float = pa.table(
         {
             "int": pa.array(f, type=pa.float64()),
             "tensor": ArrowTensorArray.from_numpy(
-                np.zeros((num_rows, 3, 3), dtype=np.float32)
+                np.zeros((num_rows // 2, 3, 3), dtype=np.float32)
             ),
         }
     )
@@ -2911,8 +2916,14 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types():
     ds.materialize()
 
     # Ensure that the result is correct
+    # Determine expected tensor type based on current DataContext setting
+    if use_arrow_tensor_v2:
+        expected_tensor_type = ArrowTensorTypeV2((3, 3), pa.float32())
+    else:
+        expected_tensor_type = ArrowTensorType((3, 3), pa.float32())
+
     assert ds.schema().base_schema == pa.schema(
-        [("int", pa.float64()), ("tensor", ArrowTensorType((512, 3, 3), pa.float32()))]
+        [("int", pa.float64()), ("tensor", expected_tensor_type)]
     )
     assert ds.count() == num_rows
 
