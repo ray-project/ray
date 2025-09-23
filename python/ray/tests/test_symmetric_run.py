@@ -292,7 +292,12 @@ def test_symmetric_run_multi_node(monkeypatch, cleanup_ray):
     assert head_result is not None
     assert all(result is not None for result in worker_results)
     assert head_result.exception is None
-    assert all(result.exception is None for result in worker_results)
+    worker_exceptions = [result.exception for result in worker_results]
+    if not all(exc is None for exc in worker_exceptions):
+        debug_outputs = [result.output for result in worker_results]
+        raise RuntimeError(
+            f"Worker exceptions encountered: {worker_exceptions}. Outputs: {debug_outputs}"
+        )
     assert head_result.exit_code == 0
     assert all(result.exit_code == 0 for result in worker_results)
     assert "On head node. Starting Ray cluster head..." in head_result.output
