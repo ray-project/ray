@@ -563,7 +563,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
         if (
             len(
                 list_actors(
-                    filters=("state", "=", state) if state else None,
+                    filters=[("state", "=", state)] if state else None,
                     limit=num_actors,
                 )
             )

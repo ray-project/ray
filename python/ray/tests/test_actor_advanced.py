@@ -968,6 +968,69 @@ def test_kill_pending_actor_with_no_restart_true():
     ray.shutdown()
 
 
+def test_actor_timestamps(ray_start_regular):
+    @ray.remote
+    class Foo:
+        def get_id(self):
+            return ray.get_runtime_context().get_actor_id()
+
+        def kill_self(self):
+            sys.exit(1)
+
+    def graceful_exit():
+        actor = Foo.remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray._private.state.actors()[actor_id]
+        time.sleep(1)
+        del actor
+        time.sleep(1)
+        state_after_ending = ray._private.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
+
+    def not_graceful_exit():
+        actor = Foo.remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray._private.state.actors()[actor_id]
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        state_after_ending = ray._private.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
+
+    def restarted():
+        actor = Foo.options(max_restarts=1, max_task_retries=-1).remote()
+        actor_id = ray.get(actor.get_id.remote())
+
+        state_after_starting = ray._private.state.actors()[actor_id]
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        actor.kill_self.remote()
+        time.sleep(1)
+        state_after_ending = ray._private.state.actors()[actor_id]
+
+        assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
+
+        start_time = state_after_ending["StartTime"]
+        end_time = state_after_ending["EndTime"]
+        assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
+
+    graceful_exit()
+    not_graceful_exit()
+    restarted()
+
+
 def test_kill_pending_actor_with_no_restart_false():
     cluster = ray.init()
     global_state_accessor = make_global_state_accessor(cluster)
