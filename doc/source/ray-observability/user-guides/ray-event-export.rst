@@ -45,7 +45,7 @@ For each task, Ray exports two types of events: Task Definition Event and Task E
   and actor tasks respectively.
 * Task Execution Events contain task state transition information and metadata 
   generated during task execution. 
-  See `src/ray/protobuf/public/events_task_execution_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_execution_event.proto>`_ for the event format.
+  See `src/ray/protobuf/public/events_task_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_lifecycle_event.proto>`_ for the event format.
 
 An example of a Task Definition Event and a Task Execution Event:
 
@@ -73,16 +73,7 @@ An example of a Task Definition Event and a Task Execution Event:
             "requiredResources":{
                 "CPU":1.0
             },
-            "runtimeEnvInfo":{
-                "serializedRuntimeEnv":"{}",
-                "runtimeEnvConfig":{
-                    "setupTimeoutSeconds":600,
-                    "eagerInstall":true,
-                    "logFiles":[
-                    
-                    ]
-                }
-            },
+            "serialized_runtime_env": "{}",
             "jobId":"AQAAAA==",
             "parentTaskId":"//////////////////////////8BAAAA",
             "placementGroupId":"////////////////////////",
@@ -96,23 +87,30 @@ An example of a Task Definition Event and a Task Execution Event:
         "message":""
     }
 
-    // task execution event
+    // task lifecycle event
     {
         "eventId":"vkIaAHlQC5KoppGosqs2kBq5k2WzsAAbawDDbQ==",
         "sourceType":"CORE_WORKER",
-        "eventType":"TASK_EXECUTION_EVENT",
+        "eventType":"TASK_LIFECYCLE_EVENT",
         "timestamp":"2025-09-03T18:52:14.469074Z",
         "severity":"INFO",
         "sessionName":"session_2025-09-03_11-52-12_635210_85618",
-        "taskExecutionEvent":{
+        "taskLifecycleEvent":{
             "taskId":"yO9FzNARJXH///////////////8BAAAA",
-            "taskState":{
-                // key is the integer value of TaskStatus enum in common.proto at
-                // https://github.com/ray-project/ray/blob/master/src/ray/protobuf/common.proto
-                "2":"2025-09-03T18:52:14.467402Z", // PENDING_NODE_ASSIGNMENT
-                "1":"2025-09-03T18:52:14.467290Z", // PENDING_ARGS_AVAIL
-                "5":"2025-09-03T18:52:14.469074Z" // SUBMITTED_TO_WORKER
-            },
+            "stateTransitions": [
+                {
+                    "state":"PENDING_NODE_ASSIGNMENT",
+                    "timestamp":"2025-09-03T18:52:14.467402Z"
+                },
+                {
+                    "state":"PENDING_ARGS_AVAIL",
+                    "timestamp":"2025-09-03T18:52:14.467290Z"
+                },
+                {
+                    "state":"SUBMITTED_TO_WORKER",
+                    "timestamp":"2025-09-03T18:52:14.469074Z"
+                }
+            ],
             "nodeId":"ZvxTI6x9dlMFqMlIHErJpg5UEGK1INsKhW2zyg==",
             "workerId":"hMybCNYIFi+/yInYYhdc+qH8yMF65j/8+uCTmw==",
             "jobId":"AQAAAA==",

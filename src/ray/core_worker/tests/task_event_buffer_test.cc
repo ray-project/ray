@@ -439,9 +439,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
       auto new_event = expected_ray_events_data.add_events();
       *new_event = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (ray_events_tuple.task_execution_event) {
+    if (ray_events_tuple.task_lifecycle_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(ray_events_tuple.task_execution_event.value());
+      *new_event = std::move(ray_events_tuple.task_lifecycle_event.value());
     }
     if (ray_events_tuple.task_profile_event) {
       auto new_event = expected_ray_events_data.add_events();
@@ -757,9 +757,9 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
       auto new_event = expected_ray_events_data.add_events();
       *new_event = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (ray_events_tuple.task_execution_event) {
+    if (ray_events_tuple.task_lifecycle_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(ray_events_tuple.task_execution_event.value());
+      *new_event = std::move(ray_events_tuple.task_lifecycle_event.value());
     }
     if (ray_events_tuple.task_profile_event) {
       auto new_event = expected_ray_events_data.add_events();
@@ -960,7 +960,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   // Verify that the second event is nullopt (empty)
   EXPECT_FALSE(ray_events_tuple.task_definition_event.has_value())
       << "TaskProfileEvent should be populated in RayEventsTuple";
-  EXPECT_FALSE(ray_events_tuple.task_execution_event.has_value())
+  EXPECT_FALSE(ray_events_tuple.task_lifecycle_event.has_value())
       << "TaskProfileEvent should be populated in RayEventsTuple";
 
   // Verify that the first event contains the profile event
@@ -1086,9 +1086,9 @@ TEST_P(TaskEventBufferTestDifferentDestination,
     auto new_event = expected_ray_events_data.add_events();
     *new_event = std::move(ray_events_tuple.task_definition_event.value());
   }
-  if (ray_events_tuple.task_execution_event) {
+  if (ray_events_tuple.task_lifecycle_event) {
     auto new_event = expected_ray_events_data.add_events();
-    *new_event = std::move(ray_events_tuple.task_execution_event.value());
+    *new_event = std::move(ray_events_tuple.task_lifecycle_event.value());
   }
   if (ray_events_tuple.task_profile_event) {
     auto new_event = expected_ray_events_data.add_events();
