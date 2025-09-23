@@ -1046,9 +1046,12 @@ class Dataset:
         """
         all_cols = self.columns()
 
-        # Handle empty dataset case
+        # Handle empty dataset case - this indicates a schema issue
         if not all_cols:
-            return self
+            raise ValueError(
+                "Cannot perform distinct operation: dataset has no columns. "
+                "This may indicate a schema determination issue."
+            )
 
         # Validate keys parameter
         if keys is not None:
@@ -1056,6 +1059,14 @@ class Dataset:
                 raise ValueError(
                     "keys cannot be an empty list. Use None to select all columns."
                 )
+
+            # Check for duplicate keys
+            if len(keys) != len(set(keys)):
+                duplicates = [key for key in set(keys) if keys.count(key) > 1]
+                raise ValueError(
+                    f"Duplicate keys found: {duplicates}. Keys must be unique."
+                )
+
             # Check that all specified keys exist in the dataset
             invalid_keys = set(keys) - set(all_cols)
             if invalid_keys:
@@ -5970,10 +5981,10 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
-    
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
+
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
