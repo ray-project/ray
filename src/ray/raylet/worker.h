@@ -28,6 +28,10 @@
 
 namespace ray {
 
+namespace rpc {
+class ClientCallManager;
+}
+
 namespace raylet {
 
 /// \class WorkerPoolInterface

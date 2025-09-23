@@ -28,6 +28,5 @@ cc_binary(
         ":helloworld_cc_lib",
         "//src/ray/common:asio",
         "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:server_call",
     ],
 )
