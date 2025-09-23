@@ -290,9 +290,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def fill_column(self, name: str, value: Any) -> Block:
         # Check if value is array-like - if so, use upsert_column logic
-        if isinstance(
-            value, (pd.Series, np.ndarray, pyarrow.Array, pyarrow.ChunkedArray)
-        ):
+        if isinstance(value, (pd.Series, np.ndarray)):
             return self.upsert_column(name, value)
         # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
