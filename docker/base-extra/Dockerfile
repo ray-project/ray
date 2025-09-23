@@ -86,7 +86,7 @@ sudo useradd -r -g haproxy haproxy || true
 sudo mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 sudo chown -R haproxy:haproxy /run/haproxy
 
-echo "ray ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy" | sudo tee /etc/sudoers.d/haproxy-ray
+echo "ray ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg -D -p /run/haproxy/haproxy.pid" | sudo tee /etc/sudoers.d/haproxy-ray
 
 # Install azcopy
 AZCOPY_VERSION="10.30.0"

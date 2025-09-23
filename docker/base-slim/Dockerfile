@@ -189,7 +189,7 @@ RUN groupadd -r haproxy || true && \
     useradd -r -g haproxy haproxy || true && \
     mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
     chown -R haproxy:haproxy /run/haproxy && \
-    echo "ray ALL=(ALL) NOPASSWD: /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg *" | tee /etc/sudoers.d/haproxy-ray
+    echo "ray ALL=(ALL) NOPASSWD: /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg -D -p /run/haproxy/haproxy.pid" | tee /etc/sudoers.d/haproxy-ray
 
 # Update PATH to include both anaconda3 and HAProxy
 ENV PATH="/home/ray/anaconda3/bin:/usr/local/sbin:$PATH"
