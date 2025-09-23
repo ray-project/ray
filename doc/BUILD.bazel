@@ -362,6 +362,7 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:ml",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # --------------------------------------------------------------------
@@ -394,7 +395,6 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:ml",
     ],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # --------------------------------------------------------------------
