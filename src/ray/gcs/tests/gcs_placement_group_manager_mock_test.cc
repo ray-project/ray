@@ -55,7 +55,8 @@ class GcsPlacementGroupManagerMockTest : public Test {
         [](auto &) { return ""; },
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
-        fake_placement_group_scheduling_latency_in_ms_histogram_);
+        fake_placement_group_scheduling_latency_in_ms_histogram_,
+        fake_placement_group_count_gauge_);
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
@@ -70,9 +71,12 @@ class GcsPlacementGroupManagerMockTest : public Test {
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
 
   // Fake metrics for testing
-  ray::observability::FakeMetric fake_placement_group_gauge_;
-  ray::observability::FakeMetric fake_placement_group_creation_latency_in_ms_histogram_;
-  ray::observability::FakeMetric fake_placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::FakeGauge fake_placement_group_gauge_;
+  ray::observability::FakeHistogram
+      fake_placement_group_creation_latency_in_ms_histogram_;
+  ray::observability::FakeHistogram
+      fake_placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::FakeGauge fake_placement_group_count_gauge_;
 };
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {

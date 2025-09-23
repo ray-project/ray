@@ -98,7 +98,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
-        fake_placement_group_scheduling_latency_in_ms_histogram_));
+        fake_placement_group_scheduling_latency_in_ms_histogram_,
+        fake_placement_group_count_gauge_));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -219,9 +220,12 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   instrumented_io_context io_service_;
-  ray::observability::FakeMetric fake_placement_group_gauge_;
-  ray::observability::FakeMetric fake_placement_group_creation_latency_in_ms_histogram_;
-  ray::observability::FakeMetric fake_placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::FakeGauge fake_placement_group_gauge_;
+  ray::observability::FakeHistogram
+      fake_placement_group_creation_latency_in_ms_histogram_;
+  ray::observability::FakeHistogram
+      fake_placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::FakeGauge fake_placement_group_count_gauge_;
 
  private:
   ClusterResourceManager cluster_resource_manager_;
@@ -268,8 +272,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
   ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 1);
 
+  gcs_placement_group_manager_->SetUsageStatsClient(nullptr);
   gcs_placement_group_manager_->RecordMetrics();
-  auto counter_tag_to_value = fake_placement_group_gauge_.GetTagToValue();
+  auto counter_tag_to_value = fake_placement_group_count_gauge_.GetTagToValue();
   // 3 states: PENDING, REGISTERED, INFEASIBLE
   ASSERT_EQ(counter_tag_to_value.size(), 3);
   for (auto &[key, value] : counter_tag_to_value) {

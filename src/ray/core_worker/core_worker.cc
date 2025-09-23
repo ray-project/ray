@@ -228,16 +228,16 @@ void TaskCounter::RecordMetrics() {
     } else {
       running_tasks = 1.0;
     }
-    ray::stats::STATS_actors.Record(idle,
-                                    {{"State", "ALIVE_IDLE"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(running_tasks,
-                                    {{"State", "ALIVE_RUNNING_TASKS"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
+    actor_by_state_gauge_.Record(idle,
+                                 {{"State"sv, "ALIVE_IDLE"},
+                                  {"Name"sv, actor_name_},
+                                  {"Source"sv, "executor"},
+                                  {"JobId"sv, job_id_}});
+    actor_by_state_gauge_.Record(running_tasks,
+                                 {{"State"sv, "ALIVE_RUNNING_TASKS"},
+                                  {"Name"sv, actor_name_},
+                                  {"Source"sv, "executor"},
+                                  {"JobId"sv, job_id_}});
   }
 }
 

@@ -14,12 +14,31 @@
 
 #pragma once
 
+#include "ray/observability/metrics.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
 namespace gcs {
 
-inline ray::stats::Gauge GetRunningJobMetric() {
+struct GcsServerMetrics {
+  ray::observability::MetricInterface &actor_by_state_gauge;
+  ray::observability::MetricInterface &gcs_actor_by_state_gauge;
+  ray::observability::MetricInterface &running_job_gauge;
+  ray::observability::MetricInterface &finished_job_counter;
+  ray::observability::MetricInterface &job_duration_in_seconds_gauge;
+  ray::observability::MetricInterface &placement_group_gauge;
+  ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram;
+  ray::observability::MetricInterface &placement_group_scheduling_latency_in_ms_histogram;
+  ray::observability::MetricInterface &placement_group_count_gauge;
+  ray::observability::MetricInterface &task_events_reported_gauge;
+  ray::observability::MetricInterface &task_events_dropped_gauge;
+  ray::observability::MetricInterface &task_events_stored_gauge;
+  ray::observability::MetricInterface &event_recorder_dropped_events_counter;
+  ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram;
+  ray::observability::MetricInterface &storage_operation_count_counter;
+};
+
+inline ray::stats::Gauge GetRunningJobGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"running_jobs",
       /*description=*/"Number of jobs currently running.",
@@ -28,7 +47,7 @@ inline ray::stats::Gauge GetRunningJobMetric() {
   };
 }
 
-inline ray::stats::Count GetFinishedJobMetric() {
+inline ray::stats::Count GetFinishedJobCounterMetric() {
   return ray::stats::Count{
       /*name=*/"finished_jobs",
       /*description=*/"Number of jobs finished.",
@@ -37,7 +56,7 @@ inline ray::stats::Count GetFinishedJobMetric() {
   };
 }
 
-inline ray::stats::Gauge GetJobDurationInSecondsMetric() {
+inline ray::stats::Gauge GetJobDurationInSecondsGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"job_duration_s",
       /*description=*/"Duration of jobs finished in seconds.",
@@ -46,17 +65,17 @@ inline ray::stats::Gauge GetJobDurationInSecondsMetric() {
   };
 }
 
-inline ray::stats::Gauge GetPlacementGroupMetric() {
+inline ray::stats::Gauge GetPlacementGroupGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"placement_groups",
       /*description=*/"Number of placement groups broken down by state.",
       /*unit=*/"",
       // State: from rpc::PlacementGroupData::PlacementGroupState.
-      /*tag_keys=*/{"State"},
+      /*tag_keys=*/{"State", "Source"},
   };
 }
 
-inline ray::stats::Histogram GetPlacementGroupCreationLatencyInMsMetric() {
+inline ray::stats::Histogram GetPlacementGroupCreationLatencyInMsHistogramMetric() {
   return ray::stats::Histogram{
       /*name=*/"gcs_placement_group_creation_latency_ms",
       /*description=*/"end to end latency of placement group creation",
@@ -66,7 +85,7 @@ inline ray::stats::Histogram GetPlacementGroupCreationLatencyInMsMetric() {
   };
 }
 
-inline ray::stats::Histogram GetPlacementGroupSchedulingLatencyInMsMetric() {
+inline ray::stats::Histogram GetPlacementGroupSchedulingLatencyInMsHistogramMetric() {
   return ray::stats::Histogram{
       /*name=*/"gcs_placement_group_scheduling_latency_ms",
       /*description=*/"scheduling latency of placement groups",
@@ -76,7 +95,18 @@ inline ray::stats::Histogram GetPlacementGroupSchedulingLatencyInMsMetric() {
   };
 }
 
-inline ray::stats::Gauge GetTaskManagerTaskEventsReportedMetric() {
+inline ray::stats::Gauge GetPlacementGroupCountGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_placement_group_count",
+      /*description=*/
+      "Number of placement groups broken down by state in {Registered, Pending, "
+      "Infeasible}",
+      /*unit=*/"",
+      /*tag_keys=*/{"State"},
+  };
+}
+
+inline ray::stats::Gauge GetTaskManagerTaskEventsReportedGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"gcs_task_manager_task_events_reported",
       /*description=*/"Number of all task events reported to gcs.",
@@ -85,7 +115,7 @@ inline ray::stats::Gauge GetTaskManagerTaskEventsReportedMetric() {
   };
 }
 
-inline ray::stats::Gauge GetTaskManagerTaskEventsDroppedMetric() {
+inline ray::stats::Gauge GetTaskManagerTaskEventsDroppedGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"gcs_task_manager_task_events_dropped",
       /*description=*/
@@ -95,7 +125,7 @@ inline ray::stats::Gauge GetTaskManagerTaskEventsDroppedMetric() {
   };
 }
 
-inline ray::stats::Gauge GetTaskManagerTaskEventsStoredMetric() {
+inline ray::stats::Gauge GetTaskManagerTaskEventsStoredGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"gcs_task_manager_task_events_stored",
       /*description=*/"Number of task events stored in GCS.",
@@ -104,7 +134,7 @@ inline ray::stats::Gauge GetTaskManagerTaskEventsStoredMetric() {
   };
 }
 
-inline ray::stats::Gauge GetGcsActorByStateMetric() {
+inline ray::stats::Gauge GetGcsActorByStateGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"gcs_actors_count",
       /*description=*/
@@ -114,7 +144,7 @@ inline ray::stats::Gauge GetGcsActorByStateMetric() {
   };
 }
 
-inline ray::stats::Histogram GetGcsStorageOperationLatencyInMsMetric() {
+inline ray::stats::Histogram GetGcsStorageOperationLatencyInMsHistogramMetric() {
   return ray::stats::Histogram{
       /*name=*/"gcs_storage_operation_latency_ms",
       /*description=*/"Time to invoke an operation on Gcs storage",
@@ -124,7 +154,7 @@ inline ray::stats::Histogram GetGcsStorageOperationLatencyInMsMetric() {
   };
 }
 
-inline ray::stats::Count GetGcsStorageOperationCountMetric() {
+inline ray::stats::Count GetGcsStorageOperationCountCounterMetric() {
   return ray::stats::Count{
       /*name=*/"gcs_storage_operation_count",
       /*description=*/"Number of operations invoked on Gcs storage",

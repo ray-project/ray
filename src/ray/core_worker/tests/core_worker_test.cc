@@ -292,8 +292,8 @@ class CoreWorkerTest : public ::testing::Test {
   pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
-  ray::observability::FakeMetric fake_task_by_state_gauge_;
-  ray::observability::FakeMetric fake_actor_by_state_gauge_;
+  ray::observability::FakeGauge fake_task_by_state_gauge_;
+  ray::observability::FakeGauge fake_actor_by_state_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts

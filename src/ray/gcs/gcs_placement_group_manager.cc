@@ -61,14 +61,16 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     ray::observability::MetricInterface &placement_group_gauge,
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
-        &placement_group_scheduling_latency_in_ms_histogram)
+        &placement_group_scheduling_latency_in_ms_histogram,
+    ray::observability::MetricInterface &placement_group_count_gauge)
     : io_context_(io_context),
       gcs_resource_manager_(gcs_resource_manager),
       placement_group_gauge_(placement_group_gauge),
       placement_group_creation_latency_in_ms_histogram_(
           placement_group_creation_latency_in_ms_histogram),
       placement_group_scheduling_latency_in_ms_histogram_(
-          placement_group_scheduling_latency_in_ms_histogram) {}
+          placement_group_scheduling_latency_in_ms_histogram),
+      placement_group_count_gauge_(placement_group_count_gauge) {}
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
@@ -79,7 +81,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     ray::observability::MetricInterface &placement_group_gauge,
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
-        &placement_group_scheduling_latency_in_ms_histogram)
+        &placement_group_scheduling_latency_in_ms_histogram,
+    ray::observability::MetricInterface &placement_group_count_gauge)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(scheduler),
       gcs_table_storage_(gcs_table_storage),
@@ -89,7 +92,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       placement_group_creation_latency_in_ms_histogram_(
           placement_group_creation_latency_in_ms_histogram),
       placement_group_scheduling_latency_in_ms_histogram_(
-          placement_group_scheduling_latency_in_ms_histogram) {
+          placement_group_scheduling_latency_in_ms_histogram),
+      placement_group_count_gauge_(placement_group_count_gauge) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   placement_group_state_counter_->SetOnChangeCallback(
@@ -992,12 +996,12 @@ std::string GcsPlacementGroupManager::DebugString() const {
 }
 
 void GcsPlacementGroupManager::RecordMetrics() const {
-  placement_group_gauge_.Record(pending_placement_groups_.size(),
-                                {{"State"sv, "Pending"}});
-  placement_group_gauge_.Record(registered_placement_groups_.size(),
-                                {{"State"sv, "Registered"}});
-  placement_group_gauge_.Record(infeasible_placement_groups_.size(),
-                                {{"State"sv, "Infeasible"}});
+  placement_group_count_gauge_.Record(pending_placement_groups_.size(),
+                                      {{"State"sv, "Pending"}});
+  placement_group_count_gauge_.Record(registered_placement_groups_.size(),
+                                      {{"State"sv, "Registered"}});
+  placement_group_count_gauge_.Record(infeasible_placement_groups_.size(),
+                                      {{"State"sv, "Infeasible"}});
   if (usage_stats_client_) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
                                                  lifetime_num_placement_groups_created_);

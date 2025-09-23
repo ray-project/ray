@@ -63,7 +63,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
       const std::string &session_name,
       ray::observability::MetricInterface &running_job_gauge,
       ray::observability::MetricInterface &finished_job_counter,
-      ray::observability::MetricInterface &job_duration_in_seconds_counter)
+      ray::observability::MetricInterface &job_duration_in_seconds_gauge)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
@@ -76,7 +76,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         export_event_write_enabled_(IsExportAPIEnabledDriverJob()),
         running_job_gauge_(running_job_gauge),
         finished_job_counter_(finished_job_counter),
-        job_duration_in_seconds_counter_(job_duration_in_seconds_counter) {}
+        job_duration_in_seconds_gauge_(job_duration_in_seconds_gauge) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -165,7 +165,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
 
   ray::observability::MetricInterface &running_job_gauge_;
   ray::observability::MetricInterface &finished_job_counter_;
-  ray::observability::MetricInterface &job_duration_in_seconds_counter_;
+  ray::observability::MetricInterface &job_duration_in_seconds_gauge_;
 };
 
 }  // namespace gcs

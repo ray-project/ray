@@ -18,15 +18,16 @@
 
 namespace ray {
 
-inline ray::stats::Gauge GetActorMetric() {
+inline ray::stats::Gauge GetActorByStateGaugeMetric() {
   /// Tracks actors by state, including pending, running, and idle actors.
   ///
   /// To avoid metric collection conflicts between components reporting on the same actor,
   /// we use the "Source" required label.
   return ray::stats::Gauge{
       /*name=*/"actors",
-      /*description=*/"An actor can be in one of DEPENDENCIES_UNREADY, PENDING_CREATION, ALIVE, "
-      "ALIVE_IDLE, ALIVE_RUNNING_TASKS, RESTARTING, or DEAD states. ",
+      /*description=*/
+      "An actor can be in one of DEPENDENCIES_UNREADY, PENDING_CREATION, ALIVE, "
+      "ALIVE_IDLE, ALIVE_RUNNING_TASKS, RESTARTING, or DEAD states. "
       "An actor is considered ALIVE_IDLE if it is not executing any tasks.",
       /*unit=*/"",
       // State: the actor state, which is from rpc::ActorTableData::ActorState,

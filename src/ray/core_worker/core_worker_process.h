@@ -185,8 +185,8 @@ class CoreWorkerProcessImpl {
   /// The client to export metrics to the metrics agent.
   std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
 
-  ray::stats::Gauge task_by_state_gauge_{GetTaskMetric()};
-  ray::stats::Gauge actor_by_state_gauge_{GetActorMetric()};
+  ray::stats::Gauge task_by_state_gauge_{GetTaskByStateGaugeMetric()};
+  ray::stats::Gauge actor_by_state_gauge_{GetActorByStateGaugeMetric()};
 };
 }  // namespace core
 }  // namespace ray

@@ -166,47 +166,52 @@ int main(int argc, char *argv[]) {
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
 
-  // GCS server metrics
-  ray::stats::Gauge actor_by_state_gauge{ray::GetActorMetric()};
-  ray::stats::Gauge gcs_actor_by_state_gauge{ray::gcs::GetGcsActorByStateMetric()};
-  ray::stats::Gauge running_job_gauge{ray::gcs::GetRunningJobMetric()};
-  ray::stats::Count finished_job_counter{ray::gcs::GetFinishedJobMetric()};
-  ray::stats::Gauge job_duration_in_seconds_gauge{
-      ray::gcs::GetJobDurationInSecondsMetric()};
-  ray::stats::Gauge placement_group_gauge{ray::gcs::GetPlacementGroupMetric()};
-  ray::stats::Histogram placement_group_creation_latency_in_ms_histogram{
-      ray::gcs::GetPlacementGroupCreationLatencyInMsMetric()};
-  ray::stats::Histogram placement_group_scheduling_latency_in_ms_histogram{
-      ray::gcs::GetPlacementGroupSchedulingLatencyInMsMetric()};
-  ray::stats::Gauge task_events_reported_gauge{
-      ray::gcs::GetTaskManagerTaskEventsReportedMetric()};
-  ray::stats::Gauge task_events_dropped_gauge{
-      ray::gcs::GetTaskManagerTaskEventsDroppedMetric()};
-  ray::stats::Gauge task_events_stored_gauge{
-      ray::gcs::GetTaskManagerTaskEventsStoredMetric()};
-  ray::stats::Histogram storage_operation_latency_in_ms_histogram{
-      ray::gcs::GetGcsStorageOperationLatencyInMsMetric()};
-  ray::stats::Count storage_operation_count_counter{
-      ray::gcs::GetGcsStorageOperationCountMetric()};
-  ray::stats::Count event_recorder_dropped_events_counter =
-      ray::GetRayEventRecorderDroppedEventsMetric();
+  // Create individual metrics
+  auto actor_by_state_gauge = ray::GetActorByStateGaugeMetric();
+  auto gcs_actor_by_state_gauge = ray::gcs::GetGcsActorByStateGaugeMetric();
+  auto running_job_gauge = ray::gcs::GetRunningJobGaugeMetric();
+  auto finished_job_counter = ray::gcs::GetFinishedJobCounterMetric();
+  auto job_duration_in_seconds_gauge = ray::gcs::GetJobDurationInSecondsGaugeMetric();
+  auto placement_group_gauge = ray::gcs::GetPlacementGroupGaugeMetric();
+  auto placement_group_creation_latency_in_ms_histogram =
+      ray::gcs::GetPlacementGroupCreationLatencyInMsHistogramMetric();
+  auto placement_group_scheduling_latency_in_ms_histogram =
+      ray::gcs::GetPlacementGroupSchedulingLatencyInMsHistogramMetric();
+  auto placement_group_count_gauge = ray::gcs::GetPlacementGroupCountGaugeMetric();
+  auto task_events_reported_gauge =
+      ray::gcs::GetTaskManagerTaskEventsReportedGaugeMetric();
+  auto task_events_dropped_gauge = ray::gcs::GetTaskManagerTaskEventsDroppedGaugeMetric();
+  auto task_events_stored_gauge = ray::gcs::GetTaskManagerTaskEventsStoredGaugeMetric();
+  auto event_recorder_dropped_events_counter =
+      ray::GetRayEventRecorderDroppedEventsCounterMetric();
+  auto storage_operation_latency_in_ms_histogram =
+      ray::gcs::GetGcsStorageOperationLatencyInMsHistogramMetric();
+  auto storage_operation_count_counter =
+      ray::gcs::GetGcsStorageOperationCountCounterMetric();
 
-  ray::gcs::GcsServer gcs_server(gcs_server_config,
-                                 main_service,
-                                 actor_by_state_gauge,
-                                 gcs_actor_by_state_gauge,
-                                 running_job_gauge,
-                                 finished_job_counter,
-                                 job_duration_in_seconds_gauge,
-                                 placement_group_gauge,
-                                 placement_group_creation_latency_in_ms_histogram,
-                                 placement_group_scheduling_latency_in_ms_histogram,
-                                 task_events_reported_gauge,
-                                 task_events_dropped_gauge,
-                                 task_events_stored_gauge,
-                                 storage_operation_latency_in_ms_histogram,
-                                 storage_operation_count_counter,
-                                 event_recorder_dropped_events_counter);
+  // Create the metrics struct
+  ray::gcs::GcsServerMetrics gcs_server_metrics{
+      /*actor_by_state_gauge=*/actor_by_state_gauge,
+      /*gcs_actor_by_state_gauge=*/gcs_actor_by_state_gauge,
+      /*running_job_gauge=*/running_job_gauge,
+      /*finished_job_counter=*/finished_job_counter,
+      /*job_duration_in_seconds_gauge=*/job_duration_in_seconds_gauge,
+      /*placement_group_gauge=*/placement_group_gauge,
+      /*placement_group_creation_latency_in_ms_histogram=*/
+      placement_group_creation_latency_in_ms_histogram,
+      /*placement_group_scheduling_latency_in_ms_histogram=*/
+      placement_group_scheduling_latency_in_ms_histogram,
+      /*placement_group_count_gauge=*/placement_group_count_gauge,
+      /*task_events_reported_gauge=*/task_events_reported_gauge,
+      /*task_events_dropped_gauge=*/task_events_dropped_gauge,
+      /*task_events_stored_gauge=*/task_events_stored_gauge,
+      /*event_recorder_dropped_events_counter=*/event_recorder_dropped_events_counter,
+      /*storage_operation_latency_in_ms_histogram=*/
+      storage_operation_latency_in_ms_histogram,
+      /*storage_operation_count_counter=*/storage_operation_count_counter,
+  };
+
+  ray::gcs::GcsServer gcs_server(gcs_server_config, gcs_server_metrics, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
