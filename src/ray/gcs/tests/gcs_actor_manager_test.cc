@@ -27,6 +27,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -76,7 +77,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   explicit MockWorkerClient(instrumented_io_context &io_service)
       : io_service_(io_service) {}

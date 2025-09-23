@@ -14,7 +14,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # We need to best-effort import everything we need.
 #
-# For how async API are implemented, see src/ray/gcs_client/python_callbacks.h
+# For how async API are implemented, see src/ray/gcs_rpc_client/python_callbacks.h
 from asyncio import Future
 from typing import List, Sequence
 from libcpp.utility cimport move

@@ -34,14 +34,16 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/core_worker/metrics.h"
-#include "ray/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
+#include "ray/object_manager_rpc_client/object_manager_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
 #include "ray/raylet/raylet_cgroup_types.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
@@ -306,7 +308,13 @@ int main(int argc, char *argv[]) {
 #endif
 
     // Move system processes into the system cgroup.
-    std::vector<std::string> system_pids_to_move = absl::StrSplit(system_pids, ",");
+    // TODO(#54703): This logic needs to be hardened and moved out of main.cc. E.g.
+    // if system_pids is ",,,,,,", this will log an error for each empty
+    // string.
+    std::vector<std::string> system_pids_to_move;
+    if (!system_pids.empty()) {
+      system_pids_to_move = std::move(absl::StrSplit(system_pids, ","));
+    }
     system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
     for (const auto &pid : system_pids_to_move) {
       ray::Status s = cgroup_manager->AddProcessToSystemCgroup(pid);

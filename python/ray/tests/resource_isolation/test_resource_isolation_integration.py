@@ -293,7 +293,6 @@ def assert_cgroup_hierarchy_exists_for_node(
     # 1) Check that the cgroup hierarchy is created correctly for the node.
     assert node_cgroup.is_dir()
     assert system_cgroup.is_dir()
-    assert system_cgroup.is_dir()
     assert system_leaf_cgroup.is_dir()
     assert application_cgroup.is_dir()
     assert application_leaf_cgroup.is_dir()
