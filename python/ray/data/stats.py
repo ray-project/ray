@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pyarrow as pa
 
+from ray.data._expression_evaluator import _is_pa_string_type
 from ray.data.aggregate import (
     AggregateFnV2,
     Count,
@@ -99,6 +100,28 @@ def vector_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
+def _get_underlying_type(ftype: pa.DataType) -> pa.DataType:
+    """Get the underlying Arrow type, handling dictionary encoding."""
+    return ftype.value_type if pa.types.is_dictionary(ftype) else ftype
+
+
+def _is_numerical_type(ftype: pa.DataType) -> bool:
+    """Check if Arrow type is numerical (including dictionary-encoded numerical)."""
+    underlying_type = _get_underlying_type(ftype)
+    return (
+        pa.types.is_integer(underlying_type)
+        or pa.types.is_floating(underlying_type)
+        or pa.types.is_decimal(underlying_type)
+        or pa.types.is_boolean(underlying_type)
+    )
+
+
+def _is_string_type(ftype: pa.DataType) -> bool:
+    """Check if Arrow type is string (including dictionary-encoded string)."""
+    underlying_type = _get_underlying_type(ftype)
+    return _is_pa_string_type(underlying_type)
+
+
 @dataclass
 class FeatureAggregators:
     """Container for categorized columns and their aggregators."""
@@ -129,7 +152,8 @@ def feature_aggregators_for_dataset(
     Returns:
         FeatureAggregators containing categorized column names and their aggregators
     """
-    schema = dataset.schema()
+    # Avoid triggering execution.
+    schema = dataset.schema(fetch_if_missing=False)
     if not schema:
         raise ValueError("Dataset must have a schema to determine numerical columns")
 
@@ -155,30 +179,21 @@ def feature_aggregators_for_dataset(
     name_to_type = dict(zip(column_names, column_types))
 
     for name in columns:
-        if name not in name_to_type:
-            continue
-
-        ftype = name_to_type[name]
-
-        if not isinstance(ftype, pa.DataType):
+        ftype = name_to_type.get(name)
+        if ftype is None or not isinstance(ftype, pa.DataType):
             logger.warning(
                 f"Skipping field {name}: type {ftype} is not a PyArrow DataType"
             )
             continue
 
         # Check for numerical types (including boolean as numerical)
-        if (
-            pa.types.is_integer(ftype)
-            or pa.types.is_floating(ftype)
-            or pa.types.is_decimal(ftype)
-            or pa.types.is_boolean(ftype)
-        ):
+        if _is_numerical_type(ftype):
             numerical_columns.append(name)
             all_aggs.extend(numerical_aggregators(name))
-        elif pa.types.is_string(ftype):
+        elif _is_string_type(ftype):
             str_columns.append(name)
             all_aggs.extend(categorical_aggregators(name))
-        elif pa.types.is_list(ftype):
+        elif pa.types.is_list(_get_underlying_type(ftype)):
             vector_columns.append(name)
             all_aggs.extend(vector_aggregators(name))
         else:
