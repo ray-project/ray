@@ -161,15 +161,15 @@ Here is an example of what can go wrong:
    :start-after: __gloo_wait_tensor_freed_bad_start__
    :end-before: __gloo_wait_tensor_freed_bad_end__
 
-In this example, we pass the stored tensor back to the `sender` actor, which modifies it in place.
-Then, we pass the same tensor to the `receiver` actor, which will now read the modified tensor instead of the original.
-That's why the assertion fails, because `sender.increment_and_sum` and `receiver.increment_and_sum` receive different tensor values.
-To help you catch these kinds of errors, Ray also prints a warning when passing RDT objects to the actor that produced them, and a different actor.
+In this example, the sender actor returns a tensor to Ray, but it also keeps a reference to the tensor in its local state.
+Then, in `sender.increment_and_sum_stored_tensor`, the sender actor modifies the tensor in place while Ray is still holding the tensor reference.
+Then, the `receiver.increment_and_sum` task receives the modified tensor instead of the original, so the assertion fails.
 
 To fix this kind of error, use the :func:`ray.experimental.wait_tensor_freed <ray.experimental.wait_tensor_freed>` function to wait for Ray to release all references to the tensor, so that the actor can safely write to the tensor again.
-:func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will unblock once all dependent tasks have finished executing and all corresponding `ObjectRefs` have gone out of scope.
+:func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will unblock once all tasks that depend on the tensor have finished executing and all corresponding `ObjectRefs` have gone out of scope.
+Ray tracks tasks that depend on the tensor by keeping track of which tasks take the `ObjectRef` corresponding to the tensor as an argument.
+
 Here's a fixed version of the earlier example.
-Note that the sender now calls increment and sum on its stored tensor instead of passing the `ObjectRef` back to itself, to avoid a deadlock between :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` and `sender.increment_and_sum`.
 
 .. literalinclude:: doc_code/direct_transport_gloo.py
    :language: python
@@ -177,10 +177,17 @@ Note that the sender now calls increment and sum on its stored tensor instead of
    :end-before: __gloo_wait_tensor_freed_end__
 
 The main changes are:
-1. `sender` stores the tensor that it returns to Ray, so that it can later pass the tensor reference to :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>`.
-2. `sender` calls :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` before modifying the tensor in place.
-3. The driver uses a timeout in :func:`ray.wait <ray.wait>` because the `sender.increment_and_sum_stored_tensor` task cannot finish while `tensor` is still in scope.
-4. The driver calls `del tensor` to release its reference to the tensor. This is necessary because otherwise Ray will continue storing the tensor, and :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will hang.
+1. `sender` calls :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` before modifying the tensor in place.
+2. The driver skips :func:`ray.get <ray.get>` because :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` blocks until all `ObjectRefs` pointing to the tensor are freed, so calling :func:`ray.get <ray.get>` here would cause a deadlock.
+4. The driver calls `del tensor` to release its reference to the tensor. Again, this is necessary because :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` blocks until all `ObjectRefs` pointing to the tensor are freed.
+
+When an RDT `ObjectRef` is passed back to the same actor that produced it, Ray passes back a *reference* to the tensor instead of a copy. Therefore, the same kind of bug can occur.
+To help catch such cases, Ray will print a warning if an RDT object is passed to the actor that produced it and a different actor, like so:
+
+.. literalinclude:: doc_code/direct_transport_gloo.py
+   :language: python
+   :start-after: __gloo_object_mutability_warning_start__
+   :end-before: __gloo_object_mutability_warning_end__
 
 
 Usage with NCCL (NVIDIA GPUs only)

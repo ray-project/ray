@@ -150,7 +150,7 @@ print(ray.get(tensor, _tensor_transport="object_store"))
 # __gloo_get_end__
 
 
-# __gloo_wait_tensor_freed_bad_start__
+# __gloo_object_mutability_warning_start__
 import torch
 import ray
 from ray.experimental.collective import create_collective_group
@@ -173,9 +173,6 @@ group = create_collective_group([sender, receiver], backend="torch_gloo")
 
 tensor = sender.random_tensor.remote()
 tensor1 = sender.increment_and_sum.remote(tensor)
-# Wait for sender.increment_and_sum task to complete.
-ray.wait([tensor1])
-
 tensor2 = receiver.increment_and_sum.remote(tensor)
 # A warning will be printed:
 # UserWarning: GPU ObjectRef(...) is being passed back to the actor that created it Actor(MyActor, ...). Note that GPU objects are mutable. If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors will receive the updated version instead of the original.
@@ -188,6 +185,44 @@ try:
 except AssertionError:
     print("AssertionError: sender and receiver returned different sums.")
 
+# __gloo_object_mutability_warning_end__
+
+# __gloo_wait_tensor_freed_bad_start__
+import torch
+import ray
+from ray.experimental.collective import create_collective_group
+
+
+@ray.remote
+class MyActor:
+    @ray.method(tensor_transport="gloo")
+    def random_tensor(self):
+        self.tensor = torch.randn(1000, 1000)
+        # After this function returns, Ray and this actor will both hold a
+        # reference to the same tensor.
+        return self.tensor
+
+    def increment_and_sum_stored_tensor(self):
+        # NOTE: In-place update, while Ray still holds a reference to the same tensor.
+        self.tensor += 1
+        return torch.sum(self.tensor)
+
+    def increment_and_sum(self, tensor: torch.Tensor):
+        return torch.sum(tensor + 1)
+
+
+sender, receiver = MyActor.remote(), MyActor.remote()
+group = create_collective_group([sender, receiver], backend="torch_gloo")
+
+tensor = sender.random_tensor.remote()
+tensor1 = sender.increment_and_sum_stored_tensor.remote()
+# Wait for sender.increment_and_sum_stored_tensor task to finish.
+tensor1 = ray.get(tensor1)
+# Receiver will now receive the updated value instead of the original.
+tensor2 = receiver.increment_and_sum.remote(tensor)
+
+# This assertion will fail.
+assert(torch.allclose(tensor1, ray.get(tensor2)))
 # __gloo_wait_tensor_freed_bad_end__
 
 # __gloo_wait_tensor_freed_start__
@@ -200,27 +235,21 @@ from ray.experimental.collective import create_collective_group
 class MyActor:
     @ray.method(tensor_transport="gloo")
     def random_tensor(self):
-        # 1. Store the tensor to the actor's local state, so we can later pass
-        # the tensor reference to ray.experimental.wait_tensor_freed.
         self.tensor = torch.randn(1000, 1000)
-
         return self.tensor
 
     def increment_and_sum_stored_tensor(self):
-        # 2. If this is the sender actor, wait for Ray to release all references
-        # to the tensor before modifying the tensor in place.
+        # 1. Sender actor waits for Ray to release all references to the tensor
+        # before modifying the tensor in place.
         ray.experimental.wait_tensor_freed(self.tensor)
-
-        # In-place update.
-        # Use the stored tensor instead of a tensor argument.
+        # NOTE: In-place update, but Ray guarantees that it has already released
+        # its references to this tensor.
         self.tensor += 1
         return torch.sum(self.tensor)
 
     def increment_and_sum(self, tensor: torch.Tensor):
         # Receiver task remains the same.
-        # In-place update.
-        tensor += 1
-        return torch.sum(tensor)
+        return torch.sum(tensor + 1)
 
 
 sender, receiver = MyActor.remote(), MyActor.remote()
@@ -228,15 +257,13 @@ group = create_collective_group([sender, receiver], backend="torch_gloo")
 
 tensor = sender.random_tensor.remote()
 tensor1 = sender.increment_and_sum_stored_tensor.remote()
-# Wait for sender.increment_and_sum_stored_tensor task to start.
-# 3. Use a timeout here because sender.increment_and_sum_stored_tensor task cannot finish
-# while `tensor` is still in scope.
-_, not_done = ray.wait([tensor1], timeout=1)
-assert tensor1 in not_done, "The sender.increment_and_sum_stored_tensor task could not have finished yet because `tensor` is still in scope."
-
+# 2. Skip `ray.get`` because `wait_tensor_freed`` will block until all
+# references to `tensor` are freed, so calling `ray.get` here would cause a
+# deadlock.
+# tensor1 = ray.get(tensor1)
 tensor2 = receiver.increment_and_sum.remote(tensor)
 
-# 4. Delete all references to `tensor`, to unblock wait_tensor_freed.
+# 3. Delete all references to `tensor`, to unblock wait_tensor_freed.
 del tensor
 
 # This assertion will now pass.
