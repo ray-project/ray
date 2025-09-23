@@ -627,8 +627,95 @@ assert(ray.get([task1.remote(), task2.remote(), task3.remote(), task4.remote()])
         cluster.shutdown()
 
 
+@pytest.mark.parametrize("autoscaler_v2", [True])
+def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
+    """
+    Tests that a placement group with bundle_label_selectors scales up the
+    correct nodes.
+    """
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "unlabelled_node": {
+                "resources": {"CPU": 1, "GPU": 1, "TPU": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "a100_node": {
+                "resources": {"CPU": 1, "GPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "A100"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "tpu_node": {
+                "resources": {"CPU": 1, "TPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "TPU_V6E"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        idle_timeout_minutes=999,
+        autoscaler_v2=autoscaler_v2,
+    )
+
+    driver_script = """
+import ray
+import time
+
+from ray.util.placement_group import placement_group
+
+ray.init("auto")
+
+# Define a placement group where each bundle should scale a node of a different type.
+pg = placement_group(
+    bundles=[
+        {"CPU": 1, "GPU": 1},
+        {"CPU": 1, "TPU": 1},
+    ],
+    bundle_label_selector=[
+        {"accelerator-type": "A100"},
+        {"accelerator-type": "TPU_V6E"},
+    ],
+    strategy="SPREAD",
+)
+
+# Wait for the placement group to be ready.
+ray.get(pg.ready())
+print("Placement group is ready.")
+
+time.sleep(60)
+"""
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+        # We expect one GPU and one TPU node to scale.
+        expected_nodes = 2
+
+        run_string_as_driver_nonblocking(driver_script)
+
+        def pg_is_ready_and_nodes_are_up():
+            pgs = list_placement_groups()
+            assert len(pgs) > 0
+
+            # Check expected number of nodes are launched.
+            status = get_cluster_status(gcs_address)
+            return len(status.active_nodes) == expected_nodes
+
+        # Wait for the placement group to be ready.
+        wait_for_condition(pg_is_ready_and_nodes_are_up, timeout=120)
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        sys.exit(pytest.main(["-sv", "-vv", __file__]))
