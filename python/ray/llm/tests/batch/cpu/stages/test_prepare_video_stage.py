@@ -1,7 +1,6 @@
 import io
-import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import numpy as np
@@ -782,7 +781,6 @@ async def test_e2e_with_pyav_synth(tmp_path):
     for packet in stream.encode(None):
         out.mux(packet)
     out.close()
-    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
 
     vp = VideoProcessor(sampling={"num_frames": 4}, output_format="numpy")
     res = await vp.process([str(path)])
@@ -811,7 +809,6 @@ async def test_e2e_num_frames_pil(tmp_path):
     for packet in stream.encode(None):
         out.mux(packet)
     out.close()
-    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
 
     vp = VideoProcessor(sampling={"num_frames": 4}, output_format="pil")
     res = await vp.process([str(path)])
@@ -841,7 +838,6 @@ async def test_e2e_fps_sampling(tmp_path):
     for packet in stream.encode(None):
         out.mux(packet)
     out.close()
-    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
 
     vp = VideoProcessor(sampling={"fps": 6}, output_format="numpy")
     res = await vp.process([str(path)])
@@ -871,7 +867,6 @@ async def test_e2e_preprocess_resize_numpy_channels_first(tmp_path):
     for packet in stream.encode(None):
         out.mux(packet)
     out.close()
-    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
 
     vp = VideoProcessor(
         sampling={"num_frames": 3},
@@ -908,7 +903,6 @@ async def test_e2e_max_sampled_frames_cap(tmp_path):
     for packet in stream.encode(None):
         out.mux(packet)
     out.close()
-    from ray.llm._internal.batch.stages.prepare_video_stage import VideoProcessor
 
     vp_fps = VideoProcessor(
         sampling={"fps": 30}, output_format="pil", max_sampled_frames=2
