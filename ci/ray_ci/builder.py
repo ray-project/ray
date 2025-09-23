@@ -11,7 +11,7 @@ from ci.ray_ci.builder_container import (
     BuilderContainer,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.docker_container import PLATFORMS_RAY
+from ci.ray_ci.docker_container import PLATFORMS_RAY, RayType
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.utils import ci_init, ecr_docker_login, logger
 from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
@@ -25,8 +25,8 @@ from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 )
 @click.option(
     "--image-type",
-    default="ray",
-    type=click.Choice(["ray", "ray-extra", "ray-llm", "ray-ml"]),
+    default=RayType.RAY.value,
+    type=click.Choice([v.value for v in list(RayType)]),
 )
 @click.option(
     "--build-type",
