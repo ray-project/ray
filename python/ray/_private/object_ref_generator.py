@@ -1,14 +1,18 @@
 from __future__ import annotations
-from ray.util.annotations import PublicAPI, DeveloperAPI
+
 
 import asyncio
 import collections
+
 from typing import Optional, Deque, Iterator, TYPE_CHECKING
+
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import ray
     from ray._private.worker import Worker
 from ray.exceptions import ObjectRefStreamEndOfStreamError
+
 
 @DeveloperAPI
 class DynamicObjectRefGenerator:
@@ -130,8 +134,7 @@ class ObjectRefGenerator:
         if is_ready:
             return True
 
-        ready, _ = ray.wait(
-            [expected_ref], timeout=0, fetch_local=False)
+        ready, _ = ray.wait([expected_ref], timeout=0, fetch_local=False)
         return len(ready) > 0
 
     def is_finished(self) -> bool:
@@ -146,8 +149,7 @@ class ObjectRefGenerator:
         self.worker.check_connected()
         core_worker = self.worker.core_worker
 
-        finished = core_worker.is_object_ref_stream_finished(
-            self._generator_ref)
+        finished = core_worker.is_object_ref_stream_finished(self._generator_ref)
 
         if finished:
             if self._generator_task_exception:
@@ -180,13 +182,9 @@ class ObjectRefGenerator:
         """
         self.worker.check_connected()
         core_worker = self.worker.core_worker
-        return core_worker.peek_object_ref_stream(
-            self._generator_ref)[0]
+        return core_worker.peek_object_ref_stream(self._generator_ref)[0]
 
-    def _next_sync(
-        self,
-        timeout_s: Optional[int | float] = None
-    ) -> ray.ObjectRef:
+    def _next_sync(self,timeout_s: Optional[int | float] = None) -> ray.ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -208,24 +206,21 @@ class ObjectRefGenerator:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
         Returns:
-            ObjectRef: The next object reference if available, 
+            ObjectRef: The next object reference if available,
                 otherwise returns ObjectRef.nil() when timeout occurs.
         """
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
-        expected_ref, is_ready = core_worker.peek_object_ref_stream(
-            self._generator_ref)
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
 
         if not is_ready:
-            _, unready = ray.wait(
-                [expected_ref], timeout=timeout_s, fetch_local=False)
+            _, unready = ray.wait([expected_ref], timeout=timeout_s, fetch_local=False)
             if len(unready) > 0:
                 return ray.ObjectRef.nil()
 
         try:
-            ref = core_worker.try_read_next_object_ref_stream(
-                self._generator_ref)
+            ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
             assert not ref.is_nil()
         except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
@@ -255,27 +250,21 @@ class ObjectRefGenerator:
         except Exception:
             pass
 
-    async def _next_async(
-            self,
-            timeout_s: Optional[int | float] = None
-    ):
+    async def _next_async(self,timeout_s: Optional[int | float] = None):
         """Same API as _next_sync, but it is for async context."""
         core_worker = self.worker.core_worker
-        ref, is_ready = core_worker.peek_object_ref_stream(
-            self._generator_ref)
+        ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
 
         if not is_ready:
             # TODO(swang): Avoid fetching the value.
             ready, unready = await asyncio.wait(
-                [asyncio.create_task(self._suppress_exceptions(ref))],
-                timeout=timeout_s
+                [asyncio.create_task(self._suppress_exceptions(ref))],timeout=timeout_s
             )
             if len(unready) > 0:
                 return ray.ObjectRef.nil()
 
         try:
-            ref = core_worker.try_read_next_object_ref_stream(
-                self._generator_ref)
+            ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
             assert not ref.is_nil()
         except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
@@ -307,4 +296,5 @@ class ObjectRefGenerator:
     def __getstate__(self):
         raise TypeError(
             "You cannot return or pass a generator to other task. "
-            "Serializing a ObjectRefGenerator is not allowed.")
+            "Serializing a ObjectRefGenerator is not allowed."
+        )
