@@ -31,6 +31,8 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/rpc/worker/fake_core_worker_client.h"
 #include "ray/util/counter_map.h"
 
@@ -84,10 +86,10 @@ class GcsActorSchedulerTest : public ::testing::Test {
   void SetUp() override {
     io_context_ =
         std::make_unique<InstrumentedIOContextWithThread>("GcsActorSchedulerTest");
-    raylet_client_ = std::make_shared<FakeRayletClient>();
+    raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
     raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
-    worker_client_ = std::make_shared<FakeCoreWorkerClient>();
+    worker_client_ = std::make_shared<rpc::FakeCoreWorkerClient>();
     gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
@@ -208,8 +210,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
   std::shared_ptr<gcs::InMemoryStoreClient> store_client_;
   std::shared_ptr<FakeGcsActorTable> gcs_actor_table_;
-  std::shared_ptr<FakeRayletClient> raylet_client_;
-  std::shared_ptr<FakeCoreWorkerClient> worker_client_;
+  std::shared_ptr<rpc::FakeRayletClient> raylet_client_;
+  std::shared_ptr<rpc::FakeCoreWorkerClient> worker_client_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;

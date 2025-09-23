@@ -36,7 +36,7 @@
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/thread_checker.h"
