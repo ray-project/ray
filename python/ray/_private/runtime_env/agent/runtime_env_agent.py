@@ -534,7 +534,7 @@ class RuntimeEnvAgent:
                 if successful
                 else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 serialized_runtime_env_context=serialized_context,
-                error_message=f"{self._node_prefix}{error_message}",
+                error_message=f"{self._node_prefix}{error_message}" if not successful else "",
             )
 
     async def DeleteRuntimeEnvIfPossible(self, request):
