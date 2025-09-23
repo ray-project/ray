@@ -647,6 +647,7 @@ doctest(
         "source/tune/**/*.rst",
     ],
     tags = ["team:ml"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 filegroup(
