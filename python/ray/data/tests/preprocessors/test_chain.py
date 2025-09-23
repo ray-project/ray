@@ -22,6 +22,10 @@ def test_chain():
 
     # Fit data.
     chain.fit(ds)
+    # Transform data.
+    transformed = chain.transform(ds)
+    out_df = transformed.to_pandas()
+
     assert imputer.stats_ == {
         "mean(B)": 0.0,
     }
@@ -34,10 +38,6 @@ def test_chain():
     assert encoder.stats_ == {
         "unique_values(C)": {"monday": 0, "sunday": 1, "tuesday": 2}
     }
-
-    # Transform data.
-    transformed = chain.transform(ds)
-    out_df = transformed.to_pandas()
 
     processed_col_a = [-1.0, -1.0, 1.0, 1.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
@@ -119,6 +119,10 @@ def test_nested_chain():
 
     # Fit data.
     chain.fit(ds)
+    # Transform data.
+    transformed = chain.transform(ds)
+    out_df = transformed.to_pandas()
+
     assert imputer.stats_ == {
         "mean(B)": 0.0,
     }
@@ -131,10 +135,6 @@ def test_nested_chain():
     assert encoder.stats_ == {
         "unique_values(C)": {"monday": 0, "sunday": 1, "tuesday": 2}
     }
-
-    # Transform data.
-    transformed = chain.transform(ds)
-    out_df = transformed.to_pandas()
 
     processed_col_a = [-1.0, -1.0, 1.0, 1.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
