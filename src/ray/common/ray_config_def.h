@@ -968,6 +968,6 @@ RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
 // Whether to start a background thread to manage Python GC in workers.
 RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 
-// Whether to disable the feature of outputting error log if the task is
+// Whether to enable the feature of outputting error log if the task is
 // still retryable.
-RAY_CONFIG(bool, disable_output_error_log_if_still_retry, false)
+RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)

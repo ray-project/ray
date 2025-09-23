@@ -1205,9 +1205,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
-      bool disable_output_error_log_if_still_retry =
-          RayConfig::instance().disable_output_error_log_if_still_retry();
-      if (!disable_output_error_log_if_still_retry) {
+      bool enable_output_error_log_if_still_retry =
+          RayConfig::instance().enable_output_error_log_if_still_retry();
+      if (enable_output_error_log_if_still_retry) {
         std::string num_retries_left_str;
         if (task_failed_due_to_oom) {
           num_retries_left_str = num_oom_retries_left == -1
