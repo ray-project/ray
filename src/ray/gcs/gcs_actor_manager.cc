@@ -227,12 +227,16 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    rpc::CoreWorkerClientPool &worker_client_pool)
+    rpc::CoreWorkerClientPool &worker_client_pool,
+    observability::RayEventRecorderInterface &ray_event_recorder,
+    const std::string &session_name)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
       worker_client_pool_(worker_client_pool),
+      ray_event_recorder_(ray_event_recorder),
+      session_name_(session_name),
       destroy_owned_placement_group_if_needed_(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
@@ -670,8 +674,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   std::string ray_namespace = actor_creation_task_spec.ray_namespace();
   RAY_CHECK(!ray_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(
-      request.task_spec(), ray_namespace, actor_state_counter_);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(),
+                                          ray_namespace,
+                                          actor_state_counter_,
+                                          ray_event_recorder_,
+                                          session_name_);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());
@@ -731,7 +738,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                 // The backend storage is supposed to be reliable, so the status must be
                 // ok.
                 RAY_CHECK_OK(put_status);
-                actor->WriteActorExportEvent();
+                actor->WriteActorExportEvent(true);
                 auto registered_actor_it = registered_actors_.find(actor->GetActorID());
                 auto callback_iter =
                     actor_to_register_callbacks_.find(actor->GetActorID());
@@ -825,8 +832,11 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   const auto &actor_namespace = iter->second->GetRayNamespace();
   RAY_CHECK(!actor_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(
-      request.task_spec(), actor_namespace, actor_state_counter_);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(),
+                                          actor_namespace,
+                                          actor_state_counter_,
+                                          ray_event_recorder_,
+                                          session_name_);
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
@@ -834,7 +844,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
-  actor->WriteActorExportEvent();
+  actor->WriteActorExportEvent(false);
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due
@@ -1059,7 +1069,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
          }
-         actor->WriteActorExportEvent();
+         actor->WriteActorExportEvent(false);
          // Destroy placement group owned by this actor.
          destroy_owned_placement_group_if_needed_(actor_id);
        },
@@ -1434,7 +1444,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            }
            gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           actor->WriteActorExportEvent();
+           actor->WriteActorExportEvent(false);
          },
          io_context_});
     gcs_actor_scheduler_->Schedule(actor);
@@ -1464,7 +1474,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
-           actor->WriteActorExportEvent();
+           actor->WriteActorExportEvent(false);
          },
          io_context_});
     // The actor is dead, but we should not remove the entry from the
@@ -1578,7 +1588,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         actor,
         reply](Status status) mutable {
          gcs_publisher_->PublishActor(actor_id, std::move(actor_data_only_with_states));
-         actor->WriteActorExportEvent();
+         actor->WriteActorExportEvent(false);
          // Invoke all callbacks for all registration requests of this actor (duplicated
          // requests are included) and remove all of them from
          // actor_to_create_callbacks_.
@@ -1610,9 +1620,11 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     //   - Detached actors which lives even when their original owner is dead.
     if (OnInitializeActorShouldLoad(gcs_init_data, actor_id)) {
       const auto &actor_task_spec = map_find_or_die(actor_task_specs, actor_id);
-      auto actor = std::make_shared<GcsActor>(
-          actor_table_data, actor_task_spec, actor_state_counter_);
-
+      auto actor = std::make_shared<GcsActor>(actor_table_data,
+                                              actor_task_spec,
+                                              actor_state_counter_,
+                                              ray_event_recorder_,
+                                              session_name_);
       registered_actors_.emplace(actor_id, actor);
       function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
@@ -1643,7 +1655,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      auto actor = std::make_shared<GcsActor>(actor_table_data, actor_state_counter_);
+      auto actor = std::make_shared<GcsActor>(
+          actor_table_data, actor_state_counter_, ray_event_recorder_, session_name_);
       destroyed_actors_.emplace(actor_id, actor);
       sorted_destroyed_actor_list_.emplace_back(
           actor_id, static_cast<int64_t>(actor_table_data.timestamp()));
