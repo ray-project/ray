@@ -8,4 +8,4 @@ set -exo pipefail
 
 # Install Python dependencies.
 
-uv pip install -r e2e_timeseries_py311_cu123.lock --system --no-deps --index-strategy unsafe-best-match
+uv pip install -r python_depset.lock --system --no-deps --index-strategy unsafe-best-match
