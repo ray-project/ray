@@ -485,13 +485,13 @@ required to convert episode data into a columnar format. To confirm that the rec
     # eps_id              string
     # agent_id            null
     # module_id           null
-    # obs                 numpy.ndarray(shape=(4,), dtype=float)
+    # obs                 ArrowTensorTypeV2(shape=(4,), dtype=float)
     # actions             int32
     # rewards             double
-    # new_obs             numpy.ndarray(shape=(4,), dtype=float)
+    # new_obs             ArrowTensorTypeV2(shape=(4,), dtype=float)
     # terminateds         bool
     # truncateds          bool
-    # action_dist_inputs  numpy.ndarray(shape=(2,), dtype=float)
+    # action_dist_inputs  ArrowTensorTypeV2(shape=(2,), dtype=float)
     # action_logp         float
     # weights_seq_no      int64
 
