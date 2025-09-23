@@ -18,20 +18,19 @@
 #include <optional>
 #include <string>
 
-#include "absl/memory/memory.h"
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "gtest/gtest_prod.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/scheduling/resource_set.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_interface.h"
 #include "ray/util/process.h"
 
 namespace ray {
+
+namespace rpc {
+class ClientCallManager;
+}
 
 namespace raylet {
 
