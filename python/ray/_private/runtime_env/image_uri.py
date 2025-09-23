@@ -68,49 +68,29 @@ def _modify_container_context_impl(
     )
 
     container_driver = "podman"
-    if runtime_env_constants.RAY_PODMAN_USE_NYDUS:
-        container_command = [
-            container_driver,
-            "run",
-            "-d",
-            "--systemd=false",
-            "--log-level=TRACE",
-            "--rm",
-            "--db-backend=file",
-            "--network-config-dir=/etc/cni/net.d/",
-            "--cgroup-manager=cgroupfs",
-            "--network=host",
-            "--pid=host",
-            "--ipc=host",
-            "--cgroups=enabled",
-            "--cgroupns=private",
-            "--userns=host",
-        ]
-    else:
-        # todo add cgroup config
-        container_command = [
-            container_driver,
-            "run",
-            "--rm",
-            "-v",
-            ray_tmp_dir + ":" + ray_tmp_dir,
-            "--cgroup-manager=cgroupfs",
-            "--network=host",
-            "--pid=host",
-            "--ipc=host",
-            "--env-host",
-            "--cgroups=no-conmon",  # ANT-INTERNAL
-            # NOTE(zcin): Mounted volumes in rootless containers are
-            # owned by the user `root`. The user on host (which will
-            # usually be `ray` if this is being run in a ray docker
-            # image) who started the container is mapped using user
-            # namespaces to the user `root` in a rootless container. In
-            # order for the Ray Python worker to access the mounted ray
-            # tmp dir, we need to use keep-id mode which maps the user
-            # as itself (instead of as `root`) into the container.
-            # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
-            "--userns=keep-id",
-        ]
+    container_command = [
+        container_driver,
+        "run",
+        "--rm",
+        "-v",
+        ray_tmp_dir + ":" + ray_tmp_dir,
+        "--cgroup-manager=cgroupfs",
+        "--network=host",
+        "--pid=host",
+        "--ipc=host",
+        "--env-host",
+        "--cgroups=no-conmon",  # ANT-INTERNAL
+        # NOTE(zcin): Mounted volumes in rootless containers are
+        # owned by the user `root`. The user on host (which will
+        # usually be `ray` if this is being run in a ray docker
+        # image) who started the container is mapped using user
+        # namespaces to the user `root` in a rootless container. In
+        # order for the Ray Python worker to access the mounted ray
+        # tmp dir, we need to use keep-id mode which maps the user
+        # as itself (instead of as `root`) into the container.
+        # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
+        "--userns=keep-id",
+    ]
 
     # Note(Jacky): If the same target_path is present in the container mount,
     # the image will not start due to the duplicate mount target path error,
@@ -158,7 +138,9 @@ def _modify_container_context_impl(
         )
         context.container["entrypoint_prefix"] = entrypoint_args
     # we need 'sudo' and 'admin', mount logs
-    container_command = ["sudo", "-E"] + container_command
+    if container_option.get("sudo"):
+        container_command = ["sudo", "-E"] + container_command
+        
     container_command.append("-u")
     # we set the user in the container, default is 'admin'
     user = container_option.get("user")
