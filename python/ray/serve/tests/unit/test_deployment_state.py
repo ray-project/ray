@@ -2849,7 +2849,7 @@ class TestAutoscaling:
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: [
-                            TimeStampedValue(timer.time(), req_per_replica)
+                            TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
                     }
@@ -2864,7 +2864,7 @@ class TestAutoscaling:
                     aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
                     metrics={
                         RUNNING_REQUESTS_KEY: [
-                            TimeStampedValue(timer.time(), req_per_replica)
+                            TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                     },
                     timestamp=timer.time(),
@@ -3035,7 +3035,9 @@ class TestAutoscaling:
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [TimeStampedValue(timer.time(), 2)]
+                        replica._actor.replica_id: [
+                            TimeStampedValue(timer.time() - 0.1, 2)
+                        ]
                         for replica in replicas
                     }
                 },
@@ -3047,7 +3049,9 @@ class TestAutoscaling:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
                     aggregated_metrics={RUNNING_REQUESTS_KEY: 2},
-                    metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time(), 2)]},
+                    metrics={
+                        RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 2)]
+                    },
                     timestamp=timer.time(),
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
@@ -3127,7 +3131,9 @@ class TestAutoscaling:
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
+                        replica._actor.replica_id: [
+                            TimeStampedValue(timer.time() - 0.1, 1)
+                        ]
                         for replica in replicas
                     }
                 },
@@ -3139,7 +3145,9 @@ class TestAutoscaling:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
                     aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
-                    metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time(), 1)]},
+                    metrics={
+                        RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 1)]
+                    },
                     timestamp=timer.time(),
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
@@ -3232,7 +3240,9 @@ class TestAutoscaling:
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
+                        replica._actor.replica_id: [
+                            TimeStampedValue(timer.time() - 0.1, 1)
+                        ]
                         for replica in replicas
                     }
                 },
@@ -3244,7 +3254,9 @@ class TestAutoscaling:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
                     aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
-                    metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time(), 1)]},
+                    metrics={
+                        RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 1)]
+                    },
                     timestamp=timer.time(),
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
@@ -3536,7 +3548,7 @@ class TestAutoscaling:
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     ds._replicas.get()[0]._actor.replica_id: [
-                        TimeStampedValue(timer.time(), 2)
+                        TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
             },
@@ -3643,7 +3655,7 @@ class TestAutoscaling:
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     ds1._replicas.get()[0]._actor.replica_id: [
-                        TimeStampedValue(timer.time(), 2)
+                        TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
             },

@@ -15,7 +15,6 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
-    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -403,11 +402,15 @@ class AutoscalingState:
         if running_requests_timeseries:
 
             # assume that the last recorded metric is valid for last_window_s seconds
-            last_window_s = min(
-                self._config.metrics_interval_s,
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-            )
-            assert last_window_s >= 0, "last_window_s must be greater than 0"
+            last_metric_time = running_requests_timeseries[-1].timestamp
+            # we dont want to make any assumption about how long the last metric will be valid
+            # only conclude that the last metric is valid for last_window_s seconds that is the
+            # difference between the current time and the last metric recorded time
+            last_window_s = time.time() - last_metric_time
+            # adding a check to negative values caused by clock skew
+            # between replicas and controller. Also add a small epsilon to avoid division by zero
+            if last_window_s <= 0:
+                last_window_s = 1e-3
             # Calculate the time-weighted average of the running requests
             avg_running = time_weighted_average(
                 running_requests_timeseries, last_window_s=last_window_s
