@@ -91,6 +91,7 @@ py_test(
     name = "test_api_migrations",
     size = "small",
     srcs = ["tests/test_api_migrations.py"],
+    # Disable V2 since we explicitly test V1 -> V2 migration.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
