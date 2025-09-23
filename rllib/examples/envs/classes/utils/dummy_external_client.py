@@ -21,6 +21,7 @@ from ray.rllib.utils.numpy import softmax
 torch, _ = try_import_torch()
 
 
+# TODO: Should this dummy client also be updated to use SingleAgentRLlibGateway?
 def _dummy_external_client(client_id: int, port: int = 5556):
     """A dummy client that runs CartPole and acts as a testing external env."""
 
