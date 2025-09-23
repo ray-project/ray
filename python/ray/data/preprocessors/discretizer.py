@@ -342,24 +342,25 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.stats_ = post_fit_processor(stats, self.bins, self.right)
         return self
 
-    def post_fit_processor(aggregate_stats: dict, bins: Union[str, Dict], right: bool):
-        mins, maxes, stats = {}, {}, {}
-        for key, value in aggregate_stats.items():
-            column_name = key[4:-1]  # min(column) -> column
-            if key.startswith("min"):
-                mins[column_name] = value
-            if key.startswith("max"):
-                maxes[column_name] = value
 
-        for column in mins.keys():
-            stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
-                mn=mins[column],
-                mx=maxes[column],
-                bins=bins[column] if isinstance(bins, dict) else bins,
-                right=right,
-            )
+def post_fit_processor(aggregate_stats: dict, bins: Union[str, Dict], right: bool):
+    mins, maxes, stats = {}, {}, {}
+    for key, value in aggregate_stats.items():
+        column_name = key[4:-1]  # min(column) -> column
+        if key.startswith("min"):
+            mins[column_name] = value
+        if key.startswith("max"):
+            maxes[column_name] = value
 
-        return stats
+    for column in mins.keys():
+        stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
+            mn=mins[column],
+            mx=maxes[column],
+            bins=bins[column] if isinstance(bins, dict) else bins,
+            right=right,
+        )
+
+    return stats
 
 
 # Copied from
