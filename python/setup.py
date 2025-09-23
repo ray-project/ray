@@ -38,7 +38,7 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
-DEPS_ONLY_VERSION = "100.0.0-dev"
+DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
 # replaced with junctions in Windows. This variable is set in our conda-forge
@@ -385,7 +385,9 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "click >= 7.0",
+        # Click 8.3.0 does not work with copy.deepcopy on Python 3.10
+        # TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
+        "click>=7.0, !=8.3.0",
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",

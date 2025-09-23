@@ -19,12 +19,13 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace rpc {
+
+class ServerCallFactory;
 
 /// TODO(vitsai): Remove this when auth is implemented for node manager
 #define RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
