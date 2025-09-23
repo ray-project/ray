@@ -1,7 +1,7 @@
 """Train multi-node persistence/checkpoint release test.
 
-This test is a multi-node version of `test_new_persistence.py` and is meant to
-be run on a cluster with NFS or S3 storage configured.
+This test is a multi-node version of `test_new_persistence.py`/`test_persistence.py`
+and is meant to be run on a cluster with NFS or S3 storage configured.
 
 This test also records timing metrics on checkpoint save (to disk), save (to storage),
 and load (from storage) operations and outputs them as release test metrics.
@@ -41,13 +41,19 @@ from ray.air._internal.uri_utils import URI
 from ray.train import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.torch import TorchTrainer
+from ray.train.v2._internal.constants import is_v2_enabled
 
-
-from test_new_persistence import (
-    train_fn,
-    _assert_storage_contents,
-    _resume_from_checkpoint,
-)
+if is_v2_enabled():
+    from test_v2_persistence import (
+        train_fn,
+        _assert_storage_contents,
+    )
+else:
+    from test_v1_persistence import (
+        train_fn,
+        _assert_storage_contents,
+        _resume_from_checkpoint,
+    )
 
 # Add a unique ID to the storage path to avoid collisions between release test runs.
 TEST_ID = uuid.uuid4().hex[:4] + "_" + datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -216,40 +222,51 @@ def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
         "\nSaving results under (storage_path, exp_name) = "
         f"({storage_path}, {exp_name})\n"
     )
-
+    train_loop_config = {
+        "fail_iters": [3, 6, 8],
+        "time_per_iter": 1.0,
+        "num_iterations": TestConstants.NUM_ITERATIONS,
+        "custom_save_fn": custom_save_fn,
+        "custom_restore_fn": custom_restore_fn,
+    }
+    scaling_config = train.ScalingConfig(
+        num_workers=TestConstants.NUM_WORKERS,
+        resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
+    )
+    run_config = train.RunConfig(
+        failure_config=train.FailureConfig(max_failures=2),
+        name=exp_name,
+        storage_path=storage_path,
+        storage_filesystem=storage_filesystem,
+        checkpoint_config=checkpoint_config,
+    )
+    if not is_v2_enabled():
+        train_loop_config["in_trainer"] = True
+        scaling_config.trainer_resources = {"CPU": 0}
+        run_config.sync_config = train.SyncConfig(sync_artifacts=True)
     trainer = TorchTrainer(
         train_fn,
-        train_loop_config={
-            "in_trainer": True,
-            "fail_iters": [3, 6, 8],
-            "time_per_iter": 1.0,
-            "num_iterations": TestConstants.NUM_ITERATIONS,
-            "custom_save_fn": custom_save_fn,
-            "custom_restore_fn": custom_restore_fn,
-        },
-        scaling_config=train.ScalingConfig(
-            num_workers=TestConstants.NUM_WORKERS,
-            trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
-        ),
-        run_config=train.RunConfig(
-            failure_config=train.FailureConfig(max_failures=2),
-            name=exp_name,
-            storage_path=storage_path,
-            storage_filesystem=storage_filesystem,
-            checkpoint_config=checkpoint_config,
-            sync_config=train.SyncConfig(sync_artifacts=True),
-        ),
+        train_loop_config=train_loop_config,
+        scaling_config=scaling_config,
+        run_config=run_config,
     )
     print("\nStarting initial run.\n")
     with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     print("\nStarting manually restored run.\n")
-    restored_trainer = TorchTrainer.restore(
-        path=str(URI(storage_path) / exp_name),
-        storage_filesystem=storage_filesystem,
-    )
+    if is_v2_enabled():
+        restored_trainer = TorchTrainer(
+            train_fn,
+            train_loop_config=train_loop_config,
+            scaling_config=scaling_config,
+            run_config=run_config,
+        )
+    else:
+        restored_trainer = TorchTrainer.restore(
+            path=str(URI(storage_path) / exp_name),
+            storage_filesystem=storage_filesystem,
+        )
     result = restored_trainer.fit()
     print(result)
 
@@ -268,22 +285,31 @@ def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
     else:
         raise NotImplementedError(f"Invalid storage type: {label}")
 
-    _assert_storage_contents(
-        local_inspect_dir,
-        exp_name,
-        checkpoint_config,
-        "TorchTrainer",
-        test_trainer=True,
-        constants=TestConstants,
-    )
+    if is_v2_enabled():
+        _assert_storage_contents(
+            local_inspect_dir,
+            exp_name,
+            checkpoint_config,
+            constants=TestConstants,
+        )
+    else:
+        _assert_storage_contents(
+            local_inspect_dir,
+            exp_name,
+            checkpoint_config,
+            "TorchTrainer",
+            test_trainer=True,
+            constants=TestConstants,
+        )
 
     # Test `resume_from_checkpoint`
-    _resume_from_checkpoint(
-        result.checkpoint,
-        expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
-        storage_path=storage_path,
-        storage_filesystem=storage_filesystem,
-    )
+    if not is_v2_enabled():
+        _resume_from_checkpoint(
+            result.checkpoint,
+            expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+        )
 
     # Upload checkpoint save and restore timing release test metrics
     all_checkpoint_timing_metrics = collections.defaultdict(list)
@@ -328,18 +354,21 @@ def test_no_storage_error(tmp_path, monkeypatch):
     w/ no persistent storage configured."""
     ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 
+    train_loop_config = {
+        "time_per_iter": 1.0,
+        "num_iterations": TestConstants.NUM_ITERATIONS,
+    }
+    scaling_config = train.ScalingConfig(
+        num_workers=TestConstants.NUM_WORKERS,
+        resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
+    )
+    if not is_v2_enabled():
+        train_loop_config["in_trainer"] = True
+        scaling_config.trainer_resources = {"CPU": 0}
     trainer = TorchTrainer(
         train_fn,
-        train_loop_config={
-            "in_trainer": True,
-            "time_per_iter": 1.0,
-            "num_iterations": TestConstants.NUM_ITERATIONS,
-        },
-        scaling_config=train.ScalingConfig(
-            num_workers=TestConstants.NUM_WORKERS,
-            trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
-        ),
+        train_loop_config=train_loop_config,
+        scaling_config=scaling_config,
         run_config=train.RunConfig(name="test_trainer", storage_path=None),
     )
     with pytest.raises(TrainingFailedError):
@@ -351,26 +380,30 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
     if you never report checkpoints."""
     ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 
+    train_loop_config = {
+        "time_per_iter": 1.0,
+        "num_iterations": TestConstants.NUM_ITERATIONS,
+        # Don't report any checkpoints
+        "no_checkpoint_ranks": list(range(TestConstants.NUM_WORKERS)),
+    }
+    scaling_config = train.ScalingConfig(
+        num_workers=TestConstants.NUM_WORKERS,
+        resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
+    )
+    run_config = train.RunConfig(
+        failure_config=train.FailureConfig(max_failures=2),
+        name="test_trainer",
+        storage_path=None,
+    )
+    if not is_v2_enabled():
+        train_loop_config["in_trainer"] = True
+        scaling_config.trainer_resources = {"CPU": 0}
+        run_config.sync_config = train.SyncConfig(sync_artifacts=True)
     trainer = TorchTrainer(
         train_fn,
-        train_loop_config={
-            "in_trainer": True,
-            "time_per_iter": 1.0,
-            "num_iterations": TestConstants.NUM_ITERATIONS,
-            # Don't report any checkpoints
-            "no_checkpoint_ranks": list(range(TestConstants.NUM_WORKERS)),
-        },
-        scaling_config=train.ScalingConfig(
-            num_workers=TestConstants.NUM_WORKERS,
-            trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
-        ),
-        run_config=train.RunConfig(
-            failure_config=train.FailureConfig(max_failures=2),
-            name="test_trainer",
-            storage_path=None,
-            sync_config=train.SyncConfig(sync_artifacts=True),
-        ),
+        train_loop_config=train_loop_config,
+        scaling_config=scaling_config,
+        run_config=run_config,
     )
     result = trainer.fit()
 

@@ -1809,12 +1809,22 @@
       num_nodes: 4
 
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
+    - __suffix__: aws_v1
+    - __suffix__: aws_v2
+      run:
+        script: RAY_TRAIN_V2_ENABLED=1 pytest -v test_persistence.py -s
+    - __suffix__: gce_v1
       env: gce
       frequency: manual
       cluster:
         cluster_compute: compute_gce.yaml
+    - __suffix__: gce_v2
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+      run:
+        script: RAY_TRAIN_V2_ENABLED=1 pytest -v test_persistence.py -s
 
   alert: default
 
