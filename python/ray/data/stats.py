@@ -17,6 +17,7 @@ from ray.data.aggregate import (
     Std,
     ZeroPercentage,
 )
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -27,6 +28,7 @@ RAY_DATA_DUMMY_COL = "__ray_data_dummy_col"
 STAT_ORDER = ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
 
 
+@DeveloperAPI(stability="alpha")
 @dataclass
 class DatasetSummary:
     """A statistical summary of a dataset, organized by column type.
@@ -84,6 +86,7 @@ class DatasetSummary:
         return self.to_pandas().to_string()
 
 
+@DeveloperAPI(stability="alpha")
 class ColumnType(Enum):
     """Enumeration of supported column types for statistical analysis."""
 
@@ -92,6 +95,7 @@ class ColumnType(Enum):
     VECTOR = "vector"
 
 
+@DeveloperAPI(stability="alpha")
 def numerical_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for numerical columns.
 
@@ -121,6 +125,7 @@ def numerical_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
+@DeveloperAPI(stability="alpha")
 def categorical_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for string columns.
 
@@ -140,6 +145,7 @@ def categorical_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
+@DeveloperAPI(stability="alpha")
 def vector_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for vector columns.
 
@@ -181,6 +187,7 @@ def _is_string_type(ftype: pa.DataType) -> bool:
     return _is_pa_string_type(underlying_type)
 
 
+@DeveloperAPI(stability="alpha")
 @dataclass
 class FeatureAggregators:
     """Container for categorized columns and their aggregators."""
@@ -200,6 +207,7 @@ class FeatureAggregators:
         }
 
 
+@DeveloperAPI(stability="alpha")
 def feature_aggregators_for_dataset(
     dataset: "Dataset", columns: Optional[List[str]] = None
 ) -> FeatureAggregators:
@@ -266,6 +274,7 @@ def feature_aggregators_for_dataset(
     )
 
 
+@DeveloperAPI(stability="alpha")
 def get_stat_names_for_column_type(column_type: ColumnType) -> List[str]:
     """Extract stat names from aggregators for a given column type.
 
