@@ -108,9 +108,9 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def assert_healthy(self):
         """Checks that the server socket is open and listening."""
-        assert (
-            self.server_socket is not None
-        ), "Server socket is None (not connected, not listening)."
+        assert self.server_socket is not None, (
+            "Server socket is None (not connected, not listening)."
+        )
 
     @override(EnvRunner)
     def sample(self, **kwargs):

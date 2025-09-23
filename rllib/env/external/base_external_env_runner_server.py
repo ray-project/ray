@@ -4,8 +4,7 @@ import pickle
 import socket
 import threading
 import time
-from typing import Collection, DefaultDict, List, Optional, Union, TypeVar, \
-    Generic
+from typing import Collection, DefaultDict, List, Optional, Union, TypeVar, Generic
 
 from ray.rllib.algorithms import IMPALAConfig
 from ray.rllib.core import (
@@ -26,9 +25,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeID, StateDict
 
-T_EpisodeType = TypeVar(
-    "T_EpisodeType", bound=SingleAgentEpisode | MultiAgentEpisode
-)
+T_EpisodeType = TypeVar("T_EpisodeType", bound=SingleAgentEpisode | MultiAgentEpisode)
 
 
 class BaseExternalEnvRunnerServer(
@@ -100,9 +97,9 @@ class BaseExternalEnvRunnerServer(
     @override(EnvRunner)
     def assert_healthy(self):
         """Checks that the server socket is open and listening."""
-        assert (
-            self.server_socket is not None
-        ), "Server socket is None (not connected, not listening)."
+        assert self.server_socket is not None, (
+            "Server socket is None (not connected, not listening)."
+        )
 
     @override(EnvRunner)
     def sample(self, **kwargs):
@@ -155,17 +152,13 @@ class BaseExternalEnvRunnerServer(
                 self._done_episodes_for_metrics.append(eps)
                 num_episodes_completed += 1
             else:
-                self._ongoing_episodes_for_metrics[
-                    eps.id_
-                ].append(eps)
+                self._ongoing_episodes_for_metrics[eps.id_].append(eps)
             num_env_steps += len(eps)
 
         ret = self._episode_chunks_to_return
         self._episode_chunks_to_return = None
 
-        self._increase_sampled_metrics(
-            num_env_steps, num_episodes_completed
-        )
+        self._increase_sampled_metrics(num_env_steps, num_episodes_completed)
 
         # Reset per-client sync flags
         with self.clients_lock:
@@ -255,7 +248,7 @@ class BaseExternalEnvRunnerServer(
                 threading.Thread(
                     target=self._handle_client,
                     args=(client_socket, address),
-                    daemon=True
+                    daemon=True,
                 ).start()
             except Exception as e:
                 print(f"Error accepting client: {e}")

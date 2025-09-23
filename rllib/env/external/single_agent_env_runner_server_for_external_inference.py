@@ -4,7 +4,9 @@ from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
-from rllib.env.external.base_external_env_runner_server import BaseExternalEnvRunnerServer
+from rllib.env.external.base_external_env_runner_server import (
+    BaseExternalEnvRunnerServer,
+)
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.util.annotations import DeveloperAPI
@@ -49,8 +51,7 @@ class SingleAgentEnvRunnerServerForExternalInference(
     @override(EnvRunner)
     def get_spaces(self) -> dict[str, tuple[gym.Space, gym.Space]]:
         return {
-            INPUT_ENV_SPACES: (
-            self.config.observation_space, self.config.action_space),
+            INPUT_ENV_SPACES: (self.config.observation_space, self.config.action_space),
             DEFAULT_MODULE_ID: (
                 self.config.observation_space,
                 self.config.action_space,

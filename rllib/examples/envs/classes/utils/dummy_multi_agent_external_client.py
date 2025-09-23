@@ -1,7 +1,6 @@
 import time
 
-from ray.rllib.env.external.multi_agent_rllib_gateway import \
-    MultiAgentRLlibGateway
+from ray.rllib.env.external.multi_agent_rllib_gateway import MultiAgentRLlibGateway
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.framework import try_import_torch
 

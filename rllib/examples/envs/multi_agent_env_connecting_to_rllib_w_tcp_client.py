@@ -57,6 +57,7 @@ a disconnection error at the end, b/c RLlib closes the server socket when done t
 |                 624.1 |                 160000 |
 +-----------------------+------------------------+
 """
+
 import threading
 
 from gymnasium.spaces import Dict
@@ -68,7 +69,8 @@ from ray.rllib.env.external.multi_agent_env_runner_server_for_external_inference
     MultiAgentEnvRunnerServerForExternalInference,
 )
 from ray.rllib.examples.envs.classes.utils.dummy_multi_agent_external_client import (
-    _dummy_multi_agent_external_client, policy_mapping_fn,
+    _dummy_multi_agent_external_client,
+    policy_mapping_fn,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,

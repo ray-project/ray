@@ -9,9 +9,15 @@ import numpy as np
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
 
-from ray.rllib.core import Columns, COMPONENT_RL_MODULE, COMPONENT_ENV_RUNNER, \
-    COMPONENT_ENV_TO_MODULE_CONNECTOR, COMPONENT_LEARNER, \
-    COMPONENT_MODULE_TO_ENV_CONNECTOR, COMPONENT_LEARNER_GROUP
+from ray.rllib.core import (
+    Columns,
+    COMPONENT_RL_MODULE,
+    COMPONENT_ENV_RUNNER,
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_LEARNER,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_LEARNER_GROUP,
+)
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.env.external.rllink import (
     get_rllink_message,
@@ -163,16 +169,20 @@ class SingleAgentRLlibGateway:
                 )
             checkpoint_path = Path(checkpoint_path)
             self._env_to_module = EnvToModulePipeline.from_checkpoint(
-                checkpoint_path / COMPONENT_ENV_RUNNER /
-                COMPONENT_ENV_TO_MODULE_CONNECTOR
+                checkpoint_path
+                / COMPONENT_ENV_RUNNER
+                / COMPONENT_ENV_TO_MODULE_CONNECTOR
             )
             self._rl_module = RLModule.from_checkpoint(
-                checkpoint_path / COMPONENT_LEARNER_GROUP /
-                COMPONENT_LEARNER / COMPONENT_RL_MODULE
+                checkpoint_path
+                / COMPONENT_LEARNER_GROUP
+                / COMPONENT_LEARNER
+                / COMPONENT_RL_MODULE
             )
             self._module_to_env = ModuleToEnvPipeline.from_checkpoint(
-                checkpoint_path / COMPONENT_ENV_RUNNER /
-                COMPONENT_MODULE_TO_ENV_CONNECTOR
+                checkpoint_path
+                / COMPONENT_ENV_RUNNER
+                / COMPONENT_MODULE_TO_ENV_CONNECTOR
             )
             self._is_initialized = True
         else:
@@ -351,8 +361,7 @@ class SingleAgentRLlibGateway:
                     msg_type, msg_body = self._try_send_receive_rllink_msg(
                         {
                             "type": RLlink.EPISODES_AND_GET_STATE.name,
-                            "episodes": [e.get_state() for e in
-                                         self._episodes],
+                            "episodes": [e.get_state() for e in self._episodes],
                             "timesteps": self._timesteps,
                         },
                     )
