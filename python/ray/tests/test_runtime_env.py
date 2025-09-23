@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
-
+from ray.exceptions import RuntimeEnvSetupError
 
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_decorator_task(start_cluster_shared, runtime_env_class):
@@ -165,6 +165,34 @@ def test_runtime_env_config(start_cluster_shared):
         run(runtime_env)
         runtime_env = RuntimeEnv(config=RuntimeEnvConfig(**good_config))
         run(runtime_env)
+
+
+def test_runtime_env_error_includes_node_ip(shutdown_only):
+    """Test that RuntimeEnv errors include node IP information for debugging."""
+    ray.init()
+    fast_timeout_config = {"setup_timeout_seconds": 1}
+    # Test with invalid pip package to trigger RuntimeEnvSetupError
+    @ray.remote(
+        runtime_env={
+            "pip": ["nonexistent-package"],
+            "config": fast_timeout_config,
+        }
+    )
+    def f():
+        return "should not reach here"
+    # Test pip package error
+    with pytest.raises(RuntimeEnvSetupError) as exception_info:
+        ray.get(f.remote())
+    error_message = str(exception_info.value)
+    print(f"Pip error message: {error_message}")
+    # Check that error message contains node IP information
+    # The format should be like "[Node 192.168.1.100] ..." or "[Node unknown] ..."
+    assert (
+        "[Node " in error_message
+    ), f"Error message should contain node IP: {error_message}"
+    assert (
+        "] " in error_message
+    ), f"Error message should have proper node IP format: {error_message}"
 
 
 if __name__ == "__main__":

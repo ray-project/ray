@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 
+import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
@@ -253,6 +254,12 @@ class RuntimeEnvAgent:
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
 
+        try:
+            self._node_ip = ray.util.get_node_ip_address()
+            self._node_prefix = f"[Node {self._node_ip}] "
+        except Exception:
+            self._node_prefix = "[Node unknown] "
+
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
         for name, plugin_setup_context in self._plugin_manager.plugins.items():
@@ -434,11 +441,14 @@ class RuntimeEnvAgent:
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
+
+            error_message = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)
-                ),
+                error_message=f"{self._node_prefix}{error_message}",
             )
 
         # Increase reference
@@ -478,7 +488,7 @@ class RuntimeEnvAgent:
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                        error_message=error_message,
+                        error_message=f"{self._node_prefix}{error_message}",
                     )
 
             if SLEEP_FOR_TESTING_S:
@@ -523,7 +533,7 @@ class RuntimeEnvAgent:
                 if successful
                 else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 serialized_runtime_env_context=serialized_context,
-                error_message=error_message,
+                error_message=f"{self._node_prefix}{error_message}",
             )
 
     async def DeleteRuntimeEnvIfPossible(self, request):
@@ -540,11 +550,14 @@ class RuntimeEnvAgent:
                 "[Decrease] Failed to parse runtime env: "
                 f"{request.serialized_runtime_env}"
             )
+
+            error_message = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)
-                ),
+                error_message=f"{self._node_prefix}{error_message}",
             )
 
         try:
@@ -554,7 +567,7 @@ class RuntimeEnvAgent:
         except Exception as e:
             return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message=f"Fails to decrement reference for runtime env for {str(e)}",
+                error_message=f"{self._node_prefix}Fails to decrement reference for runtime env for {str(e)}",
             )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
