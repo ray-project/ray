@@ -60,6 +60,7 @@ From the dummy client (thread), you should see at the end:
 ConnectionError: Error receiving message from peer on socket ...
 ```
 """
+
 import threading
 
 import gymnasium as gym

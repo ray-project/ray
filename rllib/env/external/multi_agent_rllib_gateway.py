@@ -13,9 +13,15 @@ import tree
 from ray.rllib.algorithms import AlgorithmConfig, Algorithm
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
-from ray.rllib.core import Columns, COMPONENT_RL_MODULE, COMPONENT_ENV_RUNNER, \
-    COMPONENT_ENV_TO_MODULE_CONNECTOR, COMPONENT_LEARNER, \
-    COMPONENT_MODULE_TO_ENV_CONNECTOR, COMPONENT_LEARNER_GROUP
+from ray.rllib.core import (
+    Columns,
+    COMPONENT_RL_MODULE,
+    COMPONENT_ENV_RUNNER,
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_LEARNER,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_LEARNER_GROUP,
+)
 from ray.rllib.core.rl_module import MultiRLModule
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.external.rllink import (
@@ -173,16 +179,20 @@ class MultiAgentRLlibGateway:
                 )
             checkpoint_path = Path(checkpoint_path)
             self._env_to_module = EnvToModulePipeline.from_checkpoint(
-                checkpoint_path / COMPONENT_ENV_RUNNER /
-                COMPONENT_ENV_TO_MODULE_CONNECTOR
+                checkpoint_path
+                / COMPONENT_ENV_RUNNER
+                / COMPONENT_ENV_TO_MODULE_CONNECTOR
             )
             self._rl_module = MultiRLModule.from_checkpoint(
-                checkpoint_path / COMPONENT_LEARNER_GROUP /
-                COMPONENT_LEARNER / COMPONENT_RL_MODULE
+                checkpoint_path
+                / COMPONENT_LEARNER_GROUP
+                / COMPONENT_LEARNER
+                / COMPONENT_RL_MODULE
             )
             self._module_to_env = ModuleToEnvPipeline.from_checkpoint(
-                checkpoint_path / COMPONENT_ENV_RUNNER /
-                COMPONENT_MODULE_TO_ENV_CONNECTOR
+                checkpoint_path
+                / COMPONENT_ENV_RUNNER
+                / COMPONENT_MODULE_TO_ENV_CONNECTOR
             )
             self._config = Algorithm.from_checkpoint(str(checkpoint_path)).config
             self._is_initialized = True
@@ -256,6 +266,7 @@ class MultiAgentRLlibGateway:
                 return np.array(obs, np.float32)
             else:
                 return obs
+
         prev_observation = tree.map_structure(_ensure_array, prev_observation)
 
         # Episode logging.
@@ -321,9 +332,7 @@ class MultiAgentRLlibGateway:
             ma_dict = ma_dict_list[0]
             for agent_id, val in ma_dict.items():
                 extra_model_outputs[agent_id][col] = val
-                extra_model_outputs[agent_id][
-                    WEIGHTS_SEQ_NO
-                ] = self._weights_seq_no
+                extra_model_outputs[agent_id][WEIGHTS_SEQ_NO] = self._weights_seq_no
         extra_model_outputs = dict(extra_model_outputs)
 
         # Store action for next timestep's logging into the episode.
@@ -339,7 +348,8 @@ class MultiAgentRLlibGateway:
 
         ongoing_episodes_continuations = [
             eps.cut(len_lookback_buffer=self._config.episode_lookback_horizon)
-            for eps in self._episodes if not eps.is_done
+            for eps in self._episodes
+            if not eps.is_done
         ]
 
         for eps in self._episodes:
@@ -369,8 +379,7 @@ class MultiAgentRLlibGateway:
             # with the state (weights) in it.
             if msg_type != RLlink.SET_STATE:
                 logger.warning(
-                    "Can't SET_STATE! Connection error to RLlib "
-                    f"server. {msg_body}"
+                    f"Can't SET_STATE! Connection error to RLlib server. {msg_body}"
                 )
             else:
                 self._set_state(msg_body["state"])
@@ -448,11 +457,13 @@ class MultiAgentRLlibGateway:
     def _get_spaces(self) -> dict[str, tuple[gym.Space, gym.Space]]:
         assert self._env_to_module is not None and self._config is not None
         return {
-            INPUT_ENV_SPACES: (self._config.observation_space, self._config.action_space),
+            INPUT_ENV_SPACES: (
+                self._config.observation_space,
+                self._config.action_space,
+            ),
             **{
                 mid: (o, self._env_to_module.action_space[mid])
-                for mid, o in
-                self._env_to_module.observation_space.spaces.items()
+                for mid, o in self._env_to_module.observation_space.spaces.items()
             },
         }
 

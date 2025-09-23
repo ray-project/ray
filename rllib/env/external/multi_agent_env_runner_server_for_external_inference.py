@@ -19,7 +19,9 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 
-from rllib.env.external.base_external_env_runner_server import BaseExternalEnvRunnerServer
+from rllib.env.external.base_external_env_runner_server import (
+    BaseExternalEnvRunnerServer,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import get_device
@@ -52,15 +54,14 @@ class MultiAgentEnvRunnerServerForExternalInference(
         agent_steps, module_steps = defaultdict(int), defaultdict(int)
         for eps in chain(
             self._done_episodes_for_metrics,
-            *self._ongoing_episodes_for_metrics.values()
+            *self._ongoing_episodes_for_metrics.values(),
         ):
             for aid, sa_eps in eps.agent_episodes.items():
                 agent_steps[str(aid)] += len(sa_eps)
                 module_steps[sa_eps.module_id] += len(sa_eps)
 
         self.metrics.log_value(
-            NUM_ENV_STEPS_SAMPLED, num_env_steps, reduce="sum",
-            clear_on_reduce=True
+            NUM_ENV_STEPS_SAMPLED, num_env_steps, reduce="sum", clear_on_reduce=True
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -117,7 +118,6 @@ class MultiAgentEnvRunnerServerForExternalInference(
             INPUT_ENV_SPACES: (self.config.observation_space, self.config.action_space),
             **{
                 mid: (o, env_to_module_pipeline_for_spaces.action_space[mid])
-                for mid, o in
-                env_to_module_pipeline_for_spaces.observation_space.spaces.items()
+                for mid, o in env_to_module_pipeline_for_spaces.observation_space.spaces.items()
             },
         }
