@@ -781,8 +781,13 @@ async def test_strict_no_fallback_when_no_frames(mock_http_connection_bytes):
 
 @pytest.mark.asyncio
 async def test_e2e_with_pyav_synth(tmp_path):
-    import av
-    import numpy as np
+    pytest.importorskip(
+        "av",
+        reason="PyAV not installed; skipping video E2E tests (requires FFmpeg).",
+    )
+    import importlib
+
+    av = importlib.import_module("av")
 
     # Synthesize a short mp4 with solid color frames
     path = tmp_path / "synth.mp4"
@@ -809,8 +814,13 @@ async def test_e2e_with_pyav_synth(tmp_path):
 
 @pytest.mark.asyncio
 async def test_e2e_num_frames_pil(tmp_path):
-    import av
-    import numpy as np
+    pytest.importorskip(
+        "av",
+        reason="PyAV not installed; skipping video E2E tests (requires FFmpeg).",
+    )
+    import importlib
+
+    av = importlib.import_module("av")
 
     # Synthesize a short mp4 with solid color frames
     path = tmp_path / "synth2.mp4"
@@ -839,8 +849,13 @@ async def test_e2e_num_frames_pil(tmp_path):
 
 @pytest.mark.asyncio
 async def test_e2e_fps_sampling(tmp_path):
-    import av
-    import numpy as np
+    pytest.importorskip(
+        "av",
+        reason="PyAV not installed; skipping video E2E tests (requires FFmpeg).",
+    )
+    import importlib
+
+    av = importlib.import_module("av")
 
     path = tmp_path / "synth_fps.mp4"
     out = av.open(str(path), mode="w")
@@ -868,8 +883,13 @@ async def test_e2e_fps_sampling(tmp_path):
 
 @pytest.mark.asyncio
 async def test_e2e_preprocess_resize_numpy_channels_first(tmp_path):
-    import av
-    import numpy as np
+    pytest.importorskip(
+        "av",
+        reason="PyAV not installed; skipping video E2E tests (requires FFmpeg).",
+    )
+    import importlib
+
+    av = importlib.import_module("av")
 
     path = tmp_path / "synth_resize.mp4"
     out = av.open(str(path), mode="w")
@@ -903,10 +923,14 @@ async def test_e2e_preprocess_resize_numpy_channels_first(tmp_path):
 
 @pytest.mark.asyncio
 async def test_e2e_max_sampled_frames_cap(tmp_path):
+    pytest.importorskip(
+        "av",
+        reason="PyAV not installed; skipping video E2E tests (requires FFmpeg).",
+    )
     import asyncio
+    import importlib
 
-    import av
-    import numpy as np
+    av = importlib.import_module("av")
 
     path = tmp_path / "synth_cap.mp4"
     out = av.open(str(path), mode="w")
