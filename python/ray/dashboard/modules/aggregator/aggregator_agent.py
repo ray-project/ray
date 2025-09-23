@@ -14,10 +14,7 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
 )
-from ray.dashboard.modules.aggregator.constants import (
-    AGGREGATOR_AGENT_METRIC_PREFIX,
-    PUBLISHER_TAG_KEY,
-)
+from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
@@ -99,7 +96,6 @@ class AggregatorAgent(
             max_size=MAX_EVENT_BUFFER_SIZE,
             max_batch_size=MAX_EVENT_SEND_BATCH_SIZE,
             common_metric_tags=self._common_tags,
-            consumer_tag_key=PUBLISHER_TAG_KEY,
         )
         self._executor = ThreadPoolExecutor(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,

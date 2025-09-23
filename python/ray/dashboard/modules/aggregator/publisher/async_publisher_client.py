@@ -27,6 +27,14 @@ class PublishStats:
     num_events_filtered_out: int
 
 
+@dataclass
+class PublishBatch:
+    """Data class that represents a batch of events to publish."""
+
+    # The list of events to publish
+    events: list[events_base_event_pb2.RayEvent]
+
+
 class PublisherClientInterface(ABC):
     """Abstract interface for publishing Ray event batches to external destinations.
 
@@ -34,14 +42,13 @@ class PublisherClientInterface(ABC):
     and format conversion appropriate for their specific destination type.
     """
 
-    @abstractmethod
-    async def publish(self, batch) -> PublishStats:
-        """Publish a batch of events to the destination."""
-        pass
+    def count_num_events_in_batch(self, batch: PublishBatch) -> int:
+        """Count the number of events in a given batch."""
+        return len(batch.events)
 
     @abstractmethod
-    def count_num_events_in_batch(self, batch) -> int:
-        """Count the number of events in a given batch."""
+    async def publish(self, batch: PublishBatch) -> PublishStats:
+        """Publish a batch of events to the destination."""
         pass
 
     @abstractmethod
@@ -66,9 +73,8 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
 
-    async def publish(
-        self, events_batch: list[events_base_event_pb2.RayEvent]
-    ) -> PublishStats:
+    async def publish(self, batch: PublishBatch) -> PublishStats:
+        events_batch: list[events_base_event_pb2.RayEvent] = batch.events
         if not events_batch:
             # Nothing to publish -> success but nothing published
             return PublishStats(True, 0, 0)
@@ -106,11 +112,6 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         ) as resp:
             resp.raise_for_status()
             return PublishStats(True, len(json_data), num_filtered_out)
-
-    def count_num_events_in_batch(
-        self, events_batch: list[events_base_event_pb2.RayEvent]
-    ) -> int:
-        return len(events_batch)
 
     async def close(self) -> None:
         """Closes the http session if one was created. Should be called when the publisherClient is no longer required"""

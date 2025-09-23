@@ -5,12 +5,13 @@ from abc import ABC, abstractmethod
 from typing import Dict, Optional
 
 from ray.dashboard.modules.aggregator.constants import (
-    PUBLISHER_TAG_KEY,
+    CONSUMER_TAG_KEY,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+    PublishBatch,
     PublisherClientInterface,
 )
 from ray.dashboard.modules.aggregator.publisher.configs import (
@@ -78,7 +79,7 @@ class RayEventPublisher(RayEventPublisherInterface):
         """
         self._name = name
         self._common_metric_tags = dict(common_metric_tags or {})
-        self._common_metric_tags[PUBLISHER_TAG_KEY] = name
+        self._common_metric_tags[CONSUMER_TAG_KEY] = name
         self._max_retries = int(max_retries)
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)
@@ -106,7 +107,8 @@ class RayEventPublisher(RayEventPublisherInterface):
                     self._name,
                     PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
                 )
-                await self._async_publish_with_retries(batch)
+                publish_batch = PublishBatch(events=batch)
+                await self._async_publish_with_retries(publish_batch)
         except asyncio.CancelledError:
             logger.info(f"Publisher {self._name} cancelled, shutting down gracefully")
             self._started_event.clear()
