@@ -1,5 +1,4 @@
 --index-url https://pypi.org/simple
---extra-index-url https://download.pytorch.org/whl/cpu
 
 emoji==2.9.0 \
     --hash=sha256:17b0d53e1d9f787307a4c65aa19badb0a1ffdbc89b3a3cd851fc77821cdaced2 \
