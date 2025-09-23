@@ -4,14 +4,14 @@ If you need a customized Ray instance (e.g., to change system config or env vars
 put the test in `test_runtime_env_standalone.py`.
 """
 import os
+import re
 import sys
 
 import pytest
 
 import ray
-from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.exceptions import RuntimeEnvSetupError
-import re
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
