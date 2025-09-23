@@ -71,15 +71,16 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
     cleaned_args = list(ctx.params["ray_args_and_entrypoint"])
 
     for arg in cleaned_args:
-        if arg == "--head":
+        normalized = arg.split("=", 1)[0]
+        if normalized == "--head":
             raise click.ClickException("Cannot use --head option in symmetric_run.")
-        if arg == "--node-ip-address":
+        if normalized == "--node-ip-address":
             raise click.ClickException(
                 "Cannot use --node-ip-address option in symmetric_run."
             )
-        if arg == "--port":
+        if normalized == "--port":
             raise click.ClickException("Cannot use --port option in symmetric_run.")
-        if arg == "--block":
+        if normalized == "--block":
             raise click.ClickException("Cannot use --block option in symmetric_run.")
 
     return cleaned_args
