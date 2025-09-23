@@ -171,7 +171,6 @@ def test_runtime_env_config(start_cluster_shared):
 
 def test_runtime_env_error_includes_node_ip(shutdown_only):
     """Test that RuntimeEnv errors include node IP information for debugging."""
-    ray.init()
     fast_timeout_config = {"setup_timeout_seconds": 1}
     # Test with invalid pip package to trigger RuntimeEnvSetupError
     @ray.remote(
