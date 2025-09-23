@@ -30,6 +30,7 @@ import ray._private.services
 import ray._private.services as services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
+import ray.util.state as STATE
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
@@ -574,8 +575,6 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
-    import ray.util.state as STATE
-
     actor_id = actor._actor_id.hex()
     current_num_restarts = STATE.get_actor(id=actor_id).num_restarts
     ray.kill(actor)

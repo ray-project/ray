@@ -344,7 +344,7 @@ def test_mini_integration(ray_start_cluster):
     "ray_start_cluster",
     [
         {
-            "num_nodes": 1,
+            "num_nodes": 0,  # We want to explicitely add the number of schedulable nodes to force test stability
             "include_dashboard": True,  # Dashboard is needed for actor state API
         }
     ],
@@ -355,7 +355,7 @@ def test_capture_child_actors(ray_start_cluster):
     total_num_actors = 4
     for _ in range(2):
         cluster.add_node(num_cpus=total_num_actors)
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, ignore_reinit_error=True)
 
     pg = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_PACK")
     ray.get(pg.ready())

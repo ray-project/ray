@@ -405,10 +405,10 @@ class RuntimeContext(object):
         assert (
             not self.actor_id.is_nil()
         ), "This method should't be called inside Ray tasks."
-        actors = ray.util.state.list_actors(
-            filters=[("id", "=", self.actor_id.hex())], detail=True
+        actor_info = ray._private.state.actor_table(
+            actor_id=self.actor_id.hex(), job_id=None, actor_state_name=None
         )
-        return any(act.num_restarts or 0 for act in actors)
+        return actor_info and actor_info["NumRestarts"] != 0
 
     @property
     @Deprecated(message="Use get_placement_group_id() instead", warning=True)
