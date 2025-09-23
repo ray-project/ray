@@ -330,9 +330,9 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   EXPECT_EQ(entry.event_name(), "test_event");
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
+TEST_F(GcsRayEventConverterTest, TestConvertTaskLifecycleEvent) {
   GcsRayEventConverter converter;
-  rpc::events::TaskExecutionEvent exec_event;
+  rpc::events::TaskLifecycleEvent exec_event;
 
   // Set basic fields
   exec_event.set_task_id("test_task_id");
@@ -348,7 +348,10 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   google::protobuf::Timestamp ts;
   ts.set_seconds(42);
   ts.set_nanos(123456789);
-  (*exec_event.mutable_task_state())[rpc::TaskStatus::SUBMITTED_TO_WORKER] = ts;
+  rpc::events::TaskLifecycleEvent::StateTransition state_transition;
+  state_transition.set_state(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  state_transition.mutable_timestamp()->CopyFrom(ts);
+  *exec_event.mutable_state_transitions()->Add() = std::move(state_transition);
 
   // Call the converter
   rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(exec_event));
@@ -366,7 +369,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   // Check state_ts_ns
   ASSERT_EQ(state_updates.state_ts_ns().size(), 1);
   int64_t expected_ns = 42 * 1000000000LL + 123456789;
-  EXPECT_EQ(state_updates.state_ts_ns().at(5), expected_ns);
+  EXPECT_EQ(state_updates.state_ts_ns().at(rpc::TaskStatus::SUBMITTED_TO_WORKER),
+            expected_ns);
 }
 
 TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
