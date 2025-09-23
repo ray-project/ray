@@ -19,7 +19,7 @@
 
 #include "ray/common/id.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
