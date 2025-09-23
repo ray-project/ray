@@ -100,17 +100,17 @@ bool ShutdownCoordinator::TryTransitionToShutdown() {
 }
 
 ShutdownState ShutdownCoordinator::GetState() const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
   return state_;
 }
 
 ShutdownReason ShutdownCoordinator::GetReason() const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
   return reason_;
 }
 
 bool ShutdownCoordinator::ShouldEarlyExit() const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
   return state_ != ShutdownState::kRunning;
 }
 
