@@ -610,6 +610,12 @@ def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_sch
         unify_schemas(unify_schemas_objects_and_tensors_schemas)
 
 
+def _sort_schema_fields(schema):
+    """Helper function to sort schema fields by name for deterministic comparison."""
+    sorted_fields = sorted(schema, key=lambda field: field.name)
+    return pa.schema(sorted_fields)
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
@@ -633,7 +639,11 @@ def test_unify_schemas_nested_struct_tensors(
 
     # Should convert nested tensor to variable-shaped
     result = unify_schemas([schemas["with_tensor"], schemas["without_tensor"]])
-    assert result == schemas["expected"]
+
+    # Sort field names for deterministic comparison
+    result_sorted = _sort_schema_fields(result)
+    expected_sorted = _sort_schema_fields(schemas["expected"])
+    assert result_sorted == expected_sorted
 
 
 def test_unify_schemas_edge_cases(unify_schemas_edge_cases_data):
