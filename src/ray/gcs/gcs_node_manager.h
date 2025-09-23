@@ -95,14 +95,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ///
   /// \param node_id The ID of the failed node.
   /// \param node_table_updated_callback The status callback function after
-  /// faled node info is updated to gcs node table.
+  /// failed node info is updated to gcs node table.
   void OnNodeFailure(const NodeID &node_id,
                      const std::function<void()> &node_table_updated_callback);
-
-  /// Add an alive node.
-  ///
-  /// \param node The info of the node to be added.
-  void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node);
 
   /// Set the node to be draining.
   ///
@@ -112,52 +107,72 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   void SetNodeDraining(const NodeID &node_id,
                        std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request);
 
-  /// Remove a node from alive nodes. The node's death information will also be set.
-  ///
-  /// \param node_id The ID of the node to be removed.
-  /// \param node_death_info The node death info to set.
-  /// \return The removed node, with death info set. If the node is not found, return
-  /// nullptr.
-  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
-                                               const rpc::NodeDeathInfo &node_death_info);
-
   /// Get alive node by ID.
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
-  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+  std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
+
+  /// Check if node is dead by ID where dead means that it's still in the dead node list
+  /// N.B. this method may return false when the nodes isn't included in the dead node
+  /// cache.
+  ///
+  /// \param node_id The id of the node.
+  /// \return If the node is known to be dead
+  bool IsNodeDead(const ray::NodeID &node_id) const;
+
+  /// Check if node is alive by ID.
+  ///
+  /// \param node_id The id of the node.
+  /// \return If the node is known to be dead
+  bool IsNodeAlive(const ray::NodeID &node_id) const;
 
   /// Get all alive nodes.
   ///
-  /// \return all alive nodes.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
+  /// \return all alive nodes. Returns a copy of the map for thread safety
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> GetAllAliveNodes()
       const {
+    absl::ReaderMutexLock lock(&mutex_);
     return alive_nodes_;
   }
 
+  /// Selects a random node from the list of alive nodes
+  ///
+  /// \returns a random node or nullptr if there are no alive nodes
+  std::shared_ptr<const rpc::GcsNodeInfo> SelectRandomAliveNode() const;
+
   /// Get all dead nodes.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllDeadNodes()
+  ///
+  /// \return all dead nodes. Returns a copy of the map for thread safety
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> GetAllDeadNodes()
       const {
+    absl::ReaderMutexLock lock(&mutex_);
     return dead_nodes_;
   }
 
   /// Add listener to monitor the remove action of nodes.
   ///
   /// \param listener The handler which process the remove of nodes.
+  /// \param io_context the context to post the listener function to
   void AddNodeRemovedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
+      std::function<void(std::shared_ptr<const rpc::GcsNodeInfo>)> listener,
+      instrumented_io_context &io_context) {
+    absl::MutexLock lock(&mutex_);
     RAY_CHECK(listener);
-    node_removed_listeners_.emplace_back(std::move(listener));
+    node_removed_listeners_.emplace_back(std::move(listener), io_context);
   }
 
   /// Add listener to monitor the add action of nodes.
   ///
   /// \param listener The handler which process the add of nodes.
+  /// \param io_context the context to post the listener function toƒ
   void AddNodeAddedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
+      std::function<void(std::shared_ptr<const rpc::GcsNodeInfo>)> listener,
+      instrumented_io_context &io_context) {
+    absl::MutexLock lock(&mutex_);
     RAY_CHECK(listener);
-    node_added_listeners_.emplace_back(std::move(listener));
+    node_added_listeners_.emplace_back(std::move(listener), io_context);
   }
 
   /// Initialize with the gcs tables data synchronously.
@@ -181,19 +196,77 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
       const NodeID &node_id,
       const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
+  /// Add an alive node.
+  ///
+  /// \param node The info of the node to be added.
+  void AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node);
+
+  /// Remove a node from alive nodes. The node's death information will also be set.
+  ///
+  /// \param node_id The ID of the node to be removed.
+  /// \param node_death_info The node death info to set.
+  /// \param node_state the state to set the node to after it's removed
+  /// \param update_time the update time to be applied to the node info
+  /// \return The removed node, with death info set. If the node is not found, return
+  /// nullptr.
+  std::shared_ptr<const rpc::GcsNodeInfo> RemoveNode(
+      const NodeID &node_id,
+      const rpc::NodeDeathInfo &node_death_info,
+      const rpc::GcsNodeInfo::GcsNodeState node_state,
+      const int64_t update_time);
+
  private:
+  /// Add an alive node.
+  ///
+  /// \param node The info of the node to be added.
+  void AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
   ///
   /// \param node The node which is dead.
-  void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
+  void AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Remove a node from alive nodes cache. The node's death information will also be set.
+  ///
+  /// \param node_id The ID of the node to be removed.
+  /// \param node_death_info The node death info to set.
+  /// \param node_state the state to set the node to after it's removed
+  /// \param update_time the update time to be applied to the node info
+  /// \return The removed node, with death info set. If the node is not found, return
+  /// nullptr.
+  std::shared_ptr<const rpc::GcsNodeInfo> RemoveNodeFromCache(
+      const NodeID &node_id,
+      const rpc::NodeDeathInfo &node_death_info,
+      const rpc::GcsNodeInfo::GcsNodeState node_state,
+      const int64_t update_time) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Retrieves the node from the alive_nodes cache without acquiring a lock
+  ///
+  /// \param node_id The id of the node.
+  /// \return the node if it is alive. Optional empty value if it is not alive.
+  std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GetAliveNodeFromCache(
+      const ray::NodeID &node_id) const ABSL_SHARED_LOCKS_REQUIRED(mutex_);
+
+  /// Handle a node failure. This will mark the failed node as dead in gcs
+  /// node table.
+  ///
+  /// \param node_id The ID of the failed node.
+  /// \param node_table_updated_callback The status callback function after
+  /// failed node info is updated to gcs node table.
+  void InternalOnNodeFailure(const NodeID &node_id,
+                             const std::function<void()> &node_table_updated_callback)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Infer death cause of the node based on existing draining requests.
   ///
   /// \param node_id The ID of the node. The node must not be removed
   /// from alive nodes yet.
   /// \return The inferred death info of the node.
-  rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
+  rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
                             bool is_register_event) const;
@@ -206,8 +279,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
         RayConfig::instance().enable_export_api_write_config());
   }
 
-  rpc::ExportNodeData::GcsNodeState ConvertGCSNodeStateToExport(
-      rpc::GcsNodeInfo::GcsNodeState node_state) const {
+  static rpc::ExportNodeData::GcsNodeState ConvertGCSNodeStateToExport(
+      rpc::GcsNodeInfo::GcsNodeState node_state) {
     switch (node_state) {
     case rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE:
       return rpc::ExportNodeData_GcsNodeState::ExportNodeData_GcsNodeState_ALIVE;
@@ -221,8 +294,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
     }
   }
 
-  rpc::ExportNodeData::NodeDeathInfo::Reason ConvertNodeDeathReasonToExport(
-      rpc::NodeDeathInfo::Reason reason) const {
+  static rpc::ExportNodeData::NodeDeathInfo::Reason ConvertNodeDeathReasonToExport(
+      const rpc::NodeDeathInfo::Reason reason) {
     switch (reason) {
     case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED:
       return rpc::ExportNodeData_NodeDeathInfo_Reason::
@@ -249,24 +322,29 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   }
 
   /// Alive nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> alive_nodes_
+      ABSL_GUARDED_BY(mutex_);
   /// Draining nodes.
   /// This map is used to store the nodes which have received the drain request.
-  /// Invariant: its keys should alway be a subset of the keys of `alive_nodes_`,
+  /// Invariant: its keys should always be a subset of the keys of `alive_nodes_`,
   /// and entry in it should be removed whenever a node is removed from `alive_nodes_`.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::autoscaler::DrainNodeRequest>>
-      draining_nodes_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::autoscaler::DrainNodeRequest>>
+      draining_nodes_ ABSL_GUARDED_BY(mutex_);
   /// Dead nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> dead_nodes_
+      ABSL_GUARDED_BY(mutex_);
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of
   /// the deque.
-  std::deque<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
+  std::deque<std::pair<NodeID, int64_t>> sorted_dead_node_list_ ABSL_GUARDED_BY(mutex_);
+
   /// Listeners which monitors the addition of nodes.
-  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
-      node_added_listeners_;
+  std::vector<Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)>>
+      node_added_listeners_ ABSL_GUARDED_BY(mutex_);
+
   /// Listeners which monitors the removal of nodes.
-  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
-      node_removed_listeners_;
+  std::vector<Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)>>
+      node_removed_listeners_ ABSL_GUARDED_BY(mutex_);
+
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.
@@ -276,6 +354,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   rpc::RayletClientPool *raylet_client_pool_;
   /// Cluster ID to be shared with clients when connecting.
   const ClusterID cluster_id_;
+  /// Class lock for node manager
+  mutable absl::Mutex mutex_;
+
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
 
@@ -286,7 +367,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
     GET_ALL_NODE_INFO_REQUEST = 2,
     CountType_MAX = 3,
   };
-  uint64_t counts_[CountType::CountType_MAX] = {0};
+  std::atomic<uint64_t> counts_[CountType::CountType_MAX] = {0};
 
   /// If true, node events are exported for Export API
   bool export_event_write_enabled_ = false;
