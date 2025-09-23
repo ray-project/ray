@@ -468,7 +468,7 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     num_cpus = 4
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=True,
-        cgroup_path=cgroup_path,
+        cgroup_path=_BASE_CGROUP_PATH,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
     )
@@ -479,7 +479,7 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         address="local",
         num_cpus=num_cpus,
         enable_resource_isolation=True,
-        _cgroup_path=cgroup_path,
+        _cgroup_path=_BASE_CGROUP_PATH,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
         object_store_memory=object_store_memory,
