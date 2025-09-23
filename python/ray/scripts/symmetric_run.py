@@ -15,11 +15,16 @@ import click
 import ray
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
-from ray.exceptions import RpcError
 
 import psutil
 
 CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
+
+
+class SymmetricRunCommand(click.Command):
+    def parse_args(self, ctx, args):
+        ctx.meta["raw_args"] = list(args)
+        return super().parse_args(ctx, args)
 
 
 def check_ray_already_started() -> bool:
@@ -55,12 +60,9 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
     gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
-        try:
-            gcs_client.check_alive([], timeout=1)
+        if gcs_client.check_alive([], timeout=1):
             click.echo("Ray cluster is ready!")
             return True
-        except RpcError:
-            pass
         time.sleep(5)
     return False
 
@@ -88,12 +90,13 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
 
 @click.command(
     name="symmetric_run",
+    cls=SymmetricRunCommand,
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
     help="""Command to start Ray across all nodes and execute an entrypoint command.
 
 USAGE:
 
-    ray symmetric-run --address ADDRESS
+    python -m ray.scripts.symmetric_run --address ADDRESS
 [--min-nodes NUM_NODES] [RAY_START_OPTIONS] -- [ENTRYPOINT_COMMAND]
 
 DESCRIPTION:
@@ -109,15 +112,15 @@ EXAMPLES:
 
     # Start Ray with default settings and run a Python script
 
-    ray symmetric-run --address 127.0.0.1:6379 -- python my_script.py
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
 
     # Start Ray with specific head node and run a command
 
-    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
 
     # Start Ray and run a multi-word command
 
-    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
 
 RAY START OPTIONS:
 
@@ -140,24 +143,19 @@ SEPARATOR REQUIREMENT:
     help="If provided, wait for this number of nodes to start.",
 )
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
-def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
-    all_args = sys.argv[1:]
-
-    if all_args and all_args[0] == "symmetric-run":
-        all_args = all_args[1:]
-
+@click.pass_context
+def symmetric_run(ctx, address, min_nodes, ray_args_and_entrypoint):
+    raw_args = ctx.meta.get("raw_args", [])
     try:
-        separator = all_args.index("--")
+        separator = raw_args.index("--")
     except ValueError:
         raise click.ClickException(
             "No separator '--' found in arguments. Please use '--' to "
             "separate Ray start arguments and the entrypoint command."
         )
 
-    run_and_start_args, entrypoint_on_head = (
-        all_args[:separator],
-        all_args[separator + 1 :],
-    )
+    run_and_start_args = raw_args[:separator]
+    entrypoint_on_head = raw_args[separator + 1 :]
 
     ray_start_args = curate_and_validate_ray_start_args(run_and_start_args)
 
