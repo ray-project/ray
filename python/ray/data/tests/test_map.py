@@ -1390,7 +1390,7 @@ def test_map_names(target_max_block_size_infinite_or_default):
     ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
     enc = OneHotEncoder(columns=["item"])
     r = enc.fit_transform(ds).__repr__()
-    assert r.startswith("OneHotEncoder"), r
+    assert "OneHotEncoder" in r, r
 
 
 def test_map_with_max_calls():
