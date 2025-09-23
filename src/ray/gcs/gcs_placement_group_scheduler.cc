@@ -177,7 +177,7 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
 
 void GcsPlacementGroupScheduler::PrepareResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-    const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback &callback) {
   if (!node.has_value()) {
     callback(Status::NotFound("Node is already dead."));
@@ -208,7 +208,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
 void GcsPlacementGroupScheduler::CommitResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-    const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback callback) {
   RAY_CHECK(node.has_value());
   const auto raylet_client = GetRayletClientFromNode(node.value());
@@ -234,7 +234,7 @@ void GcsPlacementGroupScheduler::CommitResources(
 
 void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<const BundleSpecification> &bundle_spec,
-    const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
     int current_retry_cnt) {
   if (!node.has_value()) {
@@ -287,7 +287,7 @@ GcsPlacementGroupScheduler::GetOrConnectRayletClient(const rpc::Address &raylet_
 
 std::shared_ptr<RayletClientInterface>
 GcsPlacementGroupScheduler::GetRayletClientFromNode(
-    const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
+    const std::shared_ptr<const ray::rpc::GcsNodeInfo> &node) {
   rpc::Address remote_address;
   remote_address.set_node_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
@@ -462,7 +462,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
 std::unique_ptr<BundleSchedulingContext>
 GcsPlacementGroupScheduler::CreateSchedulingContext(
     const PlacementGroupID &placement_group_id) {
-  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
   auto bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
@@ -526,7 +526,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
   // previous lifecycle. In this case, GCS will send a list of bundle ids that
   // are still needed. And Raylet will release other bundles. If the node is
   // dead, there is no need to send the request of release unused bundles.
-  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &alive_node : alive_nodes) {
     const auto &node_id = alive_node.first;
     nodes_of_releasing_unused_bundles_.insert(node_id);
@@ -556,7 +556,7 @@ void GcsPlacementGroupScheduler::Initialize(
   // it will get an empty bundle set when raylet fo occurred after GCS server restart.
 
   // Init the container that contains the map relation between node and bundle.
-  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
 
   for (const auto &group : committed_bundles) {
