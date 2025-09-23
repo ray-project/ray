@@ -22,29 +22,52 @@
 namespace ray {
 namespace stats {
 
-inline const TagKeyType ComponentKey = TagKeyType::Register("Component");
+extern const TagKeyType ComponentKey;
 
-inline const TagKeyType NodeAddressKey = TagKeyType::Register("NodeAddress");
+extern const TagKeyType JobNameKey;
 
-inline const TagKeyType VersionKey = TagKeyType::Register("Version");
+extern const TagKeyType NodeAddressKey;
 
-inline const TagKeyType LanguageKey = TagKeyType::Register("Language");
+extern const TagKeyType VersionKey;
 
-// Keep in sync with the WORKER_ID_TAG_KEY in
-// python/ray/_private/telemetry/metric_cardinality.py
-inline const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
+extern const TagKeyType LanguageKey;
 
-inline const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
+extern const TagKeyType WorkerPidKey;
 
-inline const TagKeyType NameKey = TagKeyType::Register("Name");
+extern const TagKeyType DriverPidKey;
+
+extern const TagKeyType ActorIdKey;
+
+extern const TagKeyType WorkerIdKey;
+
+extern const TagKeyType JobIdKey;
+
+extern const TagKeyType SessionNameKey;
+
+extern const TagKeyType NameKey;
+
+extern const TagKeyType SourceKey;
 
 // Object store memory location tag constants
-inline const TagKeyType LocationKey = TagKeyType::Register("Location");
+extern const TagKeyType LocationKey;
+
+constexpr char kResourceNameKey[] = "ResourceName";
+
+constexpr char kCustomKey[] = "CustomKey";
+
+constexpr char kObjectLocMmapShm[] = "MMAP_SHM";
+constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
+constexpr char kObjectLocSpilled[] = "SPILLED";
+constexpr char kObjectLocWorkerHeap[] = "WORKER_HEAP";
 
 // Object store memory sealed/unsealed tag
-inline const TagKeyType ObjectStateKey = TagKeyType::Register("ObjectState");
+extern const TagKeyType ObjectStateKey;
+constexpr char kObjectSealed[] = "SEALED";
+constexpr char kObjectUnsealed[] = "UNSEALED";
 
-inline const TagKeyType SourceKey = TagKeyType::Register("Source");
+// GCS task manager tags
+constexpr char kGcsTaskStatusEventDropped[] = "STATUS_EVENT";
+constexpr char kGcsProfileEventDropped[] = "PROFILE_EVENT";
 
 }  // namespace stats
 }  // namespace ray

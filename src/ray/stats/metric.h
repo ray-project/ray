@@ -14,19 +14,24 @@
 
 #pragma once
 
-#include <cctype>
-#include <cstdint>
+#include <ctype.h>
+
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <regex>
+#include <tuple>
+#include <unordered_map>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "opencensus/stats/stats.h"
+#include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/open_telemetry_metric_recorder.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -108,7 +113,7 @@ class Metric : public observability::MetricInterface {
          std::string unit,
          const std::vector<std::string> &tag_keys = {});
 
-  ~Metric() override;
+  virtual ~Metric();
 
   Metric &operator()() { return *this; }
 
@@ -131,12 +136,9 @@ class Metric : public observability::MetricInterface {
   /// \param value The value that we record.
   /// \param tags The map tag values that we want to record for this metric record.
   void Record(double value,
-              std::vector<std::pair<std::string_view, std::string>> tags) override;
-
-  /// Our version of Cython doesn't support string_view (later versions do), so we need to
-  /// have this for it.
-  void RecordForCython(double value,
-                       std::vector<std::pair<std::string, std::string>> tags);
+              const std::unordered_map<std::string_view, std::string> &tags) override;
+  void Record(double value,
+              const std::unordered_map<std::string, std::string> &tags) override;
 
  protected:
   virtual void RegisterView() = 0;
@@ -232,7 +234,7 @@ class Sum : public Metric {
 
 };  // class Sum
 
-enum StatsType : uint8_t { COUNT, SUM, GAUGE, HISTOGRAM };
+enum StatsType : int { COUNT, SUM, GAUGE, HISTOGRAM };
 
 namespace internal {
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
@@ -348,12 +350,12 @@ class Stats {
   /// \register_func The function to register the metric
   Stats(const std::string &measure,
         const std::string &description,
-        const std::vector<std::string> &tag_keys,
-        const std::vector<double> &buckets,
-        const std::function<void(const std::string &,
-                                 const std::string,
-                                 const std::vector<opencensus::tags::TagKey>,
-                                 const std::vector<double> &buckets)> &register_func)
+        std::vector<std::string> tag_keys,
+        std::vector<double> buckets,
+        std::function<void(const std::string &,
+                           const std::string,
+                           const std::vector<opencensus::tags::TagKey>,
+                           const std::vector<double> &buckets)> register_func)
       : name_(measure), tag_keys_(convert_tags(tag_keys)) {
     auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
@@ -406,7 +408,7 @@ class Stats {
   /// Record a value
   /// \param val The value to record
   void Record(double val) {
-    Record(val, std::vector<std::pair<std::string_view, std::string>>{});
+    Record(val, std::unordered_map<std::string_view, std::string>());
   }
 
   /// Record a value
@@ -427,7 +429,7 @@ class Stats {
   /// Record a value
   /// \param val The value to record
   /// \param tags The tags for this value
-  void Record(double val, std::vector<std::pair<std::string_view, std::string>> tags) {
+  void Record(double val, std::unordered_map<std::string_view, std::string> tags) {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
@@ -442,7 +444,8 @@ class Stats {
   /// Record a value
   /// \param val The value to record
   /// \param tags Registered tags and corresponding tag values for this value
-  void Record(double val, const TagsType &tags) {
+  void Record(double val,
+              const std::vector<std::pair<opencensus::tags::TagKey, std::string>> &tags) {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }

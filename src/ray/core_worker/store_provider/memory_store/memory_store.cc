@@ -22,7 +22,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/ipc/raylet_ipc_client_interface.h"
-#include "ray/stats/tag_defs.h"
 
 namespace ray {
 namespace core {
@@ -596,8 +595,9 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
 
 void CoreWorkerMemoryStore::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  stats::STATS_object_store_memory.Record(num_local_objects_bytes_,
-                                          {{stats::LocationKey, "WORKER_HEAP"}});
+  ray::stats::STATS_object_store_memory.Record(
+      num_local_objects_bytes_,
+      {{ray::stats::LocationKey, ray::stats::kObjectLocWorkerHeap}});
 }
 
 }  // namespace core
