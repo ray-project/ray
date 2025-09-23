@@ -1,4 +1,3 @@
-import socket
 import sys
 import threading
 from contextlib import contextmanager
