@@ -17,7 +17,11 @@
 #include <memory>
 #include <string>
 
+#include "ray/observability/ray_actor_definition_event.h"
+#include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/public/events_actor_lifecycle_event.pb.h"
+#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -89,7 +93,23 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-void GcsActor::WriteActorExportEvent() const {
+void GcsActor::WriteActorExportEvent(bool is_actor_registration) const {
+  // If ray event is enabled and recorder present, emit actor events to the aggregator.
+  if (RayConfig::instance().enable_ray_event()) {
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+    if (is_actor_registration) {
+      events.push_back(std::make_unique<observability::RayActorDefinitionEvent>(
+          actor_table_data_, session_name_));
+    }
+    events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
+        actor_table_data_,
+        ConvertActorStateToLifecycleEvent(actor_table_data_.state()),
+        session_name_));
+
+    ray_event_recorder_.AddEvents(std::move(events));
+    return;
+  }
+
   /// Verify actor export events should be written to file
   /// and then write actor_table_data_ as an export event.
   if (!export_event_write_enabled_) {
