@@ -47,12 +47,12 @@ def test_retry_last_attempt_successful_with_appropriate_wait_time(
             return "success"
         raise ValueError(pattern)
 
-    args = ["func", [pattern], 4, 6]
+    args = ["func", [pattern], 4, 3]
     if use_decorator:
         assert retry(*args)(func)() == "success"
     else:
         assert call_with_retry(func, *args) == "success"
-    assert sleep_total == 12  # 2 + 4 + 6
+    assert sleep_total == 6  # 1 + 2 + 3
 
 
 @pytest.mark.parametrize("use_decorator", [True, False])
