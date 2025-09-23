@@ -233,7 +233,7 @@ def train_torch_ray_air(
     use_gpu: bool = False,
 ) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and runs a full training
-    # run using Ray AIR.
+    # run using Ray Train.
     from ray.train import ScalingConfig, RunConfig
     from ray.train.torch import TorchTrainer
 
