@@ -1092,7 +1092,7 @@ def test_actor_namespace_access(ray_start_regular):
 
 
 def test_get_actor_after_killed(shutdown_only):
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=2, include_dashboard=True)
 
     @ray.remote
     class A:
