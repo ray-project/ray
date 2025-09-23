@@ -104,7 +104,9 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
 
-        self._exposable_event_types = [event_type.strip() for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")]
+        self._exposable_event_types = [
+            event_type.strip() for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
+        ]
 
     async def publish(self, batch: PublishBatch) -> PublishStats:
         events_batch: list[events_base_event_pb2.RayEvent] = batch.events
