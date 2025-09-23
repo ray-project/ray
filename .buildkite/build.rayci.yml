@@ -70,6 +70,32 @@ steps:
       - "3.11"
       - "3.12"
 
+  - label: ":tapioca: build: ray-extra py{{matrix}} docker (x86_64)"
+    key: ray_extra_images
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
+        --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
+        --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
+        --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
+        --image-type ray-extra --upload
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubaseextra
+      - raycudabaseextra
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+
   - label: ":tapioca: build: ray-llm py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
@@ -86,6 +112,22 @@ steps:
     matrix:
       - "3.11"
 
+  - label: ":tapioca: build: ray-llm-extra py{{matrix}} docker (x86_64)"
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
+        --platform cu12.8.1-cudnn --image-type ray-llm-extra --upload
+    depends_on:
+      - manylinux
+      - forge
+      - ray-llmbaseextra
+    matrix:
+      - "3.11"
+
   - label: ":tapioca: build: ray-ml py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
@@ -99,8 +141,28 @@ steps:
     depends_on:
       - manylinux
       - forge
-      - ray-mlcudabase
       - ray-mlcpubase
+      - ray-mlcudabase
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: ":tapioca: build: ray-ml-extra py{{matrix}} docker (x86_64)"
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
+        --platform cu12.1.1-cudnn8 --platform cpu --image-type ray-ml-extra
+        --upload
+    depends_on:
+      - manylinux
+      - forge
+      - ray-mlcpubaseextra
+      - ray-mlcudabaseextra
     matrix:
       - "3.9"
       - "3.10"

@@ -116,15 +116,21 @@ aggregated ongoing requests metrics. For example, if your service is likely to
 experience bursts of traffic, you can lower `upscale_delay_s` so that your
 application can react quickly to increases in traffic.
 
+Ray Serve uses a two stage downscaling process to provide more granular control over scaling decisions.
+The first stage is used to scale down replicas to a minimum of one.
+The second stage is used to scale down replicas from one to zero (if `min_replicas = 0`)
+
 * **downscale_delay_s [default=600s]**: This defines how long Serve waits before
-scaling down the number of replicas in your deployment. In other words, this
+scaling down the number of replicas to a minimum of one in your deployment. In other words, this
 parameter controls the frequency of downscale decisions. If the replicas are
 *consistently* serving less requests than desired for a `downscale_delay_s`
 number of seconds, then Serve scales down the number of replicas based on
 aggregated ongoing requests metrics. For example, if your application
 initializes slowly, you can increase `downscale_delay_s` to make the downscaling
 happen more infrequently and avoid reinitialization when the application needs
-to upscale again in the future.
+to upscale again in the future. This parameter also serves as the fallback delay for the second stage when `downscale_to_zero_delay_s` is not specified.
+* **downscale_to_zero_delay_s [Optional]**: This defines how long Serve waits before   
+scaling from one replica down to zero. If not specified, the final 1→0 transition uses the `downscale_delay_s` value. This feature is useful for scenarios where you want a conservative scale to zero behavior.
 
 * **upscale_smoothing_factor [default_value=1.0] (DEPRECATED)**: This parameter
 is renamed to `upscaling_factor`. `upscale_smoothing_factor` will be removed in

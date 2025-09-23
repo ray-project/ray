@@ -37,7 +37,12 @@ void Metric::Record(double value,
                     const std::unordered_map<std::string, std::string> &tags) {
   RAY_CHECK(metric_ != nullptr) << "The metric_ must not be nullptr.";
   stats::Metric *metric = reinterpret_cast<stats::Metric *>(metric_);
-  metric->Record(value, tags);
+  std::vector<std::pair<std::string_view, std::string>> tags_pair_vec;
+  tags_pair_vec.reserve(tags.size());
+  for (const auto &tag : tags) {
+    tags_pair_vec.emplace_back(std::string_view(tag.first), tag.second);
+  }
+  metric->Record(value, std::move(tags_pair_vec));
 }
 
 Gauge::Gauge(const std::string &name,

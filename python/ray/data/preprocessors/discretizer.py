@@ -1,12 +1,14 @@
-from typing import Dict, Iterable, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
 
-from ray.data import Dataset
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 class _AbstractKBinsDiscretizer(Preprocessor):
@@ -305,7 +307,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._validate_on_fit()
         stats = {}
         aggregates = []

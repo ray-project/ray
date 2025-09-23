@@ -1,5 +1,6 @@
 from typing import List, Tuple
 import yaml
+import os
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
@@ -45,7 +46,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     if not custom_byod_images:
         return
     build_config = {"group": "Custom images build", "steps": []}
-
+    ray_want_commit = os.getenv("RAY_WANT_COMMIT_IN_IMAGE", "")
     for image, base_image, post_build_script in custom_byod_images:
         logger.info(
             f"Building custom BYOD image: {image}, base image: {base_image}, post build script: {post_build_script}"
@@ -57,6 +58,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             "key": generate_custom_build_step_key(image),
             "instance_type": "release-medium",
             "commands": [
+                f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
                 "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",

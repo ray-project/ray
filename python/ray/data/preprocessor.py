@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from ray.air.data_batch_type import DataBatchType
-    from ray.data import Dataset
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="beta")

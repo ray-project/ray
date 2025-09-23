@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
+from ray._raylet import NodeID
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -75,15 +76,26 @@ class NodeAffinitySchedulingStrategy:
         self._validate_attributes()
 
     def _validate_attributes(self):
+        invalid_node_id_error = ValueError(
+            f"Invalid node_id '{self.node_id}'. Node ID must be a valid "
+            "hex string. To get a list of all nodes and their IDs in your cluster, "
+            "use ray.nodes(). See https://docs.ray.io/en/latest/ray-core/miscellaneous.html#node-information for more details."
+        )
+        try:
+            node_id = NodeID.from_hex(self.node_id)
+        except Exception as e:
+            raise invalid_node_id_error from e
+
+        if node_id.is_nil():
+            raise invalid_node_id_error
+
         if self._spill_on_unavailable and not self.soft:
             raise ValueError(
-                "Invalid NodeAffinitySchedulingStrategy attribute. "
                 "_spill_on_unavailable cannot be set when soft is "
                 "False. Please set soft to True to use _spill_on_unavailable."
             )
         if self._fail_on_unavailable and self.soft:
             raise ValueError(
-                "Invalid NodeAffinitySchedulingStrategy attribute. "
                 "_fail_on_unavailable cannot be set when soft is "
                 "True. Please set soft to False to use _fail_on_unavailable."
             )

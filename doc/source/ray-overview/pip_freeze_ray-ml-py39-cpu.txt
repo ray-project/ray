@@ -1,12 +1,13 @@
 absl-py==1.4.0
 accelerate==0.28.0
 adagio==0.2.4
+adlfs==2023.8.0
 aim==3.23.0
 aim-ui==3.23.0
 aimrecords==0.0.7
 aimrocks==0.5.2
-aioboto3==11.2.0
-aiobotocore==2.5.0
+aioboto3==12.1.0
+aiobotocore==2.8.0
 aiofiles==22.1.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.11.16
@@ -35,6 +36,8 @@ attrs==25.1.0
 ax-platform==0.3.2
 azure-common==1.1.28
 azure-core==1.29.5
+azure-datalake-store==0.0.53
+azure-identity==1.17.1
 azure-storage-blob==12.22.0
 Babel==2.13.1
 backcall==0.2.0
@@ -46,8 +49,8 @@ bleach==6.1.0
 bokeh==2.4.3
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1733827268945/work
 boto==2.49.0
-boto3==1.26.76
-botocore==1.29.76
+boto3==1.29.7
+botocore==1.32.7
 botorch==0.8.5
 Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1749229842835/work
 cachetools==5.5.2
@@ -121,7 +124,7 @@ fqdn==1.5.1
 frozendict @ file:///home/conda/feedstock_root/build_artifacts/frozendict_1728841359971/work
 frozenlist==1.4.1
 fs==2.4.16
-fsspec==2023.5.0
+fsspec==2023.12.1
 fugue==0.8.7
 fugue-sql-antlr==0.2.0
 future==1.0.0
@@ -151,7 +154,7 @@ graphene==3.4.3
 graphql-core==3.2.3
 graphql-relay==3.2.0
 greenlet==3.0.1
-grpcio==1.74.0
+grpcio==1.75.0
 gsutil==5.27
 gunicorn==20.1.0
 gymnasium==1.1.1
@@ -237,6 +240,8 @@ more-itertools==10.7.0
 mosaicml==0.3.1
 moviepy==0.2.3.1
 mpmath==1.3.0
+msal==1.28.1
+msal-extensions==1.2.0b1
 msgpack==1.0.7
 msgpack-numpy==0.4.8
 mujoco==3.2.4
@@ -300,6 +305,7 @@ pillow==10.3.0
 platformdirs==3.11.0
 plotly==5.23.0
 pluggy==1.3.0
+portalocker==2.8.2
 prometheus-client==0.19.0
 promise==2.3
 prompt-toolkit==3.0.41
@@ -317,11 +323,12 @@ pyasn1==0.5.1
 pyasn1-modules==0.3.0
 pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1732588390546/work
 pycparser==2.21
-pydantic==2.10.0
-pydantic_core==2.27.0
+pydantic==2.11.7
+pydantic_core==2.33.2
 pygame==2.5.2
 pyglet==1.5.15
 Pygments==2.18.0
+PyJWT==2.8.0
 pymars==0.10.0
 pymunk==6.2.1
 pynvml==11.5.0
@@ -345,7 +352,7 @@ pyu2f==0.1.5
 PyYAML==6.0.1
 pyzmq==26.0.3
 qpd==0.4.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6dd296fe192d3c9953867ef02ab2645e2f5e48f49e7d4e7c1fecc7689d139cf1
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=738abaee5dfcb70c145b1a58030863bec9d3bf8716671867705b11606c76b1ee
 referencing==0.36.2
 regex==2024.5.15
 requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1733217035951/work
@@ -361,8 +368,8 @@ rpds-py==0.22.3
 rsa==4.7.2
 ruamel.yaml==0.17.40
 ruamel.yaml.clib @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml.clib_1728724456970/work
-s3fs==2023.5.0
-s3transfer==0.6.2
+s3fs==2023.12.1
+s3transfer==0.8.0
 safetensors==0.4.3
 scikit-image==0.24.0
 scikit-learn==1.3.2
@@ -434,6 +441,7 @@ triton==2.3.0
 typeguard==2.13.3
 typer==0.12.3
 types-python-dateutil==2.9.0.20240316
+typing-inspection==0.4.1
 typing_extensions==4.12.2
 tzdata==2025.2
 uri-template==1.3.0

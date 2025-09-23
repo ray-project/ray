@@ -175,7 +175,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=42,
-        title="Active Actors by State",
+        title="Alive Actors by State",
         description="Current count of alive actors (i.e. not dead/terminated), grouped by state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
         unit="actors",
         targets=[
@@ -187,7 +187,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=36,
-        title="Active Actors by Name",
+        title="Alive Actors by Name",
         description="Current count of alive actors, grouped by actor name.",
         unit="actors",
         targets=[

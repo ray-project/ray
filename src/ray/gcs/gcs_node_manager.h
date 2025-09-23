@@ -28,7 +28,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
@@ -73,7 +73,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                             rpc::UnregisterNodeReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle unregister rpc request come from raylet.
+  /// TODO(#56627): This method is only called by autoscaler v1. It will be deleted
+  /// once autoscaler v1 is fully deprecated. Autoscaler v2 calls
+  /// GcsAutoscalerStateManager::HandleDrainNode.
   void HandleDrainNode(rpc::DrainNodeRequest request,
                        rpc::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;

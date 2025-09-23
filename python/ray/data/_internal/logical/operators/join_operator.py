@@ -5,7 +5,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
-    from ray.data import Schema
+    from ray.data.dataset import Schema
 
 
 class JoinType(Enum):

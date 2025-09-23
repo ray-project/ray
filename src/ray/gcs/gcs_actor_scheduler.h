@@ -24,13 +24,13 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
 using raylet::ClusterLeaseManager;

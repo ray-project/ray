@@ -1075,11 +1075,11 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    async def check_health(self) -> None:
+    async def check_health(self) -> bool:
         """Check the health of the proxy.
 
-        Raises:
-            Exception: if the proxy is unhealthy
+        Returns:
+            True if the proxy is healthy, False otherwise
         """
         pass
 
@@ -1331,12 +1331,13 @@ class ProxyActor(ProxyActorInterface):
             self.grpc_proxy is None or self.grpc_proxy.is_drained()
         )
 
-    async def check_health(self):
+    async def check_health(self) -> bool:
         """No-op method to check on the health of the HTTP Proxy.
 
         Make sure the async event loop is not blocked.
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
+        return True
 
     def pong(self):
         """Called by the replica to initialize its handle to the proxy."""

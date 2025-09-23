@@ -103,8 +103,8 @@ def gen_expected_metrics(
             "'num_outputs_of_finished_tasks': N",
             "'bytes_outputs_of_finished_tasks': N",
             "'rows_outputs_of_finished_tasks': N",
-            "'num_external_inqueue_blocks': N",
-            "'num_external_inqueue_bytes': N",
+            "'num_external_inqueue_blocks': Z",
+            "'num_external_inqueue_bytes': Z",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -166,8 +166,8 @@ def gen_expected_metrics(
             "'num_outputs_of_finished_tasks': Z",
             "'bytes_outputs_of_finished_tasks': Z",
             "'rows_outputs_of_finished_tasks': Z",
-            "'num_external_inqueue_blocks': N",
-            "'num_external_inqueue_bytes': N",
+            "'num_external_inqueue_blocks': Z",
+            "'num_external_inqueue_bytes': Z",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -710,8 +710,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
         "      rows_outputs_of_finished_tasks: N,\n"
-        "      num_external_inqueue_blocks: N,\n"
-        "      num_external_inqueue_bytes: N,\n"
+        "      num_external_inqueue_blocks: Z,\n"
+        "      num_external_inqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -842,8 +842,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
         "      rows_outputs_of_finished_tasks: N,\n"
-        "      num_external_inqueue_blocks: N,\n"
-        "      num_external_inqueue_bytes: N,\n"
+        "      num_external_inqueue_blocks: Z,\n"
+        "      num_external_inqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -929,8 +929,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_outputs_of_finished_tasks: N,\n"
         "            bytes_outputs_of_finished_tasks: N,\n"
         "            rows_outputs_of_finished_tasks: N,\n"
-        "            num_external_inqueue_blocks: N,\n"
-        "            num_external_inqueue_bytes: N,\n"
+        "            num_external_inqueue_blocks: Z,\n"
+        "            num_external_inqueue_bytes: Z,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
@@ -1985,12 +1985,6 @@ def test_op_metrics_logging():
             + gen_expected_metrics(is_map=False)
         )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         # InputDataBuffer has no inqueue, manually set to 0
-        input_str = input_str.replace(
-            "'num_external_inqueue_blocks': N", "'num_external_inqueue_blocks': Z"
-        )
-        input_str = input_str.replace(
-            "'num_external_inqueue_bytes': N", "'num_external_inqueue_bytes': Z"
-        )
         map_str = (
             "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"

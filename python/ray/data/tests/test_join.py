@@ -1,31 +1,18 @@
 from typing import Optional
-from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
-from ray.data import DataContext, Dataset
-from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.join import JoinOperator
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.logical.operators.join_operator import JoinType
-from ray.data._internal.util import GiB, MiB
+from ray.data._internal.util import MiB
+from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
-
-
-@pytest.fixture
-def nullify_shuffle_aggregator_num_cpus():
-    ctx = ray.data.context.DataContext.get_current()
-
-    original = ctx.join_operator_actor_num_cpus_per_partition_override
-    # NOTE: We override this to reduce hardware requirements
-    #       for every aggregator
-    ctx.join_operator_actor_num_cpus_per_partition_override = 0.001
-
-    yield
-
-    ctx.join_operator_actor_num_cpus_per_partition_override = original
 
 
 @pytest.mark.parametrize(
@@ -41,7 +28,6 @@ def nullify_shuffle_aggregator_num_cpus():
 )
 def test_simple_inner_join(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     num_rows_left: int,
     num_rows_right: int,
     partition_size_hint: Optional[int],
@@ -108,7 +94,6 @@ def test_simple_inner_join(
 )
 def test_simple_left_right_outer_semi_anti_join(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
     num_rows_left,
     num_rows_right,
@@ -197,7 +182,6 @@ def test_simple_left_right_outer_semi_anti_join(
 )
 def test_simple_full_outer_join(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     num_rows_left,
     num_rows_right,
 ):
@@ -372,67 +356,9 @@ def test_invalid_join_not_matching_key_columns(
     )
 
 
-def test_default_shuffle_aggregator_args():
-    parent_op_mock = MagicMock(PhysicalOperator)
-    parent_op_mock._output_dependencies = []
-
-    op = JoinOperator(
-        left_input_op=parent_op_mock,
-        right_input_op=parent_op_mock,
-        data_context=DataContext.get_current(),
-        left_key_columns=("id",),
-        right_key_columns=("id",),
-        join_type=JoinType.INNER,
-        num_partitions=16,
-    )
-
-    # - 1 partition per aggregator
-    # - No partition size hint
-    args = op._get_default_aggregator_ray_remote_args(
-        num_partitions=16,
-        num_aggregators=16,
-        partition_size_hint=None,
-    )
-
-    assert {
-        "num_cpus": 0.125,
-        "memory": 939524096,
-        "scheduling_strategy": "SPREAD",
-    } == args
-
-    # - 4 partitions per aggregator
-    # - No partition size hint
-    args = op._get_default_aggregator_ray_remote_args(
-        num_partitions=64,
-        num_aggregators=16,
-        partition_size_hint=None,
-    )
-
-    assert {
-        "num_cpus": 0.5,
-        "memory": 1744830464,
-        "scheduling_strategy": "SPREAD",
-    } == args
-
-    # - 4 partitions per aggregator
-    # - No partition size hint
-    args = op._get_default_aggregator_ray_remote_args(
-        num_partitions=64,
-        num_aggregators=16,
-        partition_size_hint=1 * GiB,
-    )
-
-    assert {
-        "num_cpus": 0.5,
-        "memory": 13958643712,
-        "scheduling_strategy": "SPREAD",
-    } == args
-
-
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
 ):
     """Test anti-join when there are no matches - should return all rows from respective side"""
@@ -472,7 +398,6 @@ def test_anti_join_no_matches(
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_all_matches(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
 ):
     """Test anti-join when all rows match - should return empty result"""
@@ -503,7 +428,6 @@ def test_anti_join_all_matches(
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_multi_key(
     ray_start_regular_shared_2_cpus,
-    nullify_shuffle_aggregator_num_cpus,
     join_type,
 ):
     """Test anti-join with multiple join keys"""
@@ -564,6 +488,219 @@ def test_anti_join_multi_key(
     joined_pd_sorted = joined_pd.sort_values(by=expected_cols).reset_index(drop=True)
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
+def test_join_on_unjoinable_keys_raises_error(ray_start_regular_shared_2_cpus):
+    """Test that joining ON unjoinable column types raises appropriate errors."""
+    # Dataset with proper list column (unjoinable)
+    list_ds = ray.data.from_items(
+        [{"list_col": [[1, 2], [3, 4], [5, 6]], "data": [10, 20, 30]}]
+    )
+
+    # Simple joinable dataset
+    simple_ds = ray.data.from_items([{"id": [1, 2, 3], "value": ["a", "b", "c"]}])
+
+    # Test that joining ON list column raises ValueError
+    with pytest.raises(ValueError):
+        list_ds.join(
+            simple_ds,
+            join_type="inner",
+            on=("list_col",),
+            right_on=("id",),
+            num_partitions=1,
+        ).materialize()
+
+
+# Helper functions to reduce test code bloat
+def _assert_columns_match(result, expected_columns):
+    """Assert that result has the expected column schema."""
+    actual_columns = set(result[0].keys())
+    assert actual_columns == expected_columns
+
+
+def _assert_list_values(result_by_id, expected_values):
+    """Assert list column values match expected values."""
+    for row_id, expected_list in expected_values.items():
+        assert result_by_id[row_id]["list_col"] == expected_list
+
+
+def _assert_tensor_values(result_by_id, expected_values):
+    """Assert tensor column values match expected tensor data."""
+    for row_id, expected_tensor in expected_values.items():
+        assert np.array_equal(result_by_id[row_id]["tensor_col"], expected_tensor)
+
+
+def _assert_none_values(result_by_id, none_checks):
+    """Assert that specified columns are None for specified row IDs."""
+    for row_id, columns in none_checks.items():
+        for column in columns:
+            assert result_by_id[row_id][column] is None
+
+
+def _assert_scalar_values(result_by_id, expected_values):
+    """Assert scalar column values match expected values."""
+    for row_id, column_values in expected_values.items():
+        for column, expected_value in column_values.items():
+            assert result_by_id[row_id][column] == expected_value
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("10.0.0"),
+    reason="""Joins use empty arrays with type coercion. This pyarrow
+    version does not support type coercion of extension types, which
+    are needed for tensors.""",
+)
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ],
+)
+def test_join_with_unjoinable_non_key_columns(
+    ray_start_regular_shared_2_cpus, join_type
+):
+    """Test that joins work correctly when non-key columns have unjoinable types."""
+    # Left dataset with joinable key but unjoinable non-key columns
+
+    # Create test data - centralized for clarity and maintainability
+    list_data = [
+        [1, 2, 3],  # list for id=0
+        [4, 5, 6],  # list for id=1
+        [7, 8, 9],  # list for id=2
+    ]
+
+    tensor_data = [
+        np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),  # 2x2 tensor for id=0
+        np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float32),  # 2x2 tensor for id=1
+        np.array([[9.0, 10.0], [11.0, 12.0]], dtype=np.float32),  # 2x2 tensor for id=2
+    ]
+
+    scalar_data = ["a", "b", "c"]  # scalar data for id=0,1,2
+
+    left_ds = ray.data.from_items(
+        [
+            {
+                "id": 0,
+                "list_col": list_data[0],
+                "tensor_col": tensor_data[0],
+                "data": scalar_data[0],
+            },
+            {
+                "id": 1,
+                "list_col": list_data[1],
+                "tensor_col": tensor_data[1],
+                "data": scalar_data[1],
+            },
+            {
+                "id": 2,
+                "list_col": list_data[2],
+                "tensor_col": tensor_data[2],
+                "data": scalar_data[2],
+            },
+        ]
+    )
+
+    # Right dataset with joinable key and columns
+    # ids: 0, 1, 3 (so id=2 from left won't match, id=3 from right won't match)
+    right_ds = ray.data.from_items(
+        [
+            {"id": 0, "value": "x", "score": 10},
+            {"id": 1, "value": "y", "score": 20},
+            {"id": 3, "value": "z", "score": 30},
+        ]
+    )
+
+    # Verify the join worked and includes unjoinable columns
+    joined = left_ds.join(right_ds, join_type=join_type, on=("id",), num_partitions=2)
+    result = joined.take_all()
+    result_by_id = {row["id"]: row for row in result}
+
+    # Basic validation - join should succeed with unjoinable non-key columns
+    if join_type == "inner":
+        # Should have 2 rows (id=0 and id=1 match)
+        assert len(result) == 2
+        # Verify unjoinable columns are preserved
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1]})
+
+    elif join_type == "left_outer":
+        # Should have 3 rows (all from left: id=0, 1, 2)
+        assert len(result) == 3
+        # All left unjoinable columns preserved
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1, 2]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1, 2]})
+        # Unmatched left row (id=2) should have None for right columns
+        _assert_none_values(result_by_id, {2: ["value"]})
+
+    elif join_type == "right_outer":
+        # Should have 3 rows (all from right: id=0, 1, 3)
+        assert len(result) == 3
+        # Matched rows should have unjoinable columns from left
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1]})
+        _assert_scalar_values(result_by_id, {3: {"value": "z"}})
+        # Unmatched right row (id=3) should have None for left unjoinable columns
+        _assert_none_values(result_by_id, {3: ["list_col", "tensor_col"]})
+
+    elif join_type == "full_outer":
+        # Should have 4 rows (all from both sides: id=0, 1, 2, 3)
+        assert len(result) == 4
+        # Matched rows (id=0, 1) should have data from both sides
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1, 2]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1, 2]})
+        _assert_scalar_values(
+            result_by_id,
+            {
+                0: {"value": "x"},
+                1: {"value": "y"},
+                2: {"data": scalar_data[2]},
+                3: {"value": "z", "score": 30},
+            },
+        )
+        # Unmatched rows should have None for columns from the other side
+        _assert_none_values(
+            result_by_id, {2: ["value", "score"], 3: ["list_col", "tensor_col", "data"]}
+        )
+
+    elif join_type == "left_semi":
+        # Should return left rows that have matches in right (id=0, 1)
+        assert len(result) == 2
+        _assert_columns_match(result, {"id", "list_col", "tensor_col", "data"})
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1]})
+
+    elif join_type == "left_anti":
+        # Should return left rows that DON'T have matches in right (id=2)
+        assert len(result) == 1
+        _assert_columns_match(result, {"id", "list_col", "tensor_col", "data"})
+        _assert_list_values(result_by_id, {2: list_data[2]})
+        _assert_tensor_values(result_by_id, {2: tensor_data[2]})
+        _assert_scalar_values(result_by_id, {2: {"data": scalar_data[2]}})
+
+    elif join_type == "right_semi":
+        # Should return right rows that have matches in left (id=0, 1)
+        assert len(result) == 2
+        _assert_columns_match(result, {"id", "value", "score"})
+        _assert_scalar_values(result_by_id, {0: {"value": "x"}, 1: {"value": "y"}})
+
+    elif join_type == "right_anti":
+        # Should return right rows that DON'T have matches in left (id=3)
+        assert len(result) == 1
+        _assert_columns_match(result, {"id", "value", "score"})
+        _assert_scalar_values(result_by_id, {3: {"value": "z", "score": 30}})
+
+    # For outer joins, ensure unjoinable columns are present
+    if join_type in ["inner", "left_outer", "right_outer", "full_outer"]:
+        _assert_columns_match(
+            result, {"id", "list_col", "tensor_col", "data", "value", "score"}
+        )
 
 
 if __name__ == "__main__":

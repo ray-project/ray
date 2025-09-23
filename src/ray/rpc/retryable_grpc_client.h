@@ -26,8 +26,8 @@
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "ray/common/grpc_util.h"
-#include "ray/rpc/client_call.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray::rpc {
 

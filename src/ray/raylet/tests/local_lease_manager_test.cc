@@ -375,7 +375,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockObjectManager object_manager_;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
   LeaseDependencyManager lease_dependency_manager_;
   std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };

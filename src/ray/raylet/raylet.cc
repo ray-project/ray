@@ -25,9 +25,9 @@
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
-#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/ownership_object_directory.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
 

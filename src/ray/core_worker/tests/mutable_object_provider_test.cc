@@ -21,13 +21,13 @@
 #include "absl/functional/bind_front.h"
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/object_manager/plasma/client.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 namespace core {
@@ -74,7 +74,7 @@ class TestPlasma : public plasma::MockPlasmaClient {
   std::unordered_set<ObjectID> objects_;
 };
 
-class MockRayletClient : public FakeRayletClient {
+class MockRayletClient : public rpc::FakeRayletClient {
  public:
   virtual ~MockRayletClient() {}
 

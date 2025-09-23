@@ -30,7 +30,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/pubsub/publisher_interface.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
@@ -255,7 +255,7 @@ class Publisher : public PublisherInterface {
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
-            PeriodicalRunner &periodical_runner,
+            PeriodicalRunnerInterface &periodical_runner,
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
@@ -352,7 +352,7 @@ class Publisher : public PublisherInterface {
   // Periodic runner to invoke CheckDeadSubscribers.
   // The pointer must outlive the Publisher.
   // Nonnull in production, may be nullptr in tests.
-  PeriodicalRunner *periodical_runner_;
+  PeriodicalRunnerInterface *periodical_runner_;
 
   /// Callback to get the current time.
   std::function<double()> get_time_ms_;

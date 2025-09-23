@@ -90,7 +90,7 @@ class Histogram : public Metric {
   ///
   /// \param[in] value The value that we record.
   /// \param[in] tags The map tag values that we want to record
-  void Observe(double value, const std::unordered_map<std::string, std::string> &Tags);
+  void Observe(double value, const std::unordered_map<std::string, std::string> &tags);
 };  // class Histogram
 
 class Counter : public Metric {

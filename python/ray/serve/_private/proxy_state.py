@@ -236,11 +236,7 @@ class ActorProxyWrapper(ProxyWrapper):
             return None
 
         try:
-            # NOTE: Since `check_health` method is responding with nothing, sole
-            #       purpose of fetching the result is to extract any potential
-            #       exceptions
-            self._health_check_future.result()
-            return True
+            return self._health_check_future.result()
         except TimeoutError:
             logger.warning(
                 f"Didn't receive health check response for proxy"
@@ -639,6 +635,7 @@ class ProxyStateManager:
                 ip=state.actor_details.node_ip,
                 port=port,
                 instance_id=state.actor_details.node_instance_id,
+                name=state.actor_name,
             )
             for _, state in self._proxy_states.items()
             if state.actor_details.status == ProxyStatus.HEALTHY

@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -32,6 +31,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 
 namespace ray {
 namespace core {
@@ -227,7 +227,7 @@ class TaskManagerTest : public ::testing::Test {
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
-  ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {

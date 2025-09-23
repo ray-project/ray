@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 import ray
+from ray._raylet import NodeID
 from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
@@ -522,16 +523,17 @@ def test_schedule_replica():
         on_scheduled=set_scheduling_strategy,
     )
     scheduler._pending_replicas[d_id][r1_id] = scheduling_request
+    node_id_1 = NodeID.from_random().hex()
     scheduler._schedule_replica(
         scheduling_request=scheduling_request,
         default_scheduling_strategy="some_default",
-        target_node_id="node1",
+        target_node_id=node_id_1,
         target_labels={"abc": In("xyz")},  # this should get ignored
     )
     assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
     assert len(scheduler._launching_replicas[d_id]) == 2
     assert not scheduler._launching_replicas[d_id][r1_id].target_labels
-    assert scheduler._launching_replicas[d_id][r1_id].target_node_id == "node1"
+    assert scheduler._launching_replicas[d_id][r1_id].target_node_id == node_id_1
 
     # Target node id without placement group
     r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
@@ -547,14 +549,14 @@ def test_schedule_replica():
     scheduler._schedule_replica(
         scheduling_request=scheduling_request,
         default_scheduling_strategy="some_default",
-        target_node_id="node1",
+        target_node_id=node_id_1,
         target_labels={"abc": In("xyz")},  # this should get ignored
     )
     assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
-    assert scheduling_strategy.node_id == "node1"
+    assert scheduling_strategy.node_id == node_id_1
     assert len(scheduler._launching_replicas[d_id]) == 3
     assert not scheduler._launching_replicas[d_id][r2_id].target_labels
-    assert scheduler._launching_replicas[d_id][r2_id].target_node_id == "node1"
+    assert scheduler._launching_replicas[d_id][r2_id].target_node_id == node_id_1
 
     # Target labels
     r3_id = ReplicaID(unique_id="r3", deployment_id=d_id)
@@ -844,10 +846,12 @@ class TestCompactScheduling:
     def test_basic(self):
         d_id1 = DeploymentID(name="deployment1")
         d_id2 = DeploymentID(name="deployment2")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
 
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        cluster_node_info_cache.add_node("node1", {"CPU": 3})
-        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        cluster_node_info_cache.add_node(node_id_1, {"CPU": 3})
+        cluster_node_info_cache.add_node(node_id_2, {"CPU": 2})
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override="fake-head-node-id",
@@ -901,7 +905,7 @@ class TestCompactScheduling:
             assert len(call.args) == 1
             scheduling_strategy = call.args[0]._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
-            assert scheduling_strategy.node_id == "node2"
+            assert scheduling_strategy.node_id == node_id_2
 
         assert len(on_scheduled_mock2.call_args_list) == 1
         call = on_scheduled_mock2.call_args_list[0]
@@ -909,7 +913,7 @@ class TestCompactScheduling:
         assert len(call.args) == 1
         scheduling_strategy = call.args[0]._options["scheduling_strategy"]
         assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
-        assert scheduling_strategy.node_id == "node1"
+        assert scheduling_strategy.node_id == node_id_1
 
     def test_placement_groups(self):
         d_id1 = DeploymentID(name="deployment1")
@@ -999,10 +1003,12 @@ class TestCompactScheduling:
     def test_heterogeneous_resources(self):
         d_id1 = DeploymentID(name="deployment1")
         d_id2 = DeploymentID(name="deployment2")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
 
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 6})
-        cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        cluster_node_info_cache.add_node(node_id_1, {"GPU": 4, "CPU": 6})
+        cluster_node_info_cache.add_node(node_id_2, {"GPU": 10, "CPU": 2})
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override="fake-head-node-id",
@@ -1061,7 +1067,7 @@ class TestCompactScheduling:
             assert len(call.args) == 1
             scheduling_strategy = call.args[0]._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
-            assert scheduling_strategy.node_id == "node1"
+            assert scheduling_strategy.node_id == node_id_1
             assert call.kwargs == {"placement_group": None}
 
     def test_max_replicas_per_node(self):
@@ -1070,10 +1076,12 @@ class TestCompactScheduling:
         """
 
         d_id1 = DeploymentID(name="deployment1")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
         cluster_node_info_cache = MockClusterNodeInfoCache()
         # Should try to schedule on node1 to minimize fragmentation
-        cluster_node_info_cache.add_node("node1", {"CPU": 20})
-        cluster_node_info_cache.add_node("node2", {"CPU": 21})
+        cluster_node_info_cache.add_node(node_id_1, {"CPU": 20})
+        cluster_node_info_cache.add_node(node_id_2, {"CPU": 21})
 
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
@@ -1118,14 +1126,16 @@ class TestCompactScheduling:
             },
             downscales={},
         )
-        assert state["node1"] == 4
-        assert state["node2"] == 1
+        assert state[node_id_1] == 4
+        assert state[node_id_2] == 1
 
     def test_custom_resources(self):
         d_id = DeploymentID(name="deployment1")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        cluster_node_info_cache.add_node("node1", {"CPU": 3})
-        cluster_node_info_cache.add_node("node2", {"CPU": 100, "customA": 1})
+        cluster_node_info_cache.add_node(node_id_1, {"CPU": 3})
+        cluster_node_info_cache.add_node(node_id_2, {"CPU": 100, "customA": 1})
 
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
@@ -1147,7 +1157,7 @@ class TestCompactScheduling:
         def on_scheduled(actor_handle, placement_group):
             scheduling_strategy = actor_handle._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
-            assert scheduling_strategy.node_id == "node2"
+            assert scheduling_strategy.node_id == node_id_2
 
         scheduler.schedule(
             upscales={

@@ -20,9 +20,7 @@
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/grpc_util.h"
@@ -107,7 +105,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   ~CallbackSubscriberClient() final = default;
 
   void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
+      rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubLongPollingReply;
@@ -120,7 +118,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   }
 
   void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
+      rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubCommandBatchReply;

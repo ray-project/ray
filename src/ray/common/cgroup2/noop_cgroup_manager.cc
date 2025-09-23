@@ -36,4 +36,9 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
   return std::unique_ptr<CgroupManager>(
       new CgroupManager(base_cgroup_path, node_id, std::move(cgroup_driver)));
 }
+
+Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
+  return Status::OK();
+}
+
 }  // namespace ray

@@ -2,10 +2,7 @@
 ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
 FROM $BASE_IMAGE
 
-ARG REMOTE_CACHE_URL
-ARG BUILDKITE_PULL_REQUEST
-ARG BUILDKITE_COMMIT
-ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
+ARG BUILDKITE_BAZEL_CACHE_URL
 ARG PYTHON=3.9
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -18,11 +15,7 @@ ENV PYTHON=$PYTHON
 ENV RAY_USE_RANDOM_PORTS=1
 ENV RAY_DEFAULT_BUILD=1
 ENV RAY_INSTALL_JAVA=0
-ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
-ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
-ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
-ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
-ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
+ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 
 RUN <<EOF
 #!/bin/bash
@@ -52,6 +45,11 @@ echo \
 apt-get update
 apt-get install -y docker-ce-cli
 
+echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
+
+# TODO(aslonnie): allow caching on trusted pipeline builds.
+echo "build --remote_upload_local_results=false" >> /root/.bazelrc
+
 EOF
 
 # System conf for tests
@@ -59,11 +57,6 @@ RUN locale -a
 ENV LC_ALL=en_US.utf8
 ENV LANG=en_US.utf8
 RUN echo "ulimit -c 0" >> /root/.bashrc
-
-# Setup Bazel caches
-RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
-    (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
-    cat /root/.bazelrc
 
 # Install some dependencies (miniforge, pip dependencies, etc)
 RUN mkdir /ray

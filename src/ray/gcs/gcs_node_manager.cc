@@ -99,6 +99,7 @@ void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
 void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  // TODO(#56391): node creation time should be assigned here instead of in the raylet.
   const rpc::GcsNodeInfo &node_info = request.node_info();
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(INFO)
@@ -181,12 +182,13 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
+  auto on_put_done = [this, node_id, node_info_delta, node, send_reply_callback, reply](
+                         const Status &status) {
     gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta);
     WriteNodeExportEvent(*node, /*is_register_event*/ false);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
