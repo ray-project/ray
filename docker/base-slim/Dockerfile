@@ -4,7 +4,7 @@
 # Mainly for use on Anyscale.
 
 ARG BASE_IMAGE
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} as main-build
 ARG PYTHON_VERSION
 
 RUN <<EOF
@@ -170,27 +170,26 @@ rm -rf "${BUILD_DIR}"
 
 EOF
 
+# --- Return to main image ---
+FROM main-build as main
+
+# Copy HAProxy binary from builder stage
+COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
+
 # Install HAProxy runtime dependency
-RUN apt-get install socat && \
+RUN apt-get update && apt-get install -y --no-install-recommends socat && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy HAProxy from the build stage and set up user/directories.
-COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
 RUN groupadd -r haproxy || true && \
     useradd -r -g haproxy haproxy || true && \
     mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
     chown -R haproxy:haproxy /run/haproxy && \
     echo "ray ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy" | tee /etc/sudoers.d/haproxy-ray
 
-ARG RAY_UID=1000
+# Update PATH to include both anaconda3 and HAProxy
+ENV PATH="/home/ray/anaconda3/bin:/usr/local/sbin:$PATH"
 
-RUN mkdir -p /tmp/ray /var/lib/ray && \
-    chown -R "${RAY_UID}" /tmp/ray /var/lib/ray
-
-# Update PATH
-ENV PATH="/usr/local/sbin:$PATH"
-
-USER $RAY_UID
+USER ray
 WORKDIR /home/ray
 
 CMD ["bash"]

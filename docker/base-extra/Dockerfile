@@ -60,14 +60,13 @@ sudo apt-get update -y
 sudo apt-get install -y "${APT_PKGS[@]}"
 sudo apt-get autoclean
 
-HAPROXY_PKGS=(
-    socat
+HAPROXY_BUILD_DEPS=(
     libssl-dev
     libpcre3-dev
     zlib1g-dev
 )
 
-sudo apt-get install -y "${HAPROXY_PKGS[@]}"
+sudo apt-get install -y socat "${HAPROXY_BUILD_DEPS[@]}"
 
 # Install HAProxy from source.
 HAPROXY_VERSION="2.8.12"
@@ -77,6 +76,9 @@ tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
 make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
 sudo make -C "${BUILD_DIR}" install
 rm -rf "${BUILD_DIR}"
+
+sudo apt-get purge -y --auto-remove "${HAPROXY_BUILD_DEPS[@]}"
+sudo rm -rf /var/lib/apt/lists/*
 
 sudo groupadd -r haproxy || true
 sudo useradd -r -g haproxy haproxy || true
