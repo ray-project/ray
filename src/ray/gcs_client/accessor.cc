@@ -607,7 +607,6 @@ void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
     const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
     int64_t timeout_ms,
     const std::vector<NodeID> &node_ids) {
-  RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeAddressAndLivenessRequest request;
   for (const auto &node_id : node_ids) {
     request.add_node_selectors()->set_node_id(node_id.Binary());
@@ -695,28 +694,32 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
     std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
     StatusCallback done) {
-  RAY_CHECK(node_change_callback_ == nullptr)
-      << "Subscriber is already subscribed to GCS_NODE_INFO_CHANNEL, subscribing to "
-         "GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL in addition is a waste of resources and "
-         "likely "
-         "a bug.";
+  /**
+  1. Subscribe to node info
+  2. Once the subscription is made, ask for all node info.
+  3. Once all node info is received, call done callback.
+  4. HandleNotification can handle conflicts between the subscription updates and
+     GetAllNodeInfo because nodes can only go from alive to dead, never back to alive.
+     Note that this only works because state is the only mutable field, otherwise we'd
+     have to queue processing subscription updates until the initial population from
+     AsyncGetAll is done.
+  */
+  RAY_CHECK(node_change_callback_address_and_liveness_ == nullptr)
+      << "Subscriber is already subscribed to GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL, "
+         "subscribing to GCS_NODE_INFO_CHANNEL in addition is a waste of resources and "
+         "likely a bug.";
   RAY_CHECK(node_change_callback_address_and_liveness_ == nullptr);
   node_change_callback_address_and_liveness_ = std::move(subscribe);
   RAY_CHECK(node_change_callback_address_and_liveness_ != nullptr);
 
   fetch_node_address_and_liveness_data_operation_ =
       [this](const StatusCallback &done_callback) {
-        // Fetch all node address and liveness info
-        rpc::GetAllNodeAddressAndLivenessRequest request;
-        client_impl_->GetGcsRpcClient().GetAllNodeAddressAndLiveness(
-            std::move(request),
-            [this, done_callback](const Status &status,
-                                  rpc::GetAllNodeAddressAndLivenessReply &&reply) {
-              if (status.ok()) {
-                for (const auto &node_info : reply.node_info_list()) {
-                  rpc::GcsNodeAddressAndLiveness copy = node_info;
-                  HandleNotification(std::move(copy));
-                }
+        AsyncGetAllNodeAddressAndLiveness(
+            [this, done_callback](
+                const Status &status,
+                std::vector<rpc::GcsNodeAddressAndLiveness> &&node_info_list) {
+              for (auto &node_info : node_info_list) {
+                HandleNotification(std::move(node_info));
               }
               if (done_callback) {
                 done_callback(status);
@@ -818,9 +821,15 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<NodeID> &node_ids,
 }
 
 bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
-  auto node_iter = node_cache_.find(node_id);
-  return node_iter != node_cache_.end() &&
-         node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
+  if (node_change_callback_ != nullptr) {
+    auto node_iter = node_cache_.find(node_id);
+    return node_iter != node_cache_.end() &&
+           node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
+  } else {
+    auto node_iter = node_cache_address_and_liveness_.find(node_id);
+    return node_iter != node_cache_address_and_liveness_.end() &&
+           node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
+  }
 }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {

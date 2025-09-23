@@ -53,6 +53,8 @@ void NodeInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, DrainNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, GetAllNodeInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeInfoGcsService, GetAllNodeAddressAndLiveness, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler_)
 }
 

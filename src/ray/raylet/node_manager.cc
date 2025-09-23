@@ -264,6 +264,7 @@ void NodeManager::RegisterGcs() {
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
   };
+
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   gcs_client_.Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
       std::move(on_node_change), std::move(on_node_change_subscribe_done));
@@ -762,6 +763,27 @@ void NodeManager::WarnResourceDeadlock() {
 }
 
 void NodeManager::NodeAdded(const rpc::GcsNodeAddressAndLiveness &node_info) {
+  const NodeID node_id = NodeID::FromBinary(node_info.node_id());
+
+  RAY_LOG(DEBUG).WithField(node_id) << "[NodeAdded] Received callback from node id ";
+  if (node_id == self_node_id_) {
+    return;
+  }
+
+  // Store address of the new node manager for rpc requests.
+  remote_node_manager_addresses_[node_id] =
+      std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
+
+  // Update the resource view if a new message has been sent.
+  if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
+                                                 syncer::MessageType::RESOURCE_VIEW)) {
+    if (sync_msg) {
+      ConsumeSyncMessage(sync_msg);
+    }
+  }
+}
+
+void NodeManager::NodeAdded(const rpc::GcsNodeInfo &node_info) {
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeAdded] Received callback from node id ";
