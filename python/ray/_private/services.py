@@ -1904,6 +1904,7 @@ def start_raylet(
         command.append(
             f"--system-reserved-memory-bytes={resource_isolation_config.system_reserved_memory}"
         )
+        command.append(f"--system-pids={resource_isolation_config.system_pids}")
 
     if raylet_stdout_filepath:
         command.append(f"--stdout_filepath={raylet_stdout_filepath}")
