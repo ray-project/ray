@@ -123,6 +123,7 @@ from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
+from ray.data.stats import DatasetSummary
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -5930,7 +5931,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP, stability="alpha")
-    def summary(self, columns: Optional[List[str]] = None) -> "pandas.DataFrame":
+    def summary(self, columns: Optional[List[str]] = None) -> "DatasetSummary":
         """Generate a statistical summary of the dataset, organized by column type.
 
         This method computes various statistics for different column types:
@@ -5939,9 +5940,8 @@ class Dataset:
         - For categorical columns: count, missing%
         - For vector/list columns: count, missing%
 
-        The resulting DataFrame uses a MultiIndex for columns, with the first level
-        indicating the column type (numerical, categorical, vector) and the second level
-        showing the actual column names.
+        The resulting DatasetSummary object contains separate DataFrames for each
+        column type and provides a unified view when printed.
 
         Examples:
             >>> import ray
@@ -5951,8 +5951,8 @@ class Dataset:
             ...     {"age": 0, "salary": None, "name": "Bob", "city": None, "scores": None, "tags": None},
             ...     {"age": None, "salary": 45000, "name": "Charlie", "city": "Chicago", "scores": [7, 8, 9], "tags": ["d", "e"]},
             ... ])
-            >>> summary_df = ds.summary()
-            >>> print(summary_df)  # doctest: +SKIP
+            >>> summary = ds.summary()
+            >>> print(summary)  # doctest: +SKIP
                 agg         numerical               categorical       vector
                 column             age        salary        name  city scores  tags
                 count         4.000000      4.000000         4.0   4.0    4.0   4.0
@@ -5968,26 +5968,28 @@ class Dataset:
                 If None, all columns will be included.
 
         Returns:
-            A pandas DataFrame with MultiIndex columns containing the statistical
-            summary. The first level of the column index indicates the column type,
-            and the second level shows the column names.
+            A DatasetSummary object containing separate DataFrames for each column
+            type (numerical, categorical, vector).
         """
         import pandas as pd
 
         from ray.data.stats import (
+            STAT_ORDER,
             ColumnType,
+            DatasetSummary,
             feature_aggregators_for_dataset,
             get_stat_names_for_column_type,
         )
 
         # Get aggregators and compute results
         feature_aggs = feature_aggregators_for_dataset(self, columns=columns)
-        if not feature_aggs.aggregators:
-            return pd.DataFrame()
-
         results = self.aggregate(*feature_aggs.aggregators)
         if not results:
-            return pd.DataFrame()
+            return DatasetSummary(
+                numerical=pd.DataFrame(),
+                categorical=pd.DataFrame(),
+                vector=pd.DataFrame(),
+            )
 
         # Helper to extract stats for a column from aggregation results
         def _extract_column_stats(column_name, stat_names):
@@ -6000,30 +6002,42 @@ class Dataset:
                     column_stats[stat] = results[key]
             return column_stats
 
-        # Build summary data for each column type using enum iteration
-        summary_data = {}
+        # Build separate DataFrames for each column type
+        column_data_map = {
+            ColumnType.NUMERICAL: {},
+            ColumnType.CATEGORICAL: {},
+            ColumnType.VECTOR: {},
+        }
 
+        # Process all column types using enum iteration
         for column_type in ColumnType:
             stat_names = get_stat_names_for_column_type(column_type)
             columns_for_type = feature_aggs.columns_by_type[column_type]
 
             for col in columns_for_type:
-                summary_data[(column_type.value, col)] = _extract_column_stats(
+                column_data_map[column_type][col] = _extract_column_stats(
                     col, stat_names
                 )
 
-        if not summary_data:
-            return pd.DataFrame()
+        # Create DataFrames for each column type
+        dataframes = {}
+        for column_type in ColumnType:
+            data = column_data_map[column_type]
+            dataframes[column_type] = pd.DataFrame(data) if data else pd.DataFrame()
+            if not dataframes[column_type].empty:
+                dataframes[column_type] = dataframes[column_type].reindex(
+                    [
+                        stat
+                        for stat in STAT_ORDER
+                        if stat in dataframes[column_type].index
+                    ]
+                )
 
-        # Create DataFrame with MultiIndex columns
-        df = pd.DataFrame(summary_data)
-        df.columns = pd.MultiIndex.from_tuples(df.columns, names=["agg", "column"])
-
-        # Reorder rows to match expected statistics order
-        stat_order = ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
-        df = df.reindex(stat_order)
-
-        return df
+        return DatasetSummary(
+            numerical=dataframes[ColumnType.NUMERICAL],
+            categorical=dataframes[ColumnType.CATEGORICAL],
+            vector=dataframes[ColumnType.VECTOR],
+        )
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI

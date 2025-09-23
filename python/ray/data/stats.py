@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+import pandas as pd
 import pyarrow as pa
 
 from ray.data._expression_evaluator import _is_pa_string_type
@@ -23,6 +24,64 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 RAY_DATA_DUMMY_COL = "__ray_data_dummy_col"
+STAT_ORDER = ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
+
+
+@dataclass
+class DatasetSummary:
+    """A statistical summary of a dataset, organized by column type.
+
+    This class contains separate pandas DataFrames for each column type:
+    numerical, categorical, and vector columns. Each DataFrame contains
+    the relevant statistics for that column type.
+
+    Attributes:
+        numerical: DataFrame with statistics for numerical columns
+        categorical: DataFrame with statistics for categorical columns
+        vector: DataFrame with statistics for vector/list columns
+    """
+
+    numerical: pd.DataFrame
+    categorical: pd.DataFrame
+    vector: pd.DataFrame
+
+    def to_pandas(self) -> pd.DataFrame:
+        # Combine all DataFrames into a single MultiIndex DataFrame
+        summary_data = {}
+
+        # Map column types to their corresponding DataFrames
+        dataframe_map = {
+            ColumnType.NUMERICAL: self.numerical,
+            ColumnType.CATEGORICAL: self.categorical,
+            ColumnType.VECTOR: self.vector,
+        }
+
+        # Loop over ColumnType enum to build summary data
+        for column_type, df in dataframe_map.items():
+            if not df.empty:
+                for col in df.columns:
+                    # Create a full stats dict with NaN for missing values
+                    column_stats = {}
+                    for stat in STAT_ORDER:
+                        if stat in df.index:
+                            column_stats[stat] = df.loc[stat, col]
+                        else:
+                            column_stats[stat] = float("nan")
+                    summary_data[(column_type.value, col)] = column_stats
+
+        if not summary_data:
+            return pd.DataFrame()
+
+        # Create MultiIndex DataFrame
+        df = pd.DataFrame(summary_data)
+        df.columns = pd.MultiIndex.from_tuples(df.columns, names=["agg", "column"])
+
+        df = df.reindex(STAT_ORDER)
+        return df
+
+    def __repr__(self) -> str:
+        """Return a string representation showing the combined MultiIndex DataFrame."""
+        return self.to_pandas().to_string()
 
 
 class ColumnType(Enum):
