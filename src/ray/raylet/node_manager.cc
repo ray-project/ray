@@ -1378,21 +1378,39 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Attempt per-worker process-group cleanup before removing the worker.
 #if !defined(_WIN32)
     if (RayConfig::instance().process_group_cleanup_enabled()) {
-      pid_t pgid = worker->GetProcess().GetId();
+      // Use saved PGID captured at registration and revalidate to mitigate PID/PGID reuse.
+      auto saved = worker->GetSavedProcessGroupId();
+      if (!saved.has_value()) {
+        return;
+      }
+      pid_t worker_pid = worker->GetProcess().GetId();
+      pid_t current_pgid = -1;
+      errno = 0;
+      current_pgid = getpgid(worker_pid);
+      if (current_pgid == -1 || current_pgid != *saved) {
+        // Skip if worker already exited or PGID changed (possible reuse).
+        return;
+      }
       RAY_LOG(INFO).WithField(worker->WorkerId())
-          << "Attempting process-group cleanup for worker pid=" << pgid;
-      auto err = KillProcessGroup(pgid, SIGTERM);
+          << "Attempting process-group cleanup for worker pid=" << worker_pid
+          << ", pgid=" << *saved;
+      auto err = KillProcessGroup(*saved, SIGTERM);
       if (err && *err) {
         RAY_LOG(WARNING).WithField(worker->WorkerId())
-            << "Failed to SIGTERM process group " << pgid << ": " << err->message()
+            << "Failed to SIGTERM process group " << *saved << ": " << err->message()
             << ", errno=" << err->value();
       }
       // TODO(codope): consider making the grace period configurable.
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-      err = KillProcessGroup(pgid, SIGKILL);
+      // Revalidate before SIGKILL.
+      errno = 0;
+      current_pgid = getpgid(worker_pid);
+      if (current_pgid != -1 && current_pgid == *saved) {
+        err = KillProcessGroup(*saved, SIGKILL);
+      }
       if (err && *err) {
         RAY_LOG(WARNING).WithField(worker->WorkerId())
-            << "Failed to SIGKILL process group " << pgid << ": " << err->message()
+            << "Failed to SIGKILL process group " << *saved << ": " << err->message()
             << ", errno=" << err->value();
       }
     }
@@ -2756,22 +2774,37 @@ void NodeManager::Stop() {
     auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
                                                         /* filter_io_workers */ false);
     for (const auto &w : workers) {
-      pid_t pgid = w->GetProcess().GetId();
+      auto saved = w->GetSavedProcessGroupId();
+      if (!saved.has_value()) {
+        continue;
+      }
+      pid_t worker_pid = w->GetProcess().GetId();
+      pid_t current_pgid = -1;
+      errno = 0;
+      current_pgid = getpgid(worker_pid);
+      if (current_pgid == -1 || current_pgid != *saved) {
+        continue;
+      }
       RAY_LOG(INFO).WithField(w->WorkerId())
-          << "Stop(): attempting process-group cleanup for worker pid=" << pgid;
-      auto err = KillProcessGroup(pgid, SIGTERM);
+          << "Stop(): attempting process-group cleanup for worker pid=" << worker_pid
+          << ", pgid=" << *saved;
+      auto err = KillProcessGroup(*saved, SIGTERM);
       if (err && *err) {
         RAY_LOG(WARNING).WithField(w->WorkerId())
-            << "Stop(): failed to SIGTERM process group " << pgid << ": "
+            << "Stop(): failed to SIGTERM process group " << *saved << ": "
             << err->message() << ", errno=" << err->value();
       }
       // TODO(codope): consider making the grace period configurable.
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-      err = KillProcessGroup(pgid, SIGKILL);
-      if (err && *err) {
-        RAY_LOG(WARNING).WithField(w->WorkerId())
-            << "Stop(): failed to SIGKILL process group " << pgid << ": "
-            << err->message() << ", errno=" << err->value();
+      errno = 0;
+      current_pgid = getpgid(worker_pid);
+      if (current_pgid != -1 && current_pgid == *saved) {
+        err = KillProcessGroup(*saved, SIGKILL);
+        if (err && *err) {
+          RAY_LOG(WARNING).WithField(w->WorkerId())
+              << "Stop(): failed to SIGKILL process group " << *saved << ": "
+              << err->message() << ", errno=" << err->value();
+        }
       }
     }
   }
