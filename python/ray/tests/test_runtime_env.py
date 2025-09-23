@@ -12,6 +12,7 @@ import ray
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.exceptions import RuntimeEnvSetupError
 
+
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_decorator_task(start_cluster_shared, runtime_env_class):
     cluster, address = start_cluster_shared
@@ -180,6 +181,7 @@ def test_runtime_env_error_includes_node_ip(shutdown_only):
     )
     def f():
         return "should not reach here"
+
     # Test pip package error
     with pytest.raises(RuntimeEnvSetupError) as exception_info:
         ray.get(f.remote())
