@@ -38,6 +38,7 @@ ray_cc_test(
     deps = [
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/pubsub:fake_subscriber",
+        "//src/ray/rpc:fake_core_worker_client",
         "@com_google_googletest//:gtest_main",
     ],
 )

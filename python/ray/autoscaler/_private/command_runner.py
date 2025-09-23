@@ -505,7 +505,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         if environment_variables:
             cmd = _with_environment_variables(cmd, environment_variables)
 
-        if run_env == "docker":
+        if run_env == self.docker_cmd:
             cmd = self._docker_expand_user(cmd, any_char=True)
             if is_using_login_shells():
                 cmd = " ".join(_with_interactive(cmd))
