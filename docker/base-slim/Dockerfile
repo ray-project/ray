@@ -12,6 +12,8 @@ RUN <<EOF
 set -euo pipefail
 set -x
 
+export DEBIAN_FRONTEND=noninteractive
+
 APT_PKGS=(
 	ca-certificates
 	netbase
