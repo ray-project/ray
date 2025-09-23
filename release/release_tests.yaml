@@ -107,7 +107,7 @@
       type: llm-cu128
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
-    cluster_compute: ci/aws.yaml
+    cluster_compute: hello_world_compute_config.yaml
 
   run:
     timeout: 1800
