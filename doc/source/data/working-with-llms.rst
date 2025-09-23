@@ -169,44 +169,10 @@ Batch inference with embedding models
 
 Ray Data LLM supports batch inference with embedding models using vLLM:
 
-.. testcode::
-
-    import ray
-    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-
-    embedding_config = vLLMEngineProcessorConfig(
-        model_source="sentence-transformers/all-MiniLM-L6-v2",
-        task_type="embed",
-        engine_kwargs=dict(
-            enable_prefix_caching=False,
-            enable_chunked_prefill=False,
-            max_model_len=256,
-            enforce_eager=True,
-        ),
-        batch_size=32,
-        concurrency=1,
-        apply_chat_template=False,
-        detokenize=False,
-    )
-
-    embedding_processor = build_llm_processor(
-        embedding_config,
-        preprocess=lambda row: dict(prompt=row["text"]),
-        postprocess=lambda row: {
-            "text": row["prompt"],
-            "embedding": row["embeddings"],
-        },
-    )
-
-    texts = [
-        "Hello world",
-        "This is a test sentence",
-        "Embedding models convert text to vectors",
-    ]
-    ds = ray.data.from_items([{"text": text} for text in texts])
-
-    embedded_ds = embedding_processor(ds)
-    embedded_ds.show(limit=1)
+.. literalinclude:: doc_code/working-with-llms/embedding_example.py
+    :language: python
+    :start-after: __embedding_example_start__
+    :end-before: __embedding_example_end__
 
 .. testoutput::
     :options: +MOCK
