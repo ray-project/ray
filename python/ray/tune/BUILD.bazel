@@ -79,7 +79,8 @@ py_test(
     name = "test_api_checkpoint_integration",
     size = "medium",
     srcs = ["tests/test_api_checkpoint_integration.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    # Tests V1 Train/Tune integration.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -572,7 +573,8 @@ py_test(
     name = "test_tuner",
     size = "large",
     srcs = ["tests/test_tuner.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    # Tests V1 Train+Tune integration.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "medium_instance",
@@ -585,7 +587,8 @@ py_test(
     name = "test_tuner_restore",
     size = "large",
     srcs = ["tests/test_tuner_restore.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    # Tests V1 Train+Tune integration.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",

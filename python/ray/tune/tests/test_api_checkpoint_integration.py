@@ -77,7 +77,7 @@ def test_checkpoint_freq_dir_name(
                         (Path(checkpoint_dir) / "data.ckpt").write_text(str(step))
                         ray.tune.report(
                             {"step": step},
-                            checkpoint=ray.train.Checkpoint.from_directory(
+                            checkpoint=ray.tune.Checkpoint.from_directory(
                                 checkpoint_dir
                             ),
                         )
