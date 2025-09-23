@@ -264,6 +264,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/ipc:raylet_ipc_client_interface",
         "//src/ray/rpc:utils",
+        "//src/ray/stats:stats_metric",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
