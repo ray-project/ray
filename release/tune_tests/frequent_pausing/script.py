@@ -19,8 +19,8 @@ import os
 import pickle
 import tempfile
 
-from ray import train
-from ray.train import Checkpoint, RunConfig
+from ray import tune
+from ray.tune import Checkpoint, RunConfig
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -28,7 +28,7 @@ from ray.tune.tuner import Tuner
 
 def func(config):
     starting_epoch = 0
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "ckpt.pkl"), "rb") as f:
@@ -41,7 +41,7 @@ def func(config):
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "ckpt.pkl"), "wb") as f:
                 pickle.dump(checkpoint_dict, f)
-            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
+            tune.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 class FrequentPausesScheduler(FIFOScheduler):
