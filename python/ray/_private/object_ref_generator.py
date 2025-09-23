@@ -3,9 +3,10 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 
 import asyncio
 import collections
-from typing import Optional, Deque, Iterator
+from typing import Optional, Deque, Iterator, TYPE_CHECKING
 
-import ray
+if TYPE_CHECKING:
+    import ray
 from ray.exceptions import ObjectRefStreamEndOfStreamError
 from ray._private.worker import Worker
 
