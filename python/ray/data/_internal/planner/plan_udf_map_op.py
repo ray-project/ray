@@ -60,7 +60,6 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
-from ray.data.expressions import AliasExpr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -131,26 +130,14 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
-                    # AliasExpr is given precedence over the name.
-                    if isinstance(expr, AliasExpr):
-                        actual_name = expr.name
-                    else:
-                        actual_name = name
+                    # Use expr.name if available, otherwise fall back to the dict key name
+                    actual_name = expr.name if expr.name is not None else name
                     result = eval_expr(expr, result_block)
                     result_block_accessor = BlockAccessor.for_block(result_block)
-                    # Use fill_column for scalar values, upsert_column for arrays
-                    if not isinstance(
-                        result, (pa.Array, pa.ChunkedArray, pd.Series, np.ndarray)
-                    ):
-                        # Scalar value - use fill_column to broadcast it
-                        result_block = result_block_accessor.fill_column(
-                            actual_name, result
-                        )
-                    else:
-                        # Array value - use upsert_column
-                        result_block = result_block_accessor.upsert_column(
-                            actual_name, result
-                        )
+                    # fill_column handles both scalars and arrays
+                    result_block = result_block_accessor.fill_column(
+                        actual_name, result
+                    )
                 block = result_block
 
             # 2. (optional) column projection

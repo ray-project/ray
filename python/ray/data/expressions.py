@@ -86,6 +86,16 @@ class Expr(ABC):
 
     data_type: DataType
 
+    @property
+    def name(self) -> str | None:
+        """Get the name associated with this expression.
+
+        Returns:
+            The name for expressions that have one (ColumnExpr, AliasExpr),
+            None otherwise.
+        """
+        return None
+
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
         """Compare two expression ASTs for structural equality."""
@@ -227,7 +237,7 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(data_type=self.data_type, expr=self, name=name)
+        return AliasExpr(data_type=self.data_type, expr=self, _name=name)
 
 
 @DeveloperAPI(stability="alpha")
@@ -248,8 +258,13 @@ class ColumnExpr(Expr):
         >>> age_expr = col("age") # Creates ColumnExpr(name="age")
     """
 
-    name: str
+    _name: str
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    @property
+    def name(self) -> str:
+        """Get the column name."""
+        return self._name
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -525,7 +540,12 @@ class AliasExpr(Expr):
     """Expression that represents an alias for an expression."""
 
     expr: Expr
-    name: str
+    _name: str
+
+    @property
+    def name(self) -> str:
+        """Get the alias name."""
+        return self._name
 
     def structurally_equals(self, other: Any) -> bool:
         return (
