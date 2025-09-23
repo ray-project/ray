@@ -1624,8 +1624,7 @@ class Dataset:
             target_num_bytes_per_block = DEFAULT_TARGET_MAX_BLOCK_SIZE
         elif param_count > 1:
             raise ValueError(
-                "Only one of `num_blocks`, `target_num_rows_per_block`, or "
-                "`target_num_bytes_per_block` must be set, but not multiple."
+                "Only one target parameter can be set, but multiple were provided"
             )
 
         # Streaming repartition (rows or bytes) is incompatible with shuffle
@@ -1634,12 +1633,7 @@ class Dataset:
             or target_num_bytes_per_block is not None
         )
         if is_streaming and shuffle:
-            param_name = (
-                "target_num_rows_per_block"
-                if target_num_rows_per_block
-                else "target_num_bytes_per_block"
-            )
-            raise ValueError(f"`shuffle` must be False when `{param_name}` is set.")
+            raise ValueError("shuffle must be False when using streaming repartition")
 
         # Warn about ignored parameters for streaming repartition
         if is_streaming:
@@ -1661,15 +1655,31 @@ class Dataset:
         plan = self._plan.copy()
 
         # Choose operator based on parameters
+        context = self.context
         if target_num_rows_per_block is not None:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
             )
         elif target_num_bytes_per_block is not None:
-            op = StreamingRepartition(
-                self._logical_plan.dag, target_num_rows_per_block=10000
-            )  # High value for byte control
+            # For byte-based targeting, estimate appropriate number of blocks
+            # and use regular repartition with updated context
+            current_size_bytes = self._plan.stats().total_bytes_estimate()
+            if current_size_bytes > 0:
+                estimated_num_blocks = max(1, current_size_bytes // target_num_bytes_per_block)
+            else:
+                estimated_num_blocks = 1
+            
+            op = Repartition(
+                self._logical_plan.dag,
+                num_outputs=estimated_num_blocks,
+                shuffle=False,  # Use split repartition for efficiency
+                keys=None,
+                sort=False,
+            )
+            # Update context with target block size
+            context = copy.copy(self.context)
+            context.target_max_block_size = target_num_bytes_per_block
         else:
             op = Repartition(
                 self._logical_plan.dag,
@@ -1678,12 +1688,6 @@ class Dataset:
                 keys=keys,
                 sort=sort,
             )
-
-        # Set target block size for byte-based repartitioning
-        context = self.context
-        if target_num_bytes_per_block is not None:
-            context = copy.copy(self.context)
-            context.target_max_block_size = target_num_bytes_per_block
 
         logical_plan = LogicalPlan(op, context)
         return Dataset(plan, logical_plan)
@@ -5997,6 +6001,31 @@ class Dataset:
         output._set_uuid(copy._get_uuid())
         output._plan.execute()  # No-op that marks the plan as fully executed.
         return output
+
+    def explain(self):
+        """Show the logical plan and physical plan of the dataset.
+
+        Examples:
+
+        .. testcode::
+
+            import ray
+            from ray.data import Dataset
+            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
+            ds = ds.map(lambda x: x + 1)
+            ds.explain()
+
+        .. testoutput::
+
+            -------- Logical Plan --------
+            Map(<lambda>)
+            +- ReadRange
+            -------- Physical Plan --------
+            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+            +- InputDataBuffer[Input]
+            <BLANKLINE>
+        """
+        print(self._plan.explain())
 
     @PublicAPI(api_group=IM_API_GROUP)
     def stats(self) -> str:

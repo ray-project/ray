@@ -391,7 +391,6 @@ def test_repartition_string_size_validation(
         "invalid",
         "128",
         "mb",
-        "128MB",  # Mixed case should work
         "1.5.3mb",  # Invalid decimal
         "128mb extra",  # Extra text
         "",  # Empty string
@@ -400,6 +399,10 @@ def test_repartition_string_size_validation(
     for invalid_format in invalid_formats:
         with pytest.raises(ValueError):
             ds.repartition(target_num_bytes_per_block=invalid_format)
+
+    # Test that mixed case works correctly
+    ds_mixed_case = ds.repartition(target_num_bytes_per_block="128MB")
+    assert ds_mixed_case.count() == 100
 
 
 def test_repartition_enhanced_validation(
