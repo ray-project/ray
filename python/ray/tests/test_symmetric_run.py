@@ -279,7 +279,7 @@ def test_symmetric_run_multi_node(monkeypatch, cleanup_ray):
     """
     from ray.scripts.symmetric_run import symmetric_run
 
-    head_ip = "127.0.0.1"
+    head_ip = services.get_node_ip_address()
     address = f"{head_ip}:6379"
     worker_ips = ["10.0.0.2", "10.0.0.3"]
 
