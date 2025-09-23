@@ -22,7 +22,8 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
 from ray._common.deprecation import Deprecated
 from ray.rllib.utils.error import MultiAgentEnvError
-from ray.rllib.utils.serialization import gym_space_to_dict
+from ray.rllib.utils.serialization import gym_space_to_dict, \
+    gym_space_from_dict
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
 from ray.util.annotations import PublicAPI
@@ -1739,8 +1740,14 @@ class MultiAgentEpisode:
             "id_": self.id_,
             "agent_to_module_mapping_fn": mapping_fn,
             "_agent_to_module_mapping": self._agent_to_module_mapping,
-            "observation_space": gym_space_to_dict(self.observation_space),
-            "action_space": gym_space_to_dict(self.action_space),
+            "observation_space": (
+                gym_space_to_dict(self.observation_space)
+                if self.observation_space else None
+            ),
+            "action_space": (
+                gym_space_to_dict(self.action_space)
+                if self.action_space else None
+            ),
             "env_t_started": self.env_t_started,
             "env_t": self.env_t,
             "agent_t_started": self.agent_t_started,
@@ -1784,8 +1791,14 @@ class MultiAgentEpisode:
         # Fill the instance with the state data.
         episode.agent_to_module_mapping_fn = state["agent_to_module_mapping_fn"]
         episode._agent_to_module_mapping = state["_agent_to_module_mapping"]
-        episode.observation_space = state["observation_space"]
-        episode.action_space = state["action_space"]
+        episode.observation_space = (
+            gym_space_from_dict(state["observation_space"])
+            if state["observation_space"] else {}
+        )
+        episode.action_space = (
+            gym_space_from_dict(state["action_space"])
+            if state["action_space"] else {}
+        )
         episode.env_t_started = state["env_t_started"]
         episode.env_t = state["env_t"]
         episode.agent_t_started = state["agent_t_started"]

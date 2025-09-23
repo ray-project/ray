@@ -17,17 +17,19 @@ This example:
     - shows how a custom EnvRunner subclass can be configured allowing users to
     implement their own logic of connecting to external processes and customize the
     messaging protocols.
+    - shows how the MultiAgentRLlibGateway class can be used to run inference
+    locally with an external simulator.
 
 
 How to run this script
 ----------------------
-`python [script file name].py --port 5555
+`python [script file name].py --port 5555 --use-dummy-client
 
 Use the `--port` option to change the default port (5555) to some other value.
 Make sure that you do the same on the client side.
 
 For debugging, use the following additional command line options
-`--no-tune --num-env-runners=0`
+`--no-tune --num-env-runners=1`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 
@@ -46,19 +48,14 @@ a disconnection error at the end, b/c RLlib closes the server socket when done t
 | Trial name           | status     |   iter |   total time (s) |
 |                      |            |        |                  |
 |----------------------+------------+--------+------------------+
-| PPO_None_3358e_00000 | TERMINATED |     40 |          32.2649 |
+| PPO_None_3358e_00000 | TERMINATED |     15 |          32.2649 |
 +----------------------+------------+--------+------------------+
-+------------------------+------------------------+
++-----------------------+------------------------+
 |  episode_return_mean  |   num_env_steps_sample |
 |                       |             d_lifetime |
 |-----------------------+------------------------|
-|                458.68 |                 160000 |
+|                 624.1 |                 160000 |
 +-----------------------+------------------------+
-
-From the dummy client (thread), you should see at the end:
-```
-ConnectionError: Error receiving message from peer on socket ...
-```
 """
 import threading
 
@@ -107,10 +104,9 @@ if __name__ == "__main__":
 
     # Start the dummy CartPole "simulation".
     if args.use_dummy_client:
-        num_clients = args.num_envs_per_env_runner * args.num_env_runners
-        first_worker_index = 1 if args.num_env_runners > 0 else 0
+        num_clients = args.num_envs_per_env_runner * max(args.num_env_runners, 1)
         for i in range(num_clients):
-            port_offset = i // args.num_envs_per_env_runner + first_worker_index
+            port_offset = i // args.num_envs_per_env_runner + 1
             threading.Thread(
                 target=_dummy_multi_agent_external_client,
                 args=(i, args.port + port_offset),
