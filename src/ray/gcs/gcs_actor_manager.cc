@@ -844,7 +844,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
-  actor->WriteActorExportEvent();
+  actor->WriteActorExportEvent(false);
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due
@@ -1069,7 +1069,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
          }
-         actor->WriteActorExportEvent();
+         actor->WriteActorExportEvent(false);
          // Destroy placement group owned by this actor.
          destroy_owned_placement_group_if_needed_(actor_id);
        },
@@ -1444,7 +1444,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            }
            gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           actor->WriteActorExportEvent();
+           actor->WriteActorExportEvent(false);
          },
          io_context_});
     gcs_actor_scheduler_->Schedule(actor);
@@ -1474,7 +1474,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
-           actor->WriteActorExportEvent();
+           actor->WriteActorExportEvent(false);
          },
          io_context_});
     // The actor is dead, but we should not remove the entry from the
@@ -1588,7 +1588,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         actor,
         reply](Status status) mutable {
          gcs_publisher_->PublishActor(actor_id, std::move(actor_data_only_with_states));
-         actor->WriteActorExportEvent();
+         actor->WriteActorExportEvent(false);
          // Invoke all callbacks for all registration requests of this actor (duplicated
          // requests are included) and remove all of them from
          // actor_to_create_callbacks_.

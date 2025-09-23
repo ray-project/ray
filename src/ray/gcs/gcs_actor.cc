@@ -93,7 +93,7 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-void GcsActor::WriteActorExportEvent(bool is_actor_registration = false) const {
+void GcsActor::WriteActorExportEvent(bool is_actor_registration) const {
   // If ray event is enabled and recorder present, emit actor events to the aggregator.
   if (RayConfig::instance().enable_ray_event()) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
