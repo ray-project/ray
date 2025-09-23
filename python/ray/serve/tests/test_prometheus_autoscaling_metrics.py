@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 
 
@@ -13,16 +14,13 @@ def get_autoscaling_metrics_from_controller(
     client, deployment_id: DeploymentID
 ) -> Dict[str, float]:
     """Get autoscaling metrics from the controller for testing."""
-    ref = client._controller._dump_all_metrics_for_testing.remote()
+    ref = client._controller._dump_all_autoscaling_metrics_for_testing.remote()
     metrics = ray.get(ref)
     return metrics.get(deployment_id, {})
 
 
 def check_autoscaling_metrics_include_prometheus(
-    client,
-    deployment_id: DeploymentID,
-    expected_metrics: List[str],
-    timeout: float = 30,
+    client, deployment_id: DeploymentID, expected_metrics: List[str]
 ) -> bool:
     """Check that autoscaling metrics include the expected prometheus metrics."""
 
@@ -54,7 +52,7 @@ class TestPrometheusCustomMetrics:
             autoscaling_config={
                 "min_replicas": 1,
                 "max_replicas": 3,
-                "target_[num_]ongoing_requests_per_replica": 1,
+                "target_ongoing_requests": 1,
                 "upscale_delay_s": 0.1,
                 "downscale_delay_s": 0.1,
                 "metrics_interval_s": 0.1,
@@ -81,7 +79,7 @@ class TestPrometheusCustomMetrics:
             autoscaling_config={
                 "min_replicas": 1,
                 "max_replicas": 3,
-                "target_num_ongoing_requests_per_replica": 1,
+                "target_ongoing_requests": 1,
                 "upscale_delay_s": 0.1,
                 "downscale_delay_s": 0.1,
                 "metrics_interval_s": 0.1,
@@ -108,7 +106,7 @@ class TestPrometheusCustomMetrics:
             autoscaling_config={
                 "min_replicas": 1,
                 "max_replicas": 3,
-                "target_num_ongoing_requests_per_replica": 1,
+                "target_ongoing_requests": 1,
                 "upscale_delay_s": 0.1,
                 "downscale_delay_s": 0.1,
                 "metrics_interval_s": 0.1,
@@ -146,26 +144,33 @@ class TestPrometheusCustomMetrics:
         dep_b_id = DeploymentID(name="DeploymentB", app_name=app_name)
         dep_c_id = DeploymentID(name="DeploymentC", app_name=app_name)
 
-        # Check that DeploymentA (with prometheus custom metrics) has metrics
-        assert check_autoscaling_metrics_include_prometheus(
-            serve_instance,
-            dep_a_id,
-            ["ray_serve_deployment_processing_latency_ms_bucket"],
-        ), "DeploymentA should have ray_serve_deployment_processing_latency_ms_bucket"
+        # Wait for controller to receive new metrics
+        wait_for_condition(
+            lambda: check_autoscaling_metrics_include_prometheus(
+                serve_instance,
+                dep_a_id,
+                ["ray_serve_deployment_processing_latency_ms_bucket"],
+            ),
+            timeout=15,
+        )
 
-        # Check that DeploymentB (with prometheus custom metrics) has filtered metrics
-        assert check_autoscaling_metrics_include_prometheus(
-            serve_instance,
-            dep_b_id,
-            ["ray_serve_deployment_processing_latency_ms_bucket_only_b"],
-        ), "DeploymentB should have filtered prometheus metrics"
+        wait_for_condition(
+            lambda: check_autoscaling_metrics_include_prometheus(
+                serve_instance,
+                dep_b_id,
+                ["ray_serve_deployment_processing_latency_ms_bucket_only_b"],
+            ),
+            timeout=15,
+        )
 
-        # DeploymentC should still have ongoing request metric but not prometheus custom metrics
-        assert not check_autoscaling_metrics_include_prometheus(
-            serve_instance,
-            dep_c_id,
-            ["ray_serve_deployment_processing_latency_ms_bucket"],
-        ), "DeploymentC should have no custom metrics other than queue length"
+        wait_for_condition(
+            lambda: not check_autoscaling_metrics_include_prometheus(
+                serve_instance,
+                dep_c_id,
+                ["ray_serve_deployment_processing_latency_ms_bucket"],
+            ),
+            timeout=15,
+        )
 
         print("All prometheus custom metrics tests passed!")
 

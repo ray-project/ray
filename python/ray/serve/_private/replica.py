@@ -181,9 +181,11 @@ class ReplicaMetricsManager:
 
         # Cache user_callable_wrapper initialization state to avoid repeated runtime checks
         self._custom_metrics_enabled = False
+        self._prometheus_metrics_enabled = True
         # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
         self._checked_custom_metrics = False
         self._record_autoscaling_stats_fn = None
+        self._prometheus_queries: Optional[List[Tuple[str, Optional[str]]]] = None
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -243,6 +245,11 @@ class ReplicaMetricsManager:
         )
 
         self.set_autoscaling_config(autoscaling_config)
+
+        if autoscaling_config.prometheus_custom_metrics:
+            self.enable_prometheus_autoscaling_metrics(
+                True, autoscaling_config.prometheus_custom_metrics
+            )
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -325,6 +332,17 @@ class ReplicaMetricsManager:
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
             self.start_metrics_pusher()
 
+    def enable_prometheus_autoscaling_metrics(
+        self,
+        prometheus_metrics_enabled: bool,
+        prometheus_queries: Optional[List[Tuple[str, Optional[str]]]],
+    ):
+        """Runs after the user callable wrapper is initialized to enable autoscaling metrics collection."""
+        if prometheus_metrics_enabled:
+            self._prometheus_metrics_enabled = prometheus_metrics_enabled
+            self._prometheus_queries = prometheus_queries
+            self.start_metrics_pusher()
+
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
@@ -399,7 +417,9 @@ class ReplicaMetricsManager:
 
             logger.debug(f"Fetching metrics from prometheus exporter at {prom_addr}")
 
-            timeout = aiohttp.ClientTimeout(total=self._autoscaling_metrics_timeout_s)
+            timeout = aiohttp.ClientTimeout(
+                total=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
+            )
 
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(f"{prom_addr}/metrics") as response:
@@ -434,7 +454,7 @@ class ReplicaMetricsManager:
                                     else:
                                         metrics_result[metric_name] = 0.0
                                 else:
-                                    logger.debug(
+                                    logger.warning(
                                         f"Metric {metric_name} not found in exporter response"
                                     )
                                     metrics_result[metric_name] = 0.0
@@ -536,7 +556,9 @@ class ReplicaMetricsManager:
                 metrics_dict.update(custom_metrics)
 
         if self._prometheus_metrics_enabled:
-            prom_metrics = await self._fetch_prometheus_metrics()
+            prom_metrics = await self._fetch_prometheus_metrics(
+                self._prometheus_queries
+            )
             if prom_metrics:
                 metrics_dict.update(prom_metrics)
 

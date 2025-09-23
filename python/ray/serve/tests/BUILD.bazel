@@ -37,9 +37,11 @@ py_test_module_list(
         "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
         "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S": "2",
         "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
+        "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST": "http://localhost:9999",
     },
     files = [
         "test_custom_autoscaling_metrics.py",
+        "test_prometheus_autoscaling_metrics.py",
     ],
     tags = [
         "exclusive",
@@ -225,7 +227,6 @@ py_test_module_list(
         "test_deploy_app_2.py",
         "test_metrics.py",
         "test_metrics_2.py",
-        "test_prometheus_autoscaling_metrics.py",
     ],
     tags = [
         "exclusive",

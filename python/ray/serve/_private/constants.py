@@ -267,7 +267,7 @@ SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
 # The Prometheus host that Serve replicas will query autoscaling policy metrics from.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST = get_env_str(
-    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST", "http://localhost:9090"
+    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST", "http://localhost:9999"
 )
 
 # Feature flag to turn on node locality routing for proxies. On by default.
