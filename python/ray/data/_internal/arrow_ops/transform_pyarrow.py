@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -666,15 +666,18 @@ def _concat_cols_with_extension_object_types(
 
 
 def _concat_cols_with_native_pyarrow_types(
-    col_names: List[str], blocks: List["pyarrow.Table"], promote_types: bool = False
+    col_names: Set[str], blocks: List["pyarrow.Table"], promote_types: bool = False
 ) -> Dict[str, "pyarrow.ChunkedArray"]:
+    if not col_names:
+        return {}
+
     # For columns with native Pyarrow types, we should use built-in pyarrow.concat_tables.
     import pyarrow as pa
 
     # When concatenating tables we allow type promotions to occur, since
     # no schema enforcement is currently performed, therefore allowing schemas
     # to vary b/w blocks
-    #
+
     # NOTE: Type promotions aren't available in Arrow < 14.0
     subset_blocks = [block.select(col_names) for block in blocks]
     if get_pyarrow_version() < parse_version("14.0.0"):
@@ -687,9 +690,6 @@ def _concat_cols_with_native_pyarrow_types(
     return {col_name: table.column(col_name) for col_name in table.schema.names}
 
 
-# TODO: Fix this function. We want to basically be able to separate the table into our columns
-# and native pyarrow columns and then concatenate those each together separately. Then rejoin
-# the two tables after they have been concatenated
 def concat(
     blocks: List["pyarrow.Table"], *, promote_types: bool = False
 ) -> "pyarrow.Table":
