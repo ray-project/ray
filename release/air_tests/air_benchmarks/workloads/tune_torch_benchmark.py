@@ -119,7 +119,7 @@ def tune_torch(
         "use_gpu": use_gpu,
     }
 
-    param_space["train_loop_config"] = (config or {}) | param_space["train_loop_config"]
+    param_space["train_loop_config"].update(config or {})
 
     tuner = Tuner(
         trainable=train_driver_fn,
