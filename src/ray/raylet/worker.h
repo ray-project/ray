@@ -223,13 +223,17 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     lifetime_allocated_instances_ = allocated_instances;
   };
 
-  const ActorID &GetRootDetachedActorId() const override { return root_detached_actor_id_; }
+  const ActorID &GetRootDetachedActorId() const override {
+    return root_detached_actor_id_;
+  }
 
   std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
     return lifetime_allocated_instances_;
   };
 
-  void ClearLifetimeAllocatedInstances() override { lifetime_allocated_instances_ = nullptr; };
+  void ClearLifetimeAllocatedInstances() override {
+    lifetime_allocated_instances_ = nullptr;
+  };
 
   RayLease &GetGrantedLease() override { return granted_lease_; };
 

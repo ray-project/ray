@@ -1378,7 +1378,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Attempt per-worker process-group cleanup before removing the worker.
 #if !defined(_WIN32)
     if (RayConfig::instance().process_group_cleanup_enabled()) {
-      // Use saved PGID captured at registration and revalidate to mitigate PID/PGID reuse.
+      // Use saved PGID captured at registration and revalidate to mitigate PID/PGID
+      // reuse.
       auto saved = worker->GetSavedProcessGroupId();
       if (!saved.has_value()) {
         return;

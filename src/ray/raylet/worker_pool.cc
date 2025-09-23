@@ -810,8 +810,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   if (pgid != -1) {
     worker->SetSavedProcessGroupId(pgid);
   } else {
-    RAY_LOG(WARNING) << "getpgid(" << pid << ") failed at registration: "
-                     << strerror(errno);
+    RAY_LOG(WARNING) << "getpgid(" << pid
+                     << ") failed at registration: " << strerror(errno);
   }
 #endif
 
