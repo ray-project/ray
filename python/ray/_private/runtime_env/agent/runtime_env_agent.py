@@ -257,7 +257,8 @@ class RuntimeEnvAgent:
         try:
             self._node_ip = ray.util.get_node_ip_address()
             self._node_prefix = f"[Node {self._node_ip}] "
-        except Exception:
+        except Exception as e:
+            self._logger.warning(f"Failed to get node IP address, using fallback: {e}")
             self._node_prefix = "[Node unknown] "
 
     def uris_parser(self, runtime_env: RuntimeEnv):
