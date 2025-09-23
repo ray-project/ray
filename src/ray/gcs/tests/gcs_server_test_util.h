@@ -22,7 +22,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
@@ -34,6 +33,7 @@
 #include "ray/gcs/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray {
 
@@ -75,7 +75,7 @@ struct GcsServerMocker {
     absl::Mutex mutex_;
   };
 
-  class MockRayletClient : public FakeRayletClient {
+  class MockRayletClient : public rpc::FakeRayletClient {
    public:
     void ReturnWorkerLease(int worker_port,
                            const LeaseID &lease_id,

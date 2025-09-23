@@ -128,6 +128,17 @@ class SQLDatasource(Datasource):
                 cursor.execute(self.sql)
                 return [_cursor_to_block(cursor)]
 
+        # Check if sharding is supported by the database first
+        # If not, fall back to reading all data in a single task without counting rows
+        if not self.supports_sharding(parallelism):
+            logger.info(
+                "Sharding is not supported. "
+                "Falling back to reading all data in a single task."
+            )
+            metadata = BlockMetadata(None, None, None, None)
+            return [ReadTask(fallback_read_fn, metadata)]
+
+        # Only perform the expensive COUNT(*) query if sharding is supported
         num_rows_total = self._get_num_rows()
 
         if num_rows_total == 0:
@@ -138,16 +149,6 @@ class SQLDatasource(Datasource):
         )
         num_rows_per_block = num_rows_total // parallelism
         num_blocks_with_extra_row = num_rows_total % parallelism
-
-        # Check if sharding is supported by the database
-        # If not, fall back to reading all data in a single task
-        if not self.supports_sharding(parallelism):
-            logger.info(
-                "Sharding is not supported. "
-                "Falling back to reading all data in a single task."
-            )
-            metadata = BlockMetadata(None, None, None, None)
-            return [ReadTask(fallback_read_fn, metadata)]
 
         tasks = []
         for i in range(parallelism):

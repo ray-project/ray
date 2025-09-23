@@ -29,7 +29,7 @@
 #include "ray/core_worker/task_execution/scheduling_queue.h"
 #include "ray/core_worker/task_execution/scheduling_util.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace core {

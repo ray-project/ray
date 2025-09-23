@@ -44,6 +44,7 @@ ray_cc_library(
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",
         "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:core_worker_client_pool",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/rpc:raylet_client_lib",
         "//src/ray/stats:stats_lib",
@@ -78,7 +79,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:server_call",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 
@@ -160,6 +161,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/gcs_client",
+        "//src/ray/util:thread_utils",
     ],
 )
 
@@ -203,8 +205,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/pubsub:subscriber_interface",
-        "//src/ray/rpc:core_worker_client",
-        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc:utils",
         "//src/ray/util:logging",
         "//src/ray/util:network_util",
         "@com_google_absl//absl/base:core_headers",
@@ -230,6 +231,7 @@ ray_cc_library(
     name = "task_event_buffer",
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
+    copts = ["-Wno-error=deprecated-declarations"],
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:asio",
@@ -261,6 +263,8 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/ipc:raylet_ipc_client_interface",
+        "//src/ray/rpc:utils",
+        "//src/ray/stats:stats_metric",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -294,6 +298,7 @@ ray_cc_library(
         "//src/ray/common:protobuf_utils",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/rpc:core_worker_client_interface",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
@@ -328,9 +333,8 @@ ray_cc_library(
     hdrs = ["future_resolver.h"],
     deps = [
         ":memory_store",
-        "//src/ray/common:grpc_util",
         "//src/ray/common:id",
-        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:core_worker_client_pool",
     ],
 )
 
@@ -340,6 +344,7 @@ ray_cc_library(
     hdrs = ["experimental_mutable_object_provider.h"],
     deps = [
         ":experimental_mutable_object_manager",
+        "//src/ray/common:asio",
         "//src/ray/rpc:client_call",
         "//src/ray/rpc:raylet_client_interface",
     ],

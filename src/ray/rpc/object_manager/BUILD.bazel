@@ -34,7 +34,6 @@ ray_cc_library(
         "//src/ray/object_manager:object_manager_grpc_client_manager",
         "//src/ray/protobuf:object_manager_cc_grpc",
         "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:server_call",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
