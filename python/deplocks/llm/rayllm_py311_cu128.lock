@@ -2,6 +2,7 @@
 #    uv pip compile --generate-hashes --strip-extras --unsafe-package setuptools --index-url https://pypi.org/simple --index-strategy unsafe-best-match --no-strip-markers --emit-index-url --emit-find-links --extra-index-url https://download.pytorch.org/whl/cu128 --python-version=3.11 --unsafe-package ray --python-platform=linux -c python/deplocks/llm/rayllm_test_py311_cu128.lock python/requirements.txt python/requirements/llm/llm-requirements.txt -o python/deplocks/llm/rayllm_py311_cu128.lock
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
+--extra-index-url https://download.pytorch.org/whl/cpu
 
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
