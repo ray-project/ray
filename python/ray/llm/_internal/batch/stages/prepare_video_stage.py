@@ -156,12 +156,12 @@ class VideoProcessor:
         async with self._sem:
             attempt = 0
             backoff = self._retry_backoff_base
-            last_exc: Optional[Exception] = None
+
             while attempt <= self._retries:
                 try:
                     return await asyncio.to_thread(self._process_one_sync, source)
                 except Exception as e:
-                    last_exc = e
+
                     # Decide retriable or not
                     if not self._should_retry(e) or attempt == self._retries:
                         # Return detailed error metadata
