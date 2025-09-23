@@ -1,6 +1,5 @@
 .. _direct-transport:
 
-.. TODO: wait_tensor_freed
 
 **************************
 Ray Direct Transport (RDT)
@@ -151,7 +150,7 @@ Therefore, users need to specify the Ray object store as the tensor transport ex
 Object mutability
 ^^^^^^^^^^^^^^^^^
 
-Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the tensor, and will not copy it until a transfer is requested.
+Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the tensor and will not copy it until a transfer is requested.
 This means that if the actor that returns a tensor also keeps a reference to the tensor, and the actor later modifies it in place while Ray is still storing the tensor reference, it's possible that some or all of the changes may be seen by receiving actors.
 
 Here is an example of what can go wrong:
