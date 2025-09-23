@@ -28,6 +28,7 @@ py_test_run_all_notebooks(
         "exclusive",
         "team:ml",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # GPU tests
@@ -41,4 +42,5 @@ py_test_run_all_notebooks(
         "gpu",
         "team:ml",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
