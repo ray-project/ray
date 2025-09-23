@@ -7,7 +7,11 @@ import json
 import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
-from ray_release.buildkite.settings import get_pipeline_settings
+from ray_release.buildkite.settings import (
+    get_pipeline_settings,
+    get_test_filters,
+    get_frequency,
+)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
@@ -63,13 +67,23 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     "--test-filters",
     default=None,
     type=str,
-    help="Test filters by prefix/regex.",
+    help="Test filters by prefix/regex",
 )
 @click.option(
     "--run-per-test",
     default=1,
     type=int,
     help=("The number of time we run test on the same commit"),
+)
+@click.option(
+    "--custom-build-jobs-output-file",
+    type=str,
+    help="The output file for the custom build yaml file",
+)
+@click.option(
+    "--test-jobs-output-file",
+    type=str,
+    help="The output file for the test jobs json file",
 )
 def main(
     test_collection_file: Tuple[str],
@@ -79,6 +93,8 @@ def main(
     frequency: str = None,
     test_filters: str = None,
     run_per_test: int = 1,
+    custom_build_jobs_output_file: str = None,
+    test_jobs_output_file: str = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -87,9 +103,9 @@ def main(
     settings = get_pipeline_settings()
     env = {}
 
-    frequency = frequency or settings["frequency"]
+    frequency = get_frequency(frequency) or settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
-    test_filters = test_filters or settings["test_filters"]
+    test_filters = get_test_filters(test_filters) or settings["test_filters"]
     priority = settings["priority"]
 
     try:
@@ -97,13 +113,13 @@ def main(
             test_collection_file or RELEASE_TEST_CONFIG_FILES
         )
     except ReleaseTestConfigError as e:
+        logger.info("Error: %s", e)
         raise ReleaseTestConfigError(
             "Cannot load test yaml file.\nHINT: If you're kicking off tests for a "
             "specific commit on Buildkite to test Ray wheels, after clicking "
             "'New build', leave the commit at HEAD, and only specify the commit "
             "in the dialog that asks for the Ray wheels."
         ) from e
-
     filtered_tests = filter_tests(
         test_collection,
         frequency=frequency,
@@ -119,12 +135,9 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-
     # Generate custom image build steps
     create_custom_build_yaml(
-        os.path.join(
-            _bazel_workspace_dir, ".buildkite/release/custom_byod_build.rayci.yml"
-        ),
+        os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file),
         tests,
     )
 
@@ -174,7 +187,7 @@ def main(
         with open(os.path.join(PIPELINE_ARTIFACT_PATH, "pipeline.json"), "wt") as fp:
             json.dump(steps, fp)
         with open(
-            os.path.join(_bazel_workspace_dir, ".buildkite/release/release_tests.json"),
+            os.path.join(_bazel_workspace_dir, test_jobs_output_file),
             "wt",
         ) as fp:
             json.dump(steps, fp)

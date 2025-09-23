@@ -37,7 +37,6 @@ def get_images_from_tests(
 
 def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     """Create a yaml file for building custom BYOD images"""
-
     config = get_global_config()
     if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
         raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
@@ -67,6 +66,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         build_config["steps"].append(step)
 
     logger.info(f"Build config: {build_config}")
+    print("writing to file: ", destination_file)
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
