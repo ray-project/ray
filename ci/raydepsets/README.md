@@ -1,4 +1,5 @@
 # Background
+---
 
 Managing dependencies on ray repository is super challenging. Ray maintains a semi-locked monorepo-modeled single dependency set.
 Upgrading a single package can lead to many dependency conflicts
@@ -6,13 +7,17 @@ Upgrading a single package can lead to many dependency conflicts
 Raydepsets is a solution to manage all python dependency sets and lock them for each use case. All platforms, python versions and cuda versions can have separate dependency sets to prevent conflicts
 
 # Usage
+---
+
 Raydepsets is a uv wrapper that allows users to define data driven relationships between requirements, constraints and other dependency sets.
 These dependency sets are defined in config files (*.depsets.yaml). Users can generate dependency sets by supplying the config file path (in the ray repo) to the raydepsets build command.
 
 `bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/example.depsets.yaml`
 
 # Features
-The following are the main types of operations that raydepsets handles
+---
+
+The following are the main types of operations that raydepsets performs
 
 ## Compile
 Standard 'uv pip compile' operation that accepts requirements, constraints and an output path for the lock file
