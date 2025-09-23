@@ -881,7 +881,7 @@ py_test(
     name = "lightgbm_example",
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
-    # TODO: Enable after fixing lightgbm Tune callback.
+    # TODO: [V2] Enable after fixing lightgbm Tune callback.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "example",
@@ -896,7 +896,7 @@ py_test(
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
     args = ["--use-cv"],
-    # TODO: Enable after fixing lightgbm Tune callback.
+    # TODO: [V2] Enable after fixing lightgbm Tune callback.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     main = "examples/lightgbm_example.py",
     tags = [
@@ -1236,7 +1236,7 @@ py_test(
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
     args = ["--smoke-test"],
-    # TODO: Uncomment after fixing Tune keras callback.
+    # TODO: [V2] Enable after fixing Tune keras callback.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "example",
