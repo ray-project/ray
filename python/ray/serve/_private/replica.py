@@ -701,7 +701,7 @@ class ReplicaBase(ABC):
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
-                route=http_route or call_method if self._ingress else call_method,
+                route=http_route if self._ingress and http_route else call_method,
                 # Prefer the HTTP status code if it was populated.
                 status=status_code or status_str,
                 latency_ms=latency_ms,
