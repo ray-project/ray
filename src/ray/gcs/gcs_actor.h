@@ -213,7 +213,7 @@ class GcsActor {
   rpc::LeaseSpec *GetMutableLeaseSpec();
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
-  void WriteActorExportEvent() const;
+  void WriteActorExportEvent(bool is_actor_registration) const;
   // Verify if export events should be written for EXPORT_ACTOR source types
   bool IsExportAPIEnabledActor() const {
     return IsExportAPIEnabledSourceType(

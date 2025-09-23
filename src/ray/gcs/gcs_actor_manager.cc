@@ -738,7 +738,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                 // The backend storage is supposed to be reliable, so the status must be
                 // ok.
                 RAY_CHECK_OK(put_status);
-                actor->WriteActorExportEvent();
+                actor->WriteActorExportEvent(true);
                 auto registered_actor_it = registered_actors_.find(actor->GetActorID());
                 auto callback_iter =
                     actor_to_register_callbacks_.find(actor->GetActorID());

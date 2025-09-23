@@ -93,35 +93,18 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-void GcsActor::WriteActorExportEvent() const {
+void GcsActor::WriteActorExportEvent(bool is_actor_registration = false) const {
   // If ray event is enabled and recorder present, emit actor events to the aggregator.
   if (RayConfig::instance().enable_ray_event()) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    switch (actor_table_data_.state()) {
-    case rpc::ActorTableData::DEPENDENCIES_UNREADY:
-      // Emit definition event only when the actor is first registered
-      // (DEPENDENCIES_UNREADY)
+    if (is_actor_registration) {
       events.push_back(std::make_unique<observability::RayActorDefinitionEvent>(
           actor_table_data_, session_name_));
-      events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_,
-          rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
-          session_name_));
-      break;
-    case rpc::ActorTableData::PENDING_CREATION:
-    case rpc::ActorTableData::ALIVE:
-    case rpc::ActorTableData::RESTARTING:
-    case rpc::ActorTableData::DEAD:
-      events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_,
-          ConvertActorStateToLifecycleEvent(actor_table_data_.state()),
-          session_name_));
-      break;
-    default:
-      RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
-                     << rpc::ActorTableData::ActorState_Name(actor_table_data_.state());
-      break;
     }
+    events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
+        actor_table_data_,
+        ConvertActorStateToLifecycleEvent(actor_table_data_.state()),
+        session_name_));
 
     ray_event_recorder_.AddEvents(std::move(events));
     return;
