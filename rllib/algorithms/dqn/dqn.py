@@ -14,6 +14,7 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
+from typing_extensions import Self
 
 from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -239,7 +240,7 @@ class DQNConfig(AlgorithmConfig):
         categorical_distribution_temperature: Optional[float] = NotProvided,
         burn_in_len: Optional[int] = NotProvided,
         **kwargs,
-    ) -> "DQNConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -594,7 +595,7 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
 class DQN(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> DQNConfig:
         return DQNConfig()
 
     @classmethod

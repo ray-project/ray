@@ -23,6 +23,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_job_manager.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"

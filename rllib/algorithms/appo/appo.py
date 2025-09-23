@@ -13,6 +13,8 @@ https://arxiv.org/pdf/1912.00167
 import logging
 from typing import Optional, Type
 
+from typing_extensions import Self
+
 from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import IMPALA, IMPALAConfig
@@ -170,7 +172,7 @@ class APPOConfig(IMPALAConfig):
         target_update_frequency=DEPRECATED_VALUE,
         use_critic=DEPRECATED_VALUE,
         **kwargs,
-    ) -> "APPOConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -405,7 +407,7 @@ class APPO(IMPALA):
 
     @classmethod
     @override(IMPALA)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> APPOConfig:
         return APPOConfig()
 
     @classmethod

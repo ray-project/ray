@@ -25,7 +25,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs/gcs_actor_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_placement_group_manager.h"
@@ -38,6 +37,7 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 
@@ -56,7 +56,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
  protected:
   static constexpr char kRayletConfig[] = R"({"raylet_config":"this is a config"})";
   instrumented_io_context io_service_;
-  std::shared_ptr<FakeRayletClient> raylet_client_;
+  std::shared_ptr<rpc::FakeRayletClient> raylet_client_;
   std::shared_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
@@ -70,7 +70,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
 
   void SetUp() override {
-    raylet_client_ = std::make_shared<FakeRayletClient>();
+    raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
@@ -110,11 +110,13 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->mutex_);
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->mutex_);
     const auto node_id = NodeID::FromBinary(node->node_id());
     node->set_state(rpc::GcsNodeInfo::DEAD);
     gcs_node_manager_->alive_nodes_.erase(node_id);
