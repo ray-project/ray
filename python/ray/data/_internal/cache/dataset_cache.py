@@ -6,7 +6,9 @@ ExecutionPlan snapshots and follows established Ray Data patterns.
 """
 
 import functools
+import hashlib
 import inspect
+import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from enum import Enum
@@ -14,6 +16,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data.context import DataContext
+
+# Set up logger for cache operations
+logger = logging.getLogger(__name__)
 
 
 class TransformationType(Enum):
@@ -81,22 +86,22 @@ CACHE_VALIDITY_MATRIX = {
 
 # Transformation type mapping
 TRANSFORMATION_TYPES = {
-        "limit": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
-        "repartition": TransformationType.SCHEMA_PRESERVING_COUNT_CHANGING,
-        "map": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "add_column": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "drop_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "select_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "rename_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
-        "filter": TransformationType.ROW_CHANGING_NO_SCHEMA_CHANGE,
-        "map_batches": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
-        "flat_map": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
-        "sort": TransformationType.REORDERING_ONLY,
-        "random_shuffle": TransformationType.REORDERING_ONLY,
-        "union": TransformationType.COMBINING,
-        "join": TransformationType.COMBINING,
-        "groupby": TransformationType.GROUPING,
-    }
+    "limit": TransformationType.ROW_CHANGING_NO_SCHEMA_CHANGE,
+    "repartition": TransformationType.REORDERING_ONLY,
+    "map": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "add_column": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "drop_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "select_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "rename_columns": TransformationType.ROW_PRESERVING_SCHEMA_CHANGE,
+    "filter": TransformationType.ROW_CHANGING_NO_SCHEMA_CHANGE,
+    "map_batches": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
+    "flat_map": TransformationType.ROW_CHANGING_SCHEMA_CHANGE,
+    "sort": TransformationType.REORDERING_ONLY,
+    "random_shuffle": TransformationType.REORDERING_ONLY,
+    "union": TransformationType.COMBINING,
+    "join": TransformationType.COMBINING,
+    "groupby": TransformationType.GROUPING,
+}
 
 
 @dataclass
@@ -150,6 +155,131 @@ class DatasetCache:
         # Performance tracking
         self._cache_saves_seconds = 0.0  # Track time saved by cache hits
 
+        # Validation counters
+        self._validation_errors = 0
+
+        # Memory tracking
+        self._local_cache_size_bytes = 0
+        self._eviction_count = 0
+
+    def _get_object_size(self, obj: Any) -> int:
+        """Get approximate size of object in bytes."""
+        try:
+            import sys
+
+            return sys.getsizeof(obj)
+        except Exception:
+            # Fallback estimate based on type
+            if isinstance(obj, str):
+                return len(obj) * 2  # Rough estimate for string encoding
+            elif isinstance(obj, (int, float)):
+                return 8
+            elif isinstance(obj, list):
+                return sum(
+                    self._get_object_size(item) for item in obj[:100]
+                )  # Sample first 100 items
+            else:
+                return 1024  # Default estimate
+
+    def _update_local_cache_size(self, key: str, value: Any, operation: str) -> None:
+        """Update local cache size tracking."""
+        try:
+            size = self._get_object_size(value)
+            if operation == "add":
+                self._local_cache_size_bytes += size
+            elif operation == "remove" and key in self._local_cache:
+                # Estimate removal size (may not be exact)
+                old_size = self._get_object_size(self._local_cache[key])
+                self._local_cache_size_bytes = max(
+                    0, self._local_cache_size_bytes - old_size
+                )
+        except Exception as e:
+            logger.debug(f"Error updating cache size tracking: {e}")
+
+    def _validate_cached_value(self, operation_name: str, value: Any) -> bool:
+        """Validate that cached value is of expected type for the operation.
+
+        Args:
+            operation_name: Name of the operation that produced the value
+            value: The cached value to validate
+
+        Returns:
+            True if value is valid, False otherwise
+        """
+        try:
+            if operation_name == "count":
+                return isinstance(value, (int, float)) and value >= 0
+            elif operation_name in ["sum", "min", "max", "mean", "std"]:
+                return isinstance(value, (int, float, type(None)))
+            elif operation_name in ["columns", "input_files"]:
+                return isinstance(value, list) and all(
+                    isinstance(x, str) for x in value
+                )
+            elif operation_name == "size_bytes":
+                return isinstance(value, (int, float)) and value >= 0
+            elif operation_name in ["take", "take_batch", "take_all"]:
+                return isinstance(value, list)
+            elif operation_name == "unique":
+                return isinstance(value, (list, set, tuple))
+            elif operation_name in ["schema", "stats"]:
+                return value is not None  # These can be complex objects
+            else:
+                return True  # Unknown operations pass validation
+        except Exception as e:
+            logger.debug(f"Error validating cached value for {operation_name}: {e}")
+            self._validation_errors += 1
+            return False
+
+    def _validate_count_consistency(
+        self, source_count: Any, target_count: Any, operation_name: str
+    ) -> bool:
+        """Validate that count relationships make sense for the operation.
+
+        Args:
+            source_count: Original count value
+            target_count: New count value
+            operation_name: Name of transformation operation
+
+        Returns:
+            True if relationship is logical, False otherwise
+        """
+        try:
+            if not isinstance(source_count, (int, float)) or not isinstance(
+                target_count, (int, float)
+            ):
+                return False
+
+            if source_count < 0 or target_count < 0:
+                return False
+
+            # Count-preserving operations should have equal counts
+            if operation_name in [
+                "map",
+                "add_column",
+                "drop_columns",
+                "select_columns",
+                "rename_columns",
+                "repartition",
+                "sort",
+                "random_shuffle",
+            ]:
+                return target_count == source_count
+
+            # Count-reducing operations should have equal or smaller counts
+            elif operation_name in ["limit", "filter"]:
+                return target_count <= source_count
+
+            # For other operations, we can't easily validate
+            else:
+                return True
+
+        except Exception as e:
+            logger.debug(
+                f"Error validating count consistency for {operation_name}: {e}"
+            )
+            self._validation_errors += 1
+            return False
+
     def get(
         self, logical_plan: LogicalPlan, operation_name: str, **params
     ) -> Optional[Any]:
@@ -159,9 +289,17 @@ class DatasetCache:
         # Try local cache first (fastest)
         if cache_key in self._local_cache:
             result = self._local_cache[cache_key]
-            self._local_cache.move_to_end(cache_key)
-            self._hit_count += 1
-            return result
+            # Validate cached result before returning
+            if self._validate_cached_value(operation_name, result):
+                self._local_cache.move_to_end(cache_key)
+                self._hit_count += 1
+                logger.debug(f"Cache hit for {operation_name} from local cache")
+                return result
+            else:
+                logger.warning(
+                    f"Invalid cached value for {operation_name}, removing from cache"
+                )
+                self._local_cache.pop(cache_key, None)
 
         # Try Ray object store cache (for medium objects)
         if cache_key in self._ray_cache:
@@ -170,10 +308,26 @@ class DatasetCache:
 
                 object_ref = self._ray_cache[cache_key]
                 result = ray.get(object_ref)
-                self._ray_cache.move_to_end(cache_key)
-                self._hit_count += 1
-                return result
-            except Exception:
+                # Validate cached result before returning
+                if self._validate_cached_value(operation_name, result):
+                    self._ray_cache.move_to_end(cache_key)
+                    self._hit_count += 1
+                    logger.debug(
+                        f"Cache hit for {operation_name} from Ray object store"
+                    )
+                    return result
+                else:
+                    logger.warning(
+                        f"Invalid cached value for {operation_name}, removing from Ray cache"
+                    )
+                    self._ray_cache.pop(cache_key, None)
+            except ImportError:
+                logger.debug("Ray not available for cache retrieval")
+                self._ray_cache.pop(cache_key, None)
+            except Exception as e:
+                logger.debug(
+                    f"Failed to retrieve {operation_name} from Ray object store: {e}"
+                )
                 self._ray_cache.pop(cache_key, None)
                 # Fall through to miss counting below
 
@@ -192,9 +346,12 @@ class DatasetCache:
 
         if cache_strategy == "local":
             # Evict LRU if needed
-            while len(self._local_cache) >= self._max_entries // 2:
-                self._local_cache.popitem(last=False)
+            while len(self._local_cache) >= self._max_entries:
+                evicted_key, evicted_value = self._local_cache.popitem(last=False)
+                self._update_local_cache_size(evicted_key, evicted_value, "remove")
+                self._eviction_count += 1
             self._local_cache[cache_key] = result
+            self._update_local_cache_size(cache_key, result, "add")
 
         elif cache_strategy == "ray":
             try:
@@ -202,12 +359,38 @@ class DatasetCache:
 
                 object_ref = ray.put(result)
                 # Evict LRU if needed
-                while len(self._ray_cache) >= self._max_entries // 2:
+                while len(self._ray_cache) >= self._max_entries:
                     old_key, old_ref = self._ray_cache.popitem(last=False)
+                    self._eviction_count += 1
                     # Ray GC will handle ObjectRef cleanup
                 self._ray_cache[cache_key] = object_ref
-            except Exception:
-                pass
+                logger.debug(
+                    f"Cached {operation_name} result in Ray object store with key {cache_key}"
+                )
+            except ImportError:
+                logger.warning(
+                    "Ray not available for object store caching, skipping cache storage"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to cache {operation_name} result in Ray object store: {e}"
+                )
+                # Fallback: try local cache if result is small enough
+                try:
+                    import sys
+
+                    result_size = sys.getsizeof(result)
+                    if result_size <= self._local_threshold:
+                        logger.debug(
+                            f"Falling back to local cache for {operation_name}"
+                        )
+                        while len(self._local_cache) >= self._max_entries:
+                            self._local_cache.popitem(last=False)
+                        self._local_cache[cache_key] = result
+                except Exception as fallback_error:
+                    logger.debug(
+                        f"Fallback to local cache also failed for {operation_name}: {fallback_error}"
+                    )
 
         # cache_strategy == "none" → don't cache
 
@@ -237,18 +420,152 @@ class DatasetCache:
         """Clear all cache entries."""
         self._local_cache.clear()
         self._ray_cache.clear()
+        self._local_cache_size_bytes = 0
+
+    def health_check(self) -> Dict[str, Any]:
+        """Perform health check on cache and return status information.
+
+        Returns:
+            Dictionary with health status and recommendations
+        """
+        stats = self.get_stats()
+        health_status = {
+            "overall_health": "good",
+            "issues": [],
+            "recommendations": [],
+            "stats": stats,
+        }
+
+        # Check hit rate
+        if stats["hit_rate"] < 0.1 and stats["hit_count"] + stats["miss_count"] > 100:
+            health_status["issues"].append("Low cache hit rate (<10%)")
+            health_status["recommendations"].append(
+                "Consider reviewing caching strategy or dataset access patterns"
+            )
+            health_status["overall_health"] = "warning"
+
+        # Check validation errors
+        if (
+            stats["validation_errors"] > stats["hit_count"] * 0.05
+        ):  # >5% validation errors
+            health_status["issues"].append(
+                f"High validation error rate ({stats['validation_errors']} errors)"
+            )
+            health_status["recommendations"].append(
+                "Check for data corruption or type mismatches"
+            )
+            health_status["overall_health"] = "warning"
+
+        # Check memory usage
+        if stats["local_cache_size_mb"] > 500:  # >500MB in local cache
+            health_status["issues"].append(
+                f"High local cache memory usage ({stats['local_cache_size_mb']:.1f} MB)"
+            )
+            health_status["recommendations"].append(
+                "Consider reducing cache size or using Ray object store"
+            )
+            health_status["overall_health"] = "warning"
+
+        # Check cache utilization
+        if stats["cache_utilization"] > 0.95:
+            health_status["issues"].append("Cache near capacity (>95% utilization)")
+            health_status["recommendations"].append(
+                "Consider increasing cache size or improving eviction strategy"
+            )
+            health_status["overall_health"] = "warning"
+
+        # Check for excessive evictions
+        total_operations = stats["hit_count"] + stats["miss_count"]
+        if stats["eviction_count"] > total_operations * 0.5 and total_operations > 50:
+            health_status["issues"].append("High eviction rate (>50% of operations)")
+            health_status["recommendations"].append("Consider increasing cache size")
+            health_status["overall_health"] = "warning"
+
+        # Set overall health based on issues
+        if len(health_status["issues"]) > 3:
+            health_status["overall_health"] = "poor"
+        elif len(health_status["issues"]) == 0:
+            health_status["overall_health"] = "excellent"
+
+        return health_status
+
+    def cleanup_stale_entries(self) -> int:
+        """Clean up potentially stale entries and return number of entries removed.
+
+        This is a conservative cleanup that only removes entries that are clearly invalid.
+        """
+        removed_count = 0
+
+        # Check local cache for invalid entries
+        keys_to_remove = []
+        for key, value in self._local_cache.items():
+            operation_name = key.split("_")[0]  # Extract operation name from cache key
+            if not self._validate_cached_value(operation_name, value):
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            value = self._local_cache.pop(key, None)
+            if value is not None:
+                self._update_local_cache_size(key, value, "remove")
+                removed_count += 1
+                logger.debug(f"Removed stale cache entry: {key}")
+
+        # Check Ray cache for stale ObjectRefs
+        ray_keys_to_remove = []
+        for key, object_ref in self._ray_cache.items():
+            try:
+                import ray
+
+                # Try to check if ObjectRef is still valid (this is a quick check)
+                if hasattr(ray, "_private") and hasattr(ray._private, "worker"):
+                    worker = ray._private.worker.global_worker
+                    if hasattr(worker, "core_worker") and hasattr(
+                        worker.core_worker, "object_exists"
+                    ):
+                        if not worker.core_worker.object_exists(object_ref):
+                            ray_keys_to_remove.append(key)
+            except Exception:
+                # If we can't check, keep the entry (conservative approach)
+                pass
+
+        for key in ray_keys_to_remove:
+            self._ray_cache.pop(key, None)
+            removed_count += 1
+            logger.debug(f"Removed stale Ray cache entry: {key}")
+
+        logger.info(f"Cache cleanup removed {removed_count} stale entries")
+        return removed_count
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
+        """Get comprehensive cache statistics."""
         total = self._hit_count + self._miss_count
         return {
             "hit_count": self._hit_count,
             "miss_count": self._miss_count,
-            "hit_rate": self._hit_count / total if total > 0 else 0,
+            "hit_rate": self._hit_count / total if total > 0 else 0.0,
             "local_cache_entries": len(self._local_cache),
             "ray_cache_entries": len(self._ray_cache),
             "total_entries": len(self._local_cache) + len(self._ray_cache),
             "max_entries": self._max_entries,
+            "validation_errors": self._validation_errors,
+            "cache_utilization": (
+                (len(self._local_cache) + len(self._ray_cache)) / self._max_entries
+                if self._max_entries > 0
+                else 0.0
+            ),
+            "local_cache_utilization": (
+                len(self._local_cache) / self._max_entries
+                if self._max_entries > 0
+                else 0.0
+            ),
+            "ray_cache_utilization": (
+                len(self._ray_cache) / self._max_entries
+                if self._max_entries > 0
+                else 0.0
+            ),
+            "local_cache_size_bytes": self._local_cache_size_bytes,
+            "local_cache_size_mb": self._local_cache_size_bytes / (1024 * 1024),
+            "eviction_count": self._eviction_count,
         }
 
     def _invalidate_cache_dict(
@@ -375,7 +692,11 @@ class DatasetCache:
         This avoids expensive recomputation of count after limit operations.
         """
         limit_value = params.get("limit")
-        if limit_value is None:
+        if (
+            limit_value is None
+            or not isinstance(limit_value, (int, float))
+            or limit_value <= 0
+        ):
             return
 
         # Check if we have cached count from the source dataset
@@ -383,13 +704,26 @@ class DatasetCache:
         if source_count_key in self._local_cache:
             original_count = self._local_cache[source_count_key]
 
+            # Validate original count is a valid number
+            if not isinstance(original_count, (int, float)) or original_count < 0:
+                return
+
             # SMART COMPUTATION: new count = min(original count, limit value)
             # This is mathematically correct and avoids expensive recomputation
             new_count = min(original_count, limit_value)
 
-            # Cache the computed count for the target dataset
-            target_count_key = f"count_{target_prefix}_"
-            self._local_cache[target_count_key] = new_count
+            # Validate the computed count makes sense
+            if self._validate_count_consistency(original_count, new_count, "limit"):
+                # Cache the computed count for the target dataset
+                target_count_key = f"count_{target_prefix}_"
+                self._local_cache[target_count_key] = new_count
+                logger.debug(
+                    f"Smart cache update: computed new count {new_count} for limit operation"
+                )
+            else:
+                logger.warning(
+                    f"Count consistency validation failed for limit: {original_count} -> {new_count}"
+                )
 
     def _update_add_column_caches(
         self, source_prefix: str, target_prefix: str, params: dict
@@ -408,8 +742,18 @@ class DatasetCache:
 
         This avoids expensive count() and columns() recomputation.
         """
-        column_name = params.get("col") or params.get("column_name")
-        if column_name is None:
+        # Extract column name using multiple possible parameter names for robustness
+        column_name = (
+            params.get("col")
+            or params.get("column_name")
+            or params.get("name")
+            or params.get("column")
+        )
+        if (
+            column_name is None
+            or not isinstance(column_name, str)
+            or not column_name.strip()
+        ):
             return
 
         # OPTIMIZATION 1: Preserve count (add_column is 1:1 row transformation)
@@ -450,7 +794,23 @@ class DatasetCache:
 
         This avoids expensive count() and columns() recomputation.
         """
-        cols_to_drop = params.get("cols", [])
+        # Extract columns to drop using multiple possible parameter names
+        cols_to_drop = (
+            params.get("cols")
+            or params.get("columns")
+            or params.get("column_names")
+            or []
+        )
+        # Normalize to list and validate
+        if isinstance(cols_to_drop, str):
+            cols_to_drop = [cols_to_drop]
+        elif not isinstance(cols_to_drop, (list, tuple)):
+            return
+
+        # Filter out invalid column names
+        cols_to_drop = [
+            col for col in cols_to_drop if isinstance(col, str) and col.strip()
+        ]
         if not cols_to_drop:
             return
 
@@ -489,13 +849,26 @@ class DatasetCache:
 
         This avoids expensive count() and columns() recomputation.
         """
-        cols_to_select = params.get("cols", [])
-        if not cols_to_select:
-            return
+        # Extract columns to select using multiple possible parameter names
+        cols_to_select = (
+            params.get("cols")
+            or params.get("columns")
+            or params.get("column_names")
+            or []
+        )
 
-        # Normalize single column to list for consistent handling
+        # Normalize to list and validate
         if isinstance(cols_to_select, str):
             cols_to_select = [cols_to_select]
+        elif not isinstance(cols_to_select, (list, tuple)):
+            return
+
+        # Filter out invalid column names
+        cols_to_select = [
+            col for col in cols_to_select if isinstance(col, str) and col.strip()
+        ]
+        if not cols_to_select:
+            return
 
         # OPTIMIZATION 1: Preserve count (select_columns doesn't change number of rows)
         # Original: 1000 rows → After select_columns: still 1000 rows (same data, selected columns)
@@ -697,8 +1070,18 @@ class DatasetCache:
         - Count preserved: 1000 → 1000         - Columns computed: ["id", "value"] → ["id", "value", "doubled"]
         This avoids expensive count() and columns() recomputation.
         """
-        column_name = params.get("column_name")
-        if column_name is None:
+        # Extract column name using multiple possible parameter names for robustness
+        column_name = (
+            params.get("column_name")
+            or params.get("col")
+            or params.get("name")
+            or params.get("column")
+        )
+        if (
+            column_name is None
+            or not isinstance(column_name, str)
+            or not column_name.strip()
+        ):
             return
 
         # OPTIMIZATION 1: Preserve count (with_column is 1:1 row transformation)
@@ -992,7 +1375,7 @@ class DatasetCache:
                     num_rows <= 5000
                 ):  # Medium takes - Ray object store (automatic spilling)
                     return "ray"
-            else:
+                else:
                     return "none"  # Large takes - don't cache (too much memory)
 
         if operation_name == "unique":
@@ -1002,7 +1385,7 @@ class DatasetCache:
                     return "local"
                 elif num_unique <= 50000:  # Medium unique sets - Ray object store
                     return "ray"
-        else:
+                else:
                     return "none"  # Large unique sets - don't cache (too much memory)
 
         if operation_name == "take_all":
@@ -1031,10 +1414,78 @@ class DatasetCache:
     def _make_key(
         self, logical_plan: LogicalPlan, operation_name: str, **params
     ) -> str:
-        """Create cache key from logical plan and parameters."""
-        plan_hash = hash(str(logical_plan.dag))
-        param_hash = hash(frozenset(params.items())) if params else 0
-        return f"{operation_name}_{plan_hash}_{param_hash}"
+        """Create stable cache key from logical plan and parameters.
+
+        Uses SHA-256 hash for stability across Python sessions and better
+        collision resistance compared to built-in hash().
+        """
+        try:
+            # Create a more stable representation of the logical plan
+            # Use the DAG structure but in a deterministic way
+            plan_repr = self._get_stable_plan_repr(logical_plan)
+
+            # Create stable parameter representation
+            param_repr = self._get_stable_param_repr(params)
+
+            # Combine all components for hashing
+            key_input = f"{operation_name}|{plan_repr}|{param_repr}"
+
+            # Use SHA-256 for stable, collision-resistant hash
+            hash_obj = hashlib.sha256(key_input.encode("utf-8"))
+            hash_hex = hash_obj.hexdigest()[:16]  # Use first 16 chars for readability
+
+            return f"{operation_name}_{hash_hex}"
+
+        except Exception as e:
+            logger.warning(f"Error creating stable cache key for {operation_name}: {e}")
+            # Fallback to simple key
+            fallback_hash = abs(hash(str(logical_plan.dag) + str(params))) % (10**8)
+            return f"{operation_name}_{fallback_hash}"
+
+    def _get_stable_plan_repr(self, logical_plan: LogicalPlan) -> str:
+        """Get a stable string representation of the logical plan."""
+        try:
+            # Try to get a more stable representation
+            if hasattr(logical_plan, "dag") and hasattr(logical_plan.dag, "_ops"):
+                # Use operation types and parameters for stability
+                ops_info = []
+                for op in logical_plan.dag._ops:
+                    op_info = f"{type(op).__name__}"
+                    if hasattr(op, "_name"):
+                        op_info += f":{op._name}"
+                    ops_info.append(op_info)
+                return "|".join(sorted(ops_info))  # Sort for determinism
+            else:
+                # Fallback to string representation
+                return str(logical_plan.dag)
+        except Exception:
+            return str(id(logical_plan))  # Last resort: object id
+
+    def _get_stable_param_repr(self, params: Dict[str, Any]) -> str:
+        """Get a stable string representation of parameters."""
+        try:
+            if not params:
+                return ""
+
+            # Sort parameters for deterministic output
+            sorted_items = []
+            for key, value in sorted(params.items()):
+                # Handle different value types for stable representation
+                if isinstance(value, (list, tuple)):
+                    value_str = "|".join(str(v) for v in value)
+                elif isinstance(value, dict):
+                    # Recursively handle nested dicts
+                    value_str = self._get_stable_param_repr(value)
+                else:
+                    value_str = str(value)
+                sorted_items.append(f"{key}={value_str}")
+
+            return "&".join(sorted_items)
+        except Exception:
+            # Fallback for complex parameter types
+            return str(abs(hash(frozenset(params.items()) if params else frozenset())))[
+                :8
+            ]
 
 
 # Global cache instance
@@ -1046,7 +1497,7 @@ def _get_cache() -> DatasetCache:
     global _global_cache
     if _global_cache is None:
         # Configure cache based on DataContext settings
-            context = DataContext.get_current()
+        context = DataContext.get_current()
         max_entries = getattr(context, "dataset_cache_max_entries", 10000)
         _global_cache = DatasetCache(max_entries)
     return _global_cache
@@ -1140,6 +1591,16 @@ def clear_dataset_cache() -> None:
 def get_cache_stats() -> Dict[str, Any]:
     """Get Dataset cache statistics."""
     return _get_cache().get_stats()
+
+
+def get_cache_health() -> Dict[str, Any]:
+    """Get Dataset cache health status and recommendations."""
+    return _get_cache().health_check()
+
+
+def cleanup_cache() -> int:
+    """Clean up stale cache entries and return number of entries removed."""
+    return _get_cache().cleanup_stale_entries()
 
 
 def disable_dataset_caching():
