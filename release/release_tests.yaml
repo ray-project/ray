@@ -403,7 +403,7 @@
 
   run:
     timeout: 2000
-    script: python tune_rllib/run_connect_tests.py
+    script: RAY_TRAIN_V2_ENABLED=1 python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
 
@@ -431,7 +431,7 @@
     # 14 hours
     timeout: 50400
     long_running: true
-    script: python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
 
   # NOTE: This smoke test is not useful to run because the point of the test
   # is to be long running. This is just for debugging updates to the test quickly.
@@ -451,7 +451,7 @@
         # 14 hours
         timeout: 50400
         long_running: true
-        script: python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
+        script: RAY_TRAIN_V2_ENABLED=1 python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
         wait_for_nodes:
           num_nodes: 1
 
