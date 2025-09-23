@@ -1,6 +1,5 @@
 .. _direct-transport:
 
-.. TODO: wait_tensor_freed
 
 **************************
 Ray Direct Transport (RDT)
