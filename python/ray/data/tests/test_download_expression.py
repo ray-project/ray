@@ -221,7 +221,7 @@ class TestDownloadExpressionErrors:
         ds_with_downloads = ds.with_column("bytes", download("non_existent_column"))
 
         # Should raise error when trying to execute
-        with pytest.raises(Exception):  # Could be KeyError or similar
+        with pytest.raises(ValueError):
             ds_with_downloads.take_all()
 
     def test_download_expression_with_null_uris(self):
