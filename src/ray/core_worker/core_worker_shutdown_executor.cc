@@ -36,18 +36,9 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
                  << " (timeout: " << timeout_ms.count() << "ms)";
 
   if (core_worker_->options_.worker_type == WorkerType::WORKER) {
-    // For async actors, terminate the event loop to prevent coroutines from
-    // accessing torn-down C++ state during shutdown.
-    if (!core_worker_->worker_context_->GetCurrentActorID().IsNil() &&
-        core_worker_->worker_context_->CurrentActorIsAsync()) {
-      RAY_LOG(DEBUG) << "Terminating async actor event loop for shutdown";
-      core_worker_->options_.terminate_asyncio_thread();
-    }
-
-    // For actors, invoke the language runtime's actor shutdown callback before shutdown
-    // proceeds.
-    if (!core_worker_->worker_context_->GetCurrentActorID().IsNil() &&
-        core_worker_->actor_shutdown_callback_) {
+    if (!core_worker_->worker_context_->GetCurrentActorID().IsNil()) {
+      RAY_CHECK(core_worker_->actor_shutdown_callback_)
+          << "actor_shutdown_callback_ must be set for actor workers";
       RAY_LOG(DEBUG) << "Calling actor shutdown callback";
       core_worker_->actor_shutdown_callback_();
     }

@@ -2768,15 +2768,13 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
                 <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
-cdef void terminate_asyncio_thread() nogil:
-    with gil:
-        core_worker = ray._private.worker.global_worker.core_worker
-        core_worker.stop_and_join_asyncio_threads_if_exist()
-
-
 cdef void call_actor_shutdown() noexcept nogil:
     """C++ wrapper function that calls the Python actor shutdown callback."""
     with gil:
+        core_worker = ray._private.worker.global_worker.core_worker
+        if core_worker.current_actor_is_asyncio():
+            core_worker.stop_and_join_asyncio_threads_if_exist()
+
         _call_actor_shutdown()
 
 
@@ -3049,7 +3047,6 @@ cdef class CoreWorker:
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
-        options.terminate_asyncio_thread = terminate_asyncio_thread
         options.actor_shutdown_callback = call_actor_shutdown
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
