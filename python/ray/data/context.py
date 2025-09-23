@@ -37,6 +37,8 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
 
+    def is_sort_based(self) -> bool:
+        return self == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED or self == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
 # tasks, the memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM

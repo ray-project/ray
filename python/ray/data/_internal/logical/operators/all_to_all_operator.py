@@ -184,7 +184,7 @@ class Aggregate(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[str],
+        key: Optional[Union[str, List[str]]],
         aggs: List[AggregateFn],
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
