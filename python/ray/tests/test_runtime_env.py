@@ -11,6 +11,7 @@ import pytest
 import ray
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.exceptions import RuntimeEnvSetupError
+import re
 
 
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
@@ -189,12 +190,9 @@ def test_runtime_env_error_includes_node_ip(shutdown_only):
     print(f"Pip error message: {error_message}")
     # Check that error message contains node IP information
     # The format should be like "[Node 192.168.1.100] ..." or "[Node unknown] ..."
-    assert (
-        "[Node " in error_message
-    ), f"Error message should contain node IP: {error_message}"
-    assert (
-        "] " in error_message
-    ), f"Error message should have proper node IP format: {error_message}"
+    assert re.search(
+        r"\[Node ((\d{1,3}\.){3}\d{1,3}|unknown)\] ", error_message
+    ), f"Error message should contain node IP or 'unknown' in proper format: {error_message}"
 
 
 if __name__ == "__main__":
