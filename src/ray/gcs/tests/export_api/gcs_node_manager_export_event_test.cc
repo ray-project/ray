@@ -21,12 +21,12 @@
 #include <thread>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
 
@@ -44,7 +44,7 @@ std::string GenerateLogDir() {
 class GcsNodeManagerExportAPITest : public ::testing::Test {
  public:
   GcsNodeManagerExportAPITest() {
-    auto raylet_client = std::make_shared<FakeRayletClient>();
+    auto raylet_client = std::make_shared<rpc::FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;

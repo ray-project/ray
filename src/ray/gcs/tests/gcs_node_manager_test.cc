@@ -20,18 +20,18 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/rpc/raylet/fake_raylet_client.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
-    auto raylet_client = std::make_shared<FakeRayletClient>();
+    auto raylet_client = std::make_shared<rpc::FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;
@@ -70,11 +70,16 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
   rpc::RegisterNodeReply register_reply;
-  auto send_reply_callback =
-      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+  std::promise<bool> register_promise;
+  auto send_register_reply_callback = [&register_promise](ray::Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
+    register_promise.set_value(true);
+  };
   // Add a node to the manager
-  node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
-  io_context_->GetIoService().poll();
+  node_manager.HandleRegisterNode(
+      register_request, &register_reply, send_register_reply_callback);
+  register_promise.get_future().get();
   auto register_events = fake_ray_event_recorder_->FlushBuffer();
 
   // Test the node definition event + alive node lifecycle event
@@ -88,6 +93,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_0.node_definition_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_0.node_definition_event().node_ip_address(),
             node->node_manager_address());
+  ASSERT_EQ(ray_event_0.node_definition_event().start_timestamp().seconds(),
+            node->start_time_ms() / 1000);
   std::map<std::string, std::string> event_labels(
       ray_event_0.node_definition_event().labels().begin(),
       ray_event_0.node_definition_event().labels().end());
@@ -109,9 +116,15 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
       rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
   rpc::UnregisterNodeReply unregister_reply;
+  std::promise<bool> unregister_promise;
+  auto send_unregister_reply_callback = [&unregister_promise](ray::Status status,
+                                                              std::function<void()> f1,
+                                                              std::function<void()> f2) {
+    unregister_promise.set_value(true);
+  };
   node_manager.HandleUnregisterNode(
-      unregister_request, &unregister_reply, send_reply_callback);
-  io_context_->GetIoService().poll();
+      unregister_request, &unregister_reply, send_unregister_reply_callback);
+  unregister_promise.get_future().get();
 
   // Test the dead node lifecycle event
   auto unregister_events = fake_ray_event_recorder_->FlushBuffer();
