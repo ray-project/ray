@@ -45,9 +45,7 @@ def call_with_retry(
             )
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary exponential backoff with 20% random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * (
-                    random.uniform(0.8, 1.2)
-                )
+                backoff = min(2**i, max_backoff_s) * (random.uniform(0.8, 1.2))
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )
