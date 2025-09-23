@@ -37,22 +37,28 @@ class GPUObjectMeta(NamedTuple):
 # @PublicAPI(stability="alpha")
 def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
-    Wait for the tensor to be freed from this actor's GPU object store.
+    Wait for the tensor to be freed.
 
     This function is useful for cases where an actor keeps a reference to a
     tensor after returning the tensor from a task annotated with
-    `@ray.method(tensor_transport=...)`. Tensors that are returned by these
-    tasks may be sent to other actors while the corresponding `ray.ObjectRef` is
-    still in scope. If the actor modifies the tensor while it is still in the
-    actor's GPU object store, then Ray may end up sending invalid data to other
-    tasks. Call this function to ensure that the `ray.ObjectRef` has gone out of
-    scope and therefore the tensor is safe to write to again.
+    `@ray.method(tensor_transport=...)`. In this case, Ray will store a
+    *reference* to the tensor, so any in-place modifications made by the actor
+    that returned the tensor could be seen by other actors. See
+    :ref:`Ray Direct Transport (RDT) <direct-transport>` for more details.
+
+    Call this function for RDT objects to ensure that all corresponding
+    `ray.ObjectRefs` have gone out of scope and therefore the tensor is safe to
+    write to again.
 
     Args:
-        tensor: The tensor to wait to be freed.
-        timeout: The timeout in seconds. Set to None to wait indefinitely. Note
-            that this function could then hang if the `ray.ObjectRef` that
-            refers to this tensor never goes out of scope.
+        tensor: The tensor to wait to be freed. This should be a tensor that was
+            previously returned by a task annotated with
+            `@ray.method(tensor_transport=...)` or stored via
+            `ray.put(_tensor_transport="...")`.
+        timeout: The timeout in seconds to wait for all references to the tensor
+            to go out of scope. Set to None to wait indefinitely. Note that if
+            None is used, this function could hang if the `ray.ObjectRefs` that
+            refer to this tensor never go out of scope.
     """
     gpu_object_manager = ray.worker.global_worker.gpu_object_manager
     gpu_object_manager.gpu_object_store.wait_tensor_freed(tensor, timeout)

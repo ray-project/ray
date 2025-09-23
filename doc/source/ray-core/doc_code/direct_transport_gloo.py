@@ -178,10 +178,10 @@ tensor2 = receiver.increment_and_sum.remote(tensor)
 # UserWarning: GPU ObjectRef(...) is being passed back to the actor that created it Actor(MyActor, ...). Note that GPU objects are mutable. If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors will receive the updated version instead of the original.
 
 try:
-   # This assertion will fail because the tensor returned by sender.random_tensor
-   # has been modified by sender.increment_and_sum, so receiver.increment_and_sum
-   # will receive the updated version instead of the original.
-    assert(torch.allclose(ray.get(tensor1), ray.get(tensor2)))
+    # This assertion may fail because the tensor returned by sender.random_tensor
+    # is modified in-place by sender.increment_and_sum while being sent to
+    # receiver.increment_and_sum.
+    assert torch.allclose(ray.get(tensor1), ray.get(tensor2))
 except AssertionError:
     print("AssertionError: sender and receiver returned different sums.")
 
@@ -221,8 +221,13 @@ tensor1 = ray.get(tensor1)
 # Receiver will now receive the updated value instead of the original.
 tensor2 = receiver.increment_and_sum.remote(tensor)
 
-# This assertion will fail.
-assert(torch.allclose(tensor1, ray.get(tensor2)))
+try:
+    # This assertion will fail because sender.increment_and_sum_stored_tensor
+    # modified the tensor in place before sending it to
+    # receiver.increment_and_sum.
+    assert torch.allclose(tensor1, ray.get(tensor2))
+except AssertionError:
+    print("AssertionError: sender and receiver returned different sums.")
 # __gloo_wait_tensor_freed_bad_end__
 
 # __gloo_wait_tensor_freed_start__
@@ -267,5 +272,5 @@ tensor2 = receiver.increment_and_sum.remote(tensor)
 del tensor
 
 # This assertion will now pass.
-assert(torch.allclose(ray.get(tensor1), ray.get(tensor2)))
+assert torch.allclose(ray.get(tensor1), ray.get(tensor2))
 # __gloo_wait_tensor_freed_end__

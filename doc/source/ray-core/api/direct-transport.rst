@@ -26,3 +26,12 @@ Collective tensor transports require a collective group to be created before RDT
     ray.experimental.collective.create_collective_group
     ray.experimental.collective.get_collective_groups
     ray.experimental.collective.destroy_collective_group
+
+Advanced APIs
+-------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ray.experimental.collective.wait_tensor_freed
