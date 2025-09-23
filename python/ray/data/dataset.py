@@ -124,17 +124,24 @@ from ray.widgets.util import repr_with_fallback
 def parse_size_string(size_str: str) -> int:
     """Parse a human-readable size string to bytes (e.g., "128mb" -> 134217728)."""
     size_str = size_str.strip().lower()
-    match = re.match(r'^(\d+(?:\.\d+)?)\s*([kmgtpb]?b?)$', size_str)
+    match = re.match(r"^(\d+(?:\.\d+)?)\s*([kmgtpb]?b?)$", size_str)
     if not match:
         raise ValueError(f"Invalid size format: {size_str!r}")
-    
+
     number, unit = match.groups()
-    multipliers = {'b': 1, 'kb': 1024, 'mb': 1024**2, 'gb': 1024**3, 'tb': 1024**4, 'pb': 1024**5}
-    unit = unit or 'b'
-    
+    multipliers = {
+        "b": 1,
+        "kb": 1024,
+        "mb": 1024**2,
+        "gb": 1024**3,
+        "tb": 1024**4,
+        "pb": 1024**5,
+    }
+    unit = unit or "b"
+
     if unit not in multipliers:
         raise ValueError(f"Unsupported unit: {unit!r}")
-    
+
     return int(float(number) * multipliers[unit])
 
 
@@ -1605,11 +1612,15 @@ class Dataset:
             target_num_bytes_per_block = parse_size_string(target_num_bytes_per_block)
 
         # Basic validation
-        param_count = sum(x is not None for x in [num_blocks, target_num_rows_per_block, target_num_bytes_per_block])
-        
+        param_count = sum(
+            x is not None
+            for x in [num_blocks, target_num_rows_per_block, target_num_bytes_per_block]
+        )
+
         if param_count == 0:
             # Default to 128MB blocks when no parameters provided
             from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
+
             target_num_bytes_per_block = DEFAULT_TARGET_MAX_BLOCK_SIZE
         elif param_count > 1:
             raise ValueError(
@@ -1618,36 +1629,62 @@ class Dataset:
             )
 
         # Streaming repartition (rows or bytes) is incompatible with shuffle
-        is_streaming = target_num_rows_per_block is not None or target_num_bytes_per_block is not None
+        is_streaming = (
+            target_num_rows_per_block is not None
+            or target_num_bytes_per_block is not None
+        )
         if is_streaming and shuffle:
-            param_name = "target_num_rows_per_block" if target_num_rows_per_block else "target_num_bytes_per_block"
+            param_name = (
+                "target_num_rows_per_block"
+                if target_num_rows_per_block
+                else "target_num_bytes_per_block"
+            )
             raise ValueError(f"`shuffle` must be False when `{param_name}` is set.")
 
         # Warn about ignored parameters for streaming repartition
         if is_streaming:
             if keys is not None:
-                param_name = "target_num_rows_per_block" if target_num_rows_per_block else "target_num_bytes_per_block"
+                param_name = (
+                    "target_num_rows_per_block"
+                    if target_num_rows_per_block
+                    else "target_num_bytes_per_block"
+                )
                 warnings.warn(f"`keys` is ignored when `{param_name}` is set.")
             if sort:
-                param_name = "target_num_rows_per_block" if target_num_rows_per_block else "target_num_bytes_per_block"
+                param_name = (
+                    "target_num_rows_per_block"
+                    if target_num_rows_per_block
+                    else "target_num_bytes_per_block"
+                )
                 warnings.warn(f"`sort` is ignored when `{param_name}` is set.")
 
         plan = self._plan.copy()
-        
+
         # Choose operator based on parameters
         if target_num_rows_per_block is not None:
-            op = StreamingRepartition(self._logical_plan.dag, target_num_rows_per_block=target_num_rows_per_block)
+            op = StreamingRepartition(
+                self._logical_plan.dag,
+                target_num_rows_per_block=target_num_rows_per_block,
+            )
         elif target_num_bytes_per_block is not None:
-            op = StreamingRepartition(self._logical_plan.dag, target_num_rows_per_block=10000)  # High value for byte control
+            op = StreamingRepartition(
+                self._logical_plan.dag, target_num_rows_per_block=10000
+            )  # High value for byte control
         else:
-            op = Repartition(self._logical_plan.dag, num_outputs=num_blocks, shuffle=shuffle, keys=keys, sort=sort)
+            op = Repartition(
+                self._logical_plan.dag,
+                num_outputs=num_blocks,
+                shuffle=shuffle,
+                keys=keys,
+                sort=sort,
+            )
 
         # Set target block size for byte-based repartitioning
         context = self.context
         if target_num_bytes_per_block is not None:
             context = copy.copy(self.context)
             context.target_max_block_size = target_num_bytes_per_block
-        
+
         logical_plan = LogicalPlan(op, context)
         return Dataset(plan, logical_plan)
 
