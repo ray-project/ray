@@ -1,10 +1,14 @@
+import atexit
 import os
+import shutil
 import socket
+import subprocess
+import tempfile
 import time
 import sys
 import threading
 from contextlib import contextmanager
-from typing import Callable, List
+from typing import Callable, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,26 +20,219 @@ import ray._private.services as services
 from ray._private.test_utils import get_current_unused_port
 
 
+# ---------------------------------------------------------------------------
+# Thread-aware network & subprocess mocking.
+
+_ORIGINAL_GETADDRINFO = socket.getaddrinfo
+_ORIGINAL_SUBPROCESS_RUN = subprocess.run
+
+try:  # psutil may not be installed in some environments.
+    import psutil
+
+    _ORIGINAL_NET_IF_ADDRS = psutil.net_if_addrs
+except ImportError:  # pragma: no cover
+    psutil = None
+    _ORIGINAL_NET_IF_ADDRS = None
+
+_NETWORK_PATCH_LOCK = threading.Lock()
+_NETWORK_PATCH_REFCOUNT = 0
+_THREAD_NETWORK_CONFIGS: Dict[int, Dict[str, str]] = {}
+_THREAD_PORT_CONFIGS: Dict[int, Dict[str, object]] = {}
+_PATCHERS = []
+_SITECUSTOMIZE_DIR: Optional[str] = None
+
+
+def _ensure_sitecustomize_dir() -> str:
+    global _SITECUSTOMIZE_DIR
+    if _SITECUSTOMIZE_DIR is None:
+        tmp_dir = tempfile.mkdtemp(prefix="ray_symmetric_run_sitecustomize_")
+        path = os.path.join(tmp_dir, "sitecustomize.py")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(
+                """
+import os
+import socket
+
+try:
+    import psutil
+except ImportError:  # pragma: no cover
+    psutil = None
+
+_original_getaddrinfo = socket.getaddrinfo
+_original_net_if_addrs = psutil.net_if_addrs if psutil else None
+
+
+def _get_thread_key():
+    return os.environ.get("RAY_SIM_THREAD_KEY")
+
+
+def _load_config():
+    key = _get_thread_key()
+    if not key:
+        return None
+    prefix = f"RAY_SIM_CONFIG_{key}_"
+    cfg = {}
+    for k, v in os.environ.items():
+        if k.startswith(prefix):
+            cfg[k[len(prefix):]] = v
+    return cfg if cfg else None
+
+
+def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    cfg = _load_config()
+    if cfg is None:
+        return _original_getaddrinfo(host, port, family, type, proto, flags)
+
+    resolved_host = cfg.get("GCS_IP", host)
+    resolved_port = int(cfg.get("GCS_PORT", port))
+    return [
+        (
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+            proto or 0,
+            "",
+            (resolved_host, resolved_port),
+        )
+    ]
+
+
+def _patched_net_if_addrs():
+    if psutil is None:
+        raise RuntimeError("psutil is required for symmetric_run tests")
+
+    cfg = _load_config()
+    if cfg is None:
+        return _original_net_if_addrs()
+
+    ip = cfg.get("NODE_IP", "127.0.0.1")
+    family = socket.AF_INET6 if ":" in ip else socket.AF_INET
+    addr = type("addr", (), {"family": family, "address": ip})()
+    return {"lo": [addr]}
+
+
+socket.getaddrinfo = _patched_getaddrinfo
+if psutil is not None:
+    psutil.net_if_addrs = _patched_net_if_addrs
+
+"""
+            )
+        _SITECUSTOMIZE_DIR = tmp_dir
+        atexit.register(shutil.rmtree, tmp_dir, True)
+    return _SITECUSTOMIZE_DIR
+
+
+def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    cfg = _THREAD_NETWORK_CONFIGS.get(threading.get_ident())
+    if cfg is None:
+        return _ORIGINAL_GETADDRINFO(host, port, family, type, proto, flags)
+
+    resolved_host = cfg.get("gcs_ip", host)
+    resolved_port = cfg.get("gcs_port", port)
+    return [
+        (
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+            proto or 0,
+            "",
+            (resolved_host, int(resolved_port)),
+        )
+    ]
+
+
+def _patched_net_if_addrs():
+    if psutil is None:
+        raise RuntimeError("psutil is required for symmetric_run tests")
+
+    cfg = _THREAD_NETWORK_CONFIGS.get(threading.get_ident())
+    if cfg is None:
+        return _ORIGINAL_NET_IF_ADDRS()
+
+    ip = cfg.get("node_ip", "127.0.0.1")
+    family = socket.AF_INET6 if ":" in ip else socket.AF_INET
+    addr = type("addr", (), {"family": family, "address": ip})()
+    return {"lo": [addr]}
+
+
+def _patched_subprocess_run(cmd, *args, **kwargs):
+    cfg = _THREAD_PORT_CONFIGS.get(threading.get_ident())
+    if cfg and isinstance(cmd, (list, tuple)) and len(cmd) >= 2 and cmd[0] == "ray" and cmd[1] == "start":
+        cmd = list(cmd)
+        extra_args = cfg.get("extra_args", [])
+        # Append extra args while keeping existing order stable.
+        cmd.extend(extra_args)
+
+        env = kwargs.get("env") or os.environ.copy()
+        env.update(cfg.get("env", {}))
+        kwargs["env"] = env
+
+    return _ORIGINAL_SUBPROCESS_RUN(cmd, *args, **kwargs)
+
+
 @contextmanager
-def _setup_mock_network_utils(curr_ip, head_ip):
-    import socket
+def _setup_mock_network_utils(curr_ip, node_ip, port_config=None, gcs_port=6379):
+    global _NETWORK_PATCH_REFCOUNT, _PATCHERS
 
-    # Mock socket.getaddrinfo to return a valid IP
-    with patch("socket.getaddrinfo") as mock_getaddrinfo:
-        mock_getaddrinfo.return_value = [("", "", "", "", (curr_ip, 6379))]
+    thread_id = threading.get_ident()
 
-        # Mock psutil.net_if_addrs to return localhost IP
-        with patch("psutil.net_if_addrs") as mock_net_if_addrs:
-            mock_net_if_addrs.return_value = {
-                "lo": [
-                    type(
-                        "addr",
-                        (),
-                        {"family": socket.AF_INET, "address": head_ip},
-                    )()
-                ]
-            }
-            yield
+    with _NETWORK_PATCH_LOCK:
+        if _NETWORK_PATCH_REFCOUNT == 0:
+            socket_patcher = patch("socket.getaddrinfo", new=_patched_getaddrinfo)
+            _PATCHERS.append(socket_patcher)
+            socket_patcher.start()
+
+            if psutil is not None:
+                net_if_patcher = patch("psutil.net_if_addrs", new=_patched_net_if_addrs)
+                _PATCHERS.append(net_if_patcher)
+                net_if_patcher.start()
+
+            # Only patch subprocess.run when we need to augment Ray start commands.
+            if port_config is not None:
+                subprocess_patcher = patch(
+                    "subprocess.run", new=_patched_subprocess_run
+                )
+                _PATCHERS.append(subprocess_patcher)
+                subprocess_patcher.start()
+
+        _NETWORK_PATCH_REFCOUNT += 1
+
+    thread_key = str(thread_id)
+
+    _THREAD_NETWORK_CONFIGS[thread_id] = {
+        "gcs_ip": curr_ip,
+        "gcs_port": str(gcs_port),
+        "node_ip": node_ip,
+    }
+
+    if port_config is not None:
+        config_copy = dict(port_config)
+        env = dict(config_copy.get("env", {}))
+
+        site_dir = _ensure_sitecustomize_dir()
+        existing_pythonpath = env.get("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
+        new_pythonpath = site_dir
+        if existing_pythonpath:
+            new_pythonpath = site_dir + os.pathsep + existing_pythonpath
+        env["PYTHONPATH"] = new_pythonpath
+        env["RAY_SIM_THREAD_KEY"] = thread_key
+        env[f"RAY_SIM_CONFIG_{thread_key}_GCS_IP"] = curr_ip
+        env[f"RAY_SIM_CONFIG_{thread_key}_GCS_PORT"] = str(gcs_port)
+        env[f"RAY_SIM_CONFIG_{thread_key}_NODE_IP"] = node_ip
+        config_copy["env"] = env
+
+        _THREAD_PORT_CONFIGS[thread_id] = config_copy
+
+    try:
+        yield
+    finally:
+        _THREAD_NETWORK_CONFIGS.pop(thread_id, None)
+        _THREAD_PORT_CONFIGS.pop(thread_id, None)
+
+        with _NETWORK_PATCH_LOCK:
+            _NETWORK_PATCH_REFCOUNT -= 1
+            if _NETWORK_PATCH_REFCOUNT == 0:
+                while _PATCHERS:
+                    patcher = _PATCHERS.pop()
+                    patcher.stop()
 
 
 def _run_head_and_workers(
@@ -65,11 +262,23 @@ def _run_head_and_workers(
                 workers_ready.set()
 
     def fake_check_head_node_ready(address, timeout=None):
-        # Wait until head reports readiness.
+        # Wait until head reports readiness and confirm the GCS port is reachable.
         if not head_ready.wait(timeout):
             return False
-        mark_worker_ready()
-        return True
+
+        host, _, port_str = address.partition(":")
+        port = int(port_str)
+        deadline = time.time() + (timeout if timeout is not None else 15)
+
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=1):
+                    mark_worker_ready()
+                    return True
+            except OSError:
+                time.sleep(0.5)
+
+        return False
 
     def fake_check_cluster_ready(nnodes, timeout=None):
         head_ready.set()
@@ -78,17 +287,71 @@ def _run_head_and_workers(
         ready = workers_ready.wait(timeout)
         return ready
 
+    used_ports = set()
+
+    def _alloc_unique_port() -> int:
+        while True:
+            candidate = get_current_unused_port()
+            if candidate not in used_ports:
+                used_ports.add(candidate)
+                return candidate
+
+    def _reserve_port_range(start: int, end: int) -> None:
+        used_ports.update(range(start, end + 1))
+
+    def _build_port_config(base_name: str) -> Dict[str, object]:
+        temp_dir = tempfile.mkdtemp(prefix=f"ray_symrun_{base_name}_")
+
+        node_manager_port = _alloc_unique_port()
+        object_manager_port = _alloc_unique_port()
+        dashboard_port = _alloc_unique_port()
+        dashboard_agent_listen_port = _alloc_unique_port()
+        dashboard_agent_grpc_port = _alloc_unique_port()
+        ray_client_server_port = _alloc_unique_port()
+        metrics_export_port = _alloc_unique_port()
+        runtime_env_agent_port = _alloc_unique_port()
+        min_worker_port = _alloc_unique_port()
+        max_worker_port = min_worker_port + 9
+        _reserve_port_range(min_worker_port, max_worker_port)
+
+        extra_args = [
+            f"--node-manager-port={node_manager_port}",
+            f"--object-manager-port={object_manager_port}",
+            f"--min-worker-port={min_worker_port}",
+            f"--max-worker-port={max_worker_port}",
+            f"--ray-client-server-port={ray_client_server_port}",
+            f"--dashboard-port={dashboard_port}",
+            f"--dashboard-agent-listen-port={dashboard_agent_listen_port}",
+            f"--dashboard-agent-grpc-port={dashboard_agent_grpc_port}",
+            f"--metrics-export-port={metrics_export_port}",
+            f"--runtime-env-agent-port={runtime_env_agent_port}",
+        ]
+
+        env = {
+            "RAY_FAKE_CLUSTER": "1",
+            "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
+        }
+
+        return {"extra_args": extra_args, "env": env, "temp_dir": temp_dir}
+
+    head_port_config = _build_port_config("head")
+    worker_port_configs = [
+        _build_port_config(f"worker_{idx}") for idx, _ in enumerate(worker_ips)
+    ]
+
     head_result = {}
     worker_results = [{} for _ in worker_ips]
 
     def run_head():
         runner = CliRunner()
-        with _setup_mock_network_utils(head_ip, head_ip):
+        with _setup_mock_network_utils(head_ip, head_ip, port_config=head_port_config):
             head_result["result"] = runner.invoke(symmetric_run_cmd, args)
 
     def run_worker(idx, worker_ip):
         runner = CliRunner()
-        with _setup_mock_network_utils(head_ip, worker_ip):
+        with _setup_mock_network_utils(
+            head_ip, worker_ip, port_config=worker_port_configs[idx]
+        ):
             worker_results[idx]["result"] = runner.invoke(symmetric_run_cmd, args)
 
     threads = []
@@ -115,14 +378,22 @@ def _run_head_and_workers(
             for t in threads:
                 t.start()
 
+            deadline = time.time() + 15
             for t in threads:
-                t.join(timeout=15)
+                remaining = max(0, deadline - time.time())
+                t.join(timeout=remaining)
     finally:
         head_ready.set()
         workers_ready.set()
 
     for t in threads:
+        t.join(timeout=5)
         assert not t.is_alive(), f"Thread {t.name} did not finish in time"
+
+    temp_dirs = [head_port_config["temp_dir"]]
+    temp_dirs.extend(cfg["temp_dir"] for cfg in worker_port_configs)
+    for td in temp_dirs:
+        shutil.rmtree(td, ignore_errors=True)
 
     return head_result.get("result"), [r.get("result") for r in worker_results]
 
