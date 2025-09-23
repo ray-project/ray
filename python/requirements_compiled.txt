@@ -2356,7 +2356,7 @@ traitlets==5.14.3
     #   nbconvert
     #   nbformat
     #   notebook
-transformers==4.36.2
+transformers==4.53.0
     # via -r python/requirements/ml/core-requirements.txt
 triad==0.9.8
     # via
