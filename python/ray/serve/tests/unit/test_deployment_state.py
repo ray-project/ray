@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._raylet import NodeID
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -365,7 +366,7 @@ def mock_deployment_state_manager(
     ):
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
-        cluster_node_info_cache.add_node("node-id")
+        cluster_node_info_cache.add_node(NodeID.from_random().hex())
         autoscaling_state_manager = AutoscalingStateManager()
 
         def create_deployment_state_manager(
@@ -2691,12 +2692,14 @@ def test_get_active_node_ids(mock_deployment_state_manager):
     a list of all node ids. `get_active_node_ids()` should return a set
     of all node ids.
     """
-    node_ids = ("node1", "node2", "node2")
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    node_ids = (node1, node2, node2)
 
     create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
     dsm = create_dsm()
-    cluster_node_info_cache.add_node("node1")
-    cluster_node_info_cache.add_node("node2")
+    cluster_node_info_cache.add_node(node1)
+    cluster_node_info_cache.add_node(node2)
 
     # Deploy deployment with version "1" and 3 replicas
     info1, v1 = deployment_info(version="1", num_replicas=3)
@@ -2738,12 +2741,14 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     When the running replicas has None as the node id, `get_active_node_ids()` should
     not include it in the set.
     """
-    node_ids = ("node1", "node2", "node2")
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    node_ids = (node1, node2, node2)
 
     create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
     dsm = create_dsm()
-    cluster_node_info_cache.add_node("node1")
-    cluster_node_info_cache.add_node("node2")
+    cluster_node_info_cache.add_node(node1)
+    cluster_node_info_cache.add_node(node2)
 
     # Deploy deployment with version "1" and 3 replicas
     info1, v1 = deployment_info(version="1", num_replicas=3)
@@ -2912,7 +2917,19 @@ class TestAutoscaling:
             for replica in ds._replicas.get():
                 replica._actor.set_ready()
         else:
+            # Due to two-stage downscaling one of the replicas will still be running
+            check_counts(
+                ds,
+                total=3,
+                by_state=[
+                    (ReplicaState.STOPPING, 2, None),
+                    (ReplicaState.RUNNING, 1, None),
+                ],
+            )
+            # Trigger the second stage of downscaling
+            dsm.update()
             check_counts(ds, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+
             assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
             assert (
                 ds.curr_status_info.status_trigger
@@ -3561,6 +3578,17 @@ class TestAutoscaling:
         # result, the replicas should scale back down to 0.
         timer.advance(10)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        # The first update will trigger the first stage of downscaling to 1
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[
+                (ReplicaState.STOPPING, 1, None),
+                (ReplicaState.RUNNING, 1, None),
+            ],
+        )
+        # The second update will trigger the second stage of downscaling from 1 to 0
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
         assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 0
@@ -3664,6 +3692,17 @@ class TestAutoscaling:
         # Now that the d2 replica is dead, its metrics should be dropped.
         # Consequently d1 should scale down to 0 replicas
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        dsm.update()
+        # Due to two-stage downscaling one of the replicas will still be running
+        check_counts(
+            ds1,
+            total=2,
+            by_state=[
+                (ReplicaState.STOPPING, 1, None),
+                (ReplicaState.RUNNING, 1, None),
+            ],
+        )
+        # Trigger the second stage of downscaling
         dsm.update()
         check_counts(ds1, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
 
@@ -4424,8 +4463,10 @@ class TestStopReplicasOnDrainingNodes:
         """
 
         create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
-        cluster_node_info_cache.add_node("node-1")
-        cluster_node_info_cache.add_node("node-2")
+        node_1 = NodeID.from_random().hex()
+        node_2 = NodeID.from_random().hex()
+        cluster_node_info_cache.add_node(node_1)
+        cluster_node_info_cache.add_node(node_2)
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4440,16 +4481,16 @@ class TestStopReplicasOnDrainingNodes:
 
         # Drain node-2 with deadline 60. Since the replicas are still
         # starting and we don't know the actor node id yet nothing happens
-        cluster_node_info_cache.draining_nodes = {"node-2": 60 * 1000}
+        cluster_node_info_cache.draining_nodes = {node_2: 60 * 1000}
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
 
         one_replica, another_replica = ds._replicas.get()
 
-        one_replica._actor.set_node_id("node-1")
+        one_replica._actor.set_node_id(node_1)
         one_replica._actor.set_ready()
 
-        another_replica._actor.set_node_id("node-2")
+        another_replica._actor.set_node_id(node_2)
         another_replica._actor.set_ready()
 
         # Try to start a new replica before initiating the graceful stop
@@ -4514,8 +4555,10 @@ class TestStopReplicasOnDrainingNodes:
         """
 
         create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
-        cluster_node_info_cache.add_node("node-1")
-        cluster_node_info_cache.add_node("node-2")
+        node_1 = NodeID.from_random().hex()
+        node_2 = NodeID.from_random().hex()
+        cluster_node_info_cache.add_node(node_1)
+        cluster_node_info_cache.add_node(node_2)
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4530,16 +4573,16 @@ class TestStopReplicasOnDrainingNodes:
 
         # Drain node-2 with deadline 60. Since the replicas are still
         # starting and we don't know the actor node id yet nothing happens
-        cluster_node_info_cache.draining_nodes = {"node-2": 60 * 1000}
+        cluster_node_info_cache.draining_nodes = {node_2: 60 * 1000}
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
 
         one_replica, another_replica = ds._replicas.get()
 
-        one_replica._actor.set_node_id("node-1")
+        one_replica._actor.set_node_id(node_1)
         one_replica._actor.set_ready()
 
-        another_replica._actor.set_node_id("node-2")
+        another_replica._actor.set_node_id(node_2)
         another_replica._actor.set_ready()
 
         # Try to start a new replica before initiating the graceful stop
@@ -4594,10 +4637,14 @@ class TestStopReplicasOnDrainingNodes:
         """
 
         create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
-        cluster_node_info_cache.add_node("node-1")
-        cluster_node_info_cache.add_node("node-2")
-        cluster_node_info_cache.add_node("node-3")
-        cluster_node_info_cache.add_node("node-4")
+        node_1 = NodeID.from_random().hex()
+        node_2 = NodeID.from_random().hex()
+        node_3 = NodeID.from_random().hex()
+        node_4 = NodeID.from_random().hex()
+        cluster_node_info_cache.add_node(node_1)
+        cluster_node_info_cache.add_node(node_2)
+        cluster_node_info_cache.add_node(node_3)
+        cluster_node_info_cache.add_node(node_4)
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4613,15 +4660,15 @@ class TestStopReplicasOnDrainingNodes:
         # Drain node-2 with deadline 60. Since the replicas are still
         # starting and we don't know the actor node id yet nothing happens
         cluster_node_info_cache.draining_nodes = {
-            "node-2": 60 * 1000,
-            "node-3": 100 * 1000,
-            "node-4": 40 * 1000,
+            node_2: 60 * 1000,
+            node_3: 100 * 1000,
+            node_4: 40 * 1000,
         }
         dsm.update()
         check_counts(ds, total=4, by_state=[(ReplicaState.STARTING, 4, v1)])
 
         for i, replica in enumerate(ds._replicas.get()):
-            replica._actor.set_node_id(f"node-{i+1}")
+            replica._actor.set_node_id([node_1, node_2, node_3, node_4][i])
             replica._actor.set_ready()
 
         # Try to start new replicas before initiating the graceful stop
@@ -4651,10 +4698,10 @@ class TestStopReplicasOnDrainingNodes:
                 (ReplicaState.STARTING, 2, v1),
             ],
         )
-        # The replica on node-4 should be selected for graceful termination,
-        # because node-4 has the earliest deadline.
+        # The replica on node_4 should be selected for graceful termination,
+        # because node_4 has the earliest deadline.
         stopping_replica = ds._replicas.get([ReplicaState.STOPPING])[0]
-        assert stopping_replica.actor_node_id == "node-4"
+        assert stopping_replica.actor_node_id == node_4
         stopping_replica._actor.set_done_stopping()
         dsm.update()
 
@@ -4672,10 +4719,10 @@ class TestStopReplicasOnDrainingNodes:
                 (ReplicaState.STARTING, 1, v1),
             ],
         )
-        # The replica on node-2 should be selected for graceful termination,
-        # because node-2 has the second earliest deadline.
+        # The replica on node_2 should be selected for graceful termination,
+        # because node_2 has the second earliest deadline.
         stopping_replica = ds._replicas.get([ReplicaState.STOPPING])[0]
-        assert stopping_replica.actor_node_id == "node-2"
+        assert stopping_replica.actor_node_id == node_2
         stopping_replica._actor.set_done_stopping()
         dsm.update()
 
@@ -4692,10 +4739,10 @@ class TestStopReplicasOnDrainingNodes:
             ],
         )
 
-        # The replica on node-3 should be selected for graceful termination
-        # last because node-3 has the latest deadline.
+        # The replica on node_3 should be selected for graceful termination
+        # last because node_3 has the latest deadline.
         stopping_replica = ds._replicas.get([ReplicaState.STOPPING])[0]
-        assert stopping_replica.actor_node_id == "node-3"
+        assert stopping_replica.actor_node_id == node_3
         stopping_replica._actor.set_done_stopping()
         dsm.update()
 
@@ -4707,8 +4754,10 @@ class TestStopReplicasOnDrainingNodes:
         """Replicas pending migration should be stopped if unhealthy."""
 
         create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
-        cluster_node_info_cache.add_node("node-1")
-        cluster_node_info_cache.add_node("node-2")
+        node_1 = NodeID.from_random().hex()
+        node_2 = NodeID.from_random().hex()
+        cluster_node_info_cache.add_node(node_1)
+        cluster_node_info_cache.add_node(node_2)
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4722,14 +4771,14 @@ class TestStopReplicasOnDrainingNodes:
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
 
         # Drain node-2 with deadline 60.
-        cluster_node_info_cache.draining_nodes = {"node-2": 60 * 1000}
+        cluster_node_info_cache.draining_nodes = {node_2: 60 * 1000}
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
 
         one_replica, another_replica = ds._replicas.get()
 
-        one_replica._actor.set_node_id("node-1")
-        another_replica._actor.set_node_id("node-2")
+        one_replica._actor.set_node_id(node_1)
+        another_replica._actor.set_node_id(node_2)
         one_replica._actor.set_ready()
         another_replica._actor.set_ready()
 
@@ -4779,8 +4828,10 @@ class TestStopReplicasOnDrainingNodes:
         """When a node gets drained, replicas in STARTING state should be stopped."""
 
         create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
-        cluster_node_info_cache.add_node("node-1")
-        cluster_node_info_cache.add_node("node-2")
+        node_1 = NodeID.from_random().hex()
+        node_2 = NodeID.from_random().hex()
+        cluster_node_info_cache.add_node(node_1)
+        cluster_node_info_cache.add_node(node_2)
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4793,11 +4844,11 @@ class TestStopReplicasOnDrainingNodes:
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
 
-        # Mark replica on node-1 as ready, but replica on node-2 is
+        # Mark replica on node_1 as ready, but replica on node_2 is
         # still starting
         one_replica, another_replica = ds._replicas.get()
-        one_replica._actor.set_node_id("node-1")
-        another_replica._actor.set_node_id("node-2")
+        one_replica._actor.set_node_id(node_1)
+        another_replica._actor.set_node_id(node_2)
         one_replica._actor.set_ready()
         dsm.update()
         check_counts(
@@ -4808,7 +4859,7 @@ class TestStopReplicasOnDrainingNodes:
 
         # Drain node-2. The starting replica should be stopped immediately
         # without waiting for the replica to start.
-        cluster_node_info_cache.draining_nodes = {"node-2": 60 * 1000}
+        cluster_node_info_cache.draining_nodes = {node_2: 60 * 1000}
         dsm.update()
         check_counts(
             ds,
@@ -4820,13 +4871,13 @@ class TestStopReplicasOnDrainingNodes:
             ],
         )
         stopping_replica = ds._replicas.get([ReplicaState.STOPPING])[0]
-        assert stopping_replica.actor_node_id == "node-2"
+        assert stopping_replica.actor_node_id == node_2
 
         # Finish stopping old replica
         stopping_replica._actor.set_done_stopping()
         dsm.update()
         starting_replica = ds._replicas.get([ReplicaState.STARTING])[0]
-        assert starting_replica.actor_node_id != "node-2"
+        assert starting_replica.actor_node_id != node_2
 
         # Finish starting new replica
         starting_replica._actor.set_ready()
@@ -4838,8 +4889,10 @@ class TestStopReplicasOnDrainingNodes:
         """Test that pending migration replicas of old versions are updated."""
 
         create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
-        cluster_node_info_cache.add_node("node-1")
-        cluster_node_info_cache.add_node("node-2")
+        node_1 = NodeID.from_random().hex()
+        node_2 = NodeID.from_random().hex()
+        cluster_node_info_cache.add_node(node_1)
+        cluster_node_info_cache.add_node(node_2)
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4853,16 +4906,16 @@ class TestStopReplicasOnDrainingNodes:
         check_counts(ds, total=10, by_state=[(ReplicaState.STARTING, 10, v1)])
 
         replicas = ds._replicas.get()
-        replicas[0]._actor.set_node_id("node-2")
+        replicas[0]._actor.set_node_id(node_2)
         replicas[0]._actor.set_ready()
         for r in replicas[1:]:
-            r._actor.set_node_id("node-1")
+            r._actor.set_node_id(node_1)
             r._actor.set_ready()
         dsm.update()
         check_counts(ds, total=10, by_state=[(ReplicaState.RUNNING, 10, v1)])
 
         # Drain node-2 with deadline 60.
-        cluster_node_info_cache.draining_nodes = {"node-2": 60 * 1000}
+        cluster_node_info_cache.draining_nodes = {node_2: 60 * 1000}
         dsm.update()
         check_counts(
             ds,

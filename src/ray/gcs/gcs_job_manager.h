@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
@@ -29,8 +30,6 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
 #include "ray/util/thread_checker.h"
 
