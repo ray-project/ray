@@ -14,27 +14,35 @@
 
 #pragma once
 
+#include <limits>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/time/clock.h"
+#include "ray/common/id.h"
 #include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/status.h"
+#include "ray/rpc/client_call.h"
 #include "ray/rpc/raylet/raylet_client_interface.h"
-#include "src/ray/common/id.h"
-#include "src/ray/common/status.h"
 
 namespace ray {
+namespace rpc {
 
 class FakeRayletClient : public RayletClientInterface {
  public:
-  void PinObjectIDs(
-      const rpc::Address &caller_address,
-      const std::vector<ObjectID> &object_ids,
-      const ObjectID &generator_id,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
+  void PinObjectIDs(const Address &caller_address,
+                    const std::vector<ObjectID> &object_ids,
+                    const ObjectID &generator_id,
+                    const ClientCallback<PinObjectIDsReply> &callback) override {}
 
-  void RequestWorkerLease(
-      const rpc::LeaseSpec &lease_spec,
-      bool grant_or_reject,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1,
-      const bool is_selected_based_on_locality = false) override {
+  void RequestWorkerLease(const LeaseSpec &lease_spec,
+                          bool grant_or_reject,
+                          const ClientCallback<RequestWorkerLeaseReply> &callback,
+                          const int64_t backlog_size = -1,
+                          const bool is_selected_based_on_locality = false) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
   }
@@ -51,20 +59,19 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  void PrestartWorkers(
-      const rpc::PrestartWorkersRequest &request,
-      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {}
+  void PrestartWorkers(const PrestartWorkersRequest &request,
+                       const ClientCallback<PrestartWorkersReply> &callback) override {}
 
   void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override {
+      const ClientCallback<ReleaseUnusedActorWorkersReply> &callback) override {
     num_release_unused_workers += 1;
     release_callbacks.push_back(callback);
   }
 
   void CancelWorkerLease(
       const LeaseID &lease_id,
-      const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
+      const ClientCallback<CancelWorkerLeaseReply> &callback) override {
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
   }
@@ -80,7 +87,7 @@ class FakeRayletClient : public RayletClientInterface {
                         const NodeID &retry_at_node_id,
                         Status status = Status::OK(),
                         bool rejected = false) {
-    rpc::RequestWorkerLeaseReply reply;
+    RequestWorkerLeaseReply reply;
     if (!retry_at_node_id.IsNil()) {
       reply.mutable_retry_at_raylet_address()->set_ip_address(address);
       reply.mutable_retry_at_raylet_address()->set_port(port);
@@ -113,7 +120,7 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   bool ReplyCancelWorkerLease(bool success = true) {
-    rpc::CancelWorkerLeaseReply reply;
+    CancelWorkerLeaseReply reply;
     reply.set_success(success);
     if (cancel_callbacks.size() == 0) {
       return false;
@@ -126,7 +133,7 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   bool ReplyReleaseUnusedActorWorkers() {
-    rpc::ReleaseUnusedActorWorkersReply reply;
+    ReleaseUnusedActorWorkersReply reply;
     if (release_callbacks.size() == 0) {
       return false;
     } else {
@@ -141,7 +148,7 @@ class FakeRayletClient : public RayletClientInterface {
     if (drain_raylet_callbacks.size() == 0) {
       return false;
     } else {
-      rpc::DrainRayletReply reply;
+      DrainRayletReply reply;
       reply.set_is_accepted(true);
       auto callback = drain_raylet_callbacks.front();
       callback(Status::OK(), std::move(reply));
@@ -152,37 +159,34 @@ class FakeRayletClient : public RayletClientInterface {
 
   void PrepareBundleResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
-      override {
+      const ClientCallback<PrepareBundleResourcesReply> &callback) override {
     num_lease_requested += 1;
     lease_callbacks.push_back(callback);
   }
 
   void CommitBundleResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
-      override {
+      const ClientCallback<CommitBundleResourcesReply> &callback) override {
     num_commit_requested += 1;
     commit_callbacks.push_back(callback);
   }
 
   void CancelResourceReserve(
       const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
-      override {
+      const ClientCallback<CancelResourceReserveReply> &callback) override {
     num_return_requested += 1;
     return_callbacks.push_back(callback);
   }
 
   void ReleaseUnusedBundles(
-      const std::vector<rpc::Bundle> &bundles_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override {
+      const std::vector<Bundle> &bundles_in_use,
+      const ClientCallback<ReleaseUnusedBundlesReply> &callback) override {
     ++num_release_unused_bundles_requested;
   }
 
   bool GrantPrepareBundleResources(bool success = true,
                                    const Status &status = Status::OK()) {
-    rpc::PrepareBundleResourcesReply reply;
+    PrepareBundleResourcesReply reply;
     reply.set_success(success);
     if (lease_callbacks.size() == 0) {
       return false;
@@ -195,7 +199,7 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   bool GrantCommitBundleResources(const Status &status = Status::OK()) {
-    rpc::CommitBundleResourcesReply reply;
+    CommitBundleResourcesReply reply;
     if (commit_callbacks.size() == 0) {
       return false;
     } else {
@@ -208,7 +212,7 @@ class FakeRayletClient : public RayletClientInterface {
 
   bool GrantCancelResourceReserve(bool success = true) {
     Status status = Status::OK();
-    rpc::CancelResourceReserveReply reply;
+    CancelResourceReserveReply reply;
     if (return_callbacks.size() == 0) {
       return false;
     } else {
@@ -221,16 +225,15 @@ class FakeRayletClient : public RayletClientInterface {
 
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {}
+      const std::vector<WorkerBacklogReport> &backlog_reports) override {}
 
-  void GetResourceLoad(
-      const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override {}
+  void GetResourceLoad(const ClientCallback<GetResourceLoadReply> &callback) override {}
 
   void RegisterMutableObjectReader(
       const ObjectID &writer_object_id,
       int64_t num_readers,
       const ObjectID &reader_object_id,
-      const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
+      const ClientCallback<RegisterMutableObjectReply> &callback) override {}
 
   void PushMutableObject(
       const ObjectID &writer_object_id,
@@ -238,52 +241,47 @@ class FakeRayletClient : public RayletClientInterface {
       uint64_t metadata_size,
       void *data,
       void *metadata,
-      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
+      const ClientCallback<PushMutableObjectReply> &callback) override {}
 
   void GetWorkerFailureCause(
       const LeaseID &lease_id,
-      const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback) override {
-    ray::rpc::GetWorkerFailureCauseReply reply;
+      const ClientCallback<GetWorkerFailureCauseReply> &callback) override {
+    GetWorkerFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     num_get_task_failure_causes += 1;
   }
 
-  void GetSystemConfig(
-      const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override {}
+  void GetSystemConfig(const ClientCallback<GetSystemConfigReply> &callback) override {}
 
-  void NotifyGCSRestart(
-      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override {}
+  void NotifyGCSRestart(const ClientCallback<NotifyGCSRestartReply> &callback) override {}
 
-  void ShutdownRaylet(
-      const NodeID &node_id,
-      bool graceful,
-      const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override {}
+  void ShutdownRaylet(const NodeID &node_id,
+                      bool graceful,
+                      const ClientCallback<ShutdownRayletReply> &callback) override {}
 
-  void DrainRaylet(const rpc::autoscaler::DrainNodeReason &reason,
+  void DrainRaylet(const autoscaler::DrainNodeReason &reason,
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
-                   const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
-    rpc::DrainRayletReply reply;
+                   const ClientCallback<DrainRayletReply> &callback) override {
+    DrainRayletReply reply;
     reply.set_is_accepted(true);
     drain_raylet_callbacks.push_back(callback);
   }
 
   void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback)
-      override {}
+      const ClientCallback<CancelLeasesWithResourceShapesReply> &callback) override {}
 
   void IsLocalWorkerDead(
       const WorkerID &worker_id,
-      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override {}
+      const ClientCallback<IsLocalWorkerDeadReply> &callback) override {}
 
   std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
 
-  void GetNodeStats(
-      const rpc::GetNodeStatsRequest &request,
-      const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override {}
+  void GetNodeStats(const GetNodeStatsRequest &request,
+                    const ClientCallback<GetNodeStatsReply> &callback) override {}
 
-  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override {}
+  void GlobalGC(const ClientCallback<GlobalGCReply> &callback) override {}
 
   int64_t GetPinsInFlight() const override { return 0; }
 
@@ -294,19 +292,19 @@ class FakeRayletClient : public RayletClientInterface {
   int num_release_unused_workers = 0;
   int num_get_task_failure_causes = 0;
   NodeID node_id_ = NodeID::FromRandom();
-  std::list<rpc::ClientCallback<rpc::DrainRayletReply>> drain_raylet_callbacks = {};
-  std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
-  std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
-  std::list<rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply>> release_callbacks =
-      {};
+  std::list<ClientCallback<DrainRayletReply>> drain_raylet_callbacks = {};
+  std::list<ClientCallback<RequestWorkerLeaseReply>> callbacks = {};
+  std::list<ClientCallback<CancelWorkerLeaseReply>> cancel_callbacks = {};
+  std::list<ClientCallback<ReleaseUnusedActorWorkersReply>> release_callbacks = {};
   int num_lease_requested = 0;
   int num_return_requested = 0;
   int num_commit_requested = 0;
 
   int num_release_unused_bundles_requested = 0;
-  std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
-  std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};
-  std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
+  std::list<ClientCallback<PrepareBundleResourcesReply>> lease_callbacks = {};
+  std::list<ClientCallback<CommitBundleResourcesReply>> commit_callbacks = {};
+  std::list<ClientCallback<CancelResourceReserveReply>> return_callbacks = {};
 };
 
+}  // namespace rpc
 }  // namespace ray
