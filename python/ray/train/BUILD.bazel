@@ -352,6 +352,7 @@ py_test(
     name = "test_torch_accelerate",
     size = "large",
     srcs = ["tests/test_torch_accelerate.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu_only",
@@ -367,6 +368,8 @@ py_test(
     name = "test_api_migrations",
     size = "small",
     srcs = ["tests/test_api_migrations.py"],
+    # NOTE: This test explicitly tests V1 -> V2 migration.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -381,6 +384,8 @@ py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
+    # TODO: should port over
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -395,6 +400,7 @@ py_test(
     name = "test_base_trainer",
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "ray_air",
@@ -410,6 +416,7 @@ py_test(
     name = "test_checkpoint",
     size = "small",
     srcs = ["tests/test_checkpoint.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -421,6 +428,8 @@ py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
+    # NOTE: This already has a V2 copy.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -432,6 +441,7 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "ray_air",
@@ -444,6 +454,7 @@ py_test(
     name = "test_data_parallel_trainer_checkpointing",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer_checkpointing.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "ray_air",
@@ -470,6 +481,8 @@ py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],
+    # TODO: move over, rename to test_torch_gpu_utils
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "gpu_only",
@@ -485,6 +498,7 @@ py_test(
     name = "test_gpu_2",
     size = "medium",
     srcs = ["tests/test_gpu_2.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "gpu_only",
@@ -500,6 +514,7 @@ py_test(
     name = "test_iter_torch_batches_gpu",
     size = "medium",
     srcs = ["tests/test_iter_torch_batches_gpu.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu_only",
@@ -515,6 +530,7 @@ py_test(
     name = "test_gpu_auto_transfer",
     size = "medium",
     srcs = ["tests/test_gpu_auto_transfer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu_only",
@@ -545,6 +561,7 @@ py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu_only",
@@ -558,6 +575,7 @@ py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "manual",
@@ -571,6 +589,7 @@ py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "ray_air",
@@ -586,6 +605,7 @@ py_test(
     name = "test_lightgbm_trainer",
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "ray_air",
@@ -598,6 +618,8 @@ py_test(
     name = "test_torch_lightning_train",
     size = "large",
     srcs = ["tests/test_torch_lightning_train.py"],
+    # TODO: move over
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "gpu",
@@ -612,6 +634,8 @@ py_test(
     name = "test_torch_transformers_train",
     size = "large",
     srcs = ["tests/test_torch_transformers_train.py"],
+    # NOTE: There's already a copy in V2.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "gpu",
@@ -625,6 +649,7 @@ py_test(
     name = "accelerate_torch_trainer",
     size = "large",
     srcs = ["examples/accelerate/accelerate_torch_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu",
@@ -637,6 +662,7 @@ py_test(
     name = "accelerate_torch_trainer_no_raydata",
     size = "large",
     srcs = ["examples/accelerate/accelerate_torch_trainer_no_raydata.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu",
@@ -649,6 +675,7 @@ py_test(
     name = "deepspeed_torch_trainer",
     size = "large",
     srcs = ["examples/deepspeed/deepspeed_torch_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu",
@@ -661,6 +688,7 @@ py_test(
     name = "deepspeed_torch_trainer_no_raydata",
     size = "large",
     srcs = ["examples/deepspeed/deepspeed_torch_trainer_no_raydata.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu",
@@ -673,6 +701,8 @@ py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
+    # TODO: move over
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "minimal",
@@ -685,6 +715,8 @@ py_test(
     name = "test_new_persistence",
     size = "large",
     srcs = ["tests/test_new_persistence.py"],
+    # NOTE: There's already a copy in V2.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -699,6 +731,7 @@ py_test(
     name = "test_predictor",
     size = "small",
     srcs = ["tests/test_predictor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "ray_air",
@@ -711,6 +744,8 @@ py_test(
     name = "test_result",
     size = "medium",
     srcs = ["tests/test_result.py"],
+    # NOTE: There's already a copy in V2.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -725,6 +760,7 @@ py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -739,6 +775,7 @@ py_test(
     name = "test_storage",
     size = "small",
     srcs = ["tests/test_storage.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
