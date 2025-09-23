@@ -69,14 +69,18 @@ def get_localhost_ip() -> str:
     Returns:
         The localhost loopback IP.
     """
-    try:
-        dns_result = socket.getaddrinfo(
-            "localhost", None, socket.AF_UNSPEC, socket.SOCK_STREAM
-        )
-        return dns_result[0][4][0]
-    except Exception:
-        # Final fallback to IPv4 loopback
-        return "127.0.0.1"
+    # Try IPv4 first, then IPv6 localhost resolution
+    for family in [socket.AF_INET, socket.AF_INET6]:
+        try:
+            dns_result = socket.getaddrinfo(
+                "localhost", None, family, socket.SOCK_STREAM
+            )
+            return dns_result[0][4][0]
+        except Exception:
+            continue
+
+    # Final fallback to IPv4 loopback
+    return "127.0.0.1"
 
 
 def is_localhost(host: str) -> bool:
