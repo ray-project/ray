@@ -23,6 +23,8 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor_manager.h"
 #include "ray/gcs/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_job_manager.h"
@@ -37,9 +39,7 @@
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/raylet/raylet_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -521,7 +521,9 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      worker_client_pool_);
+      worker_client_pool_,
+      *ray_event_recorder_,
+      config_.session_name);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(

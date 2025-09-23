@@ -27,6 +27,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -34,9 +36,8 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/worker/core_worker_client_interface.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -104,7 +105,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-      rpc::CoreWorkerClientPool &worker_client_pool);
+      rpc::CoreWorkerClientPool &worker_client_pool,
+      observability::RayEventRecorderInterface &ray_event_recorder,
+      const std::string &session_name);
 
   ~GcsActorManager() override = default;
 
@@ -477,6 +480,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   pubsub::GcsPublisher *gcs_publisher_;
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
+  /// Event recorder for emitting actor events
+  observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
