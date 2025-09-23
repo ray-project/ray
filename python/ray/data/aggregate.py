@@ -901,7 +901,7 @@ class ValueCounter(AggregateFnV2):
             alias_name if alias_name else f"value_counter({str(on)})",
             on=on,
             ignore_nulls=True,
-            zero_factory=lambda: {},
+            zero_factory=lambda: {"values": [], "counts": []},
         )
 
     def aggregate_block(self, block: Block) -> Dict[str, List]:
