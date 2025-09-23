@@ -15,6 +15,7 @@ from ray.core.generated import (
 )
 from ray.dashboard.modules.aggregator.publisher.configs import (
     GCS_EXPOSABLE_EVENT_TYPES,
+    HTTP_EXPOSABLE_EVENT_TYPES,
     PUBLISHER_TIMEOUT_SECONDS,
 )
 
@@ -78,11 +79,6 @@ class PublisherClientInterface(ABC):
         )
 
     @abstractmethod
-    async def publish(self, batch) -> PublishStats:
-        """Publish a batch of events to the destination."""
-        pass
-
-    @abstractmethod
     async def publish(self, batch: PublishBatch) -> PublishStats:
         """Publish a batch of events to the destination."""
         pass
@@ -107,6 +103,8 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._executor = executor
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
+
+        self._exposable_event_types = [event_type.strip() for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")]
 
     async def publish(self, batch: PublishBatch) -> PublishStats:
         events_batch: list[events_base_event_pb2.RayEvent] = batch.events

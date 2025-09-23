@@ -108,7 +108,7 @@ class RayEventPublisher(RayEventPublisherInterface):
             logger.info(f"Starting publisher {self._name}")
             while True:
                 events_batch = await self._event_buffer.wait_for_batch(
-                    self._event_buffer_consumer_id,
+                    self._name,
                     PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
                 )
                 publish_batch = PublishBatch(events=events_batch)
