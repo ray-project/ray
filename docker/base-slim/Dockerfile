@@ -12,8 +12,6 @@ RUN <<EOF
 set -euo pipefail
 set -x
 
-export DEBIAN_FRONTEND=noninteractive
-
 APT_PKGS=(
 	ca-certificates
 	netbase
@@ -146,8 +144,6 @@ ENV PATH="/home/ray/anaconda3/bin:$PATH"
 
 # --- HAProxy Build Stage ---
 FROM ubuntu:22.04 as haproxy-builder
-
-ARG DEBIAN_FRONTEND=noninteractive
 
 RUN <<EOF
 #!/bin/bash
