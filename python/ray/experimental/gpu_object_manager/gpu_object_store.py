@@ -44,13 +44,17 @@ def _tensor_transport_to_collective_backend(
 def __ray_send__(
     self,
     obj_id: str,
-    tensor_transport_meta: List[ObjectRef],
+    tensor_transport_meta: List[Union[ObjectRef, TensorTransportMetadata]],
     communicator_meta: CommunicatorMetadata,
 ):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     from ray._private.worker import global_worker
 
-    tensor_transport_meta: TensorTransportMetadata = ray.get(tensor_transport_meta[0])
+    tensor_transport_meta: TensorTransportMetadata = (
+        ray.get(tensor_transport_meta[0])
+        if isinstance(tensor_transport_meta[0], ObjectRef)
+        else tensor_transport_meta[0]
+    )
 
     gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
     assert gpu_object_store.has_object(
