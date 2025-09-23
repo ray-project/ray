@@ -45,6 +45,7 @@ class ObjectRefGenerator:
     >>> next(gen)
     >>> await gen.__anext__()
     """
+    
     def __init__(self, generator_ref: ray.ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
