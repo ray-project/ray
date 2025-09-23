@@ -5981,7 +5981,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+            ] = (
             _ref_bundles_iterator_to_block_refs_list(ref_bundles)
         )
 
