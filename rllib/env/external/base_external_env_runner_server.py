@@ -221,7 +221,7 @@ class BaseExternalEnvRunnerServer(
         self.base_env_runner_type.set_state(self, state=state)
 
         with self.clients_lock:
-            for client_socket in self.client_sockets:
+            for client_socket in self.client_sockets[:]:
                 try:
                     self._send_set_state_message(client_socket)
                     self._client_needs_state[client_socket] = False
@@ -336,12 +336,6 @@ class BaseExternalEnvRunnerServer(
         send_rllink_message(client_socket, {"type": RLlink.PONG.name})
 
     def _process_episodes_message(self, msg_type, msg_body, client_socket):
-        # On-policy training -> we have to block until we get a new `set_state` call
-        # (b/c the learning step is done and we can send new weights back to all
-        # clients).
-        if msg_type == RLlink.EPISODES_AND_GET_STATE:
-            self._blocked_on_state = True
-
         episodes = []
         for episode_state in msg_body["episodes"]:
             episode = self.episode_type.from_state(episode_state)

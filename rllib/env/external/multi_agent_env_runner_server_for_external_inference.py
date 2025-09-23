@@ -18,8 +18,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
-
-from rllib.env.external.base_external_env_runner_server import (
+from ray.rllib.env.external.base_external_env_runner_server import (
     BaseExternalEnvRunnerServer,
 )
 from ray.util.annotations import DeveloperAPI

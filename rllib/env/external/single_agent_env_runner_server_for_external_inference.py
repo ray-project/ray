@@ -4,7 +4,7 @@ from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
-from rllib.env.external.base_external_env_runner_server import (
+from ray.rllib.env.external.base_external_env_runner_server import (
     BaseExternalEnvRunnerServer,
 )
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner

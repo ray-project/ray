@@ -67,7 +67,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from rllib.env.external.single_agent_env_runner_server_for_external_inference import (
+from ray.rllib.env.external.single_agent_env_runner_server_for_external_inference import (
     SingleAgentEnvRunnerServerForExternalInference,
 )
 from ray.rllib.examples.envs.classes.utils.dummy_external_client import (
