@@ -403,11 +403,9 @@ class AutoscalingState:
         if running_requests_timeseries:
 
             # assume that the last recorded metric is valid for last_window_s seconds
-            last_metric_timestamp = running_requests_timeseries[-1].timestamp
             last_window_s = min(
                 self._config.metrics_interval_s,
                 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                abs(time.time() - last_metric_timestamp),
             )
             assert last_window_s >= 0, "last_window_s must be greater than 0"
             # Calculate the time-weighted average of the running requests
