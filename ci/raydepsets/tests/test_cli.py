@@ -1,9 +1,11 @@
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 import runfiles
@@ -48,6 +50,23 @@ def _create_test_manager(
     )
 
 
+def _invoke_build(tmpdir: str, config_path: str, name: Optional[str] = None):
+    uv_cache_dir = Path(tmpdir) / "uv_cache"
+    cmd = [
+        config_path,
+        "--workspace-dir",
+        tmpdir,
+        "--uv-cache-dir",
+        uv_cache_dir.as_posix(),
+    ]
+    if name:
+        cmd.extend(["--name", name])
+    return CliRunner().invoke(
+        build,
+        cmd,
+    )
+
+
 def _overwrite_config_file(tmpdir: str, depset: Depset):
     with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
         f.write(
@@ -68,14 +87,7 @@ class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            result = CliRunner().invoke(
-                build,
-                [
-                    "fake_path/test.depsets.yaml",
-                    "--workspace-dir",
-                    tmpdir,
-                ],
-            )
+            result = _invoke_build(tmpdir, "fake_path/test.depsets.yaml")
             assert result.exit_code == 1
             assert isinstance(result.exception, FileNotFoundError)
             assert "No such file or directory" in str(result.exception)
@@ -184,19 +196,7 @@ class TestCli(unittest.TestCase):
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            uv_cache_dir = Path(tmpdir) / "uv_cache"
-            result = CliRunner().invoke(
-                build,
-                [
-                    "test.depsets.yaml",
-                    "--workspace-dir",
-                    tmpdir,
-                    "--name",
-                    "ray_base_test_depset",
-                    "--uv-cache-dir",
-                    uv_cache_dir.as_posix(),
-                ],
-            )
+            result = _invoke_build(tmpdir, "test.depsets.yaml", "ray_base_test_depset")
             output_fp = Path(tmpdir) / "requirements_compiled.txt"
             assert output_fp.is_file()
             assert result.exit_code == 0
@@ -352,8 +352,6 @@ class TestCli(unittest.TestCase):
     def test_override_uv_flag_multiple_flags(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
         expected_flags.remove("--unsafe-package")
-        expected_flags.remove("ray")
-        expected_flags.remove("--unsafe-package")
         expected_flags.remove("setuptools")
         expected_flags.extend(["--unsafe-package", "dummy"])
         assert (
@@ -387,8 +385,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 8
-            assert len(manager.build_graph.edges()) == 4
+            assert len(manager.build_graph.nodes()) == 10
+            assert len(manager.build_graph.edges()) == 5
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -584,24 +582,24 @@ class TestCli(unittest.TestCase):
     def test_execute_single_pre_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
-            manager.execute_pre_hook("pre-hook-test.sh")
+            result = _invoke_build(tmpdir, "test.depsets.yaml", "pre_hook_test_depset")
+            assert (Path(tmpdir) / "test.depsets.yaml").exists()
+            assert result.exit_code == 0
+            assert "Pre-hook test" in result.output
+            assert "Executed pre_hook pre-hook-test.sh successfully" in result.output
 
     def test_execute_single_invalid_pre_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
-            with self.assertRaises(RuntimeError):
-                manager.execute_pre_hook("pre-hook-error-test.sh")
-
-    def test_execute_pre_hooks_failure_in_middle(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
-            with self.assertRaises(RuntimeError):
-                manager.execute_pre_hook("pre-hook-test.sh")
-                manager.execute_pre_hook("pre-hook-error-test.sh")
-                manager.execute_pre_hook("pre-hook-test.sh")
+            result = _invoke_build(
+                tmpdir, "test.depsets.yaml", "pre_hook_invalid_test_depset"
+            )
+            assert result.exit_code == 1
+            assert isinstance(result.exception, RuntimeError)
+            assert (
+                "Failed to execute pre_hook pre-hook-error-test.sh with error:"
+                in str(result.exception)
+            )
 
     def test_copy_lock_files_to_temp_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -724,6 +722,16 @@ class TestCli(unittest.TestCase):
             output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_execute_pre_hook(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_pre_hook("pre-hook-test.sh test")
+            stdout = mock_stdout.getvalue()
+            assert "Pre-hook test\n" in stdout
+            assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
 
 
 if __name__ == "__main__":

@@ -23,8 +23,6 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/object_manager/common.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "ray/raylet/local_object_manager_interface.h"
