@@ -1,6 +1,5 @@
 import asyncio
 import time
-import uuid
 from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -19,10 +18,8 @@ from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_P
 class _ConsumerState:
     # Index of the next event to be consumed by this consumer
     cursor_index: int
-    # Name of the consumer used for metric naming
-    consumer_name: str
-    # Event to signal that there are new events to consume
-    has_new_events_to_consume: asyncio.Event
+    # Condition variable to signal that there are new events to consume
+    has_new_events_to_consume: asyncio.Condition
 
 
 class MultiConsumerEventBuffer:
@@ -74,9 +71,9 @@ class MultiConsumerEventBuffer:
                 dropped_event = self._buffer.popleft()
             self._buffer.append(event)
 
-            for _, consumer_state in self._consumers.items():
+            for consumer_name, consumer_state in self._consumers.items():
                 # Signal the consumer that there are new events to consume
-                consumer_state.has_new_events_to_consume.set()
+                consumer_state.has_new_events_to_consume.notify_all()
 
                 if dropped_event is None:
                     continue
@@ -88,7 +85,7 @@ class MultiConsumerEventBuffer:
                         self.evicted_events_metric_name,
                         {
                             **self._common_metrics_tags,
-                            self._consumer_tag_key: consumer_state.consumer_name,
+                            self._consumer_tag_key: consumer_name,
                             "event_type": RayEvent.EventType.Name(
                                 dropped_event.event_type
                             ),
@@ -100,7 +97,7 @@ class MultiConsumerEventBuffer:
                     consumer_state.cursor_index -= 1
 
     async def wait_for_batch(
-        self, consumer_id: str, timeout_seconds: float = 1.0
+        self, consumer_name: str, timeout_seconds: float = 1.0
     ) -> List[events_base_event_pb2.RayEvent]:
         """Wait for batch respecting self.max_batch_size and timeout_seconds.
 
@@ -112,7 +109,7 @@ class MultiConsumerEventBuffer:
         indefinitely until an item comes in.
 
         Arguments:
-            consumer_id: id of the consumer consuming the batch
+            consumer_name: name of the consumer consuming the batch
             timeout_seconds: maximum time to wait for a batch
 
         Returns:
@@ -121,26 +118,20 @@ class MultiConsumerEventBuffer:
         """
         max_batch = self._max_batch_size
         async with self._lock:
-            consumer_state = self._consumers.get(consumer_id)
+            consumer_state = self._consumers.get(consumer_name)
             if consumer_state is None:
-                raise KeyError(f"unknown consumer '{consumer_id}'")
+                raise KeyError(f"unknown consumer '{consumer_name}'")
             has_events_to_consume = consumer_state.has_new_events_to_consume
 
         # Phase 1: read the first event, wait indefinitely until there is at least one event to consume
-        # Wait inside a loop to deal with spurious wakeups.
-        while True:
-            # Wait outside the lock to avoid deadlocks
-            await has_events_to_consume.wait()
-            async with self._lock:
-                if consumer_state.cursor_index < len(self._buffer):
-                    # Add the first event to the batch
-                    event = self._buffer[consumer_state.cursor_index]
-                    consumer_state.cursor_index += 1
-                    batch = [event]
-                    break
+        async with has_events_to_consume:
+            while consumer_state.cursor_index >= len(self._buffer):
+                await has_events_to_consume.wait()
 
-                # There are no new events to consume, clear the event and wait for it to be set again
-                has_events_to_consume.clear()
+            # Add the first event to the batch
+            event = self._buffer[consumer_state.cursor_index]
+            consumer_state.cursor_index += 1
+            batch = [event]
 
         # Phase 2: add items to the batch up to timeout or until full
         deadline = time.monotonic() + max(0.0, float(timeout_seconds))
@@ -149,7 +140,7 @@ class MultiConsumerEventBuffer:
             if remaining <= 0:
                 break
 
-            async with self._lock:
+            async with has_events_to_consume:
                 # Drain whatever is available
                 while len(batch) < max_batch and consumer_state.cursor_index < len(
                     self._buffer
@@ -160,34 +151,30 @@ class MultiConsumerEventBuffer:
                 if len(batch) >= max_batch:
                     break
 
-                # There is still room in the batch, but no new events to consume, clear the event and wait for it to be set again
-                has_events_to_consume.clear()
-            try:
-                await asyncio.wait_for(has_events_to_consume.wait(), remaining)
-            except asyncio.TimeoutError:
-                # Timeout, return the current batch
-                break
+                # There is still room in the batch, but no new events to consume; wait until notified or timeout
+                try:
+                    await asyncio.wait_for(has_events_to_consume.wait(), remaining)
+                except asyncio.TimeoutError:
+                    # Timeout, return the current batch
+                    break
 
         return batch
 
-    async def register_consumer(self, consumer_name: str) -> str:
+    async def register_consumer(self, consumer_name: str) -> None:
         """Register a new consumer with a name.
 
         Arguments:
             consumer_name: A unique name for the consumer.
 
-        Returns:
-            Id of the consumer, used to identify the consumer in other methods.
         """
         async with self._lock:
-            consumer_id = str(uuid.uuid4())
+            if self._consumers.get(consumer_name) is not None:
+                raise ValueError(f"consumer '{consumer_name}' already registered")
 
-            self._consumers[consumer_id] = _ConsumerState(
+            self._consumers[consumer_name] = _ConsumerState(
                 cursor_index=0,
-                consumer_name=consumer_name,
-                has_new_events_to_consume=asyncio.Event(),
+                has_new_events_to_consume=asyncio.Condition(self._lock),
             )
-            return consumer_id
 
     async def size(self) -> int:
         """Get total number of events in the buffer. Does not take consumer cursors into account."""

@@ -85,7 +85,6 @@ class RayEventPublisher(RayEventPublisherInterface):
         self._jitter_ratio = float(jitter_ratio)
         self._publish_client = publish_client
         self._event_buffer = event_buffer
-        self._event_buffer_consumer_id = None
 
         # Event set once the publisher has registered as a consumer and is ready to publish events
         self._started_event: asyncio.Event = asyncio.Event()
@@ -95,9 +94,7 @@ class RayEventPublisher(RayEventPublisherInterface):
 
         Registers as a consumer, starts the worker loop, and handles cleanup on cancellation.
         """
-        self._event_buffer_consumer_id = await self._event_buffer.register_consumer(
-            self._name
-        )
+        await self._event_buffer.register_consumer(self._name)
 
         # Signal that the publisher is ready to publish events
         self._started_event.set()
@@ -106,7 +103,7 @@ class RayEventPublisher(RayEventPublisherInterface):
             logger.info(f"Starting publisher {self._name}")
             while True:
                 batch = await self._event_buffer.wait_for_batch(
-                    self._event_buffer_consumer_id,
+                    self._name,
                     PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
                 )
                 await self._async_publish_with_retries(batch)

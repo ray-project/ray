@@ -19,8 +19,11 @@ logger = logging.getLogger(__name__)
 class PublishStats:
     """Data class that represents stats of publishing a batch of events."""
 
+    # Whether the publish was successful
     is_publish_successful: bool
+    # Number of events published
     num_events_published: int
+    # Number of events filtered out
     num_events_filtered_out: int
 
 
