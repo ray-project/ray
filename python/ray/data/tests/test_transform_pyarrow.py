@@ -610,29 +610,6 @@ def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_sch
         unify_schemas(unify_schemas_objects_and_tensors_schemas)
 
 
-def _sort_schema_fields(schema):
-    """Helper function to recursively sort schema fields by name for deterministic comparison."""
-
-    def _sort_recursively(data_type):
-        if pa.types.is_struct(data_type):
-            return pa.struct(
-                [
-                    field.with_type(_sort_recursively(field.type))
-                    for field in sorted(data_type, key=lambda f: f.name)
-                ]
-            )
-        if pa.types.is_list(data_type):
-            return pa.list_(_sort_recursively(data_type.value_type))
-        return data_type
-
-    return pa.schema(
-        [
-            field.with_type(_sort_recursively(field.type))
-            for field in sorted(schema, key=lambda f: f.name)
-        ]
-    )
-
-
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
@@ -657,10 +634,7 @@ def test_unify_schemas_nested_struct_tensors(
     # Should convert nested tensor to variable-shaped
     result = unify_schemas([schemas["with_tensor"], schemas["without_tensor"]])
 
-    # Sort field names for deterministic comparison
-    result_sorted = _sort_schema_fields(result)
-    expected_sorted = _sort_schema_fields(schemas["expected"])
-    assert result_sorted == expected_sorted
+    assert result == schemas["expected"]
 
 
 def test_unify_schemas_edge_cases(unify_schemas_edge_cases_data):
