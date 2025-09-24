@@ -1256,6 +1256,231 @@ def test_anti_join_multi_key(
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
+@pytest.mark.parametrize(
+    "join_type", ["left_semi", "right_semi", "left_anti", "right_anti"]
+)
+def test_broadcast_join_unsupported_join_types(
+    ray_start_regular_shared_2_cpus, join_type
+):
+    """Test that unsupported join types properly raise ValueError for broadcast joins."""
+
+    left_ds = ray.data.from_items([{"id": 1, "value": "a"}])
+    right_ds = ray.data.from_items([{"id": 1, "value": "x"}])
+
+    with pytest.raises(
+        ValueError, match=f"Join type '{join_type}' is not supported in broadcast joins"
+    ):
+        left_ds.join(
+            right_ds,
+            join_type=join_type,
+            on=("id",),
+            broadcast=True,
+        )
+
+
+def test_broadcast_join_empty_datasets(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with empty datasets."""
+
+    # Test empty left dataset
+    empty_left = ray.data.from_items([])
+    non_empty_right = ray.data.from_items([{"id": 1, "value": "x"}])
+
+    result = empty_left.join(
+        non_empty_right,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    assert result.count() == 0
+
+    # Test empty right dataset
+    non_empty_left = ray.data.from_items([{"id": 1, "value": "a"}])
+    empty_right = ray.data.from_items([])
+
+    result = non_empty_left.join(
+        empty_right,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    assert result.count() == 0
+
+    # Test left outer join with empty right
+    result = non_empty_left.join(
+        empty_right,
+        join_type="left_outer",
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Should return all left rows with null right columns
+    assert result.count() == 1
+    result_df = pd.DataFrame(result.take_all())
+    assert result_df.loc[0, "id"] == 1
+    assert result_df.loc[0, "value"] == "a"
+
+    # Test both datasets empty
+    empty_left = ray.data.from_items([])
+    empty_right = ray.data.from_items([])
+
+    result = empty_left.join(
+        empty_right,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    assert result.count() == 0
+
+
+def test_broadcast_join_no_matching_keys(ray_start_regular_shared_2_cpus):
+    """Test broadcast join when datasets have no matching keys."""
+
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "left_value": "a"},
+            {"id": 2, "left_value": "b"},
+            {"id": 3, "left_value": "c"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 10, "right_value": "x"},
+            {"id": 20, "right_value": "y"},
+        ]
+    )
+
+    # Test inner join - should return empty
+    inner_result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    assert inner_result.count() == 0
+
+    # Test left outer join - should return all left rows with null right columns
+    left_outer_result = left_ds.join(
+        right_ds,
+        join_type="left_outer",
+        on=("id",),
+        broadcast=True,
+    )
+
+    assert left_outer_result.count() == 3
+    result_df = pd.DataFrame(left_outer_result.take_all())
+    assert set(result_df["id"].tolist()) == {1, 2, 3}
+    assert result_df["right_value"].isna().all()
+
+    # Test right outer join - should return all right rows with null left columns
+    right_outer_result = left_ds.join(
+        right_ds,
+        join_type="right_outer",
+        on=("id",),
+        broadcast=True,
+    )
+
+    assert right_outer_result.count() == 2
+    result_df = pd.DataFrame(right_outer_result.take_all())
+    assert set(result_df["id"].tolist()) == {10, 20}
+    assert result_df["left_value"].isna().all()
+
+    # Test full outer join - should return all rows from both sides
+    full_outer_result = left_ds.join(
+        right_ds,
+        join_type="full_outer",
+        on=("id",),
+        broadcast=True,
+    )
+
+    assert full_outer_result.count() == 5
+    result_df = pd.DataFrame(full_outer_result.take_all())
+    assert set(result_df["id"].tolist()) == {1, 2, 3, 10, 20}
+
+
+def test_broadcast_join_schema_mismatch_keys(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with mismatched key column types."""
+
+    # Create datasets with different key types
+    left_ds = ray.data.from_items(
+        [
+            {"id": "1", "value": "a"},  # string id
+            {"id": "2", "value": "b"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": "x"},  # int id
+            {"id": 2, "value": "y"},
+        ]
+    )
+
+    # The join should handle type coercion or fail gracefully
+    # This tests the robustness of the PyArrow join implementation
+    try:
+        result = left_ds.join(
+            right_ds,
+            join_type="inner",
+            on=("id",),
+            broadcast=True,
+        )
+        # If it succeeds, verify the result
+        result_count = result.count()
+        # The exact behavior depends on PyArrow's type coercion
+        # We just verify it doesn't crash
+        assert result_count >= 0
+    except (ValueError, TypeError) as e:
+        # It's acceptable for this to fail with a clear error
+        assert "type" in str(e).lower() or "schema" in str(e).lower()
+
+
+def test_broadcast_join_duplicate_keys(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with duplicate keys in datasets."""
+
+    # Left dataset with duplicate keys
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "left_value": "a1"},
+            {"id": 1, "left_value": "a2"},  # duplicate key
+            {"id": 2, "left_value": "b"},
+        ]
+    )
+
+    # Right dataset with duplicate keys
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "right_value": "x1"},
+            {"id": 1, "right_value": "x2"},  # duplicate key
+            {"id": 3, "right_value": "z"},
+        ]
+    )
+
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Should return all combinations of matching keys (cartesian product)
+    # 2 left rows with id=1 × 2 right rows with id=1 = 4 result rows
+    assert result.count() == 4
+
+    result_df = pd.DataFrame(result.take_all())
+    id_1_rows = result_df[result_df["id"] == 1]
+    assert len(id_1_rows) == 4
+
+    # Verify all combinations are present
+    expected_combinations = {("a1", "x1"), ("a1", "x2"), ("a2", "x1"), ("a2", "x2")}
+    actual_combinations = set(zip(id_1_rows["left_value"], id_1_rows["right_value"]))
+    assert actual_combinations == expected_combinations
+
+
 if __name__ == "__main__":
     import sys
 

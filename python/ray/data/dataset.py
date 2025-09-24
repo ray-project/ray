@@ -2726,25 +2726,20 @@ class Dataset:
                 datasets_swapped=datasets_swapped,
             )
 
-            # For broadcast joins, if num_partitions is not specified, use the number of partitions
-            # from the large dataset to maintain partition structure
-            if num_partitions is None:
-                target_partitions = large_ds.num_blocks()
+            # For broadcast joins, use map_batches with appropriate concurrency
+            # If num_partitions is specified, use it; otherwise use default concurrency behavior
+            if num_partitions is not None:
+                result = large_ds.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
+                    concurrency=num_partitions,
+                )
             else:
-                target_partitions = num_partitions
-
-            # Use PyArrow's native join functionality for the supported join types
-            result = large_ds.map_batches(
-                join_fn,
-                batch_format="pyarrow",
-                concurrency=target_partitions,
-            )
-
-            # Only repartition if the target is different from current partitions
-            # and avoid unnecessary repartitioning for small datasets to prevent timeouts
-            current_partitions = result.num_blocks()
-            if target_partitions != current_partitions and target_partitions > 1:
-                result = result.repartition(target_partitions)
+                # Let map_batches determine the concurrency based on the dataset structure
+                result = large_ds.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
+                )
 
             return result
         else:
@@ -5962,9 +5957,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[ObjectRef["pyarrow.Table"]] = (
-            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
-        )
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
 
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.

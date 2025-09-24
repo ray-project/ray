@@ -8,11 +8,12 @@ to all partitions of the larger dataset.
 
 from typing import Optional, Tuple
 
+import pyarrow as pa
+
 import ray
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data.block import DataBatch
 from ray.data.dataset import Dataset
-
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
@@ -76,39 +77,52 @@ class BroadcastJoinFunction:
                 f"Supported types are: {list(_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP.keys())}"
             )
 
-        # Materialize the small dataset for broadcasting
+        # Materialize and coalesce the small dataset for broadcasting
+        # Using repartition(1) ensures all data is in a single partition for efficient broadcasting
         coalesced_ds = small_table_dataset.repartition(1).materialize()
 
-        # Get PyArrow table reference from the dataset
+        # Convert to PyArrow table for efficient in-memory operations
         arrow_refs = coalesced_ds.to_arrow_refs()
-        if len(arrow_refs) != 1:
-            # Combine multiple references into one
-            import pyarrow as pa
 
-            arrow_tables = [ray.get(ref) for ref in arrow_refs]
-            if arrow_tables:
-                self.small_table = pa.concat_tables(arrow_tables)
-            else:
-                self.small_table = pa.table({})
-        else:
+        if len(arrow_refs) == 0:
+            # Handle empty dataset case
+            self.small_table = pa.table({})
+        elif len(arrow_refs) == 1:
+            # Single reference - most common case for coalesced dataset
             self.small_table = ray.get(arrow_refs[0])
+        else:
+            # Multiple references - concatenate them
+            arrow_tables = [ray.get(ref) for ref in arrow_refs]
+            self.small_table = (
+                pa.concat_tables(arrow_tables) if arrow_tables else pa.table({})
+            )
 
     def __call__(self, batch: DataBatch) -> DataBatch:
-        """Perform PyArrow join on a batch from the large table."""
-        import pyarrow as pa
+        """Perform PyArrow join on a batch from the large table.
 
-        # Convert batch to PyArrow table if needed
-        if isinstance(batch, dict):
-            batch = pa.table(batch)
+        Args:
+            batch: A batch of data from the large dataset to join with the small table.
 
-        # Handle empty batch case
-        if batch.num_rows == 0:
-            # Return empty table with proper schema for join result
-            return self._create_empty_result_table(batch)
+        Returns:
+            The joined result as a PyArrow table.
 
-        # Handle empty small table case
-        if self.small_table.num_rows == 0:
-            return self._handle_empty_small_table(batch)
+        Raises:
+            ValueError: If the join operation cannot be performed due to incompatible schemas.
+        """
+        try:
+            # Convert batch to PyArrow table if needed
+            if isinstance(batch, dict):
+                batch = pa.table(batch)
+
+            # Handle empty batch case
+            if batch.num_rows == 0:
+                return self._create_empty_result_table(batch)
+
+            # Handle empty small table case
+            if self.small_table.num_rows == 0:
+                return self._handle_empty_small_table(batch)
+        except Exception as e:
+            raise ValueError(f"Error preparing data for broadcast join: {e}") from e
 
         # Get the appropriate PyArrow join type
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
@@ -118,44 +132,42 @@ class BroadcastJoinFunction:
             self.small_table_key_columns
         )
 
-        # Perform the PyArrow join
-        if self.datasets_swapped:
-            # When datasets are swapped, we need to adjust the join type and parameters
-            # The original left/right semantics need to be preserved
-            swapped_join_type = self._get_swapped_join_type(arrow_join_type)
+        try:
+            # Perform the PyArrow join
+            # The join parameters depend on whether datasets were swapped for optimization
+            if self.datasets_swapped:
+                # When datasets are swapped, small_table becomes the left table in the join
+                # We need to adjust the join type to preserve original left/right semantics
+                swapped_join_type = self._get_swapped_join_type(arrow_join_type)
 
-            joined_table = self.small_table.join(
-                batch,
-                join_type=swapped_join_type,
-                keys=list(self.small_table_key_columns),
-                right_keys=(
-                    list(self.large_table_key_columns)
-                    if list(self.small_table_key_columns)
-                    != list(self.large_table_key_columns)
-                    else None
-                ),
-                left_suffix=self.small_table_columns_suffix,
-                right_suffix=self.large_table_columns_suffix,
-                coalesce_keys=coalesce_keys,
-            )
-        else:
-            # Normal case: batch.join(small_table)
-            joined_table = batch.join(
-                self.small_table,
-                join_type=arrow_join_type,
-                keys=list(self.large_table_key_columns),
-                right_keys=(
-                    list(self.small_table_key_columns)
-                    if list(self.large_table_key_columns)
-                    != list(self.small_table_key_columns)
-                    else None
-                ),
-                left_suffix=self.large_table_columns_suffix,
-                right_suffix=self.small_table_columns_suffix,
-                coalesce_keys=coalesce_keys,
-            )
+                joined_table = self.small_table.join(
+                    batch,
+                    join_type=swapped_join_type,
+                    keys=list(self.small_table_key_columns),
+                    right_keys=list(self.large_table_key_columns)
+                    if self.small_table_key_columns != self.large_table_key_columns
+                    else None,
+                    left_suffix=self.small_table_columns_suffix,
+                    right_suffix=self.large_table_columns_suffix,
+                    coalesce_keys=coalesce_keys,
+                )
+            else:
+                # Normal case: large batch joins with small table
+                joined_table = batch.join(
+                    self.small_table,
+                    join_type=arrow_join_type,
+                    keys=list(self.large_table_key_columns),
+                    right_keys=list(self.small_table_key_columns)
+                    if self.large_table_key_columns != self.small_table_key_columns
+                    else None,
+                    left_suffix=self.large_table_columns_suffix,
+                    right_suffix=self.small_table_columns_suffix,
+                    coalesce_keys=coalesce_keys,
+                )
 
-        return joined_table
+            return joined_table
+        except Exception as e:
+            raise ValueError(f"PyArrow join operation failed: {e}") from e
 
     def _get_swapped_join_type(self, original_join_type: str) -> str:
         """Get the appropriate join type when datasets are swapped."""
@@ -168,10 +180,15 @@ class BroadcastJoinFunction:
         }
         return join_type_mapping.get(original_join_type, original_join_type)
 
-    def _create_empty_result_table(self, batch) -> "DataBatch":
-        """Create an empty result table with proper schema for join operations."""
-        import pyarrow as pa
+    def _create_empty_result_table(self, batch: pa.Table) -> pa.Table:
+        """Create an empty result table with proper schema for join operations.
 
+        Args:
+            batch: The batch from the large dataset to determine schema.
+
+        Returns:
+            An empty PyArrow table with the correct schema for the join result.
+        """
         # Get column names from both tables
         batch_columns = set(batch.column_names)
         small_table_columns = set(self.small_table.column_names)
@@ -204,8 +221,15 @@ class BroadcastJoinFunction:
         result_schema = pa.schema(result_schema_fields)
         return pa.table([], schema=result_schema)
 
-    def _handle_empty_small_table(self, batch) -> "DataBatch":
-        """Handle the case where the small table is empty."""
+    def _handle_empty_small_table(self, batch: pa.Table) -> pa.Table:
+        """Handle the case where the small table is empty.
+
+        Args:
+            batch: The batch from the large dataset.
+
+        Returns:
+            The appropriate result based on join type semantics.
+        """
         if self.join_type in [JoinType.INNER, JoinType.RIGHT_OUTER]:
             # Inner and right outer joins return empty when right side is empty
             return self._create_empty_result_table(batch)
@@ -216,10 +240,15 @@ class BroadcastJoinFunction:
         else:
             return self._create_empty_result_table(batch)
 
-    def _add_null_columns_for_missing_right(self, batch) -> "DataBatch":
-        """Add null columns for missing right side in outer joins."""
-        import pyarrow as pa
+    def _add_null_columns_for_missing_right(self, batch: pa.Table) -> pa.Table:
+        """Add null columns for missing right side in outer joins.
 
+        Args:
+            batch: The batch from the large dataset.
+
+        Returns:
+            The batch with null columns added for the missing right side.
+        """
         result_table = batch
 
         # Add null columns for each column in the small table
