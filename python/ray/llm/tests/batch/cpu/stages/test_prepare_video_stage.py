@@ -25,71 +25,68 @@ def mock_http_connection_bytes():
 
 @pytest.fixture
 def mock_pyav_open():
-    # Mock av module and decoding pipeline
-    with patch("importlib.import_module") as imp:
+    # Patch module-level optional imports used by the implementation.
+    class _Stream:
+        type = "video"
+        index = 0
+        time_base = 1 / 1000
+        duration = 1000
 
-        def _import(name):
-            if name == "av":
+    class _Frame:
+        def __init__(self, pts):
+            self.pts = pts
 
-                class _Stream:
-                    type = "video"
-                    index = 0
-                    time_base = 1 / 1000
-                    duration = 1000
+        def to_image(self):
+            class _Img:
+                width = 64
+                height = 48
 
-                class _Frame:
-                    def __init__(self, pts):
-                        self.pts = pts
+                def resize(self, *args, **kwargs):
+                    return self
 
-                    def to_image(self):
-                        class _Img:
-                            width = 64
-                            height = 48
+                def crop(self, *args, **kwargs):
+                    return self
 
-                            def resize(self, *args, **kwargs):
-                                return self
+                def convert(self, *args, **kwargs):
+                    return self
 
-                            def crop(self, *args, **kwargs):
-                                return self
+            return _Img()
 
-                            def convert(self, *args, **kwargs):
-                                return self
+        def to_ndarray(self, format="rgb24"):
+            return np.zeros((48, 64, 3), dtype=np.uint8)
 
-                        return _Img()
+    class _Container:
+        def __init__(self):
+            self.streams = [_Stream()]
+            self.duration = 2_000_000  # 2s in microseconds
 
-                    def to_ndarray(self, format="rgb24"):
-                        return np.zeros((48, 64, 3), dtype=np.uint8)
+        def decode(self, video=0):
+            for pts in [0, 333, 666, 1000, 1333, 1666]:
+                yield _Frame(pts)
 
-                class _Container:
-                    def __init__(self):
-                        self.streams = [_Stream()]
-                        self.duration = 2000000  # 2s in microseconds
+        def close(self):
+            pass
 
-                    def decode(self, video=0):
-                        for pts in [0, 333, 666, 1000, 1333, 1666]:
-                            yield _Frame(pts)
+    class _AV:
+        time_base = 1 / 1_000_000
 
-                    def close(self):
-                        pass
+        @staticmethod
+        def open(resolved, format=None):
+            return _Container()
 
-                class _AV:
-                    time_base = 1 / 1_000_000
+    class _PILImage:
+        # Minimal attributes for preprocess resample lookup
+        BILINEAR = 2
 
-                    @staticmethod
-                    def open(resolved, format=None):
-                        return _Container()
+        class Resampling:
+            BILINEAR = 2
 
-                return _AV
-            elif name == "PIL.Image":
-
-                class _PILImage:
-                    pass
-
-                return _PILImage
-            return __import__(name)
-
-        imp.side_effect = _import
-        yield imp
+    with patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
+    ), patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _PILImage
+    ):
+        yield
 
 
 @pytest.mark.asyncio
@@ -236,10 +233,11 @@ async def test_auto_cache_to_disk_when_num_frames(
 async def test_av_missing_import_error_metadata(mock_http_connection_bytes):
     # Simulate missing av import and validate metadata fields
     with patch(
-        "importlib.import_module",
-        side_effect=lambda name: (
-            (_ for _ in ()).throw(ImportError()) if name == "av" else __import__(name)
-        ),
+        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod",
+        new=None,
+    ), patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image",
+        new=object(),
     ):
         udf = PrepareVideoUDF(
             data_column="__data",
@@ -307,86 +305,80 @@ async def test_multiple_videos_order_preserved(
 @pytest.mark.asyncio
 async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
     # Ensure numpy output respects preprocess (resize) by going through PIL then to numpy
-    with patch("importlib.import_module") as imp:
+    class _S:
+        type = "video"
+        index = 0
+        time_base = 1 / 1000
+        duration = 1000
 
-        def _import(name):
-            if name == "av":
+    class _F:
+        def __init__(self, pts):
+            self.pts = pts
 
-                class _S:
-                    type = "video"
-                    index = 0
-                    time_base = 1 / 1000
-                    duration = 1000
+        def to_image(self):
+            class _I:
+                # Track logical size to reflect resize in numpy conversion
+                def __init__(self):
+                    self.width = 10
+                    self.height = 10
 
-                class _F:
-                    def __init__(self, pts):
-                        self.pts = pts
-
-                    def to_image(self):
-                        class _I:
-                            # Track logical size to reflect resize in numpy conversion
-                            def __init__(self):
-                                self.width = 10
-                                self.height = 10
-
-                            def resize(self, size, *args, **kwargs):
-                                # size is (W, H)
-                                try:
-                                    w, h = size
-                                    self.width, self.height = int(w), int(h)
-                                except Exception:
-                                    pass
-                                return self
-
-                            def crop(self, *a, **k):
-                                return self
-
-                            def convert(self, *a, **k):
-                                return self
-
-                            # Provide numpy array interface to make np.array(img) valid
-                            def __array__(self, dtype=None):
-                                import numpy as _np
-
-                                h, w = int(self.height), int(self.width)
-                                arr = _np.zeros((h, w, 3), dtype=_np.uint8)
-                                if dtype is not None:
-                                    return arr.astype(dtype)
-                                return arr
-
-                        return _I()
-
-                    def to_ndarray(self, format="rgb24"):
-                        return np.zeros((10, 10, 3), dtype=np.uint8)
-
-                class _C:
-                    def __init__(self):
-                        self.streams = [_S()]
-                        self.duration = 1000000
-
-                    def decode(self, video=0):
-                        yield _F(0)
-
-                    def close(self):
+                def resize(self, size, *args, **kwargs):
+                    # size is (W, H)
+                    try:
+                        w, h = size
+                        self.width, self.height = int(w), int(h)
+                    except Exception:
                         pass
+                    return self
 
-                class _AV:
-                    time_base = 1 / 1_000_000
+                def crop(self, *a, **k):
+                    return self
 
-                    @staticmethod
-                    def open(resolved, format=None):
-                        return _C()
+                def convert(self, *a, **k):
+                    return self
 
-                return _AV
-            elif name == "PIL.Image":
+                # Provide numpy array interface to make np.array(img) valid
+                def __array__(self, dtype=None):
+                    h, w = int(self.height), int(self.width)
+                    arr = np.zeros((h, w, 3), dtype=np.uint8)
+                    if dtype is not None:
+                        return arr.astype(dtype)
+                    return arr
 
-                class _P:
-                    pass
+            return _I()
 
-                return _P
-            return __import__(name)
+        def to_ndarray(self, format="rgb24"):
+            return np.zeros((10, 10, 3), dtype=np.uint8)
 
-        imp.side_effect = _import
+    class _C:
+        def __init__(self):
+            self.streams = [_S()]
+            self.duration = 1_000_000
+
+        def decode(self, video=0):
+            yield _F(0)
+
+        def close(self):
+            pass
+
+    class _AV:
+        time_base = 1 / 1_000_000
+
+        @staticmethod
+        def open(resolved, format=None):
+            return _C()
+
+    class _P:
+        BILINEAR = 2
+
+        class Resampling:
+            BILINEAR = 2
+
+    with patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
+    ), patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    ):
         udf = PrepareVideoUDF(
             data_column="__data",
             expected_input_keys=["messages"],
@@ -419,68 +411,65 @@ async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
 @pytest.mark.asyncio
 async def test_bytesio_format_guess_fallback(mock_http_connection_bytes):
     # For data URI, first open without format raises; second with guessed format succeeds
-    with patch("importlib.import_module") as imp:
+    class _ErrOnAuto:
+        time_base = 1 / 1_000_000
 
-        class _ErrOnAuto:
-            time_base = 1 / 1_000_000
+        @staticmethod
+        def open(resolved, format=None):
+            # Fail when resolved is BytesIO and format is None
+            if isinstance(resolved, io.BytesIO) and format is None:
+                raise RuntimeError("need format")
 
-            @staticmethod
-            def open(resolved, format=None):
-                # Fail when resolved is BytesIO and format is None
-                if isinstance(resolved, io.BytesIO) and format is None:
-                    raise RuntimeError("need format")
+            class _S:
+                type = "video"
+                index = 0
+                time_base = 1 / 1000
+                duration = 1000
 
-                class _S:
-                    type = "video"
-                    index = 0
-                    time_base = 1 / 1000
-                    duration = 1000
+            class _F:
+                def __init__(self, pts):
+                    self.pts = pts
 
-                class _F:
-                    def __init__(self, pts):
-                        self.pts = pts
+                def to_image(self):
+                    class _I:
+                        width = 4
+                        height = 4
 
-                    def to_image(self):
-                        class _I:
-                            width = 4
-                            height = 4
+                        def resize(self, *a, **k):
+                            return self
 
-                            def resize(self, *a, **k):
-                                return self
+                        def crop(self, *a, **k):
+                            return self
 
-                            def crop(self, *a, **k):
-                                return self
+                        def convert(self, *a, **k):
+                            return self
 
-                            def convert(self, *a, **k):
-                                return self
+                    return _I()
 
-                        return _I()
+            class _C:
+                def __init__(self):
+                    self.streams = [_S()]
+                    self.duration = 500000
 
-                class _C:
-                    def __init__(self):
-                        self.streams = [_S()]
-                        self.duration = 500000
+                def decode(self, video=0):
+                    yield _F(0)
 
-                    def decode(self, video=0):
-                        yield _F(0)
-
-                    def close(self):
-                        pass
-
-                return _C()
-
-        def _import(name):
-            if name == "av":
-                return _ErrOnAuto
-            elif name == "PIL.Image":
-
-                class _P:
+                def close(self):
                     pass
 
-                return _P
-            return __import__(name)
+            return _C()
 
-        imp.side_effect = _import
+    class _P:
+        BILINEAR = 2
+
+        class Resampling:
+            BILINEAR = 2
+
+    with patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _ErrOnAuto
+    ), patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    ):
         udf = PrepareVideoUDF(
             data_column="__data",
             expected_input_keys=["messages"],
@@ -584,67 +573,63 @@ async def test_non_retriable_no_retry(mock_pyav_open):
 @pytest.mark.asyncio
 async def test_target_cap_limits_frames(mock_http_connection_bytes):
     # Use av mock that yields many frames over 2s; cap to 2
-    with patch("importlib.import_module") as imp:
+    class _S:
+        type = "video"
+        index = 0
+        time_base = 1 / 1000
+        duration = 2000
 
-        def _import(name):
-            if name == "av":
+    class _F:
+        def __init__(self, pts):
+            self.pts = pts
 
-                class _S:
-                    type = "video"
-                    index = 0
-                    time_base = 1 / 1000
-                    duration = 2000
+        def to_image(self):
+            class _I:
+                width = 10
+                height = 10
 
-                class _F:
-                    def __init__(self, pts):
-                        self.pts = pts
+                def resize(self, *a, **k):
+                    return self
 
-                    def to_image(self):
-                        class _I:
-                            width = 10
-                            height = 10
+                def crop(self, *a, **k):
+                    return self
 
-                            def resize(self, *a, **k):
-                                return self
+                def convert(self, *a, **k):
+                    return self
 
-                            def crop(self, *a, **k):
-                                return self
+            return _I()
 
-                            def convert(self, *a, **k):
-                                return self
+    class _C:
+        def __init__(self):
+            self.streams = [_S()]
+            self.duration = 2_000_000
 
-                        return _I()
+        def decode(self, video=0):
+            # generate many pts
+            for pts in range(0, 2000, 50):
+                yield _F(pts)
 
-                class _C:
-                    def __init__(self):
-                        self.streams = [_S()]
-                        self.duration = 2_000_000
+        def close(self):
+            pass
 
-                    def decode(self, video=0):
-                        # generate many pts
-                        for pts in range(0, 2000, 50):
-                            yield _F(pts)
+    class _AV:
+        time_base = 1 / 1_000_000
 
-                    def close(self):
-                        pass
+        @staticmethod
+        def open(resolved, format=None):
+            return _C()
 
-                class _AV:
-                    time_base = 1 / 1_000_000
+    class _P:
+        BILINEAR = 2
 
-                    @staticmethod
-                    def open(resolved, format=None):
-                        return _C()
+        class Resampling:
+            BILINEAR = 2
 
-                return _AV
-            elif name == "PIL.Image":
-
-                class _P:
-                    pass
-
-                return _P
-            return __import__(name)
-
-        imp.side_effect = _import
+    with patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
+    ), patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    ):
         udf = PrepareVideoUDF(
             data_column="__data",
             expected_input_keys=["messages"],
@@ -711,47 +696,43 @@ async def test_numpy_output_channels_first(mock_http_connection_bytes, mock_pyav
 @pytest.mark.asyncio
 async def test_strict_no_fallback_when_no_frames(mock_http_connection_bytes):
     # Use av mock that yields no frames -> should surface ValueError and mark failed in metadata
-    with patch("importlib.import_module") as imp:
+    class _S:
+        type = "video"
+        index = 0
+        time_base = 1 / 1000
+        duration = 1000
 
-        def _import(name):
-            if name == "av":
+    class _C:
+        def __init__(self):
+            self.streams = [_S()]
+            self.duration = 1_000_000
 
-                class _S:
-                    type = "video"
-                    index = 0
-                    time_base = 1 / 1000
-                    duration = 1000
+        def decode(self, video=0):
+            if False:
+                yield  # no frames
+            return
 
-                class _C:
-                    def __init__(self):
-                        self.streams = [_S()]
-                        self.duration = 1_000_000
+        def close(self):
+            pass
 
-                    def decode(self, video=0):
-                        if False:
-                            yield  # no frames
-                        return
+    class _AV:
+        time_base = 1 / 1_000_000
 
-                    def close(self):
-                        pass
+        @staticmethod
+        def open(resolved, format=None):
+            return _C()
 
-                class _AV:
-                    time_base = 1 / 1_000_000
+    class _P:
+        BILINEAR = 2
 
-                    @staticmethod
-                    def open(resolved, format=None):
-                        return _C()
+        class Resampling:
+            BILINEAR = 2
 
-                return _AV
-            elif name == "PIL.Image":
-
-                class _P:
-                    pass
-
-                return _P
-            return __import__(name)
-
-        imp.side_effect = _import
+    with patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
+    ), patch(
+        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    ):
         udf = PrepareVideoUDF(
             data_column="__data",
             expected_input_keys=["messages"],

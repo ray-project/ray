@@ -9,7 +9,7 @@ Responsibilities:
 - Return frames (PIL or NumPy) and per-video metadata.
 
 Design notes:
-- Optional dependencies (PyAV, Pillow, NumPy) are imported lazily with clear error messages.
+- Optional dependencies (PyAV, Pillow, NumPy) are imported optionally at module load.
 - CPU-bound decode runs in a thread; async orchestration preserves order and concurrency limits.
 """
 
@@ -26,17 +26,23 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
+from ray.llm._internal.batch.envs import (
+    RAY_LLM_BATCH_MAX_TARGETS,
+    RAY_LLM_BATCH_MAX_DECODE_FRAMES,
+)
 from ray.llm._internal.batch.stages._util import HTTPConnection
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
-# Upper bound for the number of sampling targets generated in fps/num_frames modes.
-# Prevents excessive memory/time when duration is very long or unknown.
-_MAX_TARGETS = 10_000
-# Upper bound for decoded frames per source in a single processing pass.
-# Prevents unbounded decoding on malformed or truncated streams.
-_MAX_DECODE_FRAMES = 100_000
+try:  # pragma: no cover - availability depends on environment
+    import av as _av_mod  # type: ignore
+except Exception:  # pragma: no cover
+    _av_mod = None  # type: ignore
 
-# Types
+try:  # pragma: no cover
+    from PIL import Image as _PIL_Image  # type: ignore
+except Exception:  # pragma: no cover
+    _PIL_Image = None  # type: ignore
+
 FrameType = Any  # PIL.Image.Image or numpy.ndarray
 
 
@@ -58,12 +64,21 @@ def _sha256_16(s: str) -> str:
 
 @dataclass
 class Sampling:
-    fps: Optional[float] = None  # e.g., 3.0 frames/sec
-    num_frames: Optional[int] = None  # # e.g., take the first 8 frames
+    fps: Optional[float] = None
+    """The frames-per-second sampling rate.
+
+    If provided, frames are sampled on a timeline at this FPS.
+    """
+    num_frames: Optional[int] = None
+    """The number of frames to take deterministically from the start."""
 
     @classmethod
-    def from_user(cls, cfg: Optional[Dict[str, Any]]) -> "Sampling":
-        # Create Sampling from user config, with validation.
+    def from_user(cls, cfg: Optional[Dict[str, Any]] = None) -> "Sampling":
+        """Create Sampling from user config.
+
+        Args:
+            cfg: Either {"fps": float} or {"num_frames": int}. If None, defaults to fps=3.0.
+        """
         if not cfg:
             return cls(fps=3.0)
         if "fps" in cfg:
@@ -76,52 +91,49 @@ class Sampling:
             if n <= 0:
                 raise ValueError("sampling.num_frames must be >= 1")
             return cls(num_frames=n)
-        # Default fallback
         return cls(fps=3.0)
 
 
 class VideoProcessor:
     """Decode and sample frames from video sources.
 
-    - Uses PyAV for decoding (imported via importlib).
-    - Network fetch/caching via HTTPConnection (shared with image stage).
+    - Uses PyAV for decoding.
+    - Network fetch/caching via HTTPConnection.
     - CPU-heavy work done in a thread to avoid blocking the event loop.
 
-    Parameters
-    - sampling: {"fps": k} or {"num_frames": n}. Default fps=3.0. Validated.
-    - cache_dir: optional directory for disk cache.
-    - cache_mode: "auto" | "disk" | "memory". In auto, num_frames prefers disk.
-    - output_format: "pil" | "numpy".
-    - channels_first: if numpy, (C,H,W) when True else (H,W,C).
-    - timeout_s: http timeout for downloads.
-    - max_concurrency: semaphore limit for parallel processing.
-    - retries: number of retry attempts on retriable errors (default 2, enabled).
-    - retry_backoff_base: base seconds for exponential backoff (0.5 -> 0.5,1.0,2.0...).
-    - keep_downloaded: if using disk cache, keep cached file after processing.
-    - preprocess: dict for PIL preprocessing {resize, crop, convert}. If output_format=numpy
-      and preprocess set, we preprocess via PIL then convert to numpy to ensure consistency.
-    - max_sampled_frames: Optional cap to limit number of sampled target timestamps. Default None (off).
+    Args:
+        sampling: {"fps": k} or {"num_frames": n}. Default fps=3.0.
+        cache_dir: Optional directory for disk cache.
+        cache_mode: One of "auto", "disk", or "memory".
+        output_format: "pil" or "numpy".
+        channels_first: When numpy, output (C, H, W) if True else (H, W, C).
+        timeout_s: HTTP timeout for downloads.
+        max_concurrency: Semaphore limit for parallel processing.
+        retries: Number of retry attempts on retriable errors (default 2).
+        retry_backoff_base: Base seconds for exponential backoff.
+        bypass_if_frames_present: Reserved for future use.
+        pack_for_model: Reserved for future use.
+        keep_downloaded: If using disk cache, keep cached file after processing.
+        preprocess: PIL preprocessing dict {resize, crop, convert}.
+        max_sampled_frames: Optional cap for number of sampled frames.
     """
 
     def __init__(
         self,
         *,
         sampling: Optional[Dict[str, Any]] = None,
-        # {"fps": k} or {"num_frames": n}
         cache_dir: Optional[str] = None,
-        cache_mode: str = "auto",  # "auto" | "disk" | "memory"
-        output_format: str = "pil",  # "pil" | "numpy"
+        cache_mode: str = "auto",
+        output_format: str = "pil",
         channels_first: bool = False,
         timeout_s: float = 30.0,
         max_concurrency: int = 8,
         retries: int = 2,
         retry_backoff_base: float = 0.5,
         bypass_if_frames_present: bool = False,
-        pack_for_model: bool = False,  # reserved for future use
+        pack_for_model: bool = False,
         keep_downloaded: bool = False,
-        # when using disk cache, persist after use (default False)
         preprocess: Optional[Dict[str, Any]] = None,
-        # {resize:{}, crop:{}, convert:"RGB"}; default off
         max_sampled_frames: Optional[int] = None,
     ) -> None:
         self._sampling = Sampling.from_user(sampling)
@@ -140,31 +152,24 @@ class VideoProcessor:
             int(max_sampled_frames) if max_sampled_frames is not None else None
         )
 
-        # Lazy imports for optional dependencies
-        self._av = None  # set on first use
-        self._Image = None  # PIL.Image
-
         self._http = HTTPConnection()
         self._sem = asyncio.Semaphore(max_concurrency)
 
     async def process(self, sources: List[str]) -> List[Dict[str, Any]]:
+        if not sources:
+            return []
         tasks = [self._process_one_safe(src) for src in sources]
         return await asyncio.gather(*tasks)
 
     async def _process_one_safe(self, source: str) -> Dict[str, Any]:
-        # Wrapper to run synchronous decode in a thread, with retries and backoff.
         async with self._sem:
             attempt = 0
             backoff = self._retry_backoff_base
-
             while attempt <= self._retries:
                 try:
                     return await asyncio.to_thread(self._process_one_sync, source)
                 except Exception as e:
-
-                    # Decide retriable or not
                     if not self._should_retry(e) or attempt == self._retries:
-                        # Return detailed error metadata
                         return {
                             "frames": [],
                             "meta": {
@@ -178,50 +183,36 @@ class VideoProcessor:
                                 "frame_timestamps": [],
                             },
                         }
-                    # Exponential backoff
                     await asyncio.sleep(max(backoff, 0))
                     backoff *= 2
                     attempt += 1
 
     def _should_retry(self, e: Exception) -> bool:
-        # Conservative policy: ImportError & ValueError are not retriable (config/format errors).
-        # Network/IO errors typically are retriable.
         non_retriable = (ImportError, ValueError)
         return not isinstance(e, non_retriable)
 
-    def _ensure_deps(self) -> None:
-        if self._av is None:
-            try:
-                self._av = importlib.import_module("av")
-            except Exception as e:
-                raise ImportError(
-                    "PyAV is required for PrepareVideoStage. Install with `pip install av`."
-                ) from e
-        if self._Image is None:
-            try:
-                self._Image = importlib.import_module("PIL.Image")
-            except Exception as e:
-                raise ImportError(
-                    "Pillow is required for PrepareVideoStage. Install with `pip install pillow`."
-                ) from e
-
-    # Core sync path (runs in thread)
     def _process_one_sync(self, source: str) -> Dict[str, Any]:
-        self._ensure_deps()
+        if _av_mod is None:
+            raise ImportError(
+                "PyAV is required for PrepareVideoStage. Install with `pip install av`."
+            )
+        if _PIL_Image is None:
+            raise ImportError(
+                "Pillow is required for PrepareVideoStage. Install with `pip install pillow`."
+            )
 
         resolved, is_memory, cleanup_path = self._resolve_source_for_decode(source)
 
         container = None
         try:
-            # Robust format detection for in-memory buffers: try auto, then guessed format.
             if is_memory:
                 try:
-                    container = self._av.open(resolved)
+                    container = _av_mod.open(resolved)
                 except Exception:
                     fmt_guess = self._guess_format_from_source(source) or "mp4"
-                    container = self._av.open(resolved, format=fmt_guess)
+                    container = _av_mod.open(resolved, format=fmt_guess)
             else:
-                container = self._av.open(resolved)
+                container = _av_mod.open(resolved)
 
             try:
                 vstream = next(
@@ -234,37 +225,25 @@ class VideoProcessor:
             timestamps: List[float] = []
             allow_zero_samples = False
 
-            # Two sampling modes: by fixed fps or by a fixed number of frames.
             s = self._sampling
             if s.num_frames is not None:
-                # Deterministic: take the first N decoded frames (fast-path, no seeking assumptions).
                 n = max(int(s.num_frames), 1)
-                if (
-                    self._max_sampled_frames is not None
-                    and self._max_sampled_frames >= 0
-                ):
+                if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
                     n = min(n, self._max_sampled_frames)
                 if n == 0:
-                    # Explicitly allow zero-frame result when capped to 0.
                     allow_zero_samples = True
                 else:
                     decoded = 0
                     for frame in container.decode(video=vstream.index):
                         decoded += 1
-                        # Compute timestamp in seconds when available
                         if getattr(frame, "pts", None) is None:
-                            # Prefer stream average_rate if available; otherwise use frame index as seconds.
                             fps_guess = None
                             try:
-                                fps_guess = (
-                                    float(getattr(vstream, "average_rate", 0)) or None
-                                )
+                                fps_guess = float(getattr(vstream, "average_rate", 0)) or None
                             except Exception:
                                 fps_guess = None
                             current_ts = (
-                                len(timestamps) / fps_guess
-                                if fps_guess
-                                else float(len(timestamps))
+                                len(timestamps) / fps_guess if fps_guess else float(len(timestamps))
                             )
                         else:
                             current_ts = float(frame.pts * vstream.time_base)
@@ -272,16 +251,11 @@ class VideoProcessor:
                         timestamps.append(current_ts)
                         if len(frames) >= n:
                             break
-                        if decoded >= _MAX_DECODE_FRAMES:
+                        if decoded >= RAY_LLM_BATCH_MAX_DECODE_FRAMES():
                             break
             else:
-                # FPS mode: build timestamp targets and pick nearest frames crossing thresholds.
                 targets = self._build_targets(container, vstream)
-                # Optional cap to avoid excessive sampling on long videos
-                if (
-                    self._max_sampled_frames is not None
-                    and self._max_sampled_frames >= 0
-                ):
+                if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
                     targets = targets[: self._max_sampled_frames]
 
                 if not targets:
@@ -294,7 +268,7 @@ class VideoProcessor:
                     for frame in container.decode(video=vstream.index):
                         decoded += 1
                         if getattr(frame, "pts", None) is None:
-                            current_ts = len(timestamps) / (s.fps or 30.0)
+                            current_ts = len(timestamps) / ((s.fps or 30.0))
                         else:
                             current_ts = float(frame.pts * vstream.time_base)
 
@@ -306,10 +280,9 @@ class VideoProcessor:
                                 break
                             next_target = targets[target_idx]
 
-                        if decoded >= _MAX_DECODE_FRAMES:
+                        if decoded >= RAY_LLM_BATCH_MAX_DECODE_FRAMES():
                             break
         finally:
-            # Ensure container is closed even on exceptions
             try:
                 if container is not None:
                     container.close()
@@ -318,29 +291,26 @@ class VideoProcessor:
                     f"Failed to close PyAV container for source {self._source_repr(source, resolved, is_memory)}: {e}"
                 ) from e
 
-        # Strict: no implicit fallback. If no frames sampled, treat as failure unless zero was explicitly requested via cap.
         if not frames and not allow_zero_samples:
             raise ValueError("No frames sampled")
 
         w = h = None
         if frames:
             if self._output_format == "pil":
-                # In tests, PIL images may be mocked without width/height; guard access
                 try:
-                    w, h = frames[0].width, frames[0].height  # PIL.Image
+                    w, h = frames[0].width, frames[0].height
                 except Exception:
                     w = h = None
             else:
-                # numpy array (H, W, C) or (C, H, W) depending on channels_first
                 arr0 = frames[0]
                 try:
                     shape = getattr(arr0, "shape", None)
                     if shape is None:
                         raise ValueError("invalid numpy frame")
                     if self._channels_first:
-                        _, h, w = shape  # (C, H, W)
+                        _, h, w = shape
                     else:
-                        h, w, _ = shape  # (H, W, C)
+                        h, w, _ = shape
                 except Exception:
                     w = h = None
 
@@ -355,7 +325,6 @@ class VideoProcessor:
             },
         }
 
-        # Best-effort cleanup if using disk and not keeping the file
         if cleanup_path is not None and not self._keep_downloaded:
             try:
                 os.remove(cleanup_path)
@@ -367,10 +336,9 @@ class VideoProcessor:
         return result
 
     def _guess_format_from_source(self, source: str) -> Optional[str]:
-        # Try infer container format from data URI or file extension
         try:
             if _is_data_uri(source):
-                header = source.split(",", 1)[0]  # e.g., data:video/mp4;base64
+                header = source.split(",", 1)[0]
                 if "video/" in header:
                     mime = header.split("video/")[1].split(";")[0].strip()
                     return {
@@ -402,67 +370,54 @@ class VideoProcessor:
             return str(original)
 
     def _build_targets(self, container: Any, vstream: Any) -> List[float]:
-        # Estimate duration in seconds
         duration_s: Optional[float] = None
         try:
-            # container.duration is in AV_TIME_BASE units (microseconds)
-            # Convert to seconds by multiplying with av.time_base (1/1_000_000)
-            if getattr(container, "duration", None) is not None:
-                duration_s = float(container.duration * self._av.time_base)
+            if getattr(container, "duration", None) is not None and _av_mod is not None:
+                duration_s = float(container.duration * _av_mod.time_base)
         except Exception:
             duration_s = None
 
         if duration_s is None:
-            # Fallback: approximate by using stream duration if available
             try:
                 if getattr(vstream, "duration", None) is not None:
                     duration_s = float(vstream.duration * float(vstream.time_base))
             except Exception:
                 duration_s = None
 
-        # Build targets (fps mode only)
         s = self._sampling
         targets: List[float] = []
         if s.fps is not None:
             if duration_s is None:
-                # Fallback: sample up to ~2 seconds worth (bounded)
                 limit = max(int(s.fps * 2), 1)
-                limit = min(limit, _MAX_TARGETS)
+                limit = min(limit, RAY_LLM_BATCH_MAX_TARGETS())
                 targets = [i / s.fps for i in range(limit)]
             else:
-                # Bounded construction to avoid pathological durations
-                n = int(max(duration_s, 0.0) * s.fps) + 1  # include t=0
-                n = max(1, min(n, _MAX_TARGETS))
+                n = int(max(duration_s, 0.0) * s.fps) + 1
+                n = max(1, min(n, RAY_LLM_BATCH_MAX_TARGETS()))
                 targets = [i / s.fps for i in range(n)]
         return targets
 
     def _apply_preprocess_pil(self, img: Any) -> Any:
-        # preprocess is optional and off by default
         if not self._preprocess:
             return img
-        # resize
         r = self._preprocess.get("resize")
         if r and isinstance(r, dict) and "size" in r:
-            # Be defensive: PIL.Image may expose BILINEAR via Image.BILINEAR or Image.Resampling.BILINEAR
             resample_name = r.get("resample", "BILINEAR")
             method = None
             try:
-                method = getattr(self._Image, resample_name, None)
-                if method is None:
-                    Resampling = getattr(self._Image, "Resampling", None)
+                method = getattr(_PIL_Image, resample_name, None) if _PIL_Image else None
+                if method is None and _PIL_Image is not None:
+                    Resampling = getattr(_PIL_Image, "Resampling", None)
                     if Resampling is not None:
                         method = getattr(Resampling, resample_name, None)
             except Exception:
                 method = None
             if method is None:
-                # Fallback to common numeric value for BILINEAR in PIL (2); harmless for mocks
-                method = 2  # type: ignore
+                method = 2  # PIL.Image.BILINEAR numeric fallback
             img = img.resize(tuple(r["size"]), method)
-        # crop
         c = self._preprocess.get("crop")
         if c and isinstance(c, dict) and "box" in c:
             img = img.crop(tuple(c["box"]))
-        # convert
         conv = self._preprocess.get("convert")
         if isinstance(conv, str):
             img = img.convert(conv)
@@ -474,7 +429,6 @@ class VideoProcessor:
             img = self._apply_preprocess_pil(img)
             return img
         else:
-            # numpy ndarray
             try:
                 np = importlib.import_module("numpy")
             except Exception as e:
@@ -483,23 +437,19 @@ class VideoProcessor:
                 ) from e
 
             if self._preprocess:
-                # Ensure preprocessing consistency: PIL -> preprocess -> numpy
                 img = frame.to_image()
                 img = self._apply_preprocess_pil(img)
                 arr = np.array(img)
-                # In production, fail fast if conversion is invalid
                 if getattr(arr, "ndim", 0) < 2 or arr.size == 0:
                     raise ValueError(
                         "Failed to convert preprocessed PIL image to a valid numpy array"
                     )
             else:
-                # Direct RGB ndarray; coerce to numpy if backend returns list
                 arr = frame.to_ndarray(format="rgb24")
                 if not hasattr(arr, "shape"):
-                    arr = np.array(arr)
+                    raise ValueError("invalid numpy frame")
                 if getattr(arr, "ndim", 0) == 2:
-                    # Expand channel dim if missing
-                    arr = np.stack([arr] * 3, axis=-1)
+                    arr = np.expand_dims(arr, -1)
 
             if self._channels_first:
                 return arr.transpose(2, 0, 1)
@@ -515,57 +465,40 @@ class VideoProcessor:
           - "disk": always download to disk when http/https.
           - "memory": fetch into BytesIO when http/https or data URI.
         """
-        # data URI: decode
         if _is_data_uri(source):
             try:
                 header, b64 = source.split(",", 1)
                 raw = base64.b64decode(b64)
                 return io.BytesIO(raw), True, None
             except Exception as e:
-                raise ValueError(f"Invalid data URI for video: {e}")
+                raise ValueError(f"Invalid data URI: {e}") from e
 
-        # local file path
         parsed = urlparse(source)
         if parsed.scheme in ("file", "") and os.path.exists(parsed.path or source):
-            return parsed.path or source, False, None
+            return (parsed.path or source), False, None
 
-        # http/https
         if _is_http(source):
-            # Decide caching mode
             use_disk = self._cache_dir is not None and (
                 self._cache_mode == "disk"
-                or (
-                    self._cache_mode == "auto" and self._sampling.num_frames is not None
-                )
+                or (self._cache_mode == "auto" and self._sampling.num_frames is not None)
             )
             use_memory = self._cache_mode == "memory"
 
             if use_memory:
-                # Fetch into memory via chunked download to reduce peak memory
-                data = self._http.download_bytes_chunked(
-                    source, timeout=self._timeout_s
-                )
+                data = self._http.download_bytes_chunked(source, timeout_s=self._timeout_s)
                 return io.BytesIO(data), True, None
 
             if use_disk:
-                assert self._cache_dir is not None
                 self._cache_dir.mkdir(parents=True, exist_ok=True)
-                # Determine extension if any
-                ext = os.path.splitext(parsed.path)[1] or ".mp4"
-                name = f"{_sha256_16(source)}{ext}"
-                final = self._cache_dir / name
-                if not final.exists():
-                    tmp = self._cache_dir / f".{name}.tmp"
-                    self._http.download_file(source, tmp, timeout=self._timeout_s)
-                    # Atomic replace
-                    tmp.replace(final)
-                # Return cleanup path so caller can delete if needed
-                return str(final), False, str(final)
+                fname = f"video-{_sha256_16(source)}.bin"
+                tmp = str(self._cache_dir / f".{fname}.tmp")
+                final = str(self._cache_dir / fname)
+                self._http.download_file(source, tmp, timeout_s=self._timeout_s)
+                os.replace(tmp, final)
+                return final, False, (None if self._keep_downloaded else final)
 
-            # Default: stream directly from URL
             return source, False, None
 
-        # Fallback: treat as path string
         return source, False, None
 
 
@@ -582,7 +515,6 @@ class PrepareVideoUDF(StatefulStageUDF):
         expected_input_keys: List[str],
         *,
         sampling: Optional[Dict[str, Any]] = None,
-        # {"fps": 3} or {"num_frames": 8}
         cache_dir: Optional[str] = None,
         cache_mode: str = "auto",
         output_format: str = "pil",
@@ -611,51 +543,42 @@ class PrepareVideoUDF(StatefulStageUDF):
             max_sampled_frames=max_sampled_frames,
         )
 
-    def extract_video_info(self, messages: List[Dict]) -> List[str]:
+    def extract_video_sources(self, messages: List[Dict]) -> List[str]:
         sources: List[str] = []
+        content = None
         for message in messages:
             content = message.get("content")
-            # Handle PyArrow list-like (e.g., tolist()) as in PrepareImageUDF
             if hasattr(content, "tolist"):
                 content = content.tolist()
             if not isinstance(content, list):
                 continue
             for item in content:
-                t = item.get("type")
-                if t == "video":
-                    src = item.get("video")
-                elif t == "video_url":
-                    vurl = item.get("video_url") or {}
-                    src = vurl.get("url")
-                else:
+                media_type = item.get("type")
+                if media_type not in ("video", "video_url"):
                     continue
-                if isinstance(src, str):
-                    sources.append(src)
-                else:
-                    raise ValueError(f"Cannot handle video type {type(src)}")
+                url = item.get("video") if media_type == "video" else item.get("video_url")
+                if isinstance(url, dict):
+                    url = url.get("url")
+                if not isinstance(url, str):
+                    raise ValueError(f"Cannot handle video url of type {type(url)}")
+                sources.append(url)
         return sources
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        messages_batch = [row["messages"] for row in batch]
+        async def process_row(idx: int, row: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+            sources = self.extract_video_sources(row.get("messages", []))
+            if not sources:
+                return idx, {self.IDX_IN_BATCH_COLUMN: idx}
+            results = await self._video.process(sources)
+            return idx, {
+                self.IDX_IN_BATCH_COLUMN: idx,
+                "video": [r["frames"] for r in results],
+                "video_meta": [r["meta"] for r in results],
+            }
 
-        all_video_info = [self.extract_video_info(msgs) for msgs in messages_batch]
-        flat_sources = [s for lst in all_video_info for s in lst]
-
-        processed = await self._video.process(flat_sources)
-
-        start = 0
-        for idx_in_batch, per_req in enumerate(all_video_info):
-            n = len(per_req)
-            ret: Dict[str, Any] = {self.IDX_IN_BATCH_COLUMN: idx_in_batch}
-            if n > 0:
-                chunk = processed[start : start + n]
-                start += n
-                ret.update(
-                    {
-                        "video": [c["frames"] for c in chunk],
-                        "video_meta": [c["meta"] for c in chunk],
-                    }
-                )
+        tasks = [process_row(i, row) for i, row in enumerate(batch)]
+        for coro in asyncio.as_completed(tasks):
+            idx, ret = await coro
             yield ret
 
 
