@@ -19,8 +19,8 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.metrics_utils import (
+    aggregate_timeseries,
     merge_timeseries_dicts,
-    time_weighted_average,
 )
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
@@ -411,9 +411,11 @@ class AutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
-            # Calculate the time-weighted average of the running requests
-            avg_running = time_weighted_average(
-                running_requests_timeseries, last_window_s=last_window_s
+            # Calculate the aggregated running requests
+            avg_running = aggregate_timeseries(
+                running_requests_timeseries,
+                aggregation_function=self._config.aggregation_function,
+                last_window_s=last_window_s,
             )
             return avg_running if avg_running is not None else 0.0
 
