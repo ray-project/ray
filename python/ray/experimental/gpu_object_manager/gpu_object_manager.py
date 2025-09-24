@@ -105,6 +105,7 @@ class GPUObjectManager:
             from ray.experimental.gpu_object_manager.gpu_object_store import (
                 __ray_get_cuda_uuid__,
             )
+
             return ray.get(
                 actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                     __ray_get_cuda_uuid__
