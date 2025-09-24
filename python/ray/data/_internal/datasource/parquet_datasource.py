@@ -782,17 +782,21 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
 def _sample_fragments(
     fragments: List[_ParquetFragment],
 ) -> List[_ParquetFragment]:
-    num_files = len(fragments)
-    num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
-    min_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
-    max_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES, num_files)
-    num_samples = max(min(num_samples, max_num_samples), min_num_samples)
+    target_num_samples = math.ceil(
+        len(fragments) * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
+
+    target_num_samples = max(
+        min(target_num_samples, PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES),
+        PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES,
+    )
 
     # Evenly distributed to choose which file to sample, to avoid biased prediction
     # if data is skewed.
+    pivots = np.linspace(0, len(fragments) - 1, target_num_samples).astype(int)
+
     return [
         fragments[idx]
-        for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
+        for idx in pivots.tolist()
     ]
 
 
