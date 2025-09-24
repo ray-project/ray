@@ -166,6 +166,10 @@ python/ray/_private/runtime_env/setup_hook.py
 python/ray/_private/runtime_env/utils.py
     DOC103: Function `check_output_cmd`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ]. Arguments in the docstring but not in the function signature: [kwargs: ].
 --------------------
+python/ray/_private/serialization.py
+    DOC106: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
+    DOC107: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
+--------------------
 python/ray/_private/services.py
     DOC201: Function `_build_python_executable_command_memory_profileable` does not have a return section in docstring
     DOC101: Function `get_ray_address_from_environment`: Docstring contains fewer arguments than in function signature.
@@ -289,10 +293,7 @@ python/ray/_private/worker.py
     DOC111: Function `connect`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC111: Function `get`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC103: Function `put`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_owner: Optional['ray.actor.ActorHandle']]. Arguments in the docstring but not in the function signature: [_owner [Experimental]: ].
-    DOC102: Function `remote`: Docstring contains more arguments than in function signature.
     DOC106: Function `remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC111: Function `remote`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Function `remote`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ]. Arguments in the docstring but not in the function signature: [_labels: , _metadata: , accelerator_type: , allow_out_of_order_execution: , fallback_strategy: , label_selector: , max_calls: , max_restarts: , max_retries: , max_task_retries: , memory: , num_cpus: , num_gpus: , num_returns: , resources: Dict[str, float], retry_exceptions: , runtime_env: Dict[str, Any], scheduling_strategy: ].
     DOC201: Function `remote` does not have a return section in docstring
 --------------------
 python/ray/actor.py
@@ -317,10 +318,7 @@ python/ray/actor.py
     DOC103: Method `ActorClass.__call__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ].
     DOC106: Method `ActorClass.remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC103: Method `ActorClass.remote`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ]. Arguments in the docstring but not in the function signature: [args: , kwargs: ].
-    DOC102: Method `ActorClass.options`: Docstring contains more arguments than in function signature.
     DOC106: Method `ActorClass.options`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC111: Method `ActorClass.options`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Method `ActorClass.options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**actor_options: ]. Arguments in the docstring but not in the function signature: [_metadata: , accelerator_type: , allow_out_of_order_execution: , enable_task_events: , fallback_strategy: , label_selector: Dict[str, str], lifetime: , max_concurrency: , max_pending_calls: , max_restarts: , max_task_retries: , memory: , name: , namespace: , num_cpus: , num_gpus: , object_store_memory: , resources: Dict[str, float], runtime_env: Dict[str, Any], scheduling_strategy: ].
     DOC201: Method `ActorClass.options` does not have a return section in docstring
     DOC106: Method `ActorClass._remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `ActorClass._remote`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -1522,10 +1520,7 @@ python/ray/remote_function.py
     DOC106: Method `RemoteFunction.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `RemoteFunction.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Method `RemoteFunction.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [function: , function_descriptor: , language: , task_options: ].
-    DOC102: Method `RemoteFunction.options`: Docstring contains more arguments than in function signature.
-    DOC103: Method `RemoteFunction.options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**task_options: ]. Arguments in the docstring but not in the function signature: [_labels: , _metadata: , accelerator_type: , enable_task_events: , fallback_strategy: , label_selector: Dict[str, str], max_calls: , max_retries: , memory: , num_cpus: , num_gpus: , num_returns: , object_store_memory: , resources: Dict[str, float], retry_exceptions: , runtime_env: Dict[str, Any], scheduling_strategy: ].
     DOC106: Method `RemoteFunction.options`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC111: Method `RemoteFunction.options`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC201: Method `RemoteFunction.options` does not have a return section in docstring
 --------------------
 python/ray/runtime_context.py
