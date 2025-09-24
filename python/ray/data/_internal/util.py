@@ -33,6 +33,7 @@ import pyarrow
 from packaging.version import parse as parse_version
 
 import ray
+from ray._common.retry import call_with_retry
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
@@ -1413,46 +1414,6 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         return self._retry_operation(
             lambda: self._fs.open_input_file(path), f"open input file {path}"
         )
-
-
-def call_with_retry(
-    f: Callable[[], Any],
-    description: str,
-    *,
-    match: Optional[List[str]] = None,
-    max_attempts: int = 10,
-    max_backoff_s: int = 32,
-) -> Any:
-    """Retry a function with exponential backoff.
-
-    Args:
-        f: The function to retry.
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
-        description: An imperitive description of the function being retried. For
-            example, "open the file".
-        max_attempts: The maximum number of attempts to retry.
-        max_backoff_s: The maximum number of seconds to backoff.
-    """
-    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
-
-    for i in range(max_attempts):
-        try:
-            return f()
-        except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
-            if is_retryable and i + 1 < max_attempts:
-                # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
-                logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
-                )
-                time.sleep(backoff)
-            else:
-                logger.debug(
-                    f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
-                )
-                raise e from None
 
 
 def iterate_with_retry(

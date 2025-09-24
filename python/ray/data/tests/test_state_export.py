@@ -6,7 +6,6 @@ from typing import Tuple
 import pytest
 
 import ray
-from ray.data import DataContext
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.metadata_exporter import (
@@ -16,6 +15,7 @@ from ray.data._internal.metadata_exporter import (
     sanitize_for_struct,
 )
 from ray.data._internal.stats import _get_or_create_stats_actor
+from ray.data.context import DataContext
 from ray.tests.conftest import _ray_start
 
 STUB_JOB_ID = "stub_job_id"

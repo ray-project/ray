@@ -3,13 +3,22 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import numpy as np
+import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
-from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
+from ray.data.block import (
+    AggType,
+    Block,
+    BlockAccessor,
+    BlockColumnAccessor,
+    KeyType,
+    T,
+    U,
+)
 from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data import Schema
+    from ray.data.dataset import Schema
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -1001,3 +1010,182 @@ def _null_safe_combine(
                 return combine(cur, new)
 
     return _safe_combine
+
+
+@PublicAPI(stability="alpha")
+class MissingValuePercentage(AggregateFnV2):
+    """Calculates the percentage of null values in a column.
+
+    This aggregation computes the percentage of null (missing) values in a dataset column.
+    It treats both None values and NaN values as null. The result is a percentage value
+    between 0.0 and 100.0, where 0.0 means no missing values and 100.0 means all values
+    are missing.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import MissingValuePercentage
+
+            # Create a dataset with some missing values
+            ds = ray.data.from_items([
+                {"value": 1}, {"value": None}, {"value": 3},
+                {"value": None}, {"value": 5}
+            ])
+
+            # Calculate missing value percentage
+            result = ds.aggregate(MissingValuePercentage(on="value"))
+            # result: 40.0 (2 out of 5 values are missing)
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "A", "value": 1}, {"group": "A", "value": None},
+                {"group": "B", "value": 3}, {"group": "B", "value": None}
+            ])
+            result = ds.groupby("group").aggregate(MissingValuePercentage(on="value")).take_all()
+            # result: [{'group': 'A', 'missing_pct(value)': 50.0},
+            #          {'group': 'B', 'missing_pct(value)': 50.0}]
+
+    Args:
+        on: The name of the column to calculate missing value percentage on.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "missing_pct({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+    ):
+        # Initialize with a list accumulator [null_count, total_count]
+        super().__init__(
+            alias_name if alias_name else f"missing_pct({str(on)})",
+            on=on,
+            ignore_nulls=False,  # Include nulls for this calculation
+            zero_factory=lambda: [0, 0],  # Our AggType is a simple list
+        )
+
+    def aggregate_block(self, block: Block) -> List[int]:
+        column_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+
+        total_count = column_accessor.count(ignore_nulls=False)
+
+        null_count = pc.sum(
+            pc.is_null(column_accessor._as_arrow_compatible(), nan_is_null=True)
+        ).as_py()
+
+        # Return our accumulator
+        return [null_count, total_count]
+
+    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
+        # Merge two accumulators by summing their components
+        assert len(current_accumulator) == len(new) == 2
+        return [
+            current_accumulator[0] + new[0],  # Sum null counts
+            current_accumulator[1] + new[1],  # Sum total counts
+        ]
+
+    def finalize(self, accumulator: List[int]) -> Optional[float]:
+        # Calculate the final percentage
+        if accumulator[1] == 0:
+            return None
+        return (accumulator[0] / accumulator[1]) * 100.0
+
+
+@PublicAPI(stability="alpha")
+class ZeroPercentage(AggregateFnV2):
+    """Calculates the percentage of zero values in a numeric column.
+
+    This aggregation computes the percentage of zero values in a numeric dataset column.
+    It can optionally ignore null values when calculating the percentage. The result is
+    a percentage value between 0.0 and 100.0, where 0.0 means no zero values and 100.0
+    means all non-null values are zero.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import ZeroPercentage
+
+            # Create a dataset with some zero values
+            ds = ray.data.from_items([
+                {"value": 0}, {"value": 1}, {"value": 0},
+                {"value": 3}, {"value": 0}
+            ])
+
+            # Calculate zero value percentage
+            result = ds.aggregate(ZeroPercentage(on="value"))
+            # result: 60.0 (3 out of 5 values are zero)
+
+            # With null values and ignore_nulls=True (default)
+            ds = ray.data.from_items([
+                {"value": 0}, {"value": None}, {"value": 0},
+                {"value": 3}, {"value": 0}
+            ])
+            result = ds.aggregate(ZeroPercentage(on="value", ignore_nulls=True))
+            # result: 75.0 (3 out of 4 non-null values are zero)
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "A", "value": 0}, {"group": "A", "value": 1},
+                {"group": "B", "value": 0}, {"group": "B", "value": 0}
+            ])
+            result = ds.groupby("group").aggregate(ZeroPercentage(on="value")).take_all()
+            # result: [{'group': 'A', 'zero_pct(value)': 50.0},
+            #          {'group': 'B', 'zero_pct(value)': 100.0}]
+
+    Args:
+        on: The name of the column to calculate zero value percentage on.
+            Must be a numeric column.
+        ignore_nulls: Whether to ignore null values when calculating the percentage.
+            If True (default), null values are excluded from both numerator and denominator.
+            If False, null values are included in the denominator but not the numerator.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "zero_pct({column_name})".
+
+    """
+
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        # Initialize with a list accumulator [zero_count, non_null_count]
+        super().__init__(
+            alias_name if alias_name else f"zero_pct({str(on)})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: [0, 0],
+        )
+
+    def aggregate_block(self, block: Block) -> List[int]:
+        column_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+
+        count = column_accessor.count(ignore_nulls=self._ignore_nulls)
+
+        if count == 0:
+            return [0, 0]
+
+        arrow_compatible = column_accessor._as_arrow_compatible()
+        # Use PyArrow compute to count zeros
+        # First create a boolean mask for zero values
+        zero_mask = pc.equal(arrow_compatible, 0)
+
+        # Sum the boolean mask to get count of True values (zeros)
+        zero_count = pc.sum(zero_mask).as_py() or 0
+
+        return [zero_count, count]
+
+    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
+        return [
+            current_accumulator[0] + new[0],  # Sum zero counts
+            current_accumulator[1] + new[1],  # Sum non-null counts
+        ]
+
+    def finalize(self, accumulator: List[int]) -> Optional[float]:
+        if accumulator[1] == 0:
+            return None
+        return (accumulator[0] / accumulator[1]) * 100.0
