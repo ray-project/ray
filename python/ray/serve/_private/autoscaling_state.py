@@ -412,12 +412,12 @@ class AutoscalingState:
             if last_window_s <= 0:
                 last_window_s = 1e-3
             # Calculate the aggregated running requests
-            avg_running = aggregate_timeseries(
+            value = aggregate_timeseries(
                 running_requests_timeseries,
                 aggregation_function=self._config.aggregation_function,
                 last_window_s=last_window_s,
             )
-            return avg_running if avg_running is not None else 0.0
+            return value if value is not None else 0.0
 
         return 0.0
 

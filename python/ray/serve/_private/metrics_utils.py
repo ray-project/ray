@@ -344,13 +344,13 @@ def aggregate_timeseries(
     aggregation_function: AggregationFunction,
     last_window_s: float = 1.0,
 ) -> Optional[float]:
-    """Aggregate the entire set of timeseries values across the specified keys."""
+    """Aggregate the values in a timeseries using a specified function."""
     if aggregation_function == AggregationFunction.MEAN:
         return time_weighted_average(timeseries, last_window_s=last_window_s)
     elif aggregation_function == AggregationFunction.MAX:
-        return max([ts.value for ts in timeseries]) if timeseries else None
+        return max(ts.value for ts in timeseries) if timeseries else None
     elif aggregation_function == AggregationFunction.MIN:
-        return min([ts.value for ts in timeseries]) if timeseries else None
+        return min(ts.value for ts in timeseries) if timeseries else None
     else:
         raise ValueError(f"Invalid aggregation function: {aggregation_function}")
 

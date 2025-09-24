@@ -296,12 +296,7 @@ class AutoscalingConfig(BaseModel):
     def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
         if isinstance(v, AggregationFunction):
             return v
-        try:
-            return AggregationFunction(str(v).lower())
-        except Exception:
-            raise ValueError(
-                f"aggregation_function must be one of {[e.value for e in AggregationFunction]}, got {v!r}"
-            )
+        return AggregationFunction(str(v).lower())
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
