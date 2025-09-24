@@ -93,9 +93,27 @@ class DeploymentAutoscalingState:
         curr_target_num_replicas: int,
         is_part_of_autoscaling_application: bool = False,
     ) -> int:
-        """Registers an autoscaling deployment's info.
+        """
+        Register the autoscaling state for this deployment.
+
+        This method records the latest deployment configuration and initializes
+        the autoscaling policy state if applicable. When the deployment config
+        has changed and an `initial_replicas` value is specified, that value is
+        used as the new target replica count. Otherwise, the current target
+        replica count is preserved. If the deployment is part of an
+        application-level autoscaling policy, it skips creating a local policy
+        since scaling will be driven externally.
 
         Returns the number of replicas the target should be set to.
+
+        Args:
+            info: Deployment metadata and config.
+            curr_target_num_replicas: Current target replica count.
+            is_part_of_autoscaling_application: If True, scaling decisions
+                come from the application-level policy instead of this deployment.
+
+        Returns:
+            int: Bounded target replica count.
         """
 
         config = info.deployment_config.autoscaling_config
@@ -114,6 +132,11 @@ class DeploymentAutoscalingState:
         if not is_part_of_autoscaling_application:
             self._policy = self._config.get_policy()
             self._policy_state = {}
+        else:
+            logger.warning(
+                f"Deployment '{self._deployment_id}' is part of an autoscaling application. "
+                "Deployment scaling policy will be overridden by application-level autoscaling policy."
+            )
 
         return self.apply_bounds(target_num_replicas)
 
@@ -346,7 +369,7 @@ class ApplicationAutoscalingState:
         self._app_name = app_name
         self._deployment_autoscaling_states = deployment_autoscaling_states
         self._config: ServeApplicationSchema = None
-        self._policy: AutoscalingPolicy = None
+        self._policy: Optional[AutoscalingPolicy] = None
         self._policy_state: Optional[Dict[str, Dict]] = None
 
     def register(
@@ -378,7 +401,7 @@ class ApplicationAutoscalingState:
 
         decisions, self._policy_state = self._policy(autoscaling_contexts)
 
-        updated_decisions = {}
+        updated_decisions: Dict[DeploymentID, int] = {}
 
         for deployment_name, decision_num_replicas in decisions.items():
             deployment_id: DeploymentID = DeploymentID(
@@ -424,12 +447,6 @@ class AutoscalingStateManager:
             self._deployment_autoscaling_states[
                 deployment_id
             ] = DeploymentAutoscalingState(deployment_id)
-
-        if self.has_application_level_autoscaling(deployment_id):
-            logger.warning(
-                f"Deployment '{deployment_id}' is part of an autoscaling application. "
-                "Deployment scaling policy may be overridden by application-level autoscaling policy."
-            )
 
         return self._deployment_autoscaling_states[deployment_id].register(
             info,

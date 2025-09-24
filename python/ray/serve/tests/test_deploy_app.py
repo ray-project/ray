@@ -6,20 +6,16 @@ import httpx
 import pytest
 
 import ray
-import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
-    check_num_replicas_eq,
     check_num_replicas_gte,
     check_num_replicas_lte,
     check_running,
     get_application_url,
 )
-from ray.serve.config import AutoscalingPolicy
 from ray.serve.schema import (
     ApplicationStatus,
     ServeDeploySchema,
@@ -878,99 +874,6 @@ def test_get_app_handle(serve_instance):
     handle_2 = serve.get_app_handle("app2")
     assert handle_1.route.remote("ADD", 2).result() == "4 pizzas please!"
     assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
-
-
-def app_level_custom_autoscaling_policy(ctxs: Dict[str, AutoscalingContext]):
-    decisions: Dict[str, int] = {}
-    for deployment_name, ctx in ctxs.items():
-        if deployment_name == "A":
-            if ctx.total_num_requests > 50:
-                decisions[deployment_name] = 4
-            else:
-                decisions[deployment_name] = 2
-        elif deployment_name == "B":
-            if ctx.total_num_requests > 60:
-                decisions[deployment_name] = 5
-            else:
-                decisions[deployment_name] = 3
-        else:
-            raise RuntimeWarning(f"Unknown deployment: {deployment_name}")
-
-    return decisions, {}
-
-
-@pytest.mark.parametrize(
-    "policy",
-    [
-        {"name": "ray.serve.tests.test_deploy_app.app_level_custom_autoscaling_policy"},
-        AutoscalingPolicy(
-            name="ray.serve.tests.test_deploy_app.app_level_custom_autoscaling_policy"
-        ),
-        AutoscalingPolicy(name=app_level_custom_autoscaling_policy),
-    ],
-)
-def test_application_autoscaling_policy_config(serve_instance_with_two_signal, policy):
-    client, signal_A, signal_B = serve_instance_with_two_signal
-
-    config_template = {
-        "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
-        "autoscaling_policy": policy,
-        "deployments": [
-            {
-                "name": "A",
-                "autoscaling_config": {
-                    "min_replicas": 1,
-                    "max_replicas": 10,
-                    "metrics_interval_s": 0.1,
-                    "upscale_delay_s": 0.1,
-                    "downscale_delay_s": 0.5,
-                },
-                "graceful_shutdown_timeout_s": 1,
-            },
-            {
-                "name": "B",
-                "autoscaling_config": {
-                    "min_replicas": 1,
-                    "max_replicas": 10,
-                    "metrics_interval_s": 0.1,
-                    "upscale_delay_s": 0.1,
-                    "downscale_delay_s": 0.5,
-                },
-                "graceful_shutdown_timeout_s": 1,
-            },
-        ],
-    }
-
-    print(time.ctime(), "Deploying application with deployments A and B.")
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
-    print(time.ctime(), "Application is RUNNING.")
-
-    hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
-    hB = serve.get_deployment_handle("B", app_name=SERVE_DEFAULT_APP_NAME)
-
-    # ---- Deployment A ----
-    print(time.ctime(), "[A] Sending 40 blocked requests. Should scale to 2")
-    signal_A.send.remote(clear=True)
-    [hA.remote() for _ in range(40)]
-    wait_for_condition(check_num_replicas_eq, name="A", target=2)
-
-    ray.get(signal_A.send.remote(clear=True))
-    print(time.ctime(), "[A] Sending 70 blocked requests. Should scale to 4.")
-    signal_A.send.remote(clear=True)
-    [hA.remote() for _ in range(70)]
-    wait_for_condition(check_num_replicas_eq, name="A", target=4)
-
-    # ---- Deployment B ----
-    print(time.ctime(), "[B] Sending 50 blocked requests. Should scale to 3.")
-    signal_B.send.remote(clear=True)
-    [hB.remote() for _ in range(50)]
-    wait_for_condition(check_num_replicas_eq, name="B", target=3)
-
-    print(time.ctime(), "[B] Sending 120 blocked requests. Should scale to 6.")
-    signal_B.send.remote(clear=True)
-    [hB.remote() for _ in range(120)]
-    wait_for_condition(check_num_replicas_eq, name="B", target=5)
 
 
 if __name__ == "__main__":

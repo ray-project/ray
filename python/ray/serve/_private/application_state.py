@@ -331,12 +331,7 @@ class ApplicationState:
         if checkpoint_data.deployment_infos is not None:
             self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
 
-        if self.should_autoscale():
-            self._autoscaling_state_manager.register_application(
-                self._name,
-                self._target_state.config,
-                self._target_state.deployment_infos,
-            )
+        self._register_autoscaling_if_needed()
 
     def _set_target_state(
         self,
@@ -538,6 +533,9 @@ class ApplicationState:
             target_capacity_direction=None,
         )
 
+        self._register_autoscaling_if_needed()
+
+    def _register_autoscaling_if_needed(self):
         if self.should_autoscale():
             self._autoscaling_state_manager.register_application(
                 self._name,
@@ -882,12 +880,7 @@ class ApplicationState:
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
 
-            if self.should_autoscale():
-                self._autoscaling_state_manager.register_application(
-                    self._name,
-                    self._target_state.config,
-                    self._target_state.deployment_infos,
-                )
+            self._register_autoscaling_if_needed()
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
