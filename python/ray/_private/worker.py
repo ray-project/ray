@@ -1143,6 +1143,10 @@ class Worker:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
 
+    def shutdown_gpu_object_manager(self):
+        if self._gpu_object_manager:
+            self._gpu_object_manager.shutdown()
+
 
 _connect_or_shutdown_lock = threading.RLock()
 
@@ -2087,6 +2091,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
+    global_worker.shutdown_gpu_object_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
