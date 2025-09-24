@@ -4,11 +4,15 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Type, TypeVar, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+T = TypeVar("T")
+UDFCallable = Callable[..., "UDFExpr"]
+Decorated = Union[UDFCallable, Type[T]]
 
 
 @DeveloperAPI(stability="alpha")
@@ -353,15 +357,15 @@ class UDFExpr(Expr):
     as a PyArrow Array containing multiple values from that column across the batch.
 
     Args:
-        fn: The user-defined function to call
+        fn: The user-defined function to call or callable class instance
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        function_name: Optional name for the function (for debugging)
 
     Example:
         >>> from ray.data.expressions import col, udf
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
+        >>> from ray.data.datatype import DataType
         >>>
         >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
@@ -369,6 +373,18 @@ class UDFExpr(Expr):
         >>>
         >>> # Use in expressions
         >>> expr = add_one(col("value"))
+
+        >>> # Callable class example
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
+        >>> # Use callable class
+        >>> add_five = AddOffset(5)
+        >>> expr = add_five(col("value"))
     """
 
     fn: Callable[..., BatchColumn]
@@ -461,6 +477,14 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
+        >>> # Callable class UDF
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
         >>> # Use in dataset operations
         >>> ds = ray.data.from_items([
         ...     {"value": 5, "first": "John", "last": "Doe"},
@@ -473,12 +497,51 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         >>> # Multi-column transformation (each column becomes a PyArrow Array)
         >>> ds_formatted = ds.with_column("full_name", format_name(col("first"), col("last")))
         >>>
+        >>> # Callable class usage
+        >>> add_five = AddOffset(5)
+        >>> ds_with_offset = ds.with_column("value_plus_five", add_five(col("value")))
+        >>>
         >>> # Can also be used in complex expressions
         >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
     """
 
-    def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
-        return _create_udf_callable(func, return_dtype)
+    def decorator(
+        func_or_class: Union[Callable[..., BatchColumn], Type[T]]
+    ) -> Decorated:
+        # Check if this is a callable class (has __call__ method defined)
+        if isinstance(func_or_class, type) and issubclass(func_or_class, Callable):
+            # This is a callable class - create a wrapper class
+            class ExpressionAwareCallableClass(func_or_class):
+                def __init__(self, *args, **kwargs):
+                    self._udf_cls = func_or_class
+                    self._ctor_args = args
+                    self._ctor_kwargs = kwargs
+
+                def __call__(self, *call_args, **call_kwargs):
+                    # Build a lazy callable that instantiates on the worker
+                    # the first time it's invoked during expression evaluation.
+                    def _lazy_impl(*args, **kwargs):
+                        # Running on task - create instance lazily as before
+                        if not hasattr(_lazy_impl, "_instance"):
+                            _lazy_impl._instance = self._udf_cls(
+                                *self._ctor_args, **self._ctor_kwargs
+                            )
+                        instance = _lazy_impl._instance
+
+                        return instance(*args, **kwargs)
+
+                    udf_callable = _create_udf_callable(_lazy_impl, return_dtype)
+                    return udf_callable(*call_args, **call_kwargs)
+
+            # Preserve the original class name and module
+            ExpressionAwareCallableClass.__name__ = func_or_class.__name__
+            ExpressionAwareCallableClass.__qualname__ = func_or_class.__qualname__
+            ExpressionAwareCallableClass.__module__ = func_or_class.__module__
+
+            return ExpressionAwareCallableClass
+        else:
+            # Regular function
+            return _create_udf_callable(func_or_class, return_dtype)
 
     return decorator
 
