@@ -18,24 +18,15 @@ depsets:
   - name: distributing_pytorch_ray_depset_${PYTHON_SHORT}_${CUDA_VERSION}
     packages:
       - ray[all]==100.0.0-dev
-    constraints:
-      - bazel-ray/doc/source/train/examples/pytorch/distributing-pytorch/requirements.in
-    output: python/deplocks/llmexamples/distributing_pytorch_ray_py311.lock
+    requirements:
+      - doc/source/train/examples/pytorch/distributing-pytorch/requirements.in
+    output: release/ray_release/byod/distributing_pytorch_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
     operation: compile
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --find-links=.whl/
-    build_arg_sets:
-      - py311_gpu
-
-  - name: distributing_pytorch_depset_${PYTHON_SHORT}_${CUDA_VERSION}
-    source_depset: distributing_pytorch_ray_depset_${PYTHON_SHORT}
-    requirements:
-      - bazel-ray/doc/source/train/examples/pytorch/distributing-pytorch/requirements.in
-    output: release/ray_release/byod/distributing_pytorch_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
-    operation: expand
-    append_flags:
-      - --python-version=${PYTHON_VERSION}
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
     build_arg_sets:
       - py311_gpu
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
