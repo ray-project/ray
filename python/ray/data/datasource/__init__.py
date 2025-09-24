@@ -28,6 +28,7 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
+from ray.data.datasource.multi_datasink import MultiDatasink, SinkWriteResult
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -47,6 +48,8 @@ __all__ = [
     "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
     "DummyOutputDatasink",
+    "MultiDatasink",
+    "SinkWriteResult",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileShuffleConfig",

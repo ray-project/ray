@@ -22,6 +22,7 @@ from ray.data.datasource import (
     FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
+    MultiDatasink,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
@@ -123,6 +124,7 @@ __all__ = [
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
     "Datasink",
+    "MultiDatasink",
     "Datasource",
     "ExecutionOptions",
     "ExecutionResources",
