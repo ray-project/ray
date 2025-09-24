@@ -95,6 +95,9 @@ def test_fit(ray_start_4_cpus):
         XGBoostTrainer.get_model(result.checkpoint)
 
 
+# TODO: Unit test RayTrainReportCallback
+
+
 if __name__ == "__main__":
     import sys
 

@@ -790,6 +790,7 @@ py_test(
     name = "test_state",
     size = "medium",
     srcs = ["tests/test_state.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -804,6 +805,7 @@ py_test(
     name = "test_state_export",
     size = "medium",
     srcs = ["tests/test_state_export.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -818,6 +820,7 @@ py_test(
     name = "test_tensorflow_checkpoint",
     size = "small",
     srcs = ["tests/test_tensorflow_checkpoint.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -829,6 +832,7 @@ py_test(
     name = "test_tensorflow_predictor",
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu",
@@ -845,6 +849,7 @@ py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "ray_air",
@@ -857,6 +862,7 @@ py_test(
     name = "test_torch_checkpoint",
     size = "small",
     srcs = ["tests/test_torch_checkpoint.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "ray_air",
@@ -872,6 +878,7 @@ py_test(
     name = "test_torch_predictor",
     size = "medium",
     srcs = ["tests/test_torch_predictor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu",
@@ -888,6 +895,7 @@ py_test(
     name = "test_torch_detection_predictor",
     size = "medium",
     srcs = ["tests/test_torch_detection_predictor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "gpu",
@@ -904,6 +912,8 @@ py_test(
     name = "test_torch_device_manager",
     size = "medium",
     srcs = ["tests/test_torch_device_manager.py"],
+    # TODO: Fix accelerator integrations and move over.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "gpu_only",
@@ -920,6 +930,7 @@ py_test(
     name = "test_torch_trainer",
     size = "large",
     srcs = ["tests/test_torch_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "ray_air",
@@ -932,6 +943,7 @@ py_test(
     name = "test_torch_utils",
     size = "small",
     srcs = ["tests/test_torch_utils.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "ray_air",
@@ -944,6 +956,7 @@ py_test(
     name = "test_train_usage",
     size = "medium",
     srcs = ["tests/test_train_usage.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -955,6 +968,7 @@ py_test(
     name = "test_training_iterator",
     size = "large",
     srcs = ["tests/test_training_iterator.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "ray_air",
@@ -967,6 +981,7 @@ py_test(
     name = "test_tune",
     size = "large",
     srcs = ["tests/test_tune.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -979,20 +994,10 @@ py_test(
 )
 
 py_test(
-    name = "test_utils",
-    size = "small",
-    srcs = ["tests/test_utils.py"],
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [":train_lib"],
-)
-
-py_test(
     name = "test_e2e_wandb_integration",
     size = "small",
     srcs = ["tests/test_e2e_wandb_integration.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -1004,6 +1009,7 @@ py_test(
     name = "test_worker_group",
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -1015,6 +1021,7 @@ py_test(
     name = "test_windows",
     size = "small",
     srcs = ["tests/test_windows.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "minimal",
@@ -1027,6 +1034,7 @@ py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "ray_air",
@@ -1042,6 +1050,7 @@ py_test(
     name = "test_xgboost_trainer",
     size = "medium",
     srcs = ["tests/test_xgboost_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "ray_air",
@@ -1054,6 +1063,7 @@ py_test(
     name = "test_trainer_restore",
     size = "large",
     srcs = ["tests/test_trainer_restore.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "new_storage",
@@ -1070,36 +1080,18 @@ py_test(
     name = "test_telemetry",
     size = "medium",
     srcs = ["tests/test_telemetry.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     deps = [":train_lib"],
 )
 
-### E2E Data + Train
-py_test(
-    name = "test_datasets_train",
-    size = "medium",
-    srcs = ["tests/test_datasets_train.py"],
-    args = [
-        "--smoke-test",
-        "--num-workers=2",
-        "--use-gpu",
-    ],
-    tags = [
-        "datasets_train",
-        "exclusive",
-        "gpu",
-        "team:ml",
-    ],
-)
-
-### Train Dashboard
 py_test(
     name = "test_train_head",
     size = "small",
     srcs = ["tests/test_train_head.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
-        "ray_air",
         "team:ml",
     ],
     deps = [

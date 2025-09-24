@@ -1866,7 +1866,6 @@ python/ray/train/_internal/syncer.py
     DOC201: Method `Syncer.sync_down_if_needed` does not have a return section in docstring
 --------------------
 python/ray/train/_internal/utils.py
-    DOC201: Function `construct_path` does not have a return section in docstring
     DOC111: Function `construct_train_func`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
 --------------------
 python/ray/train/_internal/worker_group.py
