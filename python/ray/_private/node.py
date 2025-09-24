@@ -459,6 +459,9 @@ class Node:
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
+        logger.info(
+            f"init_temp, head: {self.head}, temp_dir: {self._ray_params.temp_dir}"
+        )
         if self.head:
             self._ray_params.update_if_absent(
                 temp_dir=ray._common.utils.get_ray_temp_dir()
