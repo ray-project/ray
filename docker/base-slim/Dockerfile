@@ -167,7 +167,7 @@ BUILD_DIR=$(mktemp -d)
 curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
 make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
-make -C "${BUILD_DIR}" install
+make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin
 rm -rf "${BUILD_DIR}"
 
 EOF
@@ -179,7 +179,7 @@ FROM main-build as main
 USER root
 
 # Copy HAProxy binary from builder stage
-COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
+COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
 
 # Install HAProxy runtime dependency and setup
 RUN <<EOF
@@ -194,14 +194,12 @@ useradd -r -g haproxy haproxy || true
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 chown -R haproxy:haproxy /run/haproxy
 
-echo "ray ALL=(ALL) NOPASSWD: /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg -D -p /run/haproxy/haproxy.pid" | tee /etc/sudoers.d/haproxy-ray
-
 rm -rf /var/lib/apt/lists/*
 
 EOF
 
-# Update PATH to include both anaconda3 and HAProxy
-ENV PATH="/home/ray/anaconda3/bin:/usr/local/sbin:$PATH"
+# Ensure Anaconda is on PATH
+ENV PATH="/home/ray/anaconda3/bin:$PATH"
 
 USER ray
 WORKDIR /home/ray

@@ -2,7 +2,7 @@
 
 ARG BASE_IMAGE="rayproject/ray:latest"
 
-FROM "$BASE_IMAGE"
+FROM "$BASE_IMAGE" as main-build
 
 ENV TERM=xterm
 
@@ -59,33 +59,6 @@ APT_PKGS=(
 sudo apt-get update -y
 sudo apt-get install -y "${APT_PKGS[@]}"
 sudo apt-get autoclean
-
-HAPROXY_BUILD_DEPS=(
-    libssl-dev
-    libpcre3-dev
-    zlib1g-dev
-)
-
-sudo apt-get install -y socat "${HAPROXY_BUILD_DEPS[@]}"
-
-# Install HAProxy from source.
-HAPROXY_VERSION="2.8.12"
-BUILD_DIR=$(mktemp -d)
-curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
-tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
-make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
-sudo make -C "${BUILD_DIR}" install
-rm -rf "${BUILD_DIR}"
-
-sudo apt-get purge -y --auto-remove "${HAPROXY_BUILD_DEPS[@]}"
-
-sudo groupadd -r haproxy || true
-sudo useradd -r -g haproxy haproxy || true
-
-sudo mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
-sudo chown -R haproxy:haproxy /run/haproxy
-
-echo "ray ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/haproxy/haproxy.cfg, /bin/touch /etc/haproxy/haproxy.cfg, /usr/local/sbin/haproxy -f /etc/haproxy/haproxy.cfg -D -p /run/haproxy/haproxy.pid" | sudo tee /etc/sudoers.d/haproxy-ray
 
 # Install azcopy
 AZCOPY_VERSION="10.30.0"
@@ -227,6 +200,59 @@ sudo rm -rf /var/lib/apt/lists/*
 
 EOF
 
-ENV PATH="/usr/local/sbin:$PATH"
+# --- HAProxy Build Stage ---
+FROM ubuntu:22.04 as haproxy-builder
+
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+apt-get update -y
+apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libpcre3-dev \
+    libssl-dev \
+    zlib1g-dev \
+    ca-certificates
+rm -rf /var/lib/apt/lists/*
+
+# Install HAProxy from source
+HAPROXY_VERSION="2.8.12"
+BUILD_DIR=$(mktemp -d)
+curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
+make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
+make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin
+rm -rf "${BUILD_DIR}"
+
+EOF
+
+# --- Return to main image ---
+FROM main-build as main
+
+USER root
+
+# Copy HAProxy binary from builder stage
+COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+
+# Install HAProxy runtime dependency and setup
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+apt-get update -y
+apt-get install -y --no-install-recommends socat
+
+groupadd -r haproxy || true
+useradd -r -g haproxy haproxy || true
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+chown -R haproxy:haproxy /run/haproxy
+
+rm -rf /var/lib/apt/lists/*
+EOF
+
+USER ray
+WORKDIR /home/ray
 
 RUN mkdir -p /tmp/supervisord
