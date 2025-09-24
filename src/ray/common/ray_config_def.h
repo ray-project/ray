@@ -534,6 +534,8 @@ RAY_CONFIG(bool, enable_open_telemetry, false)
 /// using the Export API.
 RAY_CONFIG(bool, enable_ray_event, false)
 
+RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
+
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
 /// degredations.
@@ -965,3 +967,7 @@ RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
 
 // Whether to start a background thread to manage Python GC in workers.
 RAY_CONFIG(bool, start_python_gc_manager_thread, true)
+
+// Whether to enable the feature of outputting error log if the task is
+// still retryable.
+RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
