@@ -667,7 +667,6 @@ autodoc_mock_imports = [
     "colorama",
     "grpc",
     "vllm",
-    "opentelemetry",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",
