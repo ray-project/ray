@@ -240,7 +240,7 @@ class TestDistributions(unittest.TestCase):
         )
         sample1.mean().backward(retain_graph=True)
 
-        # check stablity against skewed inputs
+        # check stability against skewed inputs
         check_stability(
             TorchDiagGaussian,
             sample_input={"loc": loc_tens, "scale": scale_tens},

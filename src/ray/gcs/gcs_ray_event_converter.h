@@ -67,13 +67,13 @@ class GcsRayEventConverter {
   /// and required resources. This function is commonly used to convert the task
   /// and actor task definition events to TaskEvents.
   ///
-  /// \param runtime_env_info The runtime env info.
+  /// \param serialized_runtime_env The serialized runtime environment string.
   /// \param function_descriptor The function descriptor.
   /// \param required_resources The required resources.
   /// \param language The language of the task.
   /// \param task_info The output TaskInfoEntry to populate.
   void PopulateTaskRuntimeAndFunctionInfo(
-      rpc::RuntimeEnvInfo &&runtime_env_info,
+      std::string &&serialized_runtime_env,
       rpc::FunctionDescriptor &&function_descriptor,
       ::google::protobuf::Map<std::string, double> &&required_resources,
       rpc::Language language,

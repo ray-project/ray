@@ -42,7 +42,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
-#include "ray/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
@@ -222,36 +222,20 @@ void TaskCounter::RecordMetrics() {
   absl::MutexLock l(&mu_);
   counter_.FlushOnChangeCallbacks();
   if (IsActor()) {
-    float running = 0.0;
-    float in_get = 0.0;
-    float in_wait = 0.0;
+    float running_tasks = 0.0;
     float idle = 0.0;
-    if (running_in_wait_counter_.Total() > 0) {
-      in_wait = 1.0;
-    } else if (running_in_get_counter_.Total() > 0) {
-      in_get = 1.0;
-    } else if (num_tasks_running_ > 0) {
-      running = 1.0;
-    } else {
+    if (num_tasks_running_ == 0) {
       idle = 1.0;
+    } else {
+      running_tasks = 1.0;
     }
     ray::stats::STATS_actors.Record(idle,
-                                    {{"State", "IDLE"},
+                                    {{"State", "ALIVE_IDLE"},
                                      {"Name", actor_name_},
                                      {"Source", "executor"},
                                      {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(running,
-                                    {{"State", "RUNNING_TASK"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(in_get,
-                                    {{"State", "RUNNING_IN_RAY_GET"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(in_wait,
-                                    {{"State", "RUNNING_IN_RAY_WAIT"},
+    ray::stats::STATS_actors.Record(running_tasks,
+                                    {{"State", "ALIVE_RUNNING_TASKS"},
                                      {"Name", actor_name_},
                                      {"Source", "executor"},
                                      {"JobId", job_id_}});
