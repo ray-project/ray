@@ -14,67 +14,37 @@ Common use cases include video inference (such as transcoding, detection, and tr
 
 ## Key concepts
 
-- **Task**: A user-defined function invocation with arguments to execute asynchronously.
-- **Task consumer deployment**: A Serve deployment that consumes and executes tasks from a queue.
-- **Task handler**: A method inside the consumer marked to handle a named task.
-- **Task processor adapter**: Pluggable adapter that interfaces with a task processor or broker (such as Celery).
-- **Task result**: A model representing task metadata, status, and optional return value.
+- **@task_consumer**: A Serve deployment that consumes and executes tasks from a queue. Requires a `TaskProcessorConfig` parameter to configure the task processor; by default it uses the Celery task processor, but you can provide your own implementation.
+- **@task_handler**: A decorator applied to a method inside a `@task_consumer` class. Each handler declares the task it handles via `name=...`; if `name` is omitted, the method's function name is used as the task name. All tasks with that name in the consumer's configured queue (set via the `TaskProcessorConfig` above) are routed to this method for execution.
+
 
 ## Components and APIs
 
 The following sections describe the core APIs for asynchronous inference, with minimal examples to get you started.
 
-### `CeleryAdapterConfig`
-Configuration for the Celery adapter, including broker and backend URLs and worker settings.
-
-The following example shows a Celery adapter configuration:
-```python
-from ray.serve.schema import CeleryAdapterConfig
-
-celery_config = CeleryAdapterConfig(
-    broker_url="redis://localhost:6379/0",     # Or "filesystem://" for local testing
-    backend_url="redis://localhost:6379/1",    # Result backend (optional for fire-and-forget)
-    worker_concurrency=10,
-)
-```
 
 ### `TaskProcessorConfig`
-Configures the task processor, including queue name, adapter (default is Celery), adapter config, retry limits, and dead-letter queues.
+Configures the task processor, including queue name, adapter (default is Celery), adapter config, retry limits, and dead-letter queues. The following example shows how to configure the task processor:
 
-The following example shows how to configure the task processor:
 ```python
-from ray.serve.schema import TaskProcessorConfig
+from ray.serve.schema import TaskProcessorConfig, CeleryAdapterConfig
 
 processor_config = TaskProcessorConfig(
     queue_name="my_queue",
     # Optional: Override default adapter string (default is Celery)
     # adapter="ray.serve.task_processor.CeleryTaskProcessorAdapter",
-    adapter_config=celery_config,
+    adapter_config=CeleryAdapterConfig(
+        broker_url="redis://localhost:6379/0",     # Or "filesystem://" for local testing
+        backend_url="redis://localhost:6379/1",    # Result backend (optional for fire-and-forget)
+    ),
     max_retries=5,
     failed_task_queue_name="failed_tasks",              # Application errors after retries
-    unprocessable_task_queue_name="unprocessable_tasks" # Missing handler or deserialization errors
 )
-```
-
-### `TaskResult`
-Represents a task's ID, status, timestamp, and optional result.
-
-The following example demonstrates creating and accessing a task result:
-```python
-from ray.serve.schema import TaskResult
-
-result = TaskResult(
-    id="task-123",
-    status="SUCCESS",
-    result={"message": "ok"},
-)
-print(result.id, result.status)
 ```
 
 ### `@task_consumer`
-Decorator that turns a Serve deployment into a task consumer using the provided `TaskProcessorConfig`.
+Decorator that turns a Serve deployment into a task consumer using the provided `TaskProcessorConfig`. The following code creates a task consumer:
 
-The following code creates a task consumer:
 ```python
 from ray import serve
 from ray.serve.task_consumer import task_consumer
@@ -86,54 +56,37 @@ class SimpleConsumer:
 ```
 
 ### `@task_handler`
-Decorator that registers a method on the consumer as a named task handler.
+Decorator that registers a method on the consumer as a named task handler. The following example shows how to define a task handler:
 
-:::{note}
-Ray Serve currently supports only synchronous handlers. Declaring an `async def` handler raises `NotImplementedError`.
-:::
-
-The following example shows how to define a task handler:
 ```python
-from ray.serve.task_consumer import task_handler
+from ray.serve.task_consumer import task_handler, task_consumer
 
+@serve.deployment
+@task_consumer(task_processor_config=processor_config)
 class SimpleConsumer:
     @task_handler(name="process_request")
     def process_request(self, data):
         return f"processed: {data}"
 ```
 
-### `instantiate_adapter_from_config`
-Factory function that returns a task processor adapter instance for the given `TaskProcessorConfig`. You can use the returned object to enqueue tasks, fetch status, retrieve metrics, and more.
+:::{note}
+Ray Serve currently supports only synchronous handlers. Declaring an `async def` handler raises `NotImplementedError`.
+:::
 
-The following example demonstrates creating an adapter and enqueuing tasks:
+
+### `instantiate_adapter_from_config`
+Factory function that returns a task processor adapter instance for the given `TaskProcessorConfig`. You can use the returned object to enqueue tasks, fetch status, retrieve metrics, and more. The following example demonstrates creating an adapter and enqueuing tasks:
+
 ```python
 from ray.serve.task_consumer import instantiate_adapter_from_config
 
 adapter = instantiate_adapter_from_config(task_processor_config=processor_config)
-# Enqueue synchronously (returns TaskResult with ID)
-result = adapter.enqueue_task_sync("process_request", args=["hello"])
+# Enqueue synchronously (returns TaskResult)
+result = adapter.enqueue_task_sync(task_name="process_request", args=["hello"])
 # Later, fetch status synchronously
 status = adapter.get_task_status_sync(result.id)
 ```
 
-### Submit tasks from outside Serve (producers)
-You can enqueue tasks from external producers (non-Serve code) if they share the same `TaskProcessorConfig`.
-
-The following example shows how to enqueue tasks from external code:
-```python
-from ray.serve.task_consumer import instantiate_adapter_from_config
-from ray.serve.schema import TaskProcessorConfig, CeleryAdapterConfig
-
-celery_config = CeleryAdapterConfig(
-    broker_url="redis://localhost:6379/0",
-    backend_url="redis://localhost:6379/1",
-)
-processor_config = TaskProcessorConfig(queue_name="my_queue", adapter_config=celery_config)
-
-adapter = instantiate_adapter_from_config(task_processor_config=processor_config)
-result = adapter.enqueue_task_sync("process_request", args=["payload"])
-print("Enqueued:", result.id)
-```
 
 ## End-to-end example: Document indexing
 
@@ -155,7 +108,6 @@ from ray.serve.task_consumer import (
 celery_config = CeleryAdapterConfig(
     broker_url="redis://localhost:6379/0",   # Broker URL
     backend_url="redis://localhost:6379/1",  # Optional result backend
-    worker_concurrency=10,
 )
 
 # 2) Configure the task processor
@@ -164,7 +116,6 @@ processor_config = TaskProcessorConfig(
     adapter_config=celery_config,
     max_retries=3,
     failed_task_queue_name="doc_failed",
-    unprocessable_task_queue_name="doc_unprocessable",
 )
 
 # 3) Define the consumer deployment for background processing
@@ -198,7 +149,7 @@ class API:
         data = await request.json()
         # Enqueue synchronously; returns TaskResult containing ID
         task: TaskResult = self.adapter.enqueue_task_sync(
-            "index_document", kwargs=data
+            task_name="index_document", kwargs=data
         )
         return {"task_id": task.id}
 
@@ -215,13 +166,13 @@ serve.run(app_graph)
 ```
 
 In this example:
-- `DocumentIndexingConsumer` reads tasks from `document_indexing_queue` and processes them.
+- `DocumentIndexingConsumer` reads tasks from `document_indexing_queue` queue and processes them.
 - `API` enqueues tasks through `enqueue_task_sync` and fetches status through `get_task_status_sync`.
 - Passing `consumer` into `API.__init__` ensures both deployments are part of the Serve application graph.
 
 ## Concurrency and reliability
 
-To manage concurrency, configure consumer-side concurrency through the adapter config (such as `worker_concurrency` in `CeleryAdapterConfig`). To ensure at-least-once processing, adapters should acknowledge tasks only after successful execution. The system retries failed tasks up to `max_retries` times; if they continue to fail, the system routes them to the failed-task DLQ when configured. The default Celery adapter acknowledges on success to provide at-least-once processing.
+ Manage concurrency by setting `max_ongoing_requests` on the consumer deployment; this caps how many tasks each replica can process simultaneously. For at-least-once delivery, adapters should acknowledge a task only after the handler completes successfully. Failed tasks are retried up to `max_retries`; once exhausted, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success, providing at-least-once processing.
 
 ## Dead letter queues (DLQs)
 
