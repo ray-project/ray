@@ -233,6 +233,47 @@ Here is an example of distributed checkpointing with PyTorch:
     rank-specific filenames already, so you usually do not need to worry about this.
 
 
+.. _train-checkpoint-upload-modes:
+
+Checkpoint Upload Modes
+~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, when you report, Ray Train synchronously pushes your checkpoint from
+``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on remote storage as
+defined by your ``RunConfig``. This is equivalent to calling ``report`` with
+``checkpoint_upload_mode=CheckpointUploadMode.SYNC``:
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_mode_sync_start__
+    :end-before: __checkpoint_upload_mode_sync_end__
+
+However, you may want to upload your checkpoint asynchronously instead so you can
+start the next training step in parallel. If so, you should use
+``checkpoint_upload_mode=CheckpointUploadMode.ASYNC``:
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_mode_async_start__
+    :end-before: __checkpoint_upload_mode_async_end__
+
+.. note::
+
+    Right now, ``report`` caps the number of concurrent upload threads to 1, so you don't
+    need to worry about OOM's. If the previous checkpoint upload is still happening
+    during the current ``report``, ``report`` will block until that upload completes.
+
+Both of these ``CheckpointUploadMode``s upload your checkpoint from disk to remote
+storage with a pyarrow copy, but you may want to use a different upload method,
+such as PyTorch's ``async_save``, instead. If so, you can upload the checkpoint to
+the remote storage directory defined by your ``RunConfig`` using your method of choice,
+and then call ``report`` with ``checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD``:
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_mode_no_upload_start__
+    :end-before: __checkpoint_upload_mode_no_upload_end__
+
 .. _train-dl-configure-checkpoints:
 
 Configure checkpointing
