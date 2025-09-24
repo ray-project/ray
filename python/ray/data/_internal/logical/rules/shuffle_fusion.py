@@ -130,7 +130,7 @@ def _disconnect_op(child_op: Operator, copy=True) -> Operator:
         parent_op.output_dependencies.remove(child_op)
         parent_op.output_dependencies.extend(grandchild_ops)
 
-    # the child_op is now dangling
+    # the child_op is now disconnected
 
     if copy:
         import copy as cp
