@@ -69,7 +69,7 @@ def make_time_major(
     return tensor
 
 
-def vtrace_torch(
+def vtrace_torch_fast(
     *,
     target_action_log_probs: "torch.Tensor",
     behaviour_action_log_probs: "torch.Tensor",
@@ -123,46 +123,35 @@ def vtrace_torch(
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
     log_rhos = target_action_log_probs - behaviour_action_log_probs
-
     rhos = torch.exp(log_rhos)
-    if clip_rho_threshold is not None:
-        clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
-    else:
-        clipped_rhos = rhos
 
+    clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
     cs = torch.clamp(rhos, max=1.0)
-    # Append bootstrapped value to get [v1, ..., v_t+1]
-    values_t_plus_1 = torch.cat(
-        [values[1:], torch.unsqueeze(bootstrap_values, 0)], axis=0
-    )
+
+    # Preallocate values_t_plus_1
+    values_t_plus_1 = torch.empty_like(values)
+    values_t_plus_1[:-1] = values[1:]
+    values_t_plus_1[-1] = bootstrap_values
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
-    # Note: The original IMPALA code (and paper) suggested to perform the following
-    # v-trace for-loop on the CPU, due to its sequential nature. However, modern GPUs
-    # are quite optimized for these shorted for-loops, which is why it should be faster
-    # nowadays to leave these operations on the GPU to avoid the GPU<>CPU transfer
-    # penalty. This penalty can actually be quite massive on the LEarner actors, given
-    # all other code is already well optimized.
-    vs_minus_v_xs = [torch.zeros_like(bootstrap_values, device=deltas.device)]
-    for i in reversed(range(len(discounts))):
-        discount_t, c_t, delta_t = discounts[i], cs[i], deltas[i]
-        vs_minus_v_xs.append(delta_t + discount_t * c_t * vs_minus_v_xs[-1])
-    vs_minus_v_xs = torch.stack(vs_minus_v_xs[1:])
+    # Vectorized discounted cumulative sum (GPU friendly)
+    T, B = deltas.shape
+    vs_minus_v_xs = torch.zeros_like(deltas)
+    running = torch.zeros(B, device=deltas.device, dtype=deltas.dtype)
+    dc = discounts * cs
+    for t in reversed(range(T)):
+        running = deltas[t] + dc[t] * running
+        vs_minus_v_xs[t] = running
 
-    # Reverse the results back to original order.
-    vs_minus_v_xs = torch.flip(vs_minus_v_xs, dims=[0])
+    vs = vs_minus_v_xs + values
 
-    # Add V(x_s) to get v_s.
-    vs = torch.add(vs_minus_v_xs, values)
+    # Preallocate vs_t_plus_1
+    vs_t_plus_1 = torch.empty_like(values)
+    vs_t_plus_1[:-1] = vs[1:]
+    vs_t_plus_1[-1] = bootstrap_values
 
-    # Advantage for policy gradient.
-    vs_t_plus_1 = torch.cat([vs[1:], torch.unsqueeze(bootstrap_values, 0)], axis=0)
-    if clip_pg_rho_threshold is not None:
-        clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
-    else:
-        clipped_pg_rhos = rhos
+    clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
     pg_advantages = clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values)
 
-    # Make sure no gradients backpropagated through the returned values.
-    return torch.detach(vs), torch.detach(pg_advantages)
+    return vs.detach(), pg_advantages.detach()
