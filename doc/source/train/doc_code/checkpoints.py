@@ -448,8 +448,6 @@ def train_fn(config):
         checkpoint=checkpoint,
         checkpoint_upload_mode=train.CheckpointUploadMode.SYNC,
     )
-
-
 # __checkpoint_upload_mode_sync_end__
 
 # __checkpoint_upload_mode_async_start__
@@ -462,8 +460,6 @@ def train_fn(config):
         checkpoint=checkpoint,
         checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
     )
-
-
 # __checkpoint_upload_mode_async_end__
 
 # __checkpoint_upload_mode_no_upload_start__
@@ -476,6 +472,4 @@ def train_fn(config):
         checkpoint=checkpoint,
         checkpoint_upload_mode=train.CheckpointUploadMode.NO_UPLOAD,
     )
-
-
 # __checkpoint_upload_mode_no_upload_end__
