@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 DATA_ROOT = "/tmp/test_data"
 
 
-def train_func():
+def train_func(config):
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
     model.conv1 = torch.nn.Conv2d(
@@ -42,7 +42,7 @@ def train_func():
 
     # model.to("cuda")  # This is done by `prepare_model`
     criterion = CrossEntropyLoss()
-    optimizer = Adam(model.parameters(), lr=0.001)
+    optimizer = Adam(model.parameters(), lr=config["lr"])
 
     # Data
     transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
@@ -59,12 +59,12 @@ def train_func():
         root=DATA_ROOT, train=True, download=False, transform=transform
     )
 
-    train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
+    train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     # [2] Prepare dataloader.
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
-    for epoch in range(10):
+    for epoch in range(config["num_epochs"]):
         if ray.train.get_context().get_world_size() > 1:
             train_loader.sampler.set_epoch(epoch)
 
