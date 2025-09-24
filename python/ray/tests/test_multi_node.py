@@ -2,7 +2,6 @@ import os
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
@@ -16,12 +15,16 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
+import psutil
+
 
 @pytest.mark.parametrize(
     "call_ray_start",
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0 --system-config "
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+        '{"core_worker_rpc_server_reconnect_timeout_s":0}',
     ],
     indirect=True,
 )

@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import os
 from typing import Any, Dict, List, Optional
@@ -92,26 +93,17 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        # TODO(lk-chen): Remove the logic once we require vllm>=0.10.1
-        # vLLM 0.10.1 replaces `disable_log_requests` with
-        # `enable_log_requests`. Here we are trying to be compatible with both.
-        if hasattr(AsyncEngineArgs, "enable_log_requests"):
-            if "disable_log_requests" in engine_kwargs:
-                logger.warning(
-                    "disable_log_requests is set in engine_kwargs, but vLLM "
-                    "does not support it. Converting to enable_log_requests."
-                )
-                engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
-                    "disable_log_requests"
-                )
-            else:
-                engine_kwargs["enable_log_requests"] = False
-        elif "disable_log_requests" not in engine_kwargs:
-            logger.info(
-                "Disabling request logging by default. To enable, set to False"
-                " in engine_kwargs."
+        # TODO (Nikhil): Remove this once vLLM fully deprecates disable_log_requests.
+        if "disable_log_requests" in engine_kwargs:
+            logger.warning(
+                "disable_log_requests is set in engine_kwargs, but vLLM "
+                "does not support it. Converting to enable_log_requests."
             )
-            engine_kwargs["disable_log_requests"] = True
+            engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
+                "disable_log_requests"
+            )
+        elif "enable_log_requests" not in engine_kwargs:
+            engine_kwargs["enable_log_requests"] = False
 
         return engine_kwargs
 
@@ -201,7 +193,7 @@ class VLLMEngineConfig(BaseModelExtended):
             bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
-        bundles = [bundle for _ in range(self.num_devices)]
+        bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
         return bundles
 

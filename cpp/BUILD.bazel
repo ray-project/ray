@@ -66,8 +66,7 @@ cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_lib",
-        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
-        "//src/ray/util",
+        "//src/ray/gcs_rpc_client:global_state_accessor_lib",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:process",
@@ -141,11 +140,6 @@ pkg_files(
     name = "example_files",
     srcs = glob(["example/*"]),
     prefix = "ray/cpp/example/",
-    renames = {
-        "example/_WORKSPACE": "WORKSPACE",
-        "example/_BUILD.bazel": "BUILD.bazel",
-        "example/_.bazelrc": ".bazelrc",
-    },
     visibility = ["//visibility:private"],
 )
 

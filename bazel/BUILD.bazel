@@ -20,3 +20,43 @@ py_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "linux_x86_64_config",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_arm64_config",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+config_setting(
+    name = "osx_x86_64_config",
+    constraint_values = [
+        "@platforms//os:osx",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "osx_arm64_config",
+    constraint_values = [
+        "@platforms//os:osx",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+config_setting(
+    name = "windows_x86_64_config",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+)

@@ -27,8 +27,6 @@ class InMemoryStoreClientTest : public StoreClientTestBase {
   void InitStoreClient() override {
     store_client_ = std::make_shared<InMemoryStoreClient>();
   }
-
-  void DisconnectStoreClient() override {}
 };
 
 TEST_F(InMemoryStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }

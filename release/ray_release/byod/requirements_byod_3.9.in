@@ -7,10 +7,11 @@ cmake
 crc32c
 cython
 fastapi
-gcsfs==2023.5.0
+gcsfs==2023.12.1
 gsutil
 gymnasium
 gymnasium[atari]
+httpx
 importlib-metadata
 jsonschema
 lightgbm

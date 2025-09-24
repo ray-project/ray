@@ -23,21 +23,22 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/pubsub/fake_subscriber.h"
 
 namespace ray {
 
 using ::testing::_;
 using ::testing::Return;
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     const auto &worker_id = WorkerID::FromBinary(request.intended_worker_id());
     const auto &object_location_updates = request.object_location_updates();
@@ -126,7 +127,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
                  /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(
             new MockGcsClient(options_, std::make_unique<MockGcsClientNodeAccessor>())),
-        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
+        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }) {
     RayConfig::instance().initialize(R"({"max_object_report_batch_size": 20})");
@@ -199,7 +200,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
   instrumented_io_context io_service_;
   gcs::GcsClientOptions options_;
   std::shared_ptr<gcs::GcsClient> gcs_client_mock_;
-  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   std::unique_ptr<OwnershipBasedObjectDirectory> obod_;
@@ -486,7 +487,6 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
   UniqueID callback_id = UniqueID::FromRandom();
   ObjectID obj_id = ObjectID::FromRandom();
   int num_callbacks = 0;
-  EXPECT_CALL(*subscriber_, Subscribe(_, _, _, _, _, _, _)).WillOnce(Return(true));
   ASSERT_TRUE(
       obod_
           ->SubscribeObjectLocations(callback_id,

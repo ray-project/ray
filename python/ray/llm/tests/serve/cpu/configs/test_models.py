@@ -1,4 +1,5 @@
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pydantic
@@ -178,8 +179,7 @@ class TestModelConfig:
             "max_replicas": 10,
         }
         assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0},
-            {"GPU": 1, "accelerator_type:A100-40G": 0.001},
+            {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
         ]
         assert serve_options["placement_group_strategy"] == "STRICT_PACK"
         assert serve_options["name"] == "Test:test_model"
@@ -214,10 +214,7 @@ class TestModelConfig:
             "initial_replicas": 1,
             "max_replicas": 10,
         }
-        assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0},
-            {"GPU": 1},
-        ]
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
         assert serve_options["placement_group_strategy"] == "STRICT_PACK"
         assert serve_options["name"] == "Test:test_model"
 
@@ -239,8 +236,9 @@ class TestModelConfig:
             model_loading_config=dict(model_id="test_model"),
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
-            {"GPU": 1} for _ in range(6)
+
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
+            {"GPU": 1} for _ in range(5)
         ]
 
         # Test the custom resource bundle
@@ -249,9 +247,9 @@ class TestModelConfig:
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
             resources_per_bundle={"XPU": 1},
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
-            {"XPU": 1} for _ in range(6)
-        ]
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 0, "XPU": 1}
+        ] + [{"XPU": 1} for _ in range(5)]
 
     def test_engine_config_cached(self):
         """Test that the engine config is cached and not recreated when calling
@@ -304,6 +302,56 @@ class TestModelConfig:
                 log_engine_metrics=True,
                 engine_kwargs={"disable_log_stats": True},
             )
+
+    @pytest.mark.parametrize(
+        "data_parallel_size,num_replica,allowed",
+        [
+            (None, 1, True),
+            (None, 2, True),
+            (None, 3, True),
+            (1, 1, True),
+            (1, 2, True),
+            (1, 3, True),
+            (2, 2, False),
+            (2, 3, False),
+            (4, 2, False),
+            (2, None, True),
+            (None, None, True),
+        ],
+    )
+    def test_multi_replica_dp_validation(
+        self, data_parallel_size, num_replica, allowed
+    ):
+        """Test that multi-replica and DP size are mutually exclusive.
+
+        Ray.llm's implementation does not yet support multi-replica
+        deployment along with DP.
+        """
+        engine_kwargs = (
+            {}
+            if data_parallel_size is None
+            else {"data_parallel_size": data_parallel_size}
+        )
+        deployment_config = {} if num_replica is None else {"num_replicas": num_replica}
+
+        def get_serve_options_with_num_replica():
+            return LLMConfig(
+                model_loading_config=dict(model_id="test_model"),
+                engine_kwargs=deepcopy(engine_kwargs),
+                deployment_config=deepcopy(deployment_config),
+            ).get_serve_options(name_prefix="Test:")
+
+        if allowed:
+            serve_options = get_serve_options_with_num_replica()
+            actual_num_replicas = serve_options.get("num_replicas", 1)
+            expected_num_replicas = (data_parallel_size or 1) * (num_replica or 1)
+            assert actual_num_replicas == expected_num_replicas
+        else:
+            with pytest.raises(
+                ValueError,
+                match="use engine_kwargs.data_parallel_size",
+            ):
+                get_serve_options_with_num_replica()
 
 
 class TestFieldValidators:

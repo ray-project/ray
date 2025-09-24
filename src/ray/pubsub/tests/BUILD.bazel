@@ -27,9 +27,10 @@ ray_cc_test(
 ray_cc_test(
     name = "pubsub_integration_test",
     size = "small",
-    srcs = ["integration_test.cc"],
+    srcs = ["pubsub_integration_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:grpc_util",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",

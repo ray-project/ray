@@ -25,10 +25,10 @@
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 // clang-format on
 using namespace std;  // NOLINT
 
@@ -508,8 +508,10 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
   // Remote node is feasible but has no available resource.
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       remote_node_id, remote_resource_total, {{"CPU", 0}});
+  LeaseSpecification lease_spec1(
+      std::move(spec_builder_1).ConsumeAndBuild().GetMessage());
   auto node_id_3 = resource_scheduler.GetBestSchedulableNode(
-      std::move(spec_builder_1).ConsumeAndBuild(),
+      lease_spec1,
       /*preferred_node_id=*/local_node_id.Binary(),
       false,
       false,
@@ -550,8 +552,10 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
                                    "",
                                    nullptr);
   spec_builder_2.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
+  LeaseSpecification lease_spec2(
+      std::move(spec_builder_2).ConsumeAndBuild().GetMessage());
   auto node_id_4 = resource_scheduler.GetBestSchedulableNode(
-      std::move(spec_builder_2).ConsumeAndBuild(),
+      lease_spec2,
       /*preferred_node_id=*/local_node_id.Binary(),
       false,
       false,
@@ -1848,8 +1852,8 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   label_selector_spec.SetNormalTaskSpec(
       0, false, "", scheduling_strategy, ActorID::Nil());
   auto built_label_selector = std::move(label_selector_spec).ConsumeAndBuild();
-  resource_scheduler.GetBestSchedulableNode(
-      built_label_selector, "", false, false, &is_infeasible);
+  LeaseSpecification lease_spec(built_label_selector.GetMessage());
+  resource_scheduler.GetBestSchedulableNode(lease_spec, "", false, false, &is_infeasible);
   ASSERT_TRUE(is_infeasible);
 
   // Set node labels - node should now be schedulable
@@ -1858,9 +1862,107 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   };
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(node_1, test_labels);
   auto best_node_2 = resource_scheduler.GetBestSchedulableNode(
-      built_label_selector, "", false, false, &is_infeasible);
+      lease_spec, "", false, false, &is_infeasible);
   ASSERT_EQ(best_node_2, node_1);
   ASSERT_FALSE(is_infeasible);
+}
+
+TEST_F(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest) {
+  // Setup scheduler with two nodes.
+  absl::flat_hash_map<ResourceID, double> node_resources_map({{ResourceID::CPU(), 1}});
+  NodeResources node_resources = CreateNodeResources(node_resources_map);
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(
+      io_context, local_node_id, {{"CPU", 0}}, is_node_available_fn_);
+
+  auto node_0_id_obj = NodeID::FromRandom();
+  auto node_1_id_obj = NodeID::FromRandom();
+  auto node_0 = scheduling::NodeID(node_0_id_obj.Binary());
+  auto node_1 = scheduling::NodeID(node_1_id_obj.Binary());
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(node_0, node_resources);
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(node_1, node_resources);
+
+  // Set required node labels.
+  absl::flat_hash_map<std::string, std::string> node_0_labels = {
+      {"ray.io/node-id", node_0_id_obj.Hex()},
+  };
+  absl::flat_hash_map<std::string, std::string> node_1_labels = {
+      {"ray.io/node-id", node_1_id_obj.Hex()},
+  };
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(node_0, node_0_labels);
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(node_1, node_1_labels);
+
+  ResourceRequest base_resource_request = CreateResourceRequest({{ResourceID::CPU(), 1}});
+  int64_t violations;
+  bool is_infeasible;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+
+  // Schedule on a single specified node.
+  {
+    LabelSelector selector;
+    selector.AddConstraint(LabelConstraint(
+        "ray.io/node-id", LabelSelectorOperator::LABEL_IN, {node_0_id_obj.Hex()}));
+    ResourceRequest request = base_resource_request;
+    request.SetLabelSelector(selector);
+
+    auto result_node_id = resource_scheduler.GetBestSchedulableNode(request,
+                                                                    scheduling_strategy,
+                                                                    false,
+                                                                    false,
+                                                                    std::string(),
+                                                                    &violations,
+                                                                    &is_infeasible);
+    ASSERT_EQ(result_node_id, node_0);
+    ASSERT_FALSE(is_infeasible);
+  }
+
+  // Schedule on one of two specified nodes (in() operator).
+  {
+    LabelSelector selector;
+    selector.AddConstraint(LabelConstraint("ray.io/node-id",
+                                           LabelSelectorOperator::LABEL_IN,
+                                           {node_0_id_obj.Hex(), node_1_id_obj.Hex()}));
+    ResourceRequest request = base_resource_request;
+    request.SetLabelSelector(selector);
+
+    auto result_node_id = resource_scheduler.GetBestSchedulableNode(request,
+                                                                    scheduling_strategy,
+                                                                    false,
+                                                                    false,
+                                                                    std::string(),
+                                                                    &violations,
+                                                                    &is_infeasible);
+    ASSERT_TRUE(result_node_id == node_0 || result_node_id == node_1);
+    ASSERT_FALSE(is_infeasible);
+  }
+
+  // Scheduling is infeasible when all specified nodes are infeasible..
+  {
+    NodeResources depleted_node_resources = CreateNodeResources({{ResourceID::CPU(), 0}});
+    resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+        node_0, depleted_node_resources);
+    resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+        node_1, depleted_node_resources);
+
+    LabelSelector selector;
+    selector.AddConstraint(LabelConstraint("ray.io/node-id",
+                                           LabelSelectorOperator::LABEL_IN,
+                                           {node_0_id_obj.Hex(), node_1_id_obj.Hex()}));
+    ResourceRequest request = base_resource_request;
+    request.SetLabelSelector(selector);
+
+    auto result_node_id = resource_scheduler.GetBestSchedulableNode(request,
+                                                                    scheduling_strategy,
+                                                                    false,
+                                                                    false,
+                                                                    std::string(),
+                                                                    &violations,
+                                                                    &is_infeasible);
+    ASSERT_TRUE(result_node_id.IsNil());
+    ASSERT_TRUE(is_infeasible);
+  }
 }
 
 }  // namespace ray

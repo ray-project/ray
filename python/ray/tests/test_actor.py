@@ -5,22 +5,23 @@ import tempfile
 
 import numpy as np
 import pytest
-import psutil
 
 import ray
 from ray import cloudpickle as pickle
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
+from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_pid_to_exit,
 )
 from ray.actor import ActorClassInheritanceException
-from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import gcs_pb2
-from ray._common.utils import hex_to_binary
-from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.state import list_actors
+
+import psutil
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
@@ -1674,6 +1675,68 @@ def test_one_liner_actor_method_invocation(shutdown_only):
     # See https://github.com/ray-project/ray/pull/53178
     result = ray.get(Foo.remote().method.remote())
     assert result == "ok"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Out of scope actor cleanup doesn't work with Ray client.",
+)
+def test_get_actor_after_same_name_actor_dead(shutdown_only):
+    ACTOR_NAME = "test_actor"
+    NAMESPACE_NAME = "test_namespace"
+
+    ray.init(namespace=NAMESPACE_NAME)
+
+    @ray.remote
+    class Actor:
+        def get_pid(self):
+            return os.getpid()
+
+    a = Actor.options(name=ACTOR_NAME, max_restarts=0, max_task_retries=-1).remote()
+
+    pid = ray.get(a.get_pid.remote())
+    psutil.Process(pid).kill()
+    a_actor_id = a._actor_id.hex()
+
+    wait_for_condition(lambda: ray.state.actors(a_actor_id)["State"] == "DEAD")
+
+    # When a reference is held, the name cannot be reused.
+    with pytest.raises(ValueError):
+        Actor.options(name=ACTOR_NAME).remote()
+
+    # Deleting the remaining reference so the name can be reused
+    del a
+
+    b = None
+
+    def wait_new_actor_ready():
+        nonlocal b
+        b = Actor.options(name=ACTOR_NAME).remote()
+        return True
+
+    wait_for_condition(wait_new_actor_ready)
+
+    ray.get(b.__ray_ready__.remote())
+    _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
+
+    # ray.kill can proactively release the name.
+    ray.kill(b)
+    wait_for_condition(lambda: ray.state.actors(b._actor_id.hex())["State"] == "DEAD")
+
+    c = Actor.options(name=ACTOR_NAME, lifetime="detached").remote()
+    ray.get(c.__ray_ready__.remote())
+    _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
+
+    pid = ray.get(c.get_pid.remote())
+    psutil.Process(pid).kill()
+
+    wait_for_condition(lambda: ray.state.actors(c._actor_id.hex())["State"] == "DEAD")
+
+    # Detached actors do not subscribe to reference counting, so
+    # they release the actor name when the actor is dead, without waiting for the reference count
+    # to be released or the execution of ray.kill.
+    d = Actor.options(name=ACTOR_NAME).remote()
+    ray.get(d.__ray_ready__.remote())
 
 
 if __name__ == "__main__":

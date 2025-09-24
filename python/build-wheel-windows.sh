@@ -99,8 +99,7 @@ build_wheel_windows() {
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
   } >> ~/.bazelrc
 
-  if [[ "${BUILDKITE_PIPELINE_ID:-}" == "0189942e-0876-4b8f-80a4-617f988ec59b" || "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
-    # Do not upload cache results for premerge pipeline
+  if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
     echo "build --remote_upload_local_results=false" >> ~/.bazelrc
   fi
 
@@ -130,11 +129,11 @@ build_wheel_windows() {
       exit 1
     fi
     # build ray wheel
-    python -m pip wheel -q -w dist . --no-deps
+    python -m pip wheel -v -w dist . --no-deps
     # Pack any needed system dlls like msvcp140.dll
     delvewheel repair dist/ray-*.whl
     # build ray-cpp wheel
-    RAY_INSTALL_CPP=1 python -m pip wheel -q -w dist . --no-deps
+    RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps
     # No extra dlls are needed, do not call delvewheel
     uninstall_ray
   )

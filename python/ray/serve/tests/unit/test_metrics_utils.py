@@ -4,7 +4,14 @@ import sys
 import pytest
 
 from ray._common.test_utils import async_wait_for_condition
-from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.metrics_utils import (
+    InMemoryMetricsStore,
+    MetricsPusher,
+    TimeStampedValue,
+    merge_instantaneous_total,
+    merge_timeseries_dicts,
+    time_weighted_average,
+)
 from ray.serve._private.test_utils import MockAsyncTimer
 
 
@@ -136,13 +143,26 @@ class TestMetricsPusher:
         await metrics_pusher.graceful_shutdown()
 
 
+def assert_timeseries_equal(actual, expected):
+    assert len(actual) == len(
+        expected
+    ), f"Length mismatch: {len(actual)} vs {len(expected)}"
+    for i, (a, e) in enumerate(zip(actual, expected)):
+        assert (
+            a.timestamp == e.timestamp
+        ), f"Timestamp mismatch at {i}: {a.timestamp} vs {e.timestamp}"
+        assert a.value == e.value, f"Value mismatch at {i}: {a.value} vs {e.value}"
+
+
 class TestInMemoryMetricsStore:
     def test_basics(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
+        assert s.aggregate_avg(["m1"]) == (1.5, 1)
+        assert s.aggregate_max(["m1"]) == (2, 1)
+        assert s.aggregate_min(["m1"]) == (1, 1)
+        assert s.get_latest("m1") == 2
 
     def test_out_of_order_insert(self):
         s = InMemoryMetricsStore()
@@ -151,53 +171,42 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 3}, timestamp=3)
         s.add_metrics_point({"m1": 2}, timestamp=2)
         s.add_metrics_point({"m1": 4}, timestamp=4)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 3
-        assert s.max("m1", window_start_timestamp_s=0) == 5
+        assert s.aggregate_avg(["m1"]) == (3, 1)
+        assert s.aggregate_max(["m1"]) == (5, 1)
+        assert s.aggregate_min(["m1"]) == (1, 1)
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
-        assert s.window_average("m1", window_start_timestamp_s=0) is None
-        assert s.max("m1", window_start_timestamp_s=0) is None
+        assert s.aggregate_avg(["m1"]) == (None, 0)
+        assert s.aggregate_max(["m1"]) == (None, 0)
+        assert s.aggregate_min(["m1"]) == (None, 0)
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1
-        assert (
-            s.window_average("m1", window_start_timestamp_s=10, do_compact=False)
-            is None
-        )
-
-    def test_compaction_window(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=1)
-        s.add_metrics_point({"m1": 2}, timestamp=2)
-
-        assert (
-            s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1.5
-        )
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-        # First record should be removed.
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-    def test_compaction_max(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=2)
-        s.add_metrics_point({"m1": 2}, timestamp=1)
-
-        assert s.max("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1
+        assert s.aggregate_avg(["m1"]) == (1, 1)
+        s.prune_keys_and_compact_data(10)
+        assert s.aggregate_avg(["m1"]) == (None, 0)
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1, "m2": -1}, timestamp=1)
         s.add_metrics_point({"m1": 2, "m2": -2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
-        assert s.max("m2", window_start_timestamp_s=0) == -1
+        assert s.aggregate_avg(["m1"]) == (1.5, 1)
+        assert s.aggregate_avg(["m2"]) == (-1.5, 1)
+        assert s.aggregate_avg(["m1", "m2"]) == (0, 2)
+        assert s.aggregate_max(["m1"]) == (2, 1)
+        assert s.aggregate_max(["m2"]) == (-1, 1)
+        assert s.aggregate_max(["m1", "m2"]) == (2, 2)
+        assert s.aggregate_min(["m1"]) == (1, 1)
+        assert s.aggregate_min(["m2"]) == (-2, 1)
+        assert s.aggregate_min(["m1", "m2"]) == (-2, 2)
+
+    def test_empty_key_mix(self):
+        s = InMemoryMetricsStore()
+        s.add_metrics_point({"m1": 1}, timestamp=1)
+        assert s.aggregate_avg(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_max(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_min(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_avg(["m2"]) == (None, 0)
 
     def test_prune_keys_and_compact_data(self):
         s = InMemoryMetricsStore()
@@ -209,6 +218,341 @@ class TestInMemoryMetricsStore:
         assert len(s.data["m1"]) == 2 and s.data["m1"] == s._get_datapoints("m1", 1.1)
         assert len(s.data["m2"]) == 2 and s.data["m2"] == s._get_datapoints("m2", 1.1)
         assert len(s.data["m3"]) == 1 and s.data["m3"] == s._get_datapoints("m3", 1.1)
+
+
+class TestInstantaneousMerge:
+    """Test the new instantaneous merge functionality."""
+
+    def test_merge_instantaneous_total_empty(self):
+        """Test merge_instantaneous_total with empty input."""
+        result = merge_instantaneous_total([])
+        assert result == []
+
+        result = merge_instantaneous_total([[], []])
+        assert result == []
+
+    def test_merge_instantaneous_total_single_replica(self):
+        """Test merge_instantaneous_total with single replica."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 7.0),
+            TimeStampedValue(3.0, 3.0),
+        ]
+        result = merge_instantaneous_total([series])
+
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 7.0),
+            TimeStampedValue(3.0, 3.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_two_replicas(self):
+        """Test merge_instantaneous_total with two replicas."""
+        series1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(3.0, 7.0),
+        ]
+        series2 = [
+            TimeStampedValue(2.0, 3.0),
+            TimeStampedValue(4.0, 1.0),
+        ]
+        result = merge_instantaneous_total([series1, series2])
+
+        # Expected: t=1.0: +5 (total=5), t=2.0: +3 (total=8), t=3.0: +2 (total=10), t=4.0: -2 (total=8)
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 8.0),
+            TimeStampedValue(3.0, 10.0),
+            TimeStampedValue(4.0, 8.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_complex_scenario(self):
+        """Test complex scenario matching the autoscaling example."""
+        # r1: starts at 5 (t=0.2), changes to 7 (t=0.8), then 6 (t=1.5)
+        series1 = [
+            TimeStampedValue(0.2, 5.0),
+            TimeStampedValue(0.8, 7.0),
+            TimeStampedValue(1.5, 6.0),
+        ]
+        # r2: starts at 3 (t=0.1), changes to 4 (t=0.9), then 8 (t=1.2)
+        series2 = [
+            TimeStampedValue(0.1, 3.0),
+            TimeStampedValue(0.9, 4.0),
+            TimeStampedValue(1.2, 8.0),
+        ]
+        result = merge_instantaneous_total([series1, series2])
+
+        expected = [
+            TimeStampedValue(0.1, 3.0),  # r2 starts
+            TimeStampedValue(0.2, 8.0),  # r1 starts: 3+5=8
+            TimeStampedValue(0.8, 10.0),  # r1 changes: 8+(7-5)=10
+            TimeStampedValue(0.9, 11.0),  # r2 changes: 10+(4-3)=11
+            TimeStampedValue(1.2, 15.0),  # r2 changes: 11+(8-4)=15
+            TimeStampedValue(1.5, 14.0),  # r1 changes: 15+(6-7)=14
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_time_weighted_average_empty(self):
+        """Test time_weighted_average with empty series."""
+        result = time_weighted_average([], 0.0, 1.0)
+        assert result is None
+
+    def test_time_weighted_average_no_overlap(self):
+        """Test time_weighted_average with no data overlap."""
+        series = [TimeStampedValue(2.0, 5.0)]
+        result = time_weighted_average(series, 0.0, 1.0)
+        assert result == 0.0  # Default value before first point
+
+    def test_time_weighted_average_constant_value(self):
+        """Test time_weighted_average with constant value."""
+        series = [TimeStampedValue(0.5, 10.0)]
+        result = time_weighted_average(series, 1.0, 2.0)
+        assert result == 10.0
+
+    def test_time_weighted_average_step_function(self):
+        """Test time_weighted_average with step function."""
+        series = [
+            TimeStampedValue(0.0, 5.0),
+            TimeStampedValue(1.0, 10.0),
+            TimeStampedValue(2.0, 15.0),
+        ]
+        # Average over [0.5, 1.5): 0.5s at value 5, 0.5s at value 10
+        result = time_weighted_average(series, 0.5, 1.5)
+        expected = (5.0 * 0.5 + 10.0 * 0.5) / 1.0
+        assert abs(result - expected) < 1e-10
+
+    def test_time_weighted_average_none_window_start(self):
+        """Test time_weighted_average with None window_start."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+            TimeStampedValue(3.0, 15.0),
+        ]
+        # Should use full series from start (t=1.0) to window_end (t=2.5)
+        result = time_weighted_average(series, None, 2.5)
+        # 1.0s at value 5 (from 1.0 to 2.0), 0.5s at value 10 (from 2.0 to 2.5)
+        expected = (5.0 * 1.0 + 10.0 * 0.5) / 1.5
+        assert abs(result - expected) < 1e-10
+
+    def test_time_weighted_average_none_window_end(self):
+        """Test time_weighted_average with None window_end."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+            TimeStampedValue(3.0, 15.0),
+        ]
+        # Should use from window_start (t=1.5) to end of series (t=3.0+1.0=4.0)
+        result = time_weighted_average(series, 1.5, None)
+        # 0.5s at value 5 (from 1.5 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 1.0s at value 15 (from 3.0 to 4.0)
+        expected = (5.0 * 0.5 + 10.0 * 1.0 + 15.0 * 1.0) / 2.5
+        assert abs(result - expected) < 1e-10
+
+    def test_time_weighted_average_both_none(self):
+        """Test time_weighted_average with both window_start and window_end None."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+            TimeStampedValue(3.0, 15.0),
+        ]
+        # Should use full series from t=1.0 to t=3.0+1.0=4.0
+        result = time_weighted_average(series, None, None)
+        # 1.0s at value 5, 1.0s at value 10, 1.0s at value 15
+        expected = (5.0 * 1.0 + 10.0 * 1.0 + 15.0 * 1.0) / 3.0
+        assert abs(result - expected) < 1e-10
+
+    def test_time_weighted_average_single_point_none_bounds(self):
+        """Test time_weighted_average with single point and None bounds."""
+        series = [TimeStampedValue(2.0, 10.0)]
+        result = time_weighted_average(series, None, None)
+        # Single point with 1.0s duration (from 2.0 to 3.0)
+        assert result == 10.0
+
+    def test_time_weighted_average_custom_last_window_s(self):
+        """Test time_weighted_average with custom last_window_s parameter."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+            TimeStampedValue(3.0, 15.0),
+        ]
+
+        # Test with last_window_s=2.0 (double the default)
+        result_2s = time_weighted_average(series, None, None, last_window_s=2.0)
+        # Should use from t=1.0 to t=3.0+2.0=5.0
+        # 1.0s at value 5 (from 1.0 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 2.0s at value 15 (from 3.0 to 5.0)
+        expected_2s = (5.0 * 1.0 + 10.0 * 1.0 + 15.0 * 2.0) / 4.0
+        assert abs(result_2s - expected_2s) < 1e-10
+
+        # Test with last_window_s=0.5 (half the default)
+        result_0_5s = time_weighted_average(series, None, None, last_window_s=0.5)
+        # Should use from t=1.0 to t=3.0+0.5=3.5
+        # 1.0s at value 5 (from 1.0 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 0.5s at value 15 (from 3.0 to 3.5)
+        expected_0_5s = (5.0 * 1.0 + 10.0 * 1.0 + 15.0 * 0.5) / 2.5
+        assert abs(result_0_5s - expected_0_5s) < 1e-10
+
+        # Test with window_start specified but window_end None - should still use last_window_s
+        result_with_start = time_weighted_average(series, 1.5, None, last_window_s=3.0)
+        # Should use from t=1.5 to t=3.0+3.0=6.0
+        # 0.5s at value 5 (from 1.5 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 3.0s at value 15 (from 3.0 to 6.0)
+        expected_with_start = (5.0 * 0.5 + 10.0 * 1.0 + 15.0 * 3.0) / 4.5
+        assert abs(result_with_start - expected_with_start) < 1e-10
+
+        # Test that last_window_s is ignored when window_end is explicitly provided
+        result_explicit_end = time_weighted_average(
+            series, None, 4.0, last_window_s=10.0
+        )
+        # Should use from t=1.0 to t=4.0 (ignoring last_window_s=10.0)
+        # 1.0s at value 5 (from 1.0 to 2.0), 1.0s at value 10 (from 2.0 to 3.0), 1.0s at value 15 (from 3.0 to 4.0)
+        expected_explicit_end = (5.0 * 1.0 + 10.0 * 1.0 + 15.0 * 1.0) / 3.0
+        assert abs(result_explicit_end - expected_explicit_end) < 1e-10
+
+    def test_merge_timeseries_dicts_instantaneous_basic(self):
+        """Test merge_timeseries_dicts basic functionality with instantaneous approach."""
+        s1 = InMemoryMetricsStore()
+        s2 = InMemoryMetricsStore()
+
+        s1.add_metrics_point({"metric1": 5, "metric2": 10}, timestamp=1.0)
+        s1.add_metrics_point({"metric1": 7}, timestamp=2.0)
+
+        s2.add_metrics_point({"metric1": 3, "metric3": 20}, timestamp=1.5)
+
+        result = merge_timeseries_dicts(s1.data, s2.data)
+
+        # metric1: s1 starts at 5 (t=1.0), s2 starts at 3 (t=1.5), s1 changes to 7 (t=2.0)
+        expected_metric1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(1.5, 8.0),  # 5+3=8
+            TimeStampedValue(2.0, 10.0),  # 3+(7-5)=10
+        ]
+        assert_timeseries_equal(result["metric1"], expected_metric1)
+
+        # metric2: only from s1
+        expected_metric2 = [TimeStampedValue(1.0, 10.0)]
+        assert_timeseries_equal(result["metric2"], expected_metric2)
+
+        # metric3: only from s2
+        expected_metric3 = [TimeStampedValue(1.5, 20.0)]
+        assert_timeseries_equal(result["metric3"], expected_metric3)
+
+    def test_merge_instantaneous_vs_windowed_comparison(self):
+        """Compare instantaneous merge vs windowed approach."""
+        # Create test data that highlights the difference
+        s1 = InMemoryMetricsStore()
+        s2 = InMemoryMetricsStore()
+
+        # Replica 1: 10 requests at t=0.1, then 5 at t=0.9
+        s1.add_metrics_point({"requests": 10}, timestamp=0.1)
+        s1.add_metrics_point({"requests": 5}, timestamp=0.9)
+
+        # Replica 2: 3 requests at t=0.5, then 8 at t=1.1
+        s2.add_metrics_point({"requests": 3}, timestamp=0.5)
+        s2.add_metrics_point({"requests": 8}, timestamp=1.1)
+
+        # Instantaneous approach
+        instantaneous = merge_timeseries_dicts(s1.data, s2.data)
+
+        # Instantaneous should have: t=0.1: 10, t=0.5: 13, t=0.9: 8, t=1.1: 13
+        expected_instantaneous = [
+            TimeStampedValue(0.1, 10.0),
+            TimeStampedValue(0.5, 13.0),  # 10+3=13
+            TimeStampedValue(0.9, 8.0),  # 3+(5-10)=8
+            TimeStampedValue(1.1, 13.0),  # 5+(8-3)=13
+        ]
+        assert_timeseries_equal(instantaneous["requests"], expected_instantaneous)
+
+    def test_instantaneous_merge_handles_zero_deltas(self):
+        """Test that zero deltas are properly filtered out."""
+        series1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 5.0),  # No change
+            TimeStampedValue(3.0, 7.0),
+        ]
+        series2 = [
+            TimeStampedValue(1.5, 3.0),
+            TimeStampedValue(2.5, 3.0),  # No change
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should skip zero deltas
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(1.5, 8.0),  # 5+3=8
+            TimeStampedValue(3.0, 10.0),  # 8+(7-5)=10
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_instantaneous_merge_with_epoch_times(self):
+        """Test instantaneous merge with realistic epoch timestamps."""
+
+        # Use realistic epoch times (around current time)
+        base_time = 1703980800.0  # December 30, 2023 16:00:00 UTC
+
+        # Simulate 3 replicas reporting metrics over a 30-second period
+        replica1_series = [
+            TimeStampedValue(base_time + 0.0, 12.0),  # t=0s: 12 running requests
+            TimeStampedValue(base_time + 5.2, 15.0),  # t=5.2s: increased to 15
+            TimeStampedValue(base_time + 18.7, 8.0),  # t=18.7s: dropped to 8
+            TimeStampedValue(base_time + 25.1, 11.0),  # t=25.1s: back up to 11
+        ]
+
+        replica2_series = [
+            TimeStampedValue(base_time + 1.3, 7.0),  # t=1.3s: 7 running requests
+            TimeStampedValue(base_time + 8.9, 9.0),  # t=8.9s: increased to 9
+            TimeStampedValue(base_time + 22.4, 4.0),  # t=22.4s: dropped to 4
+        ]
+
+        replica3_series = [
+            TimeStampedValue(base_time + 3.1, 5.0),  # t=3.1s: 5 running requests
+            TimeStampedValue(base_time + 12.6, 8.0),  # t=12.6s: increased to 8
+            TimeStampedValue(base_time + 20.8, 6.0),  # t=20.8s: dropped to 6
+            TimeStampedValue(base_time + 28.3, 9.0),  # t=28.3s: increased to 9
+        ]
+
+        # Merge all replicas
+        result = merge_instantaneous_total(
+            [replica1_series, replica2_series, replica3_series]
+        )
+
+        # Expected timeline of instantaneous totals:
+        expected = [
+            TimeStampedValue(base_time + 0.0, 12.0),  # r1 starts: 12
+            TimeStampedValue(base_time + 1.3, 19.0),  # r2 starts: 12+7=19
+            TimeStampedValue(base_time + 3.1, 24.0),  # r3 starts: 19+5=24
+            TimeStampedValue(base_time + 5.2, 27.0),  # r1 changes: 24+(15-12)=27
+            TimeStampedValue(base_time + 8.9, 29.0),  # r2 changes: 27+(9-7)=29
+            TimeStampedValue(base_time + 12.6, 32.0),  # r3 changes: 29+(8-5)=32
+            TimeStampedValue(base_time + 18.7, 25.0),  # r1 changes: 32+(8-15)=25
+            TimeStampedValue(base_time + 20.8, 23.0),  # r3 changes: 25+(6-8)=23
+            TimeStampedValue(base_time + 22.4, 18.0),  # r2 changes: 23+(4-9)=18
+            TimeStampedValue(base_time + 25.1, 21.0),  # r1 changes: 18+(11-8)=21
+            TimeStampedValue(base_time + 28.3, 24.0),  # r3 changes: 21+(9-6)=24
+        ]
+
+        assert_timeseries_equal(result, expected)
+
+        # Test time-weighted average over different intervals
+        # Full series average
+        full_avg = time_weighted_average(result, None, None)
+        assert full_avg is not None
+        assert full_avg > 0
+
+        # Average over first 10 seconds
+        early_avg = time_weighted_average(result, base_time, base_time + 10.0)
+        assert early_avg is not None
+
+        # Average over last 10 seconds
+        late_avg = time_weighted_average(result, base_time + 20.0, base_time + 30.0)
+        assert late_avg is not None
+
+        # Verify the averages make sense relative to each other
+        # (early period has higher values, so early_avg should be > late_avg)
+        assert early_avg > late_avg
+
+        print(f"Full series average: {full_avg:.2f}")
+        print(f"Early period average (0-10s): {early_avg:.2f}")
+        print(f"Late period average (20-30s): {late_avg:.2f}")
 
 
 if __name__ == "__main__":

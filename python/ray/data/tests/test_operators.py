@@ -2,7 +2,7 @@ import collections
 import gc
 import random
 import time
-from typing import Any, Iterable, List
+from typing import Any, Callable, Iterable, List, Optional
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -32,13 +32,16 @@ from ray.data._internal.execution.operators.map_operator import (
     _BlockRefBundler,
 )
 from ray.data._internal.execution.operators.map_transformer import (
-    create_map_transformer_from_block_fn,
+    BlockMapTransformFn,
+    MapTransformCallable,
+    MapTransformer,
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
@@ -55,6 +58,28 @@ def _get_blocks(bundle: RefBundle, output_list: List[Block]):
 def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
     for block in block_iter:
         yield pd.DataFrame({"id": [b * 2 for b in block["id"]]})
+
+
+def create_map_transformer_from_block_fn(
+    block_fn: MapTransformCallable[Block, Block],
+    init_fn: Optional[Callable[[], None]] = None,
+    output_block_size_option: Optional[OutputBlockSizeOption] = None,
+    disable_block_shaping: bool = False,
+):
+    """Create a MapTransformer from a single block-based transform function.
+
+    This method should only be used for testing and legacy compatibility.
+    """
+    return MapTransformer(
+        [
+            BlockMapTransformFn(
+                block_fn,
+                output_block_size_option=output_block_size_option,
+                disable_block_shaping=disable_block_shaping,
+            ),
+        ],
+        init_fn=init_fn,
+    )
 
 
 _mul2_map_data_prcessor = create_map_transformer_from_block_fn(_mul2_transform)
@@ -121,7 +146,7 @@ def test_all_to_all_operator():
         dummy_all_transform,
         input_op,
         DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
         name="TestAll",
@@ -139,7 +164,9 @@ def test_all_to_all_operator():
 
     # Check we return transformed bundles.
     assert not op.completed()
-    assert _take_outputs(op) == [[1, 2], [3, 4]]
+    outputs = _take_outputs(op)
+    expected = [[1, 2], [3, 4]]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
@@ -170,7 +197,7 @@ def test_num_outputs_total():
         dummy_all_transform,
         input_op=op1,
         data_context=DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
     assert op2.num_outputs_total() is None
@@ -445,8 +472,15 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("preserve_order", [False, True])
+@pytest.mark.parametrize(
+    "target_max_block_size,num_expected_blocks", [(1, 10), (2**20, 1), (None, 1)]
+)
 def test_map_operator_output_unbundling(
-    ray_start_regular_shared, use_actors, preserve_order
+    ray_start_regular_shared,
+    use_actors,
+    preserve_order,
+    target_max_block_size,
+    num_expected_blocks,
 ):
     # Tests that the MapOperator's output queue unbundles the bundles returned from
     # tasks; this facilitates features such as dynamic block splitting.
@@ -459,8 +493,16 @@ def test_map_operator_output_unbundling(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
     )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+
+    transformer = create_map_transformer_from_block_fn(
+        noop,
+        output_block_size_option=OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size,
+        ),
+    )
+
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(noop),
+        transformer,
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestMapper",
@@ -485,7 +527,7 @@ def test_map_operator_output_unbundling(
     outputs = []
     while op.has_next():
         outputs.append(op.get_next())
-    assert len(outputs) == 10
+    assert len(outputs) == num_expected_blocks
     assert op.completed()
 
 
@@ -515,7 +557,9 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     run_op_tasks_sync(op)
 
     # Check we don't hang and complete with num_gpus=1.
-    assert _take_outputs(op) == [[i * 2] for i in range(10)]
+    outputs = _take_outputs(op)
+    expected = [[i * 2] for i in range(10)]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     assert op.completed()
 
 
@@ -977,7 +1021,12 @@ def test_operator_metrics():
             yield pd.DataFrame({"id": [i]})
 
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(map_fn),
+        create_map_transformer_from_block_fn(
+            map_fn,
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_max_block_size=1,
+            ),
+        ),
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocks",
@@ -1032,7 +1081,21 @@ def test_operator_metrics():
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
 
 
-def test_map_estimated_num_output_bundles():
+@pytest.mark.parametrize(
+    "target_max_block_size, expected_num_outputs_per_task",
+    [
+        # 5 blocks (8b each) // 1 = 5 outputs / task
+        [1, 5],
+        # 5 blocks (8b each) // 1024 = 1 output / task
+        [1024, 1],
+        # All outputs combined in a single output
+        [None, 1],
+    ],
+)
+def test_map_estimated_num_output_bundles(
+    target_max_block_size,
+    expected_num_outputs_per_task,
+):
     # Test map operator estimation
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
@@ -1043,8 +1106,17 @@ def test_map_estimated_num_output_bundles():
             yield pd.DataFrame({"id": [i]})
 
     min_rows_per_bundle = 10
+    # 100 inputs -> 100 / 10 = 10 tasks
+    num_tasks = 10
+
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(yield_five),
+        create_map_transformer_from_block_fn(
+            yield_five,
+            # Limit single block to hold no more than 1 byte
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_max_block_size=target_max_block_size,
+            ),
+        ),
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocks",
@@ -1057,26 +1129,35 @@ def test_map_estimated_num_output_bundles():
         if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
             # enough inputs for a task bundle
             run_op_tasks_sync(op)
-            assert op._estimated_num_output_bundles == 50
+            assert (
+                op._estimated_num_output_bundles
+                == expected_num_outputs_per_task * num_tasks
+            )
 
     op.all_inputs_done()
 
-    # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
-    assert op._estimated_num_output_bundles == 50
+    assert op._estimated_num_output_bundles == expected_num_outputs_per_task * num_tasks
 
 
 def test_map_estimated_blocks_split():
     # Test read output splitting
-    def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
-        for i in range(5):
-            yield pd.DataFrame({"id": [i]})
 
     min_rows_per_bundle = 10
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
     )
+
+    def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for i in range(5):
+            yield pd.DataFrame({"id": [i]})
+
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(yield_five),
+        create_map_transformer_from_block_fn(
+            yield_five,
+            # NOTE: Disable output block-shaping to keep blocks from being
+            #       combined
+            disable_block_shaping=True,
+        ),
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocksSplit",

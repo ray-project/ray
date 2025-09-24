@@ -1,13 +1,14 @@
-import ray
 import os
 import sys
-import torch
-import pytest
 from typing import Dict
+
+import pytest
+import torch
+
+import ray
 from ray.dag import InputNode
-from ray.exceptions import RayTaskError
+from ray.exceptions import RaySystemError, RayTaskError
 from ray.tests.conftest import *  # noqa
-from ray.exceptions import RaySystemError
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)

@@ -1255,7 +1255,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
 
 
 def test_union(ray_start_regular_shared):
-    ds = ray.data.range(20, override_num_blocks=10)
+    ds = ray.data.range(20, override_num_blocks=10).materialize()
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
@@ -1863,7 +1863,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet", override_num_blocks=8)
     assert ds._plan.get_plan_as_string(type(ds)) == (
         "Dataset(\n"
-        "   num_rows=150,\n"
+        "   num_rows=?,\n"
         "   schema={\n"
         "      sepal.length: double,\n"
         "      sepal.width: double,\n"
@@ -1882,7 +1882,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
         "            +- Dataset(\n"
-        "                  num_rows=150,\n"
+        "                  num_rows=?,\n"
         "                  schema={\n"
         "                     sepal.length: double,\n"
         "                     sepal.width: double,\n"
