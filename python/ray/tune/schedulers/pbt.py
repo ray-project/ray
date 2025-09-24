@@ -47,7 +47,8 @@ class _PBTTrialState:
             dict[str, object]
         ] = None  # Used for synchronous mode
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
+        # Informative repr for easier debugging.
         return (
             self.__class__.__name__
             + "("
@@ -64,9 +65,6 @@ class _PBTTrialState:
             )
             + ")"
         )
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + "(" + self._trial_repr + ")"
 
 
 def _explore(
