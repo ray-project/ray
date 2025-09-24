@@ -248,11 +248,20 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 # data and repeating the step attempt).
                 return ENV_STEP_FAILURE
             else:
+                logger.exception(
+                    f"RLlib {self.__class__.__name__}: Environment step failed and "
+                    "'config.restart_failed_sub_environments' is False. "
+                    "This env will not be recreated. "
+                    "Consider setting 'fault_tolerance(restart_failed_sub_environments=True)' in your AlgorithmConfig "
+                    "in order to automatically re-create and force-reset an env."
+                    f"The original error type: {type(e)}. "
+                    f"{e}"
+                )
                 if isinstance(e, StepFailedRecreateEnvError):
-                    raise ValueError(
+                    raise RuntimeError(
                         "Environment raised StepFailedRecreateEnvError but config.restart_failed_sub_environments is False."
                     ) from e
-                raise e
+                raise RuntimeError from e
 
     def _convert_to_tensor(self, struct) -> TensorType:
         """Converts structs to a framework-specific tensor."""
