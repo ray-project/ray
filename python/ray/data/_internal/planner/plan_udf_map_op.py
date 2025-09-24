@@ -51,7 +51,6 @@ from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
-    BatchFormat,
     Block,
     BlockAccessor,
     CallableClass,
@@ -219,40 +218,43 @@ def plan_filter_op(
     compute = get_compute(op._compute)
     if expression is not None:
 
-        def filter_batch_fn(block: "pa.Table") -> "pa.Table":
-            try:
-                return block.filter(expression)
-            except Exception as e:
-                _try_wrap_udf_exception(e)
+        def filter_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                try:
+                    # Convert block to Arrow table and apply expression filter
+                    if isinstance(block, pa.Table):
+                        filtered_block = block.filter(expression)
+                    else:
+                        # Convert to Arrow first if needed
+                        block_accessor = BlockAccessor.for_block(block)
+                        arrow_block = block_accessor.to_arrow()
+                        filtered_block = arrow_block.filter(expression)
+                    yield filtered_block
+                except Exception as e:
+                    _try_wrap_udf_exception(e)
 
         init_fn = None
-        transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(filter_batch_fn),
-            batch_size=None,
-            batch_format=BatchFormat.ARROW,
-            zero_copy_batch=True,
+        transform_fn = BlockMapTransformFn(
+            filter_block_fn,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
     elif predicate_expr is not None:
-        # Ray Data expression path using BlockAccessor
-        def filter_block_fn(block: Block) -> Block:
-            try:
-                block_accessor = BlockAccessor.for_block(block)
-                if not block_accessor.num_rows():
-                    return block
-                return block_accessor.filter(predicate_expr)
 
-            except Exception as e:
-                _try_wrap_udf_exception(e)
+        def filter_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                filtered_block = block_accessor.filter(predicate_expr)
+                yield filtered_block
 
         init_fn = None
-        transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(filter_block_fn),
-            batch_size=None,
-            batch_format=BatchFormat.ARROW,
-            zero_copy_batch=True,
+        transform_fn = BlockMapTransformFn(
+            filter_block_fn,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )

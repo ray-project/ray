@@ -964,7 +964,7 @@ def test_filter_with_predicate_expressions(
     ds = ray.data.from_items(test_data)
 
     # Apply filter with predicate expression
-    filtered_ds = ds.filter(predicate=predicate_expr)
+    filtered_ds = ds.filter(expr=predicate_expr)
 
     # Convert to list and verify results
     result_data = filtered_ds.to_pandas().to_dict("records")
@@ -999,86 +999,17 @@ def test_filter_predicate_expr_vs_function_consistency(
     ds = ray.data.from_items(test_data)
 
     # Test simple comparison
-    predicate_result = ds.filter(predicate=col("age") >= 21).to_pandas()
+    predicate_result = ds.filter(expr=col("age") >= 21).to_pandas()
     function_result = ds.filter(fn=lambda row: row["age"] >= 21).to_pandas()
     pd.testing.assert_frame_equal(predicate_result, function_result, check_dtype=False)
 
     # Test complex logical expression
     complex_predicate = (col("age") >= 21) & (col("score") > 80) & col("active")
-    predicate_result = ds.filter(predicate=complex_predicate).to_pandas()
+    predicate_result = ds.filter(expr=complex_predicate).to_pandas()
     function_result = ds.filter(
         fn=lambda row: row["age"] >= 21 and row["score"] > 80 and row["active"]
     ).to_pandas()
     pd.testing.assert_frame_equal(predicate_result, function_result, check_dtype=False)
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="predicate expressions require PyArrow >= 20.0.0",
-)
-@pytest.mark.parametrize(
-    "filter_args, expected_error_match",
-    [
-        # Test that exactly one parameter must be provided
-        pytest.param(
-            {},
-            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
-            id="no_parameters",
-        ),
-        pytest.param(
-            {"fn": lambda x: True, "predicate": col("x") > 0},
-            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
-            id="fn_and_predicate",
-        ),
-        pytest.param(
-            {"expr": "x > 0", "predicate": col("x") > 0},
-            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
-            id="expr_and_predicate",
-        ),
-        pytest.param(
-            {"fn": lambda x: True, "expr": "x > 0", "predicate": col("x") > 0},
-            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
-            id="all_three_parameters",
-        ),
-        pytest.param(
-            {"fn": lambda x: True, "expr": "x > 0"},
-            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
-            id="fn_and_expr",
-        ),
-        # Test that predicate is incompatible with function-specific parameters
-        pytest.param(
-            {"predicate": col("x") > 0, "fn_args": [1, 2]},
-            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
-            id="predicate_with_fn_args",
-        ),
-        pytest.param(
-            {"predicate": col("x") > 0, "fn_kwargs": {"key": "value"}},
-            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
-            id="predicate_with_fn_kwargs",
-        ),
-        pytest.param(
-            {"predicate": col("x") > 0, "fn_constructor_args": [1, 2]},
-            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
-            id="predicate_with_fn_constructor_args",
-        ),
-        pytest.param(
-            {"predicate": col("x") > 0, "fn_constructor_kwargs": {"key": "value"}},
-            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
-            id="predicate_with_fn_constructor_kwargs",
-        ),
-    ],
-)
-def test_filter_predicate_parameter_validation(
-    ray_start_regular_shared,
-    target_max_block_size_infinite_or_default,
-    filter_args,
-    expected_error_match,
-):
-    """Test that filter() properly validates predicate parameter usage."""
-    ds = ray.data.from_items([{"x": 1}, {"x": 2}])
-
-    with pytest.raises(ValueError, match=expected_error_match):
-        ds.filter(**filter_args)
 
 
 @pytest.mark.skipif(
@@ -1100,12 +1031,12 @@ def test_filter_predicate_with_different_block_formats(
 
     # From items (typically arrow)
     ds_items = ray.data.from_items(test_data)
-    result_items = ds_items.filter(predicate=col("category") == "A").to_pandas()
+    result_items = ds_items.filter(expr=col("category") == "A").to_pandas()
 
     # From pandas (pandas blocks)
     df = pd.DataFrame(test_data)
     ds_pandas = ray.data.from_pandas([df])
-    result_pandas = ds_pandas.filter(predicate=col("category") == "A").to_pandas()
+    result_pandas = ds_pandas.filter(expr=col("category") == "A").to_pandas()
 
     # Results should be identical (reset indices for comparison)
     expected_df = pd.DataFrame(

@@ -463,6 +463,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def filter(self, predicate_expr: "Expr") -> "pyarrow.Table":
         """Filter rows based on a predicate expression."""
+        if self._table.num_rows == 0:
+            return self._table
+
         from ray.data._expression_evaluator import eval_expr
 
         # Evaluate the expression to get a boolean mask

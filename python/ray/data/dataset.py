@@ -1392,11 +1392,8 @@ class Dataset:
         self,
         fn: Optional[
             UserDefinedFunction[Dict[str, Any], bool]
-        ] = None,  # TODO: Deprecate this parameter in favor of predicate
-        expr: Optional[
-            str
-        ] = None,  # TODO: Deprecate this parameter in favor of predicate
-        predicate: Optional[Expr] = None,
+        ] = None,  # TODO: Deprecate this parameter in favor of expr
+        expr: Optional[Union[str, Expr]] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -1412,25 +1409,30 @@ class Dataset:
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
 
-        You can use either a function or a callable class or an expression string to
+        You can use either a function or a callable class or an expression to
         perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
-           If you use the `expr` parameter with a Python expression string, Ray Data
+           If you use the `expr` parameter with a predicate expression, Ray Data
            optimizes your filter with native Arrow interfaces.
+
+        .. deprecated::
+           String expressions are deprecated and will be removed in a future version.
+           Use predicate expressions from `ray.data.expressions` instead.
 
         Examples:
 
             >>> import ray
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> ds.filter(expr="id <= 4").take_all() # Will be deprecated in the future
+            >>> # String expressions (deprecated - will warn)
+            >>> ds.filter(expr="id <= 4").take_all()
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
-            >>> # Using predicate expressions
-            >>> ds.filter(predicate=(col("id") > 10) & (col("id") < 20)).take_all()
+            >>> # Using predicate expressions (preferred)
+            >>> ds.filter(expr=(col("id") > 10) & (col("id") < 20)).take_all()
             [{'id': 11}, {'id': 12}, {'id': 13}, {'id': 14}, {'id': 15}, {'id': 16}, {'id': 17}, {'id': 18}, {'id': 19}]
 
         Time complexity: O(dataset size / parallelism)
@@ -1438,9 +1440,9 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            expr: An expression string needs to be a valid Python expression that
-                will be converted to ``pyarrow.dataset.Expression`` type. (Soon to be deprecated)
-            predicate: An expression that represents a predicate (boolean condition) for filtering.
+            expr: An expression that represents a predicate (boolean condition) for filtering.
+                Can be either a string expression (deprecated) or a predicate expression
+                from `ray.data.expressions`.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -1488,12 +1490,10 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """
-        # Ensure exactly one of fn, expr, or predicate is provided
-        provided_params = sum([fn is not None, expr is not None, predicate is not None])
+        # Ensure exactly one of fn or expr is provided
+        provided_params = sum([fn is not None, expr is not None])
         if provided_params != 1:
-            raise ValueError(
-                "Exactly one of 'fn', 'expr', or 'predicate' must be provided."
-            )
+            raise ValueError("Exactly one of 'fn' or 'expr' must be provided.")
 
         # Helper function to check for incompatible function parameters
         def _check_fn_params_incompatible(param_type):
@@ -1507,40 +1507,50 @@ class Dataset:
                     f"when '{param_type}' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used."
                 )
 
-        if predicate is not None:
-            _check_fn_params_incompatible("predicate")
-            from ray.data._internal.compute import TaskPoolStrategy
-
-            compute = TaskPoolStrategy(size=concurrency)
-            # Create Filter operator with predicate expression
-            filter_op = Filter(
-                input_op=self._logical_plan.dag,
-                predicate_expr=predicate,
-                compute=compute,
-                ray_remote_args_fn=ray_remote_args_fn,
-                ray_remote_args=ray_remote_args,
-            )
-        elif expr is not None:
+        if expr is not None:
             _check_fn_params_incompatible("expr")
             from ray.data._internal.compute import TaskPoolStrategy
-            from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
-                ExpressionEvaluator,
-            )
 
-            # TODO: (srinathk) bind the expression to the actual schema.
-            # If fn is a string, convert it to a pyarrow.dataset.Expression
-            # Initialize ExpressionEvaluator with valid columns, if available
-            resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
+            # Check if expr is a string (deprecated) or Expr object
+            if isinstance(expr, str):
+                warnings.warn(
+                    "String expressions are deprecated and will be removed in a future version. "
+                    "Use predicate expressions from ray.data.expressions instead. "
+                    "For example: from ray.data.expressions import col; "
+                    "ds.filter(expr=col('column_name') > 5)",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
 
-            compute = TaskPoolStrategy(size=concurrency)
-            # Create Filter operator with string expression
-            filter_op = Filter(
-                input_op=self._logical_plan.dag,
-                filter_expr=resolved_expr,
-                compute=compute,
-                ray_remote_args_fn=ray_remote_args_fn,
-                ray_remote_args=ray_remote_args,
-            )
+                from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
+                    ExpressionEvaluator,
+                )
+
+                # TODO: (srinathk) bind the expression to the actual schema.
+                # If expr is a string, convert it to a pyarrow.dataset.Expression
+                # Initialize ExpressionEvaluator with valid columns, if available
+                resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
+
+                compute = TaskPoolStrategy(size=concurrency)
+                # Create Filter operator with string expression
+                filter_op = Filter(
+                    input_op=self._logical_plan.dag,
+                    filter_expr=resolved_expr,
+                    compute=compute,
+                    ray_remote_args_fn=ray_remote_args_fn,
+                    ray_remote_args=ray_remote_args,
+                )
+            else:
+                # expr is an Expr object (predicate expression)
+                compute = TaskPoolStrategy(size=concurrency)
+                # Create Filter operator with predicate expression
+                filter_op = Filter(
+                    input_op=self._logical_plan.dag,
+                    predicate_expr=expr,
+                    compute=compute,
+                    ray_remote_args_fn=ray_remote_args_fn,
+                    ray_remote_args=ray_remote_args,
+                )
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
@@ -1608,7 +1618,7 @@ class Dataset:
 
              * When ``num_blocks`` and ``shuffle=True`` are specified Ray Data performs a full distributed shuffle producing exactly ``num_blocks`` blocks.
              * When ``num_blocks`` and ``shuffle=False`` are specified, Ray Data does NOT perform full shuffle, instead opting in for splitting and combining of the blocks attempting to minimize the necessary data movement (relative to full-blown shuffle). Exactly ``num_blocks`` will be produced.
-             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block``. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
+             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block`` rows. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
