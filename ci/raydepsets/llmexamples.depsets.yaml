@@ -1,40 +1,36 @@
 build_arg_sets:
-  py39:
-    PYTHON_VERSION: "3.9"
-    PYTHON_SHORT: "39"
-  py310:
-    PYTHON_VERSION: "3.10"
-    PYTHON_SHORT: "310"
-  py311:
-    PYTHON_VERSION: "3.11"
-    PYTHON_SHORT: "311"
-  py312:
-    PYTHON_VERSION: "3.12"
-    PYTHON_SHORT: "312"
+  cu128:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cu128
 
+common_settings: &common_settings
+  override_flags:
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  append_flags:
+    - --python-version=3.11
+    - --python-platform=linux
+  build_arg_sets:
+    - cu128
 
 depsets:
-  - name: e2e_xgboost_ray_depset_${PYTHON_SHORT}
-    packages:
-      - ray[all]==100.0.0-dev
-    constraints:
-      - doc/source/ray-overview/examples/e2e-xgboost/requirements.txt
-    output: python/deplocks/llmexamples/e2e_xgboost_ray_py311.lock
+########## LLM EXAMPLES ##########
+# Subset (compile) from RayLLM dependencies. (to get rid of vllm constraint)
+  - name: subset_llm_example_${PYTHON_VERSION}_${CUDA_CODE}
     operation: compile
-    append_flags:
-      - --python-version=${PYTHON_VERSION}
-      - --find-links=.whl/
-    build_arg_sets:
-      - py311
-
-  - name: e2e_xgboost_final_depset_${PYTHON_SHORT}
-    source_depset: e2e_timeseries_subset_depset_${PYTHON_SHORT}
+    constraints:
+      - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
     requirements:
-      - doc/source/ray-overview/examples/e2e-xgboost/requirements.txt
-    output: release/ray_release/byod/e2e_xgboost_py311_cu124.lock
+      - python/requirements.txt
+    output: python/deplocks/examples/entity_recognition_with_llms/llm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    <<: *common_settings
+
+
+# Entity recognition with LLMs example depset - expanded from subset of RayLLM dependencies.
+  - name: e2e_rag_${PYTHON_VERSION}_${CUDA_CODE}
+    depsets:
+      - subset_llm_example_${PYTHON_VERSION}_${CUDA_CODE}
     operation: expand
-    append_flags:
-      - --python-version=${PYTHON_VERSION}
-      - --extra-index-url https://download.pytorch.org/whl/cu124
-    build_arg_sets:
-      - py311
+    requirements:
+      - doc/source/ray-overview/examples/e2e-rag/requirements.in
+    output: release/ray_release/byod/e2e_rag_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    <<: *common_settings
