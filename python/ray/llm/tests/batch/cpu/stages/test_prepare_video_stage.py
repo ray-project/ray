@@ -81,10 +81,11 @@ def mock_pyav_open():
         class Resampling:
             BILINEAR = 2
 
-    with patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
-    ), patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _PILImage
+    with (
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV),
+        patch(
+            "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _PILImage
+        ),
     ):
         yield
 
@@ -232,12 +233,15 @@ async def test_auto_cache_to_disk_when_num_frames(
 @pytest.mark.asyncio
 async def test_av_missing_import_error_metadata(mock_http_connection_bytes):
     # Simulate missing av import and validate metadata fields
-    with patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod",
-        new=None,
-    ), patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image",
-        new=object(),
+    with (
+        patch(
+            "ray.llm._internal.batch.stages.prepare_video_stage._av_mod",
+            new=None,
+        ),
+        patch(
+            "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image",
+            new=object(),
+        ),
     ):
         udf = PrepareVideoUDF(
             data_column="__data",
@@ -374,10 +378,9 @@ async def test_preprocess_convert_numpy_consistency(mock_http_connection_bytes):
         class Resampling:
             BILINEAR = 2
 
-    with patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
-    ), patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    with (
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV),
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P),
     ):
         udf = PrepareVideoUDF(
             data_column="__data",
@@ -465,10 +468,9 @@ async def test_bytesio_format_guess_fallback(mock_http_connection_bytes):
         class Resampling:
             BILINEAR = 2
 
-    with patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _ErrOnAuto
-    ), patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    with (
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _ErrOnAuto),
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P),
     ):
         udf = PrepareVideoUDF(
             data_column="__data",
@@ -625,10 +627,9 @@ async def test_target_cap_limits_frames(mock_http_connection_bytes):
         class Resampling:
             BILINEAR = 2
 
-    with patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
-    ), patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    with (
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV),
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P),
     ):
         udf = PrepareVideoUDF(
             data_column="__data",
@@ -728,10 +729,9 @@ async def test_strict_no_fallback_when_no_frames(mock_http_connection_bytes):
         class Resampling:
             BILINEAR = 2
 
-    with patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV
-    ), patch(
-        "ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P
+    with (
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._av_mod", _AV),
+        patch("ray.llm._internal.batch.stages.prepare_video_stage._PIL_Image", _P),
     ):
         udf = PrepareVideoUDF(
             data_column="__data",

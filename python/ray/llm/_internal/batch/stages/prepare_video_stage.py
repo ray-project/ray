@@ -27,8 +27,8 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 from ray.llm._internal.batch.envs import (
-    RAY_LLM_BATCH_MAX_TARGETS,
     RAY_LLM_BATCH_MAX_DECODE_FRAMES,
+    RAY_LLM_BATCH_MAX_TARGETS,
 )
 from ray.llm._internal.batch.stages._util import HTTPConnection
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
@@ -228,7 +228,10 @@ class VideoProcessor:
             s = self._sampling
             if s.num_frames is not None:
                 n = max(int(s.num_frames), 1)
-                if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
+                if (
+                    self._max_sampled_frames is not None
+                    and self._max_sampled_frames >= 0
+                ):
                     n = min(n, self._max_sampled_frames)
                 if n == 0:
                     allow_zero_samples = True
@@ -239,11 +242,15 @@ class VideoProcessor:
                         if getattr(frame, "pts", None) is None:
                             fps_guess = None
                             try:
-                                fps_guess = float(getattr(vstream, "average_rate", 0)) or None
+                                fps_guess = (
+                                    float(getattr(vstream, "average_rate", 0)) or None
+                                )
                             except Exception:
                                 fps_guess = None
                             current_ts = (
-                                len(timestamps) / fps_guess if fps_guess else float(len(timestamps))
+                                len(timestamps) / fps_guess
+                                if fps_guess
+                                else float(len(timestamps))
                             )
                         else:
                             current_ts = float(frame.pts * vstream.time_base)
@@ -255,7 +262,10 @@ class VideoProcessor:
                             break
             else:
                 targets = self._build_targets(container, vstream)
-                if self._max_sampled_frames is not None and self._max_sampled_frames >= 0:
+                if (
+                    self._max_sampled_frames is not None
+                    and self._max_sampled_frames >= 0
+                ):
                     targets = targets[: self._max_sampled_frames]
 
                 if not targets:
@@ -405,7 +415,9 @@ class VideoProcessor:
             resample_name = r.get("resample", "BILINEAR")
             method = None
             try:
-                method = getattr(_PIL_Image, resample_name, None) if _PIL_Image else None
+                method = (
+                    getattr(_PIL_Image, resample_name, None) if _PIL_Image else None
+                )
                 if method is None and _PIL_Image is not None:
                     Resampling = getattr(_PIL_Image, "Resampling", None)
                     if Resampling is not None:
@@ -480,12 +492,16 @@ class VideoProcessor:
         if _is_http(source):
             use_disk = self._cache_dir is not None and (
                 self._cache_mode == "disk"
-                or (self._cache_mode == "auto" and self._sampling.num_frames is not None)
+                or (
+                    self._cache_mode == "auto" and self._sampling.num_frames is not None
+                )
             )
             use_memory = self._cache_mode == "memory"
 
             if use_memory:
-                data = self._http.download_bytes_chunked(source, timeout_s=self._timeout_s)
+                data = self._http.download_bytes_chunked(
+                    source, timeout_s=self._timeout_s
+                )
                 return io.BytesIO(data), True, None
 
             if use_disk:
@@ -556,7 +572,11 @@ class PrepareVideoUDF(StatefulStageUDF):
                 media_type = item.get("type")
                 if media_type not in ("video", "video_url"):
                     continue
-                url = item.get("video") if media_type == "video" else item.get("video_url")
+                url = (
+                    item.get("video")
+                    if media_type == "video"
+                    else item.get("video_url")
+                )
                 if isinstance(url, dict):
                     url = url.get("url")
                 if not isinstance(url, str):
@@ -565,7 +585,9 @@ class PrepareVideoUDF(StatefulStageUDF):
         return sources
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        async def process_row(idx: int, row: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        async def process_row(
+            idx: int, row: Dict[str, Any]
+        ) -> Tuple[int, Dict[str, Any]]:
             sources = self.extract_video_sources(row.get("messages", []))
             if not sources:
                 return idx, {self.IDX_IN_BATCH_COLUMN: idx}
