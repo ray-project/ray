@@ -27,8 +27,8 @@ from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_driver_job_definition_event_pb2 import (
     DriverJobDefinitionEvent,
 )
-from ray.core.generated.events_driver_job_execution_event_pb2 import (
-    DriverJobExecutionEvent,
+from ray.core.generated.events_driver_job_lifecycle_event_pb2 import (
+    DriverJobLifecycleEvent,
 )
 from ray.core.generated.events_event_aggregator_service_pb2 import (
     AddEventsRequest,
@@ -775,7 +775,7 @@ def test_aggregator_agent_receive_driver_job_definition_event(
 
 
 @_with_aggregator_port
-def test_aggregator_agent_receive_driver_job_execution_event(
+def test_aggregator_agent_receive_driver_job_lifecycle_event(
     ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
@@ -792,19 +792,19 @@ def test_aggregator_agent_receive_driver_job_execution_event(
                 RayEvent(
                     event_id=b"1",
                     source_type=RayEvent.SourceType.CORE_WORKER,
-                    event_type=RayEvent.EventType.DRIVER_JOB_EXECUTION_EVENT,
+                    event_type=RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
                     timestamp=timestamp,
                     severity=RayEvent.Severity.INFO,
-                    message="driver job execution event",
-                    driver_job_execution_event=DriverJobExecutionEvent(
+                    message="driver job lifecycle event",
+                    driver_job_lifecycle_event=DriverJobLifecycleEvent(
                         job_id=b"1",
-                        states=[
-                            DriverJobExecutionEvent.StateTimestamp(
-                                state=DriverJobExecutionEvent.State.CREATED,
+                        state_transitions=[
+                            DriverJobLifecycleEvent.StateTransition(
+                                state=DriverJobLifecycleEvent.State.CREATED,
                                 timestamp=Timestamp(seconds=1234567890),
                             ),
-                            DriverJobExecutionEvent.StateTimestamp(
-                                state=DriverJobExecutionEvent.State.FINISHED,
+                            DriverJobLifecycleEvent.StateTransition(
+                                state=DriverJobLifecycleEvent.State.FINISHED,
                                 timestamp=Timestamp(seconds=1234567890),
                             ),
                         ],
@@ -820,14 +820,20 @@ def test_aggregator_agent_receive_driver_job_execution_event(
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
-    assert req_json[0]["message"] == "driver job execution event"
+    assert req_json[0]["message"] == "driver job lifecycle event"
     assert (
-        req_json[0]["driverJobExecutionEvent"]["jobId"]
+        req_json[0]["driverJobLifecycleEvent"]["jobId"]
         == base64.b64encode(b"1").decode()
     )
-    assert len(req_json[0]["driverJobExecutionEvent"]["states"]) == 2
-    assert req_json[0]["driverJobExecutionEvent"]["states"][0]["state"] == "CREATED"
-    assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FINISHED"
+    assert len(req_json[0]["driverJobLifecycleEvent"]["stateTransitions"]) == 2
+    assert (
+        req_json[0]["driverJobLifecycleEvent"]["stateTransitions"][0]["state"]
+        == "CREATED"
+    )
+    assert (
+        req_json[0]["driverJobLifecycleEvent"]["stateTransitions"][1]["state"]
+        == "FINISHED"
+    )
 
 
 if __name__ == "__main__":
