@@ -52,12 +52,13 @@ py_test(
         "examples/experiment_tracking/lightning_exp_tracking_mlflow.py",
         "examples/experiment_tracking/lightning_exp_tracking_model_dl.py",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/experiment_tracking/lightning_exp_tracking_mlflow.py",
     tags = [
         "exclusive",
-        "new_storage",
         "no_main",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -69,12 +70,13 @@ py_test(
         "examples/experiment_tracking/lightning_exp_tracking_model_dl.py",
         "examples/experiment_tracking/lightning_exp_tracking_tensorboard.py",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/experiment_tracking/lightning_exp_tracking_tensorboard.py",
     tags = [
         "exclusive",
-        "new_storage",
         "no_main",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -83,12 +85,13 @@ py_test(
     name = "torch_exp_tracking_mlflow",
     size = "medium",
     srcs = ["examples/experiment_tracking/torch_exp_tracking_mlflow.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/experiment_tracking/torch_exp_tracking_mlflow.py",
     tags = [
         "exclusive",
-        "new_storage",
         "no_main",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -101,13 +104,14 @@ py_test(
         "examples/experiment_tracking/lightning_exp_tracking_model_dl.py",
         "examples/experiment_tracking/lightning_exp_tracking_wandb.py",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/experiment_tracking/lightning_exp_tracking_wandb.py",
     tags = [
         "exclusive",
         "needs_credentials",
-        "new_storage",
         "no_main",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -119,13 +123,14 @@ py_test(
         "examples/experiment_tracking/lightning_exp_tracking_comet.py",
         "examples/experiment_tracking/lightning_exp_tracking_model_dl.py",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/experiment_tracking/lightning_exp_tracking_comet.py",
     tags = [
         "exclusive",
         "needs_credentials",
-        "new_storage",
         "no_main",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -134,13 +139,14 @@ py_test(
     name = "torch_exp_tracking_wandb",
     size = "medium",
     srcs = ["examples/experiment_tracking/torch_exp_tracking_wandb.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/experiment_tracking/torch_exp_tracking_wandb.py",
     tags = [
         "exclusive",
         "needs_credentials",
-        "new_storage",
         "no_main",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -148,26 +154,15 @@ py_test(
 ############ Experiment tracking examples end ############
 
 py_test(
-    name = "mlflow_simple_example",
-    size = "small",
-    srcs = ["examples/mlflow_simple_example.py"],
-    main = "examples/mlflow_simple_example.py",
-    tags = [
-        "exclusive",
-        "no_main",
-        "team:ml",
-    ],
-    deps = [":train_lib"],
-)
-
-py_test(
     name = "tensorflow_quick_start",
     size = "medium",
     srcs = ["examples/tf/tensorflow_quick_start.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/tf/tensorflow_quick_start.py",
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -176,37 +171,27 @@ py_test(
     name = "torch_quick_start",
     size = "medium",
     srcs = ["examples/pytorch/torch_quick_start.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "examples/pytorch/torch_quick_start.py",
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
 
+# TODO: Delete this together with the long running PBT release test.
 py_test(
     name = "tune_cifar_torch_pbt_example",
     size = "medium",
     srcs = ["examples/pytorch/tune_cifar_torch_pbt_example.py"],
     args = ["--smoke-test"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
     tags = [
         "exclusive",
         "pytorch",
-        "team:ml",
-        "tune",
-    ],
-    deps = [":train_lib"],
-)
-
-py_test(
-    name = "tune_torch_regression_example",
-    size = "small",
-    srcs = ["examples/pytorch/tune_torch_regression_example.py"],
-    args = ["--smoke-test"],
-    main = "examples/pytorch/tune_torch_regression_example.py",
-    tags = [
-        "exclusive",
         "team:ml",
         "tune",
     ],
