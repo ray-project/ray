@@ -1006,7 +1006,6 @@ py_test(
         "exclusive",
         "minimal",
         "team:ml",
-        "train_v2",
     ],
     deps = [":train_lib"],
 )

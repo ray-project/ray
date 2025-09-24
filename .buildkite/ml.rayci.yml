@@ -77,7 +77,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 3
         --only-tags train_v2
-        --except-tags gpu
+        --except-tags gpu,needs_credentials
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":bullettrain_front: ml: train v2 gpu tests"
