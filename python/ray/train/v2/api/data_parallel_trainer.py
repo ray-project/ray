@@ -6,11 +6,9 @@ import threading
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.usage import usage_lib
-from ray._private.ray_constants import (
-    WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
-    env_bool,
-)
+from ray._private.ray_constants import env_bool
 from ray.actor import ActorHandle
 from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import (
@@ -42,7 +40,7 @@ from ray.train.v2._internal.callbacks.metrics import (
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
-    DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
+    DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
     METRICS_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
 )
@@ -114,10 +112,10 @@ class DataParallelTrainer:
         tag_train_v2_trainer(self)
 
     def _set_default_env_vars(self):
-        if WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR not in os.environ:
+        if RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR not in os.environ:
             os.environ[
-                WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
-            ] = DEFAULT_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE
+                RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
+            ] = DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE
 
     def _get_train_func(self) -> Callable[[], None]:
         return construct_train_func(
