@@ -143,16 +143,36 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                const std::vector<NodeID> &node_ids),
               (override));
   MOCK_METHOD(void,
+              AsyncGetAllNodeAddressAndLiveness,
+              (const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+               int64_t timeout_ms,
+               const std::vector<NodeID> &node_ids),
+              (override));
+  MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
               (std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
                StatusCallback done),
               (override));
+  MOCK_METHOD(
+      void,
+      AsyncSubscribeToNodeAddressAndLivenessChange,
+      (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+       StatusCallback done),
+      (override));
   MOCK_METHOD(const rpc::GcsNodeInfo *,
               Get,
               (const NodeID &node_id, bool filter_dead_nodes),
               (const, override));
+  MOCK_METHOD(const rpc::GcsNodeAddressAndLiveness *,
+              GetNodeAddressAndLiveness,
+              (const NodeID &node_id, bool filter_dead_nodes),
+              (const, override));
   MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &),
               GetAll,
+              (),
+              (const, override));
+  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> &),
+              GetAllNodeAddressAndLiveness,
               (),
               (const, override));
   MOCK_METHOD(Status,
