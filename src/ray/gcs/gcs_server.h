@@ -22,6 +22,7 @@
 #include "ray/common/asio/postable.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_init_data.h"
@@ -40,16 +41,18 @@
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/rpc/client_call.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
 namespace ray {
 using raylet::ClusterLeaseManager;
 using raylet::NoopLocalLeaseManager;
+
+namespace rpc {
+class ClientCallManager;
+}
 
 namespace gcs {
 
@@ -94,7 +97,9 @@ class GcsAutoscalerStateManager;
 /// `DoStart` call to `Stop`.
 class GcsServer {
  public:
-  GcsServer(const GcsServerConfig &config, instrumented_io_context &main_service);
+  GcsServer(const GcsServerConfig &config,
+            instrumented_io_context &main_service,
+            ray::observability::MetricInterface &event_recorder_dropped_events_counter);
   virtual ~GcsServer();
 
   /// Start gcs server.
