@@ -791,7 +791,8 @@ service NodeInfoGcsService {
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Get node address and liveness information of all nodes from GCS Service.
-  rpc GetAllNodeAddressAndLiveness(GetAllNodeAddressAndLivenessRequest) returns (GetAllNodeAddressAndLivenessReply);
+  rpc GetAllNodeAddressAndLiveness(GetAllNodeAddressAndLivenessRequest)
+      returns (GetAllNodeAddressAndLivenessReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
