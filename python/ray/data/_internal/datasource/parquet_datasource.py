@@ -786,7 +786,8 @@ def _sample_fragments(
         return []
 
     target_num_samples = math.ceil(
-        len(fragments) * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
+        len(fragments) * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO
+    )
 
     target_num_samples = max(
         min(target_num_samples, PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES),
@@ -800,10 +801,7 @@ def _sample_fragments(
     # if data is skewed.
     pivots = np.linspace(0, len(fragments) - 1, target_num_samples).astype(int)
 
-    return [
-        fragments[idx]
-        for idx in pivots.tolist()
-    ]
+    return [fragments[idx] for idx in pivots.tolist()]
 
 
 def _add_partitions_to_table(
