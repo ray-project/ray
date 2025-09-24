@@ -429,7 +429,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int num_workers
         (c_bool(const CTaskID &) nogil) kill_main
         CCoreWorkerOptions()
-        (void() nogil) terminate_asyncio_thread
         c_string serialized_job_config
         int metrics_agent_port
         int runtime_env_hash
