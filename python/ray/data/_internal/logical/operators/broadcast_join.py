@@ -234,15 +234,32 @@ class BroadcastJoinFunction:
         Returns:
             The appropriate result based on join type semantics.
         """
-        if self.join_type in [JoinType.INNER, JoinType.RIGHT_OUTER]:
-            # Inner and right outer joins return empty when right side is empty
-            return self._create_empty_result_table(batch)
-        elif self.join_type in [JoinType.LEFT_OUTER, JoinType.FULL_OUTER]:
-            # Left and full outer joins return the left side when right side is empty
-            # Add null columns for the right side
-            return self._add_null_columns_for_missing_right(batch)
+        # When datasets are swapped, we need to adjust join semantics:
+        # - small_table represents the original LEFT dataset
+        # - batch represents the original RIGHT dataset
+
+        if self.datasets_swapped:
+            # Small table is empty original LEFT, batch is original RIGHT
+            if self.join_type in [JoinType.INNER, JoinType.LEFT_OUTER]:
+                # Inner and left outer joins return empty when left side is empty
+                return self._create_empty_result_table(batch)
+            elif self.join_type in [JoinType.RIGHT_OUTER, JoinType.FULL_OUTER]:
+                # Right and full outer joins return the right side when left side is empty
+                # Add null columns for the missing left side
+                return self._add_null_columns_for_missing_left(batch)
+            else:
+                return self._create_empty_result_table(batch)
         else:
-            return self._create_empty_result_table(batch)
+            # Small table is original RIGHT, batch is original LEFT
+            if self.join_type in [JoinType.INNER, JoinType.RIGHT_OUTER]:
+                # Inner and right outer joins return empty when right side is empty
+                return self._create_empty_result_table(batch)
+            elif self.join_type in [JoinType.LEFT_OUTER, JoinType.FULL_OUTER]:
+                # Left and full outer joins return the left side when right side is empty
+                # Add null columns for the missing right side
+                return self._add_null_columns_for_missing_right(batch)
+            else:
+                return self._create_empty_result_table(batch)
 
     def _add_null_columns_for_missing_right(self, batch: pa.Table) -> pa.Table:
         """Add null columns for missing right side in outer joins.
@@ -256,6 +273,38 @@ class BroadcastJoinFunction:
         result_table = batch
 
         # Add null columns for each column in the small table
+        for col_name in self.small_table.column_names:
+            if (
+                col_name not in self.small_table_key_columns
+                or col_name not in batch.column_names
+            ):
+                # Add null column with appropriate name and type
+                if col_name in batch.column_names and self.small_table_columns_suffix:
+                    new_col_name = f"{col_name}{self.small_table_columns_suffix}"
+                else:
+                    new_col_name = col_name
+
+                col_type = self.small_table.schema.field(col_name).type
+                null_array = pa.array([None] * batch.num_rows, type=col_type)
+                result_table = result_table.append_column(new_col_name, null_array)
+
+        return result_table
+
+    def _add_null_columns_for_missing_left(self, batch: pa.Table) -> pa.Table:
+        """Add null columns for missing left side in outer joins when datasets are swapped.
+
+        This method handles the case where the original left dataset (small table) is empty
+        and we need to add null columns for the missing left side columns.
+
+        Args:
+            batch: The batch from the large dataset (original right side).
+
+        Returns:
+            The batch with null columns added for the missing left side.
+        """
+        result_table = batch
+
+        # Add null columns for each column in the small table (original left side)
         for col_name in self.small_table.column_names:
             if (
                 col_name not in self.small_table_key_columns

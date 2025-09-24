@@ -1481,6 +1481,94 @@ def test_broadcast_join_duplicate_keys(ray_start_regular_shared_2_cpus):
     assert actual_combinations == expected_combinations
 
 
+def test_broadcast_join_empty_table_semantics_with_swapping(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that empty table handling respects join semantics when datasets are swapped."""
+
+    # Test case 1: Left dataset smaller and empty - should trigger swapping
+    empty_left = ray.data.from_items([])  # Will become small table after swapping
+    large_right = ray.data.from_items(
+        [
+            {"id": 1, "right_value": "x"},
+            {"id": 2, "right_value": "y"},
+            {"id": 3, "right_value": "z"},
+        ]
+    )
+
+    # Left outer join: should return empty (left side is empty)
+    left_outer_result = empty_left.join(
+        large_right,
+        join_type="left_outer",
+        on=("id",),
+        broadcast=True,
+    )
+    assert (
+        left_outer_result.count() == 0
+    ), "Left outer join with empty left should return empty"
+
+    # Right outer join: should return all right rows with null left columns
+    right_outer_result = empty_left.join(
+        large_right,
+        join_type="right_outer",
+        on=("id",),
+        broadcast=True,
+    )
+    assert (
+        right_outer_result.count() == 3
+    ), "Right outer join with empty left should return all right rows"
+
+    # Full outer join: should return all right rows with null left columns
+    full_outer_result = empty_left.join(
+        large_right,
+        join_type="full_outer",
+        on=("id",),
+        broadcast=True,
+    )
+    assert (
+        full_outer_result.count() == 3
+    ), "Full outer join with empty left should return all right rows"
+
+    # Test case 2: Right dataset smaller and empty - no swapping needed
+    large_left = ray.data.from_items(
+        [
+            {"id": 1, "left_value": "a"},
+            {"id": 2, "left_value": "b"},
+            {"id": 3, "left_value": "c"},
+        ]
+    )
+    empty_right = ray.data.from_items([])  # Will remain small table (right side)
+
+    # Left outer join: should return all left rows with null right columns
+    left_outer_result2 = large_left.join(
+        empty_right,
+        join_type="left_outer",
+        on=("id",),
+        broadcast=True,
+    )
+    assert (
+        left_outer_result2.count() == 3
+    ), "Left outer join with empty right should return all left rows"
+
+    # Right outer join: should return empty (right side is empty)
+    right_outer_result2 = large_left.join(
+        empty_right,
+        join_type="right_outer",
+        on=("id",),
+        broadcast=True,
+    )
+    assert (
+        right_outer_result2.count() == 0
+    ), "Right outer join with empty right should return empty"
+
+    # Verify that the results have correct column structure
+    result_df = pd.DataFrame(left_outer_result2.take_all())
+    assert set(result_df.columns) >= {
+        "id",
+        "left_value",
+    }, "Result should have left columns"
+
+
 if __name__ == "__main__":
     import sys
 
