@@ -86,7 +86,7 @@ class TestRayEventPublisher:
         task = asyncio.create_task(publisher.run_forever())
         try:
             # ensure consumer is registered
-            await publisher.wait_until_running(2.0)
+            assert await publisher.wait_until_running(2.0)
             # Enqueue one event into buffer
             e = events_base_event_pb2.RayEvent(
                 event_id=b"1",
@@ -125,7 +125,7 @@ class TestRayEventPublisher:
         task = asyncio.create_task(publisher.run_forever())
         try:
             # ensure consumer is registered
-            await publisher.wait_until_running(2.0)
+            assert await publisher.wait_until_running(2.0)
             e = events_base_event_pb2.RayEvent(
                 event_id=b"1",
                 source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,

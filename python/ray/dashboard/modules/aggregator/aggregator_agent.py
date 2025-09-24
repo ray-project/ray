@@ -52,8 +52,8 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
 # flag to enable publishing events to the external HTTP service
-PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
+PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
 )
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
@@ -98,13 +98,12 @@ class AggregatorAgent(
         # Task metadata buffer accumulates dropped task attempts for GCS publishing
         self._task_metadata_buffer = TaskMetadataBuffer()
 
-        self._lock = asyncio.Lock()
         self._events_export_addr = (
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
         )
 
         self._event_processing_enabled = False
-        if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC and self._events_export_addr:
+        if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE and self._events_export_addr:
             logger.info(
                 f"Publishing events to external HTTP service is enabled. events_export_addr: {self._events_export_addr}"
             )
