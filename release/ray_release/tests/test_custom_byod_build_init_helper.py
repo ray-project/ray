@@ -8,6 +8,7 @@ import yaml
 from ray_release.custom_byod_build_init_helper import (
     create_custom_build_yaml,
     get_prerequisite_step,
+    _get_step_name,
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
@@ -94,6 +95,22 @@ def test_get_prerequisite_step():
     assert (
         get_prerequisite_step("ray-project/ray:abc123-custom")
         == config["release_image_step_ray"]
+    )
+
+
+def test_get_step_name():
+    tests = [
+        Test(name="test_1"),
+        Test(name="test_2"),
+        Test(name="test_3"),
+    ]
+    assert (
+        _get_step_name(
+            "ray-project/ray-ml:a1b2c3d4-py39-cpu-abcdef123456789abc123456789",
+            "abc123",
+            tests,
+        )
+        == ":tapioca: build custom: ray-ml:py39-cpu (abc123) test_1 test_2"
     )
 
 
