@@ -94,12 +94,6 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
             "-m",
             "memray",
             "run",
-            "-o",
-            str(
-                Path(tmp_path)
-                / "profile"
-                / f"{Path(tmp_path).name}_memory_dashboard_agent.bin"
-            ),  # noqa
             "-q",
             "--live",
             "--live-port",
