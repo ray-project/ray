@@ -1,4 +1,5 @@
 import sys
+import types
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
@@ -32,6 +33,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
+import ray.serve._private.deployment_state as ds_mod
 from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
     SLOW_STARTUP_WARNING_S,
@@ -2774,6 +2776,124 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
     assert None not in ds.get_active_node_ids()
     assert None not in dsm.get_active_node_ids()
+
+
+def _make_target_state(*, deleting=False, target=1, code_version="v1"):
+    return types.SimpleNamespace(
+        deleting=deleting,
+        target_num_replicas=target,
+        info=types.SimpleNamespace(version=None),
+        version=types.SimpleNamespace(code_version=code_version),
+    )
+
+
+def _make_deployment_state(
+    *, target_state, within_bounds=True, running_count=0, total_reqs=0.0
+):
+    ds = DeploymentState.__new__(DeploymentState)
+    ds._id = "dep"
+    ds._target_state = target_state
+
+    asm = Mock()
+    asm.is_within_bounds.return_value = within_bounds
+    asm.get_total_num_requests.return_value = float(total_reqs)
+    ds._autoscaling_state_manager = asm
+
+    reps = Mock()
+    reps.count.return_value = running_count
+    ds._replicas = reps
+
+    curr_status = Mock()
+    curr_status.handle_transition.return_value = curr_status
+    ds._curr_status_info = curr_status
+
+    def _set_target_state(new_info, decision_num_replicas):
+        ds._target_state.info = new_info
+        ds._target_state.target_num_replicas = decision_num_replicas
+
+    ds._set_target_state = _set_target_state
+
+    return ds
+
+
+@pytest.fixture
+def inject_scale_globals(monkeypatch):
+    # Patch the module-level names used by DeploymentState.scale
+    ReplicaState = types.SimpleNamespace(RUNNING="RUNNING")
+    Triggers = types.SimpleNamespace(AUTOSCALE_UP="UP", AUTOSCALE_DOWN="DOWN")
+    logger = Mock()
+    monkeypatch.setattr(ds_mod, "ReplicaState", ReplicaState, raising=False)
+    monkeypatch.setattr(
+        ds_mod, "DeploymentStatusInternalTrigger", Triggers, raising=False
+    )
+    monkeypatch.setattr(ds_mod, "logger", logger, raising=False)
+    return ReplicaState, Triggers, logger
+
+
+@pytest.mark.parametrize(
+    "deleting, initial_target, decision",
+    [
+        (True, 2, 3),  # deleting -> no-op
+        (False, 3, None),  # decision None -> no-op
+        (False, 3, 3),  # decision equals current -> no-op
+    ],
+)
+def test_scale_noop_cases(inject_scale_globals, deleting, initial_target, decision):
+    _, _, logger = inject_scale_globals
+    ds = _make_deployment_state(
+        target_state=_make_target_state(deleting=deleting, target=initial_target)
+    )
+
+    changed = ds.scale(decision)
+    assert changed is False
+    ds._autoscaling_state_manager.is_within_bounds.assert_not_called()
+    ds._replicas.count.assert_not_called()
+    logger.info.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "within_bounds, start_target, decision, expect_transition_substr, expect_log",
+    [
+        (False, 1, 4, None, False),  # out-of-bounds: early True, no transition/log
+        (True, 2, 5, "Upscaling from 2 to 5", True),  # upscale path
+        (True, 6, 3, "Downscaling from 6 to 3", True),  # downscale path
+    ],
+)
+def test_scale_state_changes(
+    inject_scale_globals,
+    within_bounds,
+    start_target,
+    decision,
+    expect_transition_substr,
+    expect_log,
+):
+    _, _, logger = inject_scale_globals
+    ds = _make_deployment_state(
+        target_state=_make_target_state(target=start_target),
+        within_bounds=within_bounds,
+        running_count=start_target,
+        total_reqs=10.0,
+    )
+
+    changed = ds.scale(decision)
+    assert changed is True
+    assert ds._target_state.target_num_replicas == decision
+
+    if not within_bounds:
+        # Short-circuit path: no transition, no log
+        ds._curr_status_info.handle_transition.assert_not_called()
+        logger.info.assert_not_called()
+        return
+
+    # Within bounds: must transition and (optionally) log
+    ds._curr_status_info.handle_transition.assert_called_once()
+    msg = ds._curr_status_info.handle_transition.call_args.kwargs["message"]
+    assert expect_transition_substr in msg
+
+    if expect_log:
+        logger.info.assert_called()
+    else:
+        logger.info.assert_not_called()
 
 
 class TestAutoscaling:
