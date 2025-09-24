@@ -17,11 +17,13 @@ def _torch_run_launch(
         f"--nnodes={n_nodes}",
         f"--nproc-per-node={n_processes_per_node}",
         f"--node_rank={node_rank}",
-        f"--master_addr={master_address}",
-        f"--master_port={master_port}",
+        "--rdzv_backend=c10d",
+        f"--rdzv_endpoint={master_address}:{master_port}",
+        "--rdzv_id=local_mode_job",
         "torch_local_mode_test.py",
     ]
 
+    # Set up environment with RAY_TRAIN_V2_ENABLED=1
     env = os.environ.copy()
     env["RAY_TRAIN_V2_ENABLED"] = "1"
 

@@ -68,26 +68,27 @@ def train_func():
             print(metrics)
 
 
-# Define configurations.
-train_loop_config = {"num_epochs": 20, "lr": 0.01, "batch_size": 32}
-scaling_config = ScalingConfig(num_workers=0, use_gpu=True)
-run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
+def fit_func():
+    # Define configurations.
+    train_loop_config = {"num_epochs": 20, "lr": 0.01, "batch_size": 32}
+    scaling_config = ScalingConfig(num_workers=0, use_gpu=True)
+    run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
+    # Initialize the Trainer.
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config=train_loop_config,
+        scaling_config=scaling_config,
+        run_config=run_config,
+    )
 
-# Initialize the Trainer.
-trainer = TorchTrainer(
-    train_loop_per_worker=train_func,
-    train_loop_config=train_loop_config,
-    scaling_config=scaling_config,
-    run_config=run_config,
-)
+    # Train the model.
+    result = trainer.fit()
 
-# Train the model.
-result = trainer.fit()
-
-# Inspect the results.
-final_loss = result.metrics["loss"]
+    # Inspect the results.
+    final_loss = result.metrics["loss"]
+    print(final_loss)
 
 
 if __name__ == "__main__":
-    train_func()
+    fit_func()
