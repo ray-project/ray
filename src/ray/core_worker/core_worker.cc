@@ -709,8 +709,7 @@ void CoreWorker::SubscribeToNodeChanges() {
     // here to avoid destruction order fiasco between gcs_client and reference_counter_.
     auto on_node_change = [reference_counter = reference_counter_,
                            rate_limiter = lease_request_rate_limiter_](
-                              const NodeID &node_id,
-                              const rpc::GcsNodeAddressAndLiveness &data) {
+                              const NodeID &node_id, const rpc::GcsNodeInfo &data) {
       if (data.state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(node_id)
             << "Node failure. All objects pinned on that node will be lost if object "
@@ -724,7 +723,7 @@ void CoreWorker::SubscribeToNodeChanges() {
       }
     };
 
-    gcs_client_->Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
+    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
         std::move(on_node_change), [this](const Status &) {
           {
             std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
@@ -2759,7 +2758,7 @@ Status CoreWorker::ExecuteTask(
   // execution and unpinned once the task completes. We will notify the caller
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
-  RAY_RETURN_NOT_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
+  RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
