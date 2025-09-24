@@ -1,5 +1,19 @@
 group: build
 steps:
+  - name: wanda_ray_core
+    label: "wanda: core binary parts py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-core.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    depends_on: manylinux
+
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
     tags:
