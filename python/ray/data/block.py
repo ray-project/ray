@@ -72,6 +72,14 @@ class BlockType(Enum):
     PANDAS = "pandas"
 
 
+@DeveloperAPI
+class BatchFormat(str, Enum):
+    # NOTE: This is to maintain compatibility w/ existing APIs
+    ARROW = "pyarrow"
+    PANDAS = "pandas"
+    NUMPY = "numpy"
+
+
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
@@ -90,7 +98,7 @@ class _CallableClassProtocol(Protocol[T, U]):
         ...
 
 
-# A user defined function passed to map, map_batches, ec.
+# A user defined function passed to flat_map, map_batches, etc.
 UserDefinedFunction = Union[
     Callable[[T], U],
     Callable[[T], Iterator[U]],
@@ -342,6 +350,19 @@ class BlockAccessor:
     def rename_columns(self, columns_rename: Dict[str, str]) -> Block:
         """Return the block reflecting the renamed columns."""
         raise NotImplementedError
+
+    def upsert_column(self, column_name: str, column_data: BlockColumn) -> Block:
+        """
+        Upserts a column into the block. If the column already exists, it will be replaced.
+
+        Args:
+            column_name: The name of the column to upsert.
+            column_data: The data to upsert into the column. (Arrow Array/ChunkedArray for Arrow blocks, Series or array-like for Pandas blocks)
+
+        Returns:
+            The updated block.
+        """
+        raise NotImplementedError()
 
     def random_shuffle(self, random_seed: Optional[int]) -> Block:
         """Randomly shuffle this block."""

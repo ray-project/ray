@@ -175,7 +175,15 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def unique(self) -> BlockColumn:
         pd = lazy_import_pandas()
-        return pd.Series(self._column.unique())
+        try:
+            return pd.Series(self._column.unique())
+        except ValueError as e:
+            if "buffer source array is read-only" in str(e):
+                # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
+                #       when computing unique values hence failing
+                return pd.Series(self._column.copy().unique())
+            else:
+                raise
 
     def flatten(self) -> BlockColumn:
         return self._column.list.flatten()
@@ -235,7 +243,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    def _combine_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
@@ -246,9 +254,11 @@ class PandasBlockBuilder(TableBlockBuilder):
             df.reset_index(drop=True, inplace=True)
         else:
             df = tables[0]
+
         ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
+
         return df
 
     @staticmethod
@@ -316,6 +326,16 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pandas.DataFrame":
         return self._table.rename(columns=columns_rename, inplace=False, copy=False)
+
+    def upsert_column(
+        self, column_name: str, column_data: BlockColumn
+    ) -> "pandas.DataFrame":
+        import pyarrow
+
+        if isinstance(column_data, (pyarrow.Array, pyarrow.ChunkedArray)):
+            column_data = column_data.to_pandas()
+
+        return self._table.assign(**{column_name: column_data})
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)

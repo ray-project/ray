@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import functools
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Union
 
 from ray.data.block import BatchColumn
+from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -22,26 +23,40 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
         GE: Greater than or equal comparison (>=)
         LE: Less than or equal comparison (<=)
         EQ: Equality comparison (==)
+        NE: Not equal comparison (!=)
         AND: Logical AND operation (&)
         OR: Logical OR operation (|)
+        NOT: Logical NOT operation (~)
+        IS_NULL: Check if value is null
+        IS_NOT_NULL: Check if value is not null
+        IN: Check if value is in a list
+        NOT_IN: Check if value is not in a list
     """
 
     ADD = "add"
     SUB = "sub"
     MUL = "mul"
     DIV = "div"
+    FLOORDIV = "floordiv"
     GT = "gt"
     LT = "lt"
     GE = "ge"
     LE = "le"
     EQ = "eq"
+    NE = "ne"
     AND = "and"
     OR = "or"
+    NOT = "not"
+    IS_NULL = "is_null"
+    IS_NOT_NULL = "is_not_null"
+    IN = "in"
+    NOT_IN = "not_in"
 
 
 @DeveloperAPI(stability="alpha")
@@ -68,6 +83,8 @@ class Expr(ABC):
         This class should not be instantiated directly. Use the concrete
         subclasses like ColumnExpr, LiteralExpr, etc.
     """
+
+    data_type: DataType
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -124,6 +141,14 @@ class Expr(ABC):
         """Reverse division operator (for literal / expr)."""
         return LiteralExpr(other)._bin(self, Operation.DIV)
 
+    def __floordiv__(self, other: Any) -> "Expr":
+        """Floor division operator (//)."""
+        return self._bin(other, Operation.FLOORDIV)
+
+    def __rfloordiv__(self, other: Any) -> "Expr":
+        """Reverse floor division operator (for literal // expr)."""
+        return LiteralExpr(other)._bin(self, Operation.FLOORDIV)
+
     # comparison
     def __gt__(self, other: Any) -> "Expr":
         """Greater than operator (>)."""
@@ -145,6 +170,10 @@ class Expr(ABC):
         """Equality operator (==)."""
         return self._bin(other, Operation.EQ)
 
+    def __ne__(self, other: Any) -> "Expr":
+        """Not equal operator (!=)."""
+        return self._bin(other, Operation.NE)
+
     # boolean
     def __and__(self, other: Any) -> "Expr":
         """Logical AND operator (&)."""
@@ -153,6 +182,31 @@ class Expr(ABC):
     def __or__(self, other: Any) -> "Expr":
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
+
+    def __invert__(self) -> "Expr":
+        """Logical NOT operator (~)."""
+        return UnaryExpr(Operation.NOT, self)
+
+    # predicate methods
+    def is_null(self) -> "Expr":
+        """Check if the expression value is null."""
+        return UnaryExpr(Operation.IS_NULL, self)
+
+    def is_not_null(self) -> "Expr":
+        """Check if the expression value is not null."""
+        return UnaryExpr(Operation.IS_NOT_NULL, self)
+
+    def is_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
+        """Check if the expression value is in a list of values."""
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.IN)
+
+    def not_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
+        """Check if the expression value is not in a list of values."""
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.NOT_IN)
 
 
 @DeveloperAPI(stability="alpha")
@@ -174,6 +228,7 @@ class ColumnExpr(Expr):
     """
 
     name: str
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -192,12 +247,22 @@ class LiteralExpr(Expr):
 
     Example:
         >>> from ray.data.expressions import lit
+        >>> import numpy as np
         >>> # Create a literal value
         >>> five = lit(5) # Creates LiteralExpr(value=5)
         >>> name = lit("John") # Creates LiteralExpr(value="John")
+        >>> numpy_val = lit(np.int32(42)) # Creates LiteralExpr with numpy type
     """
 
     value: Any
+    data_type: DataType = field(init=False)
+
+    def __post_init__(self):
+        # Infer the type from the value using DataType.infer_dtype
+        inferred_dtype = DataType.infer_dtype(self.value)
+
+        # Use object.__setattr__ since the dataclass is frozen
+        object.__setattr__(self, "data_type", inferred_dtype)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -232,12 +297,47 @@ class BinaryExpr(Expr):
     left: Expr
     right: Expr
 
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, BinaryExpr)
             and self.op is other.op
             and self.left.structurally_equals(other.left)
             and self.right.structurally_equals(other.right)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class UnaryExpr(Expr):
+    """Expression that represents a unary operation on a single expression.
+
+    This expression type represents an operation with one operand.
+    Common unary operations include logical NOT, IS NULL, IS NOT NULL, etc.
+
+    Args:
+        op: The operation to perform (from Operation enum)
+        operand: The operand expression
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Check if a column is null
+        >>> expr = col("age").is_null()  # Creates UnaryExpr(IS_NULL, col("age"))
+        >>> # Logical not
+        >>> expr = ~(col("active"))  # Creates UnaryExpr(NOT, col("active"))
+    """
+
+    op: Operation
+    operand: Expr
+
+    data_type: DataType = field(init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, UnaryExpr)
+            and self.op is other.op
+            and self.operand.structurally_equals(other.operand)
         )
 
 
@@ -263,7 +363,7 @@ class UDFExpr(Expr):
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>>
-        >>> @udf()
+        >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)
         >>>
@@ -289,7 +389,9 @@ class UDFExpr(Expr):
         )
 
 
-def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
+def _create_udf_callable(
+    fn: Callable[..., BatchColumn], return_dtype: DataType
+) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions."""
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
@@ -312,6 +414,7 @@ def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExp
             fn=fn,
             args=expr_args,
             kwargs=expr_kwargs,
+            data_type=return_dtype,
         )
 
     # Preserve original function metadata
@@ -324,7 +427,7 @@ def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExp
 
 
 @PublicAPI(stability="alpha")
-def udf() -> Callable[..., UDFExpr]:
+def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     """
     Decorator to convert a UDF into an expression-compatible function.
 
@@ -336,6 +439,9 @@ def udf() -> Callable[..., UDFExpr]:
     multiple values from that column across the batch. Under the hood, when working
     with multiple columns, they get translated to PyArrow arrays (one array per column).
 
+    Args:
+        return_dtype: The data type of the return value of the UDF
+
     Returns:
         A callable that creates UDFExpr instances when called with expressions
 
@@ -346,12 +452,12 @@ def udf() -> Callable[..., UDFExpr]:
         >>> import ray
         >>>
         >>> # UDF that operates on a batch of values (PyArrow Array)
-        >>> @udf()
+        >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)  # Vectorized operation on the entire Array
         >>>
         >>> # UDF that combines multiple columns (each as a PyArrow Array)
-        >>> @udf()
+        >>> @udf(return_dtype=DataType.string())
         ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
@@ -372,7 +478,7 @@ def udf() -> Callable[..., UDFExpr]:
     """
 
     def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
-        return _create_udf_callable(func)
+        return _create_udf_callable(func, return_dtype)
 
     return decorator
 
@@ -383,6 +489,7 @@ class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
     uri_column_name: str
+    data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -494,6 +601,7 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "UnaryExpr",
     "UDFExpr",
     "udf",
     "DownloadExpr",

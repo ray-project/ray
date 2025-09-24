@@ -31,18 +31,17 @@
 namespace ray {
 namespace core {
 
-inline std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
-                                                                    size_t data_size) {
-  auto metadata = const_cast<uint8_t *>(data);
+namespace {
+
+std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(
+    const std::string &str) {
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(str.data()));
   auto meta_buffer =
-      std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
+      std::make_shared<ray::LocalMemoryBuffer>(metadata, str.size(), /*copy_data=*/true);
   return meta_buffer;
 }
 
-inline std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(
-    const std::string &str) {
-  return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
-}
+}  // namespace
 
 TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::vector<std::shared_ptr<RayObject>> results;

@@ -109,7 +109,7 @@ from ray.rllib.utils.checkpoints import (
     try_import_msgpack,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
     deprecation_warning,
@@ -2211,11 +2211,11 @@ class Algorithm(Checkpointable, Trainable):
                 EnvRunnerGroup (with its o EnvRunners plus the local one).
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the RLModule has been added).
+            The new MultiRLModuleSpec (after the RLModule has been added).
         """
         validate_module_id(module_id, error=True)
 
-        # The to-be-returned new MultiAgentRLModuleSpec.
+        # The to-be-returned new MultiRLModuleSpec.
         multi_rl_module_spec = None
 
         if not self.config.is_multi_agent:
@@ -2337,9 +2337,9 @@ class Algorithm(Checkpointable, Trainable):
                 EnvRunnerGroup (with its o EnvRunners plus the local one).
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the RLModule has been removed).
+            The new MultiRLModuleSpec (after the RLModule has been removed).
         """
-        # The to-be-returned new MultiAgentRLModuleSpec.
+        # The to-be-returned new MultiRLModuleSpec.
         multi_rl_module_spec = None
 
         # Remove RLModule from the LearnerGroup.
