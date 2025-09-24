@@ -195,6 +195,8 @@ else
     echo "Skip installing aws-ofi-nccl"
 fi
 
+# Remove apt sources so that it won't run into apt update issues when running
+# the image.
 sudo rm -rf /etc/apt/sources.list.d/*
 sudo rm -rf /var/lib/apt/lists/*
 
@@ -219,12 +221,12 @@ rm -rf /var/lib/apt/lists/*
 
 # Install HAProxy from source
 HAPROXY_VERSION="2.8.12"
-BUILD_DIR=$(mktemp -d)
-curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
-tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
-make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
-make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin
-rm -rf "${BUILD_DIR}"
+HAPROXY_BUILD_DIR=$(mktemp -d)
+curl -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
+make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
+make -C "${HAPROXY_BUILD_DIR}" install SBINDIR=/usr/local/bin
+rm -rf "${HAPROXY_BUILD_DIR}"
 
 EOF
 
