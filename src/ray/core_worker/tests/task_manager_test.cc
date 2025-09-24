@@ -2963,6 +2963,171 @@ TEST_F(PlasmaShutdownRaceTest, PlasmaCallbackHandlesShutdownRaceCondition) {
   ASSERT_EQ(tolerated_operations_.count(object_id4), 1);
 }
 
+// Test that error message is sent to push_error_callback when task fails and will be
+// retried
+TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
+  std::string captured_error_message;
+  std::string captured_error_type;
+
+  // Create a TaskManager with a custom push_error_callback that captures the message
+  auto capturing_push_error_callback = [&captured_error_message, &captured_error_type](
+                                           const JobID &job_id,
+                                           const std::string &type,
+                                           const std::string &error_message,
+                                           double timestamp) {
+    captured_error_type = type;
+    captured_error_message = error_message;
+    return Status::OK();
+  };
+
+  auto local_reference_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      false);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(
+      io_context_.GetIoService(), local_reference_counter.get());
+
+  TaskManager test_manager(
+      *local_store,
+      *local_reference_counter,
+      [this](const RayObject &object, const ObjectID &object_id) {
+        stored_in_plasma.insert(object_id);
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      capturing_push_error_callback,  // This will capture the error message
+      1024 * 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &actor_id)
+          -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
+
+  // Create a task with retries enabled
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(2);  // Allow 2 retries
+  int num_retries = 2;
+
+  test_manager.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(test_manager.IsTaskPending(spec.TaskId()));
+
+  NodeID node_id = NodeID::FromRandom();
+  WorkerID worker_id = WorkerID::FromRandom();
+  test_manager.MarkDependenciesResolved(spec.TaskId());
+  test_manager.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Fail the task which should trigger a retry
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  error_info.set_error_message("Worker crashed during task execution");
+
+  bool will_retry = test_manager.RetryTaskIfPossible(spec.TaskId(), error_info);
+  ASSERT_TRUE(will_retry);  // Should retry
+
+  // Verify that the expected retry message was sent to the callback
+  EXPECT_THAT(captured_error_message,
+              testing::HasSubstr(
+                  "There are 1 retries remaining, so the task will be retried. Error:"));
+  EXPECT_THAT(captured_error_message,
+              testing::HasSubstr("Worker crashed during task execution"));
+  EXPECT_EQ(captured_error_type, "WORKER_DIED");
+
+  // Cleanup
+  test_manager.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+
+#if GTEST_HAS_STREAM_REDIRECTION
+// Test that error log is printed when push_error_callback fails
+TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
+  using testing::internal::CaptureStderr;
+  using testing::internal::GetCapturedStderr;
+
+  // Create a TaskManager with a failing push_error_callback
+  auto failing_push_error_callback = [](const JobID &job_id,
+                                        const std::string &type,
+                                        const std::string &error_message,
+                                        double timestamp) {
+    return Status::IOError("Failed to push error to driver");
+  };
+
+  auto local_reference_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      false);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(
+      io_context_.GetIoService(), local_reference_counter.get());
+
+  TaskManager test_manager(
+      *local_store,
+      *local_reference_counter,
+      [this](const RayObject &object, const ObjectID &object_id) {
+        stored_in_plasma.insert(object_id);
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      failing_push_error_callback,  // This will fail
+      1024 * 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &actor_id)
+          -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
+
+  // Create a task that will be retried
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(1);
+  int num_retries = 1;
+
+  test_manager.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(test_manager.IsTaskPending(spec.TaskId()));
+
+  NodeID node_id = NodeID::FromRandom();
+  WorkerID worker_id = WorkerID::FromRandom();
+  test_manager.MarkDependenciesResolved(spec.TaskId());
+  test_manager.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Capture stderr to check for error log
+  CaptureStderr();
+
+  // Fail the task which should trigger a retry and call push_error_callback
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  error_info.set_error_message("Worker crashed during task execution");
+
+  bool will_retry = test_manager.RetryTaskIfPossible(spec.TaskId(), error_info);
+  ASSERT_TRUE(will_retry);  // Should retry
+
+  // Get the captured stderr output
+  std::string stderr_output = GetCapturedStderr();
+
+  // Verify that the expected error log message is present
+  std::string expected_log_message =
+      "Failed to push error to driver for task " + spec.TaskId().Hex();
+  EXPECT_THAT(stderr_output, testing::HasSubstr(expected_log_message));
+
+  // Cleanup
+  test_manager.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+#endif  // GTEST_HAS_STREAM_REDIRECTION
+
 }  // namespace core
 }  // namespace ray
 
