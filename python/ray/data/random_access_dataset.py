@@ -23,7 +23,7 @@ except ImportError:
     pa = None
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 

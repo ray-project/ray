@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -33,13 +34,15 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/core_worker/metrics.h"
-#include "ray/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
+#include "ray/object_manager_rpc_client/object_manager_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
@@ -140,6 +143,10 @@ DEFINE_int64(system_reserved_memory_bytes,
              "The amount of memory in bytes reserved for ray system processes. It will "
              "be applied as a memory.min constraint to the system cgroup. If "
              "enable-resource-isolation is true, then this cannot be -1");
+
+DEFINE_string(system_pids,
+              "",
+              "A comma-separated list of pids to move into the system cgroup.");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
@@ -251,6 +258,7 @@ int main(int argc, char *argv[]) {
   const std::string cgroup_path = FLAGS_cgroup_path;
   const int64_t system_reserved_cpu_weight = FLAGS_system_reserved_cpu_weight;
   const int64_t system_reserved_memory_bytes = FLAGS_system_reserved_memory_bytes;
+  const std::string system_pids = FLAGS_system_pids;
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
@@ -269,10 +277,11 @@ int main(int argc, char *argv[]) {
            "system_reserved_cpu_weight must be set to a value between [1,10000]";
     RAY_CHECK_NE(system_reserved_memory_bytes, -1)
         << "Failed to start up raylet. If enable_resource_isolation is set to true, "
-           "system_reserved_memory_byres must be set to a value > 0";
+           "system_reserved_memory_bytes must be set to a value > 0";
 
     std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver =
         std::make_unique<ray::SysFsCgroupDriver>();
+
     ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager_s =
         ray::CgroupManager::Create(std::move(cgroup_path),
                                    node_id,
@@ -292,6 +301,26 @@ int main(int argc, char *argv[]) {
         << "Resource isolation with cgroups is only supported in linux. Please set "
            "enable_resource_isolation to false. This is likely a misconfiguration.";
 #endif
+
+    // Move system processes into the system cgroup.
+    // TODO(#54703): This logic needs to be hardened and moved out of main.cc. E.g.
+    // if system_pids is ",,,,,,", this will log an error for each empty
+    // string.
+    std::vector<std::string> system_pids_to_move;
+    if (!system_pids.empty()) {
+      system_pids_to_move = std::move(absl::StrSplit(system_pids, ","));
+    }
+    system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
+    for (const auto &pid : system_pids_to_move) {
+      ray::Status s = cgroup_manager->AddProcessToSystemCgroup(pid);
+      // TODO(#54703): This could be upgraded to a RAY_CHECK.
+      if (!s.ok()) {
+        RAY_LOG(WARNING) << absl::StrFormat(
+            "Failed to move process %s into system cgroup with error %s",
+            pid,
+            s.ToString());
+      }
+    }
   }
 
   // Configuration for the node manager.
