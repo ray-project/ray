@@ -1,11 +1,9 @@
 # syntax=docker/dockerfile:1.3-labs
-FROM cr.ray.io/rayproject/manylinux as builder
+FROM cr.ray.io/rayproject/manylinux AS builder
 
 ARG PYTHON_VERSION=3.9
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG BUILDKITE_CACHE_READONLY
-
-RUN mkdir /home/forge/ray
 
 WORKDIR /home/forge/ray
 
@@ -30,10 +28,10 @@ fi
 
 bazelisk build --config=ci //:ray_pkg_zip
 
-cp bazel-bin/ray_pkg.zip /ray_pkg.zip
+cp bazel-bin/ray_pkg.zip /home/forge/ray_pkg.zip
 
 EOF
 
 FROM scratch
 
-COPY --from=builder /ray_pkg.zip /ray_pkg.zip
+COPY --from=builder /home/forge/ray_pkg.zip /ray_pkg.zip
