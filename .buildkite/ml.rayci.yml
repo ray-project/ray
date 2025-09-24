@@ -66,7 +66,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials,train_v2
+        --except-tags gpu,minimal,tune,doctest,needs_credentials,train_v2
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":bullettrain_front: ml: train v2 tests"
@@ -76,7 +76,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 3
         --only-tags train_v2
-        --except-tags gpu_only
+        --except-tags gpu
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -90,7 +90,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/tune/... //python/ray/air/... ml
         --workers 4 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags gpu_only,gpu,minimal,doctest,needs_credentials,soft_imports,rllib
+        --except-tags gpu,minimal,doctest,needs_credentials,soft_imports,rllib
     depends_on:
       - mlbuild-multipy
       - forge
@@ -110,7 +110,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --build-name mlgpubuild
-        --only-tags gpu,gpu_only
+        --only-tags gpu
     depends_on: [ "mlgpubuild", "forge" ]
 
   - label: ":train: ml: train gpu {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -124,7 +124,7 @@ steps:
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 2
         --python-version {{matrix.python}}
         --build-name mlgpubuild-py{{matrix.python}}
-        --only-tags gpu,gpu_only
+        --only-tags gpu
         --except-tags doctest
     depends_on: [ "mlgpubuild-multipy", "forge" ]
     matrix:
@@ -154,7 +154,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --parallelism-per-worker 3
-        --except-tags doctest,soft_imports,gpu_only,rllib
+        --except-tags doctest,soft_imports,rllib
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: tune soft import tests"
@@ -186,7 +186,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 3
         --only-tags tune
-        --except-tags gpu_only,ray_air,gpu,doctest,needs_credentials
+        --except-tags ray_air,gpu,doctest,needs_credentials
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: rllib+tune tests"
@@ -198,7 +198,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --parallelism-per-worker 3
         --only-tags rllib
-        --except-tags gpu_only
+        --except-tags gpu
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: release tests"
@@ -266,7 +266,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
-        --except-tags gpu_only,gpu,needs_credentials
+        --except-tags gpu,needs_credentials
     depends_on: [ "mlbuild", "forge" ]
     soft_fail: true
 
@@ -298,6 +298,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
         --build-name mlgpubuild
-        --only-tags gpu,gpu_only
+        --only-tags gpu
     depends_on: [ "mlgpubuild", "forge" ]
     soft_fail: true

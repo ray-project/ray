@@ -428,7 +428,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu_only",
+        "gpu",
         "team:ml",
         "train_v2",
     ],
