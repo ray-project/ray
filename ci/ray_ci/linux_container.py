@@ -3,7 +3,7 @@ import subprocess
 import sys
 from typing import List, Optional, Tuple
 
-from ci.ray_ci.container import Container
+from ci.ray_ci.container import Container, get_docker_image
 
 _DOCKER_CAP_ADD = [
     "SYS_PTRACE",
@@ -11,6 +11,7 @@ _DOCKER_CAP_ADD = [
     "NET_ADMIN",
 ]
 
+DEFAULT_PYTHON_VERSION = "3.9"
 
 class LinuxContainer(Container):
     def __init__(
@@ -18,6 +19,7 @@ class LinuxContainer(Container):
         docker_tag: str,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
+        python_version: Optional[str] = None,
         tmp_filesystem: Optional[str] = None,
         privileged: bool = False,
     ) -> None:
@@ -26,6 +28,8 @@ class LinuxContainer(Container):
         if tmp_filesystem is not None:
             if tmp_filesystem != "tmpfs":
                 raise ValueError("Only tmpfs is supported for tmp filesystem")
+
+        self.python_version = python_version or DEFAULT_PYTHON_VERSION
         self.tmp_filesystem = tmp_filesystem
         self.privileged = privileged
 
@@ -46,20 +50,28 @@ class LinuxContainer(Container):
             "--build-arg",
             f"BASE_IMAGE={self._get_docker_image()}",
             "--build-arg",
-            f"BUILD_TYPE={build_type or ''}",
-            "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
+            "--build-arg",
+            f"BUILD_TYPE={build_type or ''}"
         ]
-        if mask:
-            build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]
-        if build_type == "with-cpp":
-            # Only set for Java tests because there's multi-language worker tests.
-            build_cmd += ["--build-arg", "RAY_DISABLE_EXTRA_CPP=0"]
-        build_cmd += [
-            "-f",
-            "/ray/ci/ray_ci/tests.env.Dockerfile",
-            "/ray",
-        ]
+
+        if not build_type or build_type == "optimized":
+            docker_file = "ci/ray_ci/tests.env.Dockerfile"
+            ray_core_image = get_docker_image(f"ray-core-py{self.python_version}")
+            build_cmd += ["--build-arg", f"RAY_CORE_IMAGE={ray_core_image}"]
+            ray_dashboard_image = get_docker_image("ray-dashboard")
+            build_cmd += ["--build-arg", f"RAY_DASHBOARD_IMAGE={ray_dashboard_image}"]
+            if mask:
+                build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]
+        else:
+            if mask:
+                raise ValueError("install mask is not supported for build type: " + build_type)
+            docker_file = "ci/ray_ci/extra-tests.env.Dockerfile"
+            if build_type == "with-cpp":
+                # Only set for Java tests because there's multi-language worker tests.
+                build_cmd += ["--build-arg", "RAY_DISABLE_EXTRA_CPP=0"]
+
+        build_cmd += ["-f", docker_file, "/ray"]
         subprocess.check_call(
             build_cmd,
             env=env,

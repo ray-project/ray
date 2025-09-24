@@ -2,6 +2,9 @@ group: core tests
 depends_on:
   - forge
   - oss-ci-base_build
+  # For simplicity for now.
+  - ray-core-build
+  - ray-dashboard-build
 steps:
   # builds
   - name: corebuild
@@ -75,7 +78,10 @@ steps:
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,dask
-    depends_on: corebuild-multipy
+    depends_on:
+      - corebuild-multipy
+      - ray-core-build
+      - ray-dashboard-build
     matrix:
       setup:
         python: ["3.12"]
@@ -173,6 +179,8 @@ steps:
     depends_on:
       - databuild-multipy
       - forge
+      - ray-core-build
+      - ray-dashboard-build
 
   - label: ":ray: core: modin tests"
     tags:
@@ -186,6 +194,8 @@ steps:
     depends_on:
       - datalbuild
       - forge
+      - ray-core-build
+      - ray-dashboard-build
 
   - label: ":ray: core: dashboard tests"
     tags:

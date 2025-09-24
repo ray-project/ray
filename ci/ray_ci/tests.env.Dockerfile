@@ -1,5 +1,11 @@
 # syntax=docker/dockerfile:1.3-labs
 
+ARG RAY_CORE_IMAGE=scratch
+FROM "$RAY_CORE_IMAGE" AS ray_core
+
+ARG RAY_DASHBOARD_IMAGE=scratch
+FROM "$RAY_DASHBOARD_IMAGE" AS ray_dashboard
+
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
@@ -18,7 +24,9 @@ RUN mkdir /rayci
 WORKDIR /rayci
 COPY . .
 
-RUN <<EOF
+RUN --mount=type=bind,from=ray_core,target=/opt/ray-core \
+    --mount=type=bind,from=ray_dashboard,target=/opt/ray-dashboard \
+<<EOF
 #!/bin/bash -i
 
 set -euo pipefail
@@ -54,13 +62,19 @@ if [[ "$RAY_INSTALL_MASK" != "" ]]; then
   fi
 fi
 
-echo "--- Build dashboard"
 
-(
-  cd python/ray/dashboard/client
-  npm ci
-  npm run build
-)
+if [[ -e /opt/ray-dashboard/dashboard.tar.gz ]]; then
+  echo "--- Extract built dashboard"
+  mkdir -p python/ray/dashboard/client/build
+  tar -xzf /opt/ray-dashboard/dashboard.tar.gz -C python/ray/dashboard/client/build
+else
+  echo "--- Build dashboard"
+  (
+    cd python/ray/dashboard/client
+    npm ci
+    npm run build
+  )
+fi
 
 echo "--- Install Ray with -e"
 
@@ -73,7 +87,16 @@ elif [[ "$BUILD_TYPE" == "java" ]]; then
   bash java/build-jar-multiplatform.sh linux
   RAY_INSTALL_JAVA=1 pip install -v -e python/
 else
-  pip install -v -e python/
+  if [[ -e /opt/ray-core/ray_pkg.zip && "$BUILD_TYPE" == "optimized" && "$RAY_DISABLE_EXTRA_CPP" == "1" ]]; then
+    echo "--- Extract built ray core bits"
+    unzip -o -q /opt/ray-core/ray_pkg.zip -d python
+    echo "--- Install Ray with -e"
+    RAY_BUILD_CORE=0 pip install -v -e python/
+  else
+    # Fall back to normal path.
+    echo "--- Install Ray with -e"
+    pip install -v -e python/
+  fi
 fi
 
 EOF
