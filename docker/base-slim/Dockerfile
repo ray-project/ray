@@ -198,9 +198,6 @@ rm -rf /var/lib/apt/lists/*
 
 EOF
 
-# Ensure Anaconda is on PATH
-ENV PATH="/home/ray/anaconda3/bin:$PATH"
-
 USER ray
 WORKDIR /home/ray
 
