@@ -181,11 +181,9 @@ class ReplicaMetricsManager:
 
         # Cache user_callable_wrapper initialization state to avoid repeated runtime checks
         self._custom_metrics_enabled = False
-        self._prometheus_metrics_enabled = True
         # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
         self._checked_custom_metrics = False
         self._record_autoscaling_stats_fn = None
-        self._prometheus_queries: Optional[List[Tuple[str, Optional[str]]]] = None
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -246,10 +244,13 @@ class ReplicaMetricsManager:
 
         self.set_autoscaling_config(autoscaling_config)
 
-        if autoscaling_config.prometheus_custom_metrics:
-            self.enable_prometheus_autoscaling_metrics(
-                True, autoscaling_config.prometheus_custom_metrics
-            )
+        self._prometheus_metrics_enabled = False
+        self._prometheus_queries: Optional[List[Tuple[str, Optional[str]]]] = None
+
+        if autoscaling_config and autoscaling_config.prometheus_custom_metrics:
+            self._prometheus_metrics_enabled = True
+            self._prometheus_queries = autoscaling_config.prometheus_custom_metrics
+            self.start_metrics_pusher()
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -332,17 +333,6 @@ class ReplicaMetricsManager:
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
             self.start_metrics_pusher()
 
-    def enable_prometheus_autoscaling_metrics(
-        self,
-        prometheus_metrics_enabled: bool,
-        prometheus_queries: Optional[List[Tuple[str, Optional[str]]]],
-    ):
-        """Runs after the user callable wrapper is initialized to enable autoscaling metrics collection."""
-        if prometheus_metrics_enabled:
-            self._prometheus_metrics_enabled = prometheus_metrics_enabled
-            self._prometheus_queries = prometheus_queries
-            self.start_metrics_pusher()
-
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
@@ -400,7 +390,7 @@ class ReplicaMetricsManager:
 
     async def _fetch_prometheus_metrics(
         self, prometheus_metrics: List[Tuple[str, Optional[str]]]
-    ) -> Dict[str, Any]:
+    ) -> Optional[Dict[str, List[float]]]:
         """
         Fetch metrics from the prometheus exporter endpoint, given a list of (metric_name, optional[promql_expression]) tuples.
         The promql_expression parameter is ignored for now.
@@ -463,27 +453,19 @@ class ReplicaMetricsManager:
                             logger.error(
                                 "prometheus_client not available for parsing metrics"
                             )
-                            # Fallback: set all metrics to 0.0
-                            for metric_name, promql_expression in prometheus_metrics:
-                                metrics_result[metric_name] = 0.0
+                            return None
                         except Exception as e:
                             logger.error(f"Error parsing prometheus metrics: {e}")
-                            # Fallback: set all metrics to 0.0
-                            for metric_name, promql_expression in prometheus_metrics:
-                                metrics_result[metric_name] = 0.0
+                            return None
                     else:
                         logger.error(
                             f"Failed to fetch metrics from prometheus exporter: HTTP {response.status}"
                         )
-                        # Fallback: set all metrics to 0.0
-                        for metric_name, promql_expression in prometheus_metrics:
-                            metrics_result[metric_name] = 0.0
+                        return None
 
         except Exception as e:
             logger.error(f"Error fetching prometheus metrics: {e}")
-            # Fallback: set all metrics to 0.0
-            for metric_name, promql_expression in prometheus_metrics:
-                metrics_result[metric_name] = 0.0
+            return None
 
         return metrics_result
 
