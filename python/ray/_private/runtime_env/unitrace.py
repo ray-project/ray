@@ -1,15 +1,8 @@
 import asyncio
-import copy
 import logging
-import os
 import subprocess
-import sys
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ray._common.utils import (
-    try_to_create_directory,
-)
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray.exceptions import RuntimeEnvSetupError
@@ -21,6 +14,7 @@ UNITRACE_DEFAULT_CONFIG = {
     "chrome-kernel-logging": "",
     "teardown-on-signal": "0",
 }
+
 
 def parse_unitrace_config(unitrace_config: Dict[str, str]) -> List[str]:
     """
@@ -40,7 +34,7 @@ def parse_unitrace_config(unitrace_config: Dict[str, str]) -> List[str]:
         else:
             unitrace_cmd.append(f"-{option}")
 
-        if (len(option_val) > 0):
+        if len(option_val) > 0:
             unitrace_cmd.append(f"{option_val}")
 
     return unitrace_cmd
@@ -74,8 +68,10 @@ class UnitracePlugin(RuntimeEnvPlugin):
             stdout, stderr = await process.communicate()
             error_msg = stderr.strip() if stderr.strip() != "" else stdout.strip()
 
-            if (process.returncode == 0):
-                if (isinstance(stdout, bytes) and ("--chrome-kernel-logging" in stdout.decode())):
+            if process.returncode == 0:
+                if isinstance(stdout, bytes) and (
+                     "--chrome-kernel-logging" in stdout.decode()
+                ):
                     return True, None
                 else:
                     return True, ("wrong unitrace installed")
@@ -105,7 +101,9 @@ class UnitracePlugin(RuntimeEnvPlugin):
                     "Dictionary of unitrace options"
                 )
 
-        is_valid_unitrace_cmd, error_msg = await self._check_unitrace_script(unitrace_config)
+        is_valid_unitrace_cmd, error_msg = await self._check_unitrace_script(
+            unitrace_config
+        )
         if not is_valid_unitrace_cmd:
             logger.warning(error_msg)
             raise RuntimeEnvSetupError(

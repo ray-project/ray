@@ -20,7 +20,6 @@ from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.mpi import MPIPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
-from ray._private.runtime_env.unitrace import UnitracePlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
@@ -30,6 +29,7 @@ from ray._private.runtime_env.plugin import (
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
+from ray._private.runtime_env.unitrace import UnitracePlugin
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._raylet import GcsClient
