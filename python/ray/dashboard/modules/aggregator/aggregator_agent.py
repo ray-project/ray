@@ -177,7 +177,7 @@ class AggregatorAgent(
         events_data = request.events_data
 
         if PUBLISH_EVENTS_TO_GCS:
-            await self._task_metadata_buffer.merge(events_data.task_events_metadata)
+            self._task_metadata_buffer.merge(events_data.task_events_metadata)
 
         for event in events_data.events:
             self._open_telemetry_metric_recorder.set_metric_value(

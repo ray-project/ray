@@ -114,7 +114,7 @@ class RayEventPublisher(RayEventPublisherInterface):
                 publish_batch = PublishBatch(events=events_batch)
 
                 if self._task_metadata_buffer is not None:
-                    task_metadata_batch = await self._task_metadata_buffer.get()
+                    task_metadata_batch = self._task_metadata_buffer.get()
                     publish_batch.task_events_metadata = task_metadata_batch
 
                 await self._async_publish_with_retries(publish_batch)
