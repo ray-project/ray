@@ -13,6 +13,14 @@ build_arg_sets:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
 
+common_settings: &common_settings
+  override_flags:
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  append_flags:
+    - --python-version=3.11
+    - --python-platform=linux
+  build_arg_sets:
+    - cu128
 
 depsets:
   - name: distributing_pytorch_ray_depset_${PYTHON_SHORT}_${CUDA_VERSION}
