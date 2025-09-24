@@ -60,7 +60,7 @@ class LanceDatasource(Datasource):
         }
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         read_tasks = []
         ds_fragments = self.scanner_options.get("fragments")
@@ -97,7 +97,7 @@ class LanceDatasource(Datasource):
                 ),
                 metadata,
                 schema=fragments[0].schema,
-                per_block_limit=per_block_limit,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
         return read_tasks

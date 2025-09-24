@@ -23,7 +23,9 @@ class TorchDatasource(Datasource):
     ):
         self._dataset = dataset
 
-    def get_read_tasks(self, parallelism: int, per_block_limit: Optional[int] = None):
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ):
         assert parallelism == 1
 
         meta = BlockMetadata(
@@ -39,7 +41,7 @@ class TorchDatasource(Datasource):
                 subset,
             ),
             metadata=meta,
-            per_block_limit=per_block_limit,
+            per_task_row_limit=per_task_row_limit,
         )
 
         return [read_task]

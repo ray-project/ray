@@ -330,7 +330,7 @@ class ParquetDatasource(Datasource):
         return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
@@ -408,7 +408,7 @@ class ParquetDatasource(Datasource):
                     ),
                     meta,
                     schema=target_schema,
-                    per_block_limit=per_block_limit,
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
 

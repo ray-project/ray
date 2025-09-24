@@ -258,7 +258,7 @@ class ClickHouseDatasource(Datasource):
         return self._get_estimate_size()
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         """
         Create read tasks for the ClickHouse query.
@@ -268,8 +268,8 @@ class ClickHouseDatasource(Datasource):
                 - If ``order_by`` is not set, parallelism will be forced to 1.
                 - If ``filter`` is set, parallelism will also be forced to 1
                     to ensure deterministic results.
-            per_block_limit: Maximum number of rows allowed in each emitted
-                block.  Blocks larger than this limit will be sliced before
+            per_task_row_limit: Maximum number of rows allowed in each emitted
+                task.  Blocks larger than this limit will be sliced before
                 being yielded downstream.
 
         Returns:
@@ -332,7 +332,7 @@ class ClickHouseDatasource(Datasource):
                     exec_stats=None,
                 ),
                 schema=sample_block_schema,
-                per_block_limit=per_block_limit,
+                per_task_row_limit=per_task_row_limit,
             )
 
         if parallelism == 1:

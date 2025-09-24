@@ -212,7 +212,7 @@ class FileBasedDatasource(Datasource):
         return total_size
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         import numpy as np
 
@@ -311,7 +311,9 @@ class FileBasedDatasource(Datasource):
 
             read_task_fn = create_read_task_fn(read_paths, self._NUM_THREADS_PER_TASK)
 
-            read_task = ReadTask(read_task_fn, meta, per_block_limit=per_block_limit)
+            read_task = ReadTask(
+                read_task_fn, meta, per_task_row_limit=per_task_row_limit
+            )
 
             read_tasks.append(read_task)
 

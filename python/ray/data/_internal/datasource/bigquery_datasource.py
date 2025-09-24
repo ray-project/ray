@@ -69,7 +69,7 @@ class BigQueryDatasource(Datasource):
             )
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         from google.cloud import bigquery_storage
 
@@ -127,7 +127,7 @@ class BigQueryDatasource(Datasource):
             read_task = ReadTask(
                 lambda stream=stream: [_read_single_partition(stream)],
                 metadata,
-                per_block_limit=per_block_limit,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 

@@ -49,7 +49,7 @@ class RandomBytesDatasource(Datasource):
         return None
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         def _blocks_generator():
             for _ in range(self.num_batches_per_task):
@@ -94,7 +94,7 @@ class RandomBytesDatasource(Datasource):
                     input_files=None,
                     exec_stats=None,
                 ),
-                per_block_limit=per_block_limit,
+                per_task_row_limit=per_task_row_limit,
             )
         ]
 

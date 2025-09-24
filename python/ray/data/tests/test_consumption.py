@@ -1938,7 +1938,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
         mock_logger.assert_not_called()
 
 
-def test_per_block_limit_basic(ray_start_regular_shared):
+def test_per_task_row_limit_basic(ray_start_regular_shared):
     """Test basic per-block limiting functionality."""
     # Simple test that should work with the existing range datasource
     ds = ray.data.range(1000, override_num_blocks=10).limit(50)
@@ -1949,7 +1949,7 @@ def test_per_block_limit_basic(ray_start_regular_shared):
     assert [row["id"] for row in result] == list(range(50))
 
 
-def test_per_block_limit_with_custom_readtask(ray_start_regular_shared):
+def test_per_task_row_limit_with_custom_readtask(ray_start_regular_shared):
     """Test per-block limiting directly with ReadTask implementation."""
 
     def read_data_with_limit():
@@ -1963,7 +1963,7 @@ def test_per_block_limit_with_custom_readtask(ray_start_regular_shared):
             num_rows=200, size_bytes=1600, input_files=None, exec_stats=None
         ),
         schema=pa.lib.Schema.from_pandas(pd.DataFrame({"id": []})),
-        per_block_limit=50,
+        per_task_row_limit=50,
     )
 
     # Execute the ReadTask
@@ -1975,7 +1975,7 @@ def test_per_block_limit_with_custom_readtask(ray_start_regular_shared):
     assert result_blocks[0]["id"].tolist() == list(range(50))
 
 
-def test_per_block_limit_multiple_blocks_per_task(ray_start_regular_shared):
+def test_per_task_row_limit_multiple_blocks_per_task(ray_start_regular_shared):
     """Test per-block limiting when ReadTasks return multiple blocks."""
 
     def read_multiple_blocks_with_limit():
@@ -1993,7 +1993,7 @@ def test_per_block_limit_multiple_blocks_per_task(ray_start_regular_shared):
             num_rows=90, size_bytes=720, input_files=None, exec_stats=None
         ),
         schema=pa.lib.Schema.from_pandas(pd.DataFrame({"id": []})),
-        per_block_limit=70,
+        per_task_row_limit=70,
     )
 
     result_blocks = list(task())
@@ -2009,7 +2009,7 @@ def test_per_block_limit_multiple_blocks_per_task(ray_start_regular_shared):
     assert all_ids == list(range(70))
 
 
-def test_per_block_limit_larger_than_data(ray_start_regular_shared):
+def test_per_task_row_limit_larger_than_data(ray_start_regular_shared):
     """Test per-block limiting when limit is larger than available data."""
 
     total_rows = 50
@@ -2021,7 +2021,7 @@ def test_per_block_limit_larger_than_data(ray_start_regular_shared):
     assert [row["id"] for row in result] == list(range(total_rows))
 
 
-def test_per_block_limit_exact_block_boundary(ray_start_regular_shared):
+def test_per_task_row_limit_exact_block_boundary(ray_start_regular_shared):
     """Test per-block limiting when limit exactly matches block boundaries."""
 
     rows_per_block = 20
@@ -2037,7 +2037,7 @@ def test_per_block_limit_exact_block_boundary(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("limit", [1, 5, 10, 25, 50, 99])
-def test_per_block_limit_various_sizes(ray_start_regular_shared, limit):
+def test_per_task_row_limit_various_sizes(ray_start_regular_shared, limit):
     """Test per-block limiting with various limit sizes."""
 
     total_rows = 100
@@ -2052,7 +2052,7 @@ def test_per_block_limit_various_sizes(ray_start_regular_shared, limit):
     assert [row["id"] for row in result] == list(range(expected_len))
 
 
-def test_per_block_limit_with_transformations(ray_start_regular_shared):
+def test_per_task_row_limit_with_transformations(ray_start_regular_shared):
     """Test that per-block limiting works correctly with transformations."""
 
     # Test with map operation after limit
@@ -2072,7 +2072,7 @@ def test_per_block_limit_with_transformations(ray_start_regular_shared):
     assert [row["doubled"] for row in result] == [i * 2 for i in range(20)]
 
 
-def test_per_block_limit_with_filter(ray_start_regular_shared):
+def test_per_task_row_limit_with_filter(ray_start_regular_shared):
     """Test per-block limiting with filter operations."""
 
     # Filter before limit - per-block limiting should still work at read level
@@ -2085,7 +2085,7 @@ def test_per_block_limit_with_filter(ray_start_regular_shared):
     assert [row["id"] for row in result] == [i * 2 for i in range(15)]
 
 
-def test_per_block_limit_readtask_properties(ray_start_regular_shared):
+def test_per_task_row_limit_readtask_properties(ray_start_regular_shared):
     """Test ReadTask per_block_limit property."""
 
     def dummy_read():
@@ -2098,7 +2098,7 @@ def test_per_block_limit_readtask_properties(ray_start_regular_shared):
             num_rows=3, size_bytes=24, input_files=None, exec_stats=None
         ),
     )
-    assert task_no_limit.per_block_limit is None
+    assert task_no_limit.per_task_row_limit is None
 
     # Test ReadTask with per_block_limit
     task_with_limit = ReadTask(
@@ -2106,12 +2106,12 @@ def test_per_block_limit_readtask_properties(ray_start_regular_shared):
         metadata=BlockMetadata(
             num_rows=3, size_bytes=24, input_files=None, exec_stats=None
         ),
-        per_block_limit=10,
+        per_task_row_limit=10,
     )
-    assert task_with_limit.per_block_limit == 10
+    assert task_with_limit.per_task_row_limit == 10
 
 
-def test_per_block_limit_edge_cases(ray_start_regular_shared):
+def test_per_task_row_limit_edge_cases(ray_start_regular_shared):
     """Test per-block limiting edge cases."""
 
     # Test with single row

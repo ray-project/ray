@@ -39,7 +39,7 @@ class HudiDatasource(Datasource):
         self._storage_options = storage_options or {}
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List["ReadTask"]:
         import numpy as np
         import pyarrow
@@ -137,7 +137,7 @@ class HudiDatasource(Datasource):
                 ),
                 metadata=metadata,
                 schema=schema,
-                per_block_limit=per_block_limit,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 

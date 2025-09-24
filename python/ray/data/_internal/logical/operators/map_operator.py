@@ -32,7 +32,6 @@ class AbstractMap(AbstractOneToOne):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         compute: Optional[ComputeStrategy] = None,
-        per_block_limit: Optional[int] = None,
     ):
         """Initialize an ``AbstractMap`` logical operator that will later
         be converted into a physical ``MapOperator``.
@@ -56,14 +55,13 @@ class AbstractMap(AbstractOneToOne):
             compute: The compute strategy, either ``TaskPoolStrategy`` (default)
                 to use Ray tasks, or ``ActorPoolStrategy`` to use an
                 autoscaling actor pool.
-            per_block_limit: The per-block limit for the map operation.
         """
         super().__init__(name, input_op, num_outputs)
         self._min_rows_per_bundled_input = min_rows_per_bundled_input
         self._ray_remote_args = ray_remote_args or {}
         self._ray_remote_args_fn = ray_remote_args_fn
         self._compute = compute or TaskPoolStrategy()
-        self._per_block_limit = per_block_limit
+        self._per_block_limit = None
 
     def set_per_block_limit(self, per_block_limit: int):
         self._per_block_limit = per_block_limit

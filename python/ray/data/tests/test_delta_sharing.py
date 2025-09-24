@@ -179,7 +179,9 @@ class MockDeltaSharingDatasource:
         )
         return table, rest_client
 
-    def get_read_tasks(self, parallelism: int, per_block_limit: Optional[int] = None):
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ):
         self._table, self._rest_client = self.setup_delta_sharing_connections(self._url)
         response = self._rest_client.list_files_in_table(
             self._table,
@@ -207,7 +209,7 @@ class MockDeltaSharingDatasource:
                     }
                 ]
             )
-            read_task.per_block_limit = per_block_limit
+            read_task.per_task_row_limit = per_task_row_limit
             read_tasks.append(read_task)
         return read_tasks
 

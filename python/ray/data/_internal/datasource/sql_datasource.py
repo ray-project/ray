@@ -122,7 +122,7 @@ class SQLDatasource(Datasource):
             return False
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
             """Read all data in a single block when sharding is not supported."""
@@ -164,7 +164,9 @@ class SQLDatasource(Datasource):
                 input_files=None,
                 exec_stats=None,
             )
-            tasks.append(ReadTask(read_fn, metadata, per_block_limit=per_block_limit))
+            tasks.append(
+                ReadTask(read_fn, metadata, per_task_row_limit=per_task_row_limit)
+            )
 
         return tasks
 

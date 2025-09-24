@@ -56,7 +56,7 @@ class MongoDatasource(Datasource):
             )["avgObjSize"]
 
     def get_read_tasks(
-        self, parallelism: int, per_block_limit: Optional[int] = None
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         from bson.objectid import ObjectId
 
@@ -126,7 +126,7 @@ class MongoDatasource(Datasource):
             read_task = ReadTask(
                 lambda args=make_block_args: [make_block(*args)],
                 metadata,
-                per_block_limit=per_block_limit,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 

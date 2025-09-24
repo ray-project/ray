@@ -833,6 +833,7 @@ def _wrap_transformer_with_limit(
     new_transform_fns = existing_transform_fns + [limit_transform_fn]
 
     # Create new transformer with the limit added
+    # TODO: Modify `add_transform_fns` to do this operation internally instead of modifying in place.
     new_transformer = MapTransformer(
         new_transform_fns,
         init_fn=map_transformer._init_fn,
@@ -842,37 +843,36 @@ def _wrap_transformer_with_limit(
     return new_transformer
 
 
+def _per_block_limit_fn(
+    input: Iterable[Block], ctx: TaskContext, per_block_limit: int
+) -> Iterable[Block]:
+    """Apply per-block limit to the input blocks."""
+    from ray.data.block import BlockAccessor
+
+    # This is used to track the number of rows processed within this task.
+    processed_rows = 0
+
+    for block in input:
+        if processed_rows >= per_block_limit:
+            # We've hit the limit, stop processing
+            break
+
+        block_accessor = BlockAccessor.for_block(block)
+        block_rows = block_accessor.num_rows()
+
+        if processed_rows + block_rows <= per_block_limit:
+            # Entire block fits within limit
+            processed_rows += block_rows
+            yield block
+        else:
+            # Need to truncate this block
+            remaining_rows = per_block_limit - processed_rows
+            truncated_block = block_accessor.slice(0, remaining_rows, copy=False)
+            processed_rows += remaining_rows
+            yield truncated_block
+
+
 def _create_per_block_limit_transform_fn(per_block_limit: int) -> BlockMapTransformFn:
     """Create a transform function that applies per-block row limits."""
-
-    def per_block_limit_fn(input: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        """Apply per-block limit to the input blocks."""
-        from ray.data.block import BlockAccessor
-
-        # This is used to track the number of rows processed within this task.
-        processed_rows = 0
-
-        for block in input:
-            if processed_rows >= per_block_limit:
-                # We've hit the limit, stop processing
-                break
-
-            block_accessor = BlockAccessor.for_block(block)
-            block_rows = block_accessor.num_rows()
-
-            if processed_rows + block_rows <= per_block_limit:
-                # Entire block fits within limit
-                processed_rows += block_rows
-                yield block
-            else:
-                # Need to truncate this block
-                remaining_rows = per_block_limit - processed_rows
-                if remaining_rows > 0:
-                    truncated_block = block_accessor.slice(
-                        0, remaining_rows, copy=False
-                    )
-                    processed_rows += remaining_rows
-                    yield truncated_block
-                break
-
-    return BlockMapTransformFn(per_block_limit_fn)
+    limit_fn = functools.partial(_per_block_limit_fn, per_block_limit=per_block_limit)
+    return BlockMapTransformFn(limit_fn)
