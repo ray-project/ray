@@ -14,6 +14,7 @@ import ray
 import ray._private.ray_constants
 import ray._private.utils
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
+from ray.util.state import list_actors
 
 import psutil
 
@@ -49,9 +50,7 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = (
-        ray.util.state.list_actors()
-    )  # should be using this API now for fetching actors
+    actor_table = list_actors()  # should be using this API now for fetching actors
     assert len(actor_table) == 1
 
     actor_info = actor_table[0]

@@ -1685,7 +1685,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     ACTOR_NAME = "test_actor"
     NAMESPACE_NAME = "test_namespace"
 
-    ray.init(namespace=NAMESPACE_NAME, include_dashboard=True)
+    ray.init(namespace=NAMESPACE_NAME)
 
     @ray.remote
     class Actor:

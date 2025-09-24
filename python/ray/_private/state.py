@@ -988,6 +988,7 @@ def actors(
     actor_state_name: Optional[str] = None,
 ):
     """Fetch actor info for one or more actor IDs (for debugging only).
+
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If
             this is None, then all actor information is fetched.

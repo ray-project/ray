@@ -117,7 +117,6 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.util.state import list_actors, summarize_actors
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -2087,15 +2086,13 @@ class Dataset:
 
         def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
             """Build a map from a actor to its node_id."""
-            actors_state = {
-                actor.actor_id: actor.node_id
-                for actor in list_actors(
-                    detail=True,
-                    limit=summarize_actors().get("cluster", {}).get("total_actors", 0)
-                    + 100,  # fetch current actors. Some staleness is assumed fine.
-                )
+            actors_state = ray._private.state.actors()
+            return {
+                actor: actors_state.get(actor._actor_id.hex(), {})
+                .get("Address", {})
+                .get("NodeID")
+                for actor in actors
             }
-            return {actor: actors_state.get(actor._actor_id.hex()) for actor in actors}
 
         # expected number of blocks to be allocated for each actor
         expected_block_count_by_actor = build_allocation_size_map(

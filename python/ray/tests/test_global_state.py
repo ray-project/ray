@@ -13,6 +13,7 @@ from ray._private.test_utils import (
 )
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2
+from ray.util.state import list_actors
 
 
 def test_replenish_resources(ray_start_regular):
@@ -160,23 +161,23 @@ def test_global_state_actor_table(ray_start_regular):
             return os.getpid()
 
     # actor table should be empty at first
-    assert len(ray.util.state.list_actors()) == 0
+    assert len(list_actors()) == 0
 
     a = Actor.remote()
     pid = ray.get(a.ready.remote())
-    assert len(ray.util.state.list_actors()) == 1
-    assert ray.util.state.list_actors()[0].pid == pid
+    assert len(list_actors()) == 1
+    assert list_actors()[0].pid == pid
 
     # actor table should contain only this entry
     # even when the actor goes out of scope
     del a
 
     for _ in range(10):
-        if ray.util.state.list_actors()[0].state == "DEAD":
+        if list_actors()[0].state == "DEAD":
             break
         else:
             time.sleep(0.5)
-    assert ray.util.state.list_actors()[0].state == "DEAD"
+    assert list_actors()[0].state == "DEAD"
 
 
 def test_global_state_worker_table(ray_start_regular):
@@ -200,13 +201,13 @@ def test_global_state_actor_entry(ray_start_regular):
             pass
 
     # actor table should be empty at first
-    assert len(ray.util.state.list_actors()) == 0
+    assert len(list_actors()) == 0
 
     a = Actor.remote()
     b = Actor.remote()
     ray.get(a.ready.remote())
     ray.get(b.ready.remote())
-    assert len(ray.util.state.list_actors()) == 2
+    assert len(list_actors()) == 2
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
     assert ray.util.state.get_actor(id=a_actor_id).actor_id == a_actor_id

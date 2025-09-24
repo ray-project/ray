@@ -155,11 +155,6 @@ def test_equal_split_balanced_grid(ray_start_regular_shared_2_cpus):
                 _test_equal_split_balanced(block_sizes, num_splits)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared_2_cpus",
-    [{"include_dashboard": True}],
-    indirect=True,
-)
 def test_split_small(ray_start_regular_shared_2_cpus):
     x = [Counter.remote() for _ in range(4)]
     data = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
@@ -371,11 +366,6 @@ def test_split(ray_start_regular_shared_2_cpus):
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared_2_cpus",
-    [{"include_dashboard": True}],
-    indirect=True,
-)
 def test_split_hints(ray_start_regular_shared_2_cpus):
     @ray.remote
     class Actor(object):
@@ -404,45 +394,30 @@ def test_split_hints(ray_start_regular_shared_2_cpus):
         blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
-        with patch("ray.util.state.summarize_actors") as state_summary_mock:
-            state_summary_mock.return_value = {"cluster": {"total_actors": len(actors)}}
-            with patch("ray.experimental.get_object_locations") as location_mock:
-                with patch("ray.util.state.list_actors") as state_mock:
-                    block_locations = {}
-                    for i, node_id in enumerate(block_node_ids):
-                        if node_id:
-                            block_locations[blocks[i]] = {"node_ids": [node_id]}
-                    location_mock.return_value = block_locations
+        with patch("ray.experimental.get_object_locations") as location_mock:
+            with patch("ray._private.state.actors") as state_mock:
+                block_locations = {}
+                for i, node_id in enumerate(block_node_ids):
+                    if node_id:
+                        block_locations[blocks[i]] = {"node_ids": [node_id]}
+                location_mock.return_value = block_locations
 
-                    class ActorStateMock:
-                        def __init__(self, actor_id, node_id):
-                            self._actor_id = actor_id
-                            self._node_id = node_id
+                actor_state = {}
+                for i, node_id in enumerate(actor_node_ids):
+                    actor_state[actors[i]._actor_id.hex()] = {
+                        "Address": {"NodeID": node_id}
+                    }
 
-                        @property
-                        def actor_id(self):
-                            return self._actor_id
+                state_mock.return_value = actor_state
 
-                        @property
-                        def node_id(self):
-                            return self._node_id
-
-                    actor_state = []
-                    for i, node_id in enumerate(actor_node_ids):
-                        actor_state.append(
-                            ActorStateMock(actors[i]._actor_id.hex(), node_id)
+                datasets = ds.split(len(actors), locality_hints=actors)
+                assert len(datasets) == len(actors)
+                for i in range(len(actors)):
+                    assert {blocks[j] for j in expected_split_result[i]} == set(
+                        _ref_bundles_iterator_to_block_refs_list(
+                            datasets[i].iter_internal_ref_bundles()
                         )
-
-                    state_mock.return_value = actor_state
-
-                    datasets = ds.split(len(actors), locality_hints=actors)
-                    assert len(datasets) == len(actors)
-                    for i in range(len(actors)):
-                        assert {blocks[j] for j in expected_split_result[i]} == set(
-                            _ref_bundles_iterator_to_block_refs_list(
-                                datasets[i].iter_internal_ref_bundles()
-                            )
-                        )
+                    )
 
     assert_split_assignment(
         ["node2", "node1", "node1"], ["node1", "node2"], [[1, 2], [0]]
