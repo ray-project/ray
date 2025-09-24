@@ -390,7 +390,7 @@ class ReplicaMetricsManager:
 
     async def _fetch_prometheus_metrics(
         self, prometheus_metrics: List[Tuple[str, Optional[str]]]
-    ) -> Optional[Dict[str, List[float]]]:
+    ) -> Optional[Dict[str, float]]:
         """
         Fetch metrics from the prometheus exporter endpoint, given a list of (metric_name, optional[promql_expression]) tuples.
         The promql_expression parameter is ignored for now.

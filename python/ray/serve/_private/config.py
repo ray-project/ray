@@ -351,7 +351,8 @@ class DeploymentConfig(BaseModel):
             if prom_wrapper is not None:
                 metrics_list = prom_wrapper.get("metrics", []) or []
                 data["autoscaling_config"]["prometheus_custom_metrics"] = [
-                    (m.get("metric_name", ""), m.get("query", "")) for m in metrics_list
+                    (m.get("metric_name", ""), m.get("query", None))
+                    for m in metrics_list
                 ]
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
