@@ -53,9 +53,11 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         )
         if not post_build_script:
             continue
+        step_key = generate_custom_build_step_key(image)
+        step_name = _get_step_name(image, step_key, tests)
         step = {
-            "label": f":tapioca: build custom: {image}",
-            "key": generate_custom_build_step_key(image),
+            "label": step_name,
+            "key": step_key,
             "instance_type": "release-medium",
             "commands": [
                 f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
@@ -84,3 +86,13 @@ def get_prerequisite_step(image: str) -> str:
         return config["release_image_step_ray_llm"]
     else:
         return config["release_image_step_ray"]
+
+
+def _get_step_name(image: str, step_key: str, tests: List[Test]) -> str:
+    ecr, tag = image.split(":")
+    ecr_repo = ecr.split("/")[-1]
+    tag_without_build_id_and_custom_hash = tag.split("-")[1:-1]
+    step_name = f":tapioca: build custom: {ecr_repo}:{'-'.join(tag_without_build_id_and_custom_hash)} ({step_key})"
+    for test in tests[:2]:
+        step_name += f" {test.get_name()}"
+    return step_name
