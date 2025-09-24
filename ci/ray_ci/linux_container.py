@@ -13,6 +13,7 @@ _DOCKER_CAP_ADD = [
 
 DEFAULT_PYTHON_VERSION = "3.9"
 
+
 class LinuxContainer(Container):
     def __init__(
         self,
@@ -52,7 +53,7 @@ class LinuxContainer(Container):
             "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
             "--build-arg",
-            f"BUILD_TYPE={build_type or ''}"
+            f"BUILD_TYPE={build_type or ''}",
         ]
 
         if not build_type or build_type == "optimized":
@@ -65,7 +66,9 @@ class LinuxContainer(Container):
                 build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]
         else:
             if mask:
-                raise ValueError("install mask is not supported for build type: " + build_type)
+                raise ValueError(
+                    "install mask is not supported for build type: " + build_type
+                )
             docker_file = "ci/ray_ci/extra-tests.env.Dockerfile"
             if build_type == "with-cpp":
                 # Only set for Java tests because there's multi-language worker tests.
