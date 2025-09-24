@@ -80,6 +80,7 @@ class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 class GcsTaskManager;
 class GcsAutoscalerStateManager;
+class RedisClientOptions;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
