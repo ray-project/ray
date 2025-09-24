@@ -4268,6 +4268,7 @@
     byod:
       type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
       post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
+      python_depset: e2e_multimodal_ai_workloads_py312_cu124.lock
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
