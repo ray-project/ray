@@ -144,9 +144,11 @@ class BroadcastJoinFunction:
                     batch,
                     join_type=swapped_join_type,
                     keys=list(self.small_table_key_columns),
-                    right_keys=list(self.large_table_key_columns)
-                    if self.small_table_key_columns != self.large_table_key_columns
-                    else None,
+                    right_keys=(
+                        list(self.large_table_key_columns)
+                        if self.small_table_key_columns != self.large_table_key_columns
+                        else None
+                    ),
                     left_suffix=self.small_table_columns_suffix,
                     right_suffix=self.large_table_columns_suffix,
                     coalesce_keys=coalesce_keys,
@@ -157,9 +159,11 @@ class BroadcastJoinFunction:
                     self.small_table,
                     join_type=arrow_join_type,
                     keys=list(self.large_table_key_columns),
-                    right_keys=list(self.small_table_key_columns)
-                    if self.large_table_key_columns != self.small_table_key_columns
-                    else None,
+                    right_keys=(
+                        list(self.small_table_key_columns)
+                        if self.large_table_key_columns != self.small_table_key_columns
+                        else None
+                    ),
                     left_suffix=self.large_table_columns_suffix,
                     right_suffix=self.small_table_columns_suffix,
                     coalesce_keys=coalesce_keys,
