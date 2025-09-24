@@ -2484,12 +2484,12 @@ class Dataset:
             Examples with Bernoulli split:
 
             >>> import ray
-            >>> ds = ray.data.range(8, override_num_blocks=1)
+            >>> ds = ray.data.range(8)
             >>> train, test = ds.streaming_train_test_split(test_proportion=0.25)
             >>> train.take_batch()
-            {'id': array([0, 2, 4, 5, 6, 7])}
+            {'id': array([0, 1, 3, 5, 7])}
             >>> test.take_batch()
-            {'id': array([1, 3])}
+            {'id': array([2, 4, 6])}
 
             Examples with Hash split:
 
@@ -2520,9 +2520,18 @@ class Dataset:
 
         import pyarrow as pa
 
-        def hash_split(
-            batch: pa.Table, test_proportion: float, key_column: str
-        ) -> tuple[pa.Table, pa.Table]:
+        from ray.data._internal.execution.interfaces.task_context import TaskContext
+
+        if test_proportion < 0 or test_proportion > 1:
+            raise ValueError("Test proportion must be between 0 and 1.")
+
+        if seed is not None and split_type == "hash":
+            raise ValueError("seed is not supported for hash split")
+
+        if key_column is not None and split_type == "bernoulli":
+            raise ValueError("key_column is not supported for bernoulli split")
+
+        def hash_split(batch: pa.Table) -> tuple[pa.Table, pa.Table]:
             def key_to_bucket(key: Any) -> int:
                 # 64-bit integer in [0, 2^64)
                 h = int.from_bytes(
@@ -2539,7 +2548,7 @@ class Dataset:
             bucket_arr = pa.array([key_to_bucket(key) for key in keys], type=pa.bool_())
             return batch.append_column(_TRAIN_TEST_SPLIT_COLUMN, bucket_arr)
 
-        def bernoulli_split(batch, test_proportion: float, seed: Optional[int]):
+        def bernoulli_split(batch: pa.Table):
             """
             Perform a Bernoulli split on a batch: each row goes to train with probability (1 - test_proportion),
             or to test otherwise.
@@ -2547,19 +2556,16 @@ class Dataset:
             This version ensures that the random choices are **stable per Ray task execution** by seeding
             the RNG with a combination of a user-specified seed and the Ray task ID.
             """
-            # Build a stable per-task seed so re-execution gives identical masks
-            base = 0 if seed is None else seed
-            # Each Ray task that processes a batch has a unique, stable ID (UUID-like).
-            # We grab the last 16 hex digits of the task_id to create a 32-bit integer.
-            # This ensures *different tasks* don't reuse the same RNG sequence.
-            task_id_str = ray.get_runtime_context().get_task_id()
-            task_bits = int(task_id_str[-16:], 16) & 0xFFFFFFFF
-            # Combine the base seed with the per-task component via XOR.
-            # This way, the seed is:
-            #   - consistent across re-executions of the *same task* (determinism),
-            #   - different across *different tasks* (no duplicated RNG streams).
-            # Use numpy's Generator API (preferred over np.random.seed for thread safety).
-            rng = np.random.default_rng(base ^ task_bits)
+            ctx = TaskContext.get_current()
+            if "rng" in ctx.kwargs:
+                rng = ctx.kwargs["rng"]
+            elif seed is None:
+                rng = np.random.default_rng([ctx.task_idx])
+                ctx.kwargs["rng"] = rng
+            else:
+                rng = np.random.default_rng([ctx.task_idx, seed])
+                ctx.kwargs["rng"] = rng
+
             # Draw Bernoulli samples: 1 = train, 0 = test
             is_train = rng.random(batch.num_rows) < (1 - test_proportion)
             return batch.append_column(
@@ -2569,7 +2575,6 @@ class Dataset:
         if split_type == "bernoulli":
             bucketted = self.map_batches(
                 bernoulli_split,
-                fn_kwargs={"test_proportion": test_proportion, "seed": seed},
                 batch_format="pyarrow",
                 **ray_remote_kwargs,
             )
@@ -2578,10 +2583,6 @@ class Dataset:
                 raise ValueError("key_column is required for hash split")
             bucketted = self.map_batches(
                 hash_split,
-                fn_kwargs={
-                    "test_proportion": test_proportion,
-                    "key_column": key_column,
-                },
                 batch_format="pyarrow",
                 **ray_remote_kwargs,
             )

@@ -922,6 +922,26 @@ def test_streaming_train_test_split_bernoulli(ray_start_regular_shared_2_cpus, s
     )
 
 
+@pytest.mark.parametrize(
+    "split_type,key_column,seed,error_msg",
+    [
+        ("hash", None, None, "key_column is required for hash split"),
+        ("hash", "id", 42, "seed is not supported for hash split"),
+        ("bernoulli", "id", None, "key_column is not supported for bernoulli split"),
+        ("unknown", "id", None, "Invalid split type: unknown"),
+    ],
+)
+def test_streaming_train_test_split_wrong_params(
+    ray_start_regular_shared_2_cpus, split_type, key_column, seed, error_msg
+):
+    ds = ray.data.range(10)
+
+    with pytest.raises(ValueError, match=error_msg):
+        ds.streaming_train_test_split(
+            test_proportion=0.2, split_type=split_type, key_column=key_column, seed=seed
+        )
+
+
 if __name__ == "__main__":
     import sys
 
