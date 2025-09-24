@@ -48,7 +48,7 @@ class ObjectRefGenerator:
     ...         yield i
     >>> gen = generator_task.remote()
     >>> ray.get(next(gen))
-    >>> # await gen.__anext__()  # doctest: +SKIP
+    >>> await gen.__anext__()
     """
 
     def __init__(self, generator_ref: ray.ObjectRef, worker: "Worker"):
