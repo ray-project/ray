@@ -357,6 +357,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -419,6 +420,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -495,6 +497,7 @@ py_test(
     name = "test_gpu_2",
     size = "medium",
     srcs = ["tests/test_gpu_2.py"],
+    # NOTE: Already covered by test_iter_torch_batches_gpu
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
@@ -516,6 +519,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -532,6 +536,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -564,6 +569,7 @@ py_test(
         "gpu",
         "team:ml",
         "torch_1_11",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -589,6 +595,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -646,6 +653,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -659,6 +667,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -672,6 +681,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -685,6 +695,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -727,6 +738,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -815,6 +827,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -828,6 +841,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -855,6 +869,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -871,6 +886,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -887,6 +903,7 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
@@ -931,6 +948,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -1008,6 +1026,7 @@ py_test(
         "exclusive",
         "minimal",
         "team:ml",
+        "train_v2",
     ],
     deps = [":train_lib"],
 )
@@ -1020,6 +1039,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
