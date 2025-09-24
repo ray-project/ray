@@ -201,6 +201,14 @@ def get_call_location(back: int = 1):
 
 
 def get_user_temp_dir():
+    """
+    Get the default user temporary directory: /tmp for linux and mac, and
+    tempfile.gettempdir() for other platforms.
+
+    If legacy environment variables are set (RAY_TMPDIR, TMPDIR), they will take
+    precedence and override the default directory. RAY_TMPDIR will override TMPDIR. And
+    TMPDIR will only apply to linux.
+    """
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
@@ -215,6 +223,10 @@ def get_user_temp_dir():
 
 
 def get_ray_temp_dir():
+    """
+    Get the default ray temporary directory based on the default user temporary
+    directory returned by get_user_temp_dir().
+    """
     return os.path.join(get_user_temp_dir(), "ray")
 
 
