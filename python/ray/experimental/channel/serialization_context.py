@@ -95,23 +95,32 @@ class _SerializationContext:
     def serialize_mesh(
         self, dm: "DeviceMesh"
     ) -> Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]]]:
+        import torch.distributed as dist
+
+        group = dist.group.WORLD
+        world_size = dist.get_world_size(group=group)
         mesh_np = dm.mesh.numpy().copy()
         dim_group_names = (
             dm._dim_group_names if hasattr(dm, "_dim_group_names") else None
         )
-        return dm.device_type, mesh_np, dm.mesh_dim_names, dim_group_names
+        return dm.device_type, mesh_np, dm.mesh_dim_names, dim_group_names, world_size
 
     def deserialize_mesh(
         self, val: Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]]]
     ) -> "DeviceMesh":
+        import torch.distributed as dist
         from torch.distributed.device_mesh import DeviceMesh
-        from torch.distributed.distributed_c10d import get_world_size
 
-        device_type, mesh_np, mesh_dim_names, dim_group_names = val
+        device_type, mesh_np, mesh_dim_names, dim_group_names, world_size = val
         dm = DeviceMesh(
             device_type, mesh_np, mesh_dim_names=mesh_dim_names, _init_backend=False
         )
-        world_size = get_world_size()
+        group = dist.group.WORLD
+        current_world_size = dist.get_world_size(group=group)
+        if current_world_size != world_size:
+            raise RuntimeError(
+                f"World size mismatch, expected {world_size}, but got {current_world_size}!"
+            )
         # TODO: add more checks for the mesh
         if dm.mesh.numel() > world_size:
             raise RuntimeError(
