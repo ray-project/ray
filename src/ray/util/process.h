@@ -92,8 +92,7 @@ class Process {
   /// stdin. It is used for health checking from a child process.
   /// Child process can read stdin to detect when the current process dies.
   /// \param add_to_cgroup_hook A lifecycle hook that the forked process will
-  /// called after fork and before exec to move the forked process into the
-  /// the appropriate cgroup.
+  /// call after fork and before exec to move itself into the appropriate cgroup.
   //
   // The subprocess is child of this process, so it's caller process's duty to handle
   // SIGCHLD signal and reap the zombie children.
