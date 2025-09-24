@@ -554,6 +554,118 @@ class TestInstantaneousMerge:
         print(f"Early period average (0-10s): {early_avg:.2f}")
         print(f"Late period average (20-30s): {late_avg:.2f}")
 
+    def test_merge_instantaneous_total_timestamp_rounding(self):
+        """Test that timestamps are rounded to 1ms precision."""
+        series1 = [
+            TimeStampedValue(1.0001234, 5.0),  # Should round to 1.000
+            TimeStampedValue(2.0005678, 7.0),  # Should round to 2.001
+            TimeStampedValue(3.0009999, 3.0),  # Should round to 3.001
+        ]
+        series2 = [
+            TimeStampedValue(1.5004321, 2.0),  # Should round to 1.500
+            TimeStampedValue(2.0008765, 4.0),  # Should round to 2.001
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Verify timestamps are rounded to 3 decimal places
+        expected_timestamps = [1.000, 1.500, 2.001, 3.001]
+        actual_timestamps = [point.timestamp for point in result]
+
+        assert len(actual_timestamps) == len(expected_timestamps)
+        for actual, expected in zip(actual_timestamps, expected_timestamps):
+            assert actual == expected, f"Expected {expected}, got {actual}"
+
+        # Verify values are correct with rounded timestamps
+        expected = [
+            TimeStampedValue(1.000, 5.0),  # series1 starts
+            TimeStampedValue(1.500, 7.0),  # series2 starts: 5+2=7
+            TimeStampedValue(
+                2.001, 11.0
+            ),  # series1 changes to 7, series2 changes to 4: 2+(7-5)+(4-2)=9, but series2 change happens at same rounded time
+            TimeStampedValue(3.001, 7.0),  # series1 changes: 11+(3-7)=7
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_combine_same_timestamp(self):
+        """Test that datapoints with same rounded timestamp are combined."""
+        # Create series where multiple events round to the same timestamp
+        series1 = [
+            TimeStampedValue(1.0001, 5.0),  # Rounds to 1.000
+            TimeStampedValue(1.0004, 7.0),  # Also rounds to 1.000
+            TimeStampedValue(2.0000, 10.0),  # Rounds to 2.000
+        ]
+        series2 = [
+            TimeStampedValue(1.0002, 3.0),  # Rounds to 1.000
+            TimeStampedValue(1.0005, 4.0),  # Also rounds to 1.000
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should only have unique rounded timestamps
+        timestamps = [point.timestamp for point in result]
+        assert timestamps == [
+            1.000,
+            2.000,
+        ], f"Expected [1.000, 2.000], got {timestamps}"
+
+        # The value at 1.000 should be the final state after all changes at that rounded time
+        # Order of events at rounded timestamp 1.000:
+        # - series1: 0->5 (t=1.0001)
+        # - series2: 0->3 (t=1.0002)
+        # - series1: 5->7 (t=1.0004)
+        # - series2: 3->4 (t=1.0005)
+        # Final state: series1=7, series2=4, total=11
+        expected = [
+            TimeStampedValue(1.000, 11.0),  # Final combined state at rounded timestamp
+            TimeStampedValue(2.000, 14.0),  # series1 changes: 11+(10-7)=14
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_edge_cases_rounding(self):
+        """Test edge cases for timestamp rounding and combination."""
+        # Test rounding edge cases
+        series1 = [
+            TimeStampedValue(1.0004999, 5.0),  # Should round to 1.000
+            TimeStampedValue(
+                1.0005000, 7.0
+            ),  # Should round to 1.001 (exactly at 0.5ms)
+            TimeStampedValue(1.0005001, 9.0),  # Should round to 1.001
+        ]
+
+        result = merge_instantaneous_total([series1])
+
+        # Should have two distinct rounded timestamps
+        expected_timestamps = [1.000, 1.001]
+        actual_timestamps = [point.timestamp for point in result]
+        assert actual_timestamps == expected_timestamps
+
+        # Values should reflect the changes
+        expected = [
+            TimeStampedValue(
+                1.000, 7.0
+            ),  # Final state after changes at 1.000 (5.0 then 7.0)
+            TimeStampedValue(1.001, 9.0),  # Final state after both changes at 1.001
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_no_changes_filtered(self):
+        """Test that zero-change events are filtered even with rounding."""
+        series1 = [
+            TimeStampedValue(1.0001, 5.0),  # Rounds to 1.000
+            TimeStampedValue(1.0004, 5.0),  # Also rounds to 1.000, no change
+            TimeStampedValue(2.0000, 7.0),  # Rounds to 2.000, change
+        ]
+
+        result = merge_instantaneous_total([series1])
+
+        # Should only include points where value actually changed
+        expected = [
+            TimeStampedValue(1.000, 5.0),  # Initial value
+            TimeStampedValue(2.000, 7.0),  # Value change
+        ]
+        assert_timeseries_equal(result, expected)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
