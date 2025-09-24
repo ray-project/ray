@@ -62,7 +62,7 @@ class ShuffleFusion(Rule):
                 )
                 or (isinstance(parent_op, RandomShuffle) and isinstance(child_op, Sort))
             ):
-                return _disconnect_op(parent_op)
+                return _disconnect_op(parent_op, copy=False)
 
             # Special case: RandomShuffle -> Repartition with shuffle flag
             elif isinstance(parent_op, RandomShuffle) and isinstance(
@@ -77,7 +77,7 @@ class ShuffleFusion(Rule):
                 child_op, (Aggregate, Join, Sort)
             ):
                 if _keys_can_fuse(parent_op, child_op):
-                    return _disconnect_op(parent_op)
+                    return _disconnect_op(parent_op, copy=False)
 
             # Aggregate -> Aggregate fusion
             elif isinstance(parent_op, Aggregate) and isinstance(child_op, Aggregate):
@@ -93,7 +93,7 @@ class ShuffleFusion(Rule):
                     _keys_can_fuse(parent_op, child_op)
                     and ctx.shuffle_strategy.is_sort_based()
                 ):
-                    return _disconnect_op(parent_op)
+                    return _disconnect_op(parent_op, copy=False)
 
             # Sort -> Sort fusion
             elif isinstance(parent_op, Sort) and isinstance(child_op, Sort):
@@ -105,7 +105,7 @@ class ShuffleFusion(Rule):
 
 
 # TODO(justin): apply this to other Rules
-def _disconnect_op(child_op: Operator) -> Operator:
+def _disconnect_op(child_op: Operator, copy=True) -> Operator:
     """Visually it does this for AbstractOneToOne operators:
 
         Before: parent -> child -> grandchild
@@ -116,7 +116,8 @@ def _disconnect_op(child_op: Operator) -> Operator:
     the grandchild's input dependencies. Be mindful that it will
     SHALLOW COPY the grandchild_op.
 
-    Returns: A copy of the first grandchild operator.
+    Returns: if copy=True, a copy of the 1st grandchild operator,
+             if copy=False, a reference to the 1st grandchild operator.
     """
 
     grandchild_ops = child_op.output_dependencies
@@ -130,9 +131,13 @@ def _disconnect_op(child_op: Operator) -> Operator:
         parent_op.output_dependencies.extend(grandchild_ops)
 
     del child_op
-    import copy
 
-    return copy.copy(grandchild_ops[0])
+    if copy:
+        import copy as cp
+
+        return cp.copy(grandchild_ops[0])
+
+    return grandchild_ops[0]
 
 
 # TODO(justin): Im thinking about a function for partitioning operators
