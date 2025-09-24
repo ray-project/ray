@@ -81,21 +81,62 @@ class BroadcastJoinFunction:
         # Using repartition(1) ensures all data is in a single partition for efficient broadcasting
         coalesced_ds = small_table_dataset.repartition(1).materialize()
 
-        # Convert to PyArrow table for efficient in-memory operations
-        arrow_refs = coalesced_ds.to_arrow_refs()
+        # Store object references instead of materializing on driver to avoid OOM
+        self._small_table_refs = coalesced_ds.to_arrow_refs()
 
-        if len(arrow_refs) == 0:
-            # Handle empty dataset case
-            self.small_table = pa.table({})
-        elif len(arrow_refs) == 1:
+        # Get schema from the dataset without materializing data on driver
+        if len(self._small_table_refs) == 0:
+            # Handle empty dataset case - safe to create empty table on driver
+            self._small_table_schema = pa.schema([])
+            self._is_small_table_empty = True
+        else:
+            # Get schema from the dataset metadata to avoid driver materialization
+            self._small_table_schema = coalesced_ds.schema()
+            # We can't easily determine if empty without materializing, so we'll check in workers
+            self._is_small_table_empty = None  # Will be determined lazily
+
+        # No cached table - everything will be materialized in workers
+        self._cached_small_table = None
+
+    @property
+    def small_table(self) -> pa.Table:
+        """Lazily materialize the small table to avoid driver OOM.
+
+        This property ensures that the small table is only materialized when needed
+        and within the worker processes, not on the driver.
+
+        Returns:
+            PyArrow table containing the small dataset.
+        """
+        if self._cached_small_table is not None:
+            return self._cached_small_table
+
+        # Materialize the small table from references
+        if len(self._small_table_refs) == 0:
+            self._cached_small_table = pa.table({}, schema=self._small_table_schema)
+        elif len(self._small_table_refs) == 1:
             # Single reference - most common case for coalesced dataset
-            self.small_table = ray.get(arrow_refs[0])
+            self._cached_small_table = ray.get(self._small_table_refs[0])
         else:
             # Multiple references - concatenate them
-            arrow_tables = [ray.get(ref) for ref in arrow_refs]
-            self.small_table = (
-                pa.concat_tables(arrow_tables) if arrow_tables else pa.table({})
+            arrow_tables = [ray.get(ref) for ref in self._small_table_refs]
+            self._cached_small_table = (
+                pa.concat_tables(arrow_tables)
+                if arrow_tables
+                else pa.table({}, schema=self._small_table_schema)
             )
+
+        return self._cached_small_table
+
+    @property
+    def small_table_column_names(self) -> list:
+        """Get column names without materializing the table."""
+        return self._small_table_schema.names
+
+    @property
+    def small_table_schema_field(self):
+        """Get schema field accessor without materializing the table."""
+        return self._small_table_schema.field
 
     def __call__(self, batch: DataBatch) -> DataBatch:
         """Perform PyArrow join on a batch from the large table.
@@ -195,7 +236,7 @@ class BroadcastJoinFunction:
         """
         # Get column names from both tables
         batch_columns = set(batch.column_names)
-        small_table_columns = set(self.small_table.column_names)
+        small_table_columns = set(self.small_table_column_names)
 
         # Create result schema based on join type
         result_schema_fields = []
@@ -211,7 +252,7 @@ class BroadcastJoinFunction:
             )
 
         # Add small table columns with suffix if needed
-        for col_name in self.small_table.column_names:
+        for col_name in self.small_table_column_names:
             if col_name in batch_columns and self.small_table_columns_suffix:
                 new_name = f"{col_name}{self.small_table_columns_suffix}"
             elif col_name not in batch_columns:
@@ -219,7 +260,7 @@ class BroadcastJoinFunction:
             else:
                 continue  # Skip duplicate key columns
             result_schema_fields.append(
-                pa.field(new_name, self.small_table.schema.field(col_name).type)
+                pa.field(new_name, self.small_table_schema_field(col_name).type)
             )
 
         result_schema = pa.schema(result_schema_fields)
@@ -273,7 +314,7 @@ class BroadcastJoinFunction:
         result_table = batch
 
         # Add null columns for each column in the small table
-        for col_name in self.small_table.column_names:
+        for col_name in self.small_table_column_names:
             if (
                 col_name not in self.small_table_key_columns
                 or col_name not in batch.column_names
@@ -284,7 +325,7 @@ class BroadcastJoinFunction:
                 else:
                     new_col_name = col_name
 
-                col_type = self.small_table.schema.field(col_name).type
+                col_type = self.small_table_schema_field(col_name).type
                 null_array = pa.array([None] * batch.num_rows, type=col_type)
                 result_table = result_table.append_column(new_col_name, null_array)
 
@@ -305,7 +346,7 @@ class BroadcastJoinFunction:
         result_table = batch
 
         # Add null columns for each column in the small table (original left side)
-        for col_name in self.small_table.column_names:
+        for col_name in self.small_table_column_names:
             if (
                 col_name not in self.small_table_key_columns
                 or col_name not in batch.column_names
@@ -316,7 +357,7 @@ class BroadcastJoinFunction:
                 else:
                     new_col_name = col_name
 
-                col_type = self.small_table.schema.field(col_name).type
+                col_type = self.small_table_schema_field(col_name).type
                 null_array = pa.array([None] * batch.num_rows, type=col_type)
                 result_table = result_table.append_column(new_col_name, null_array)
 
