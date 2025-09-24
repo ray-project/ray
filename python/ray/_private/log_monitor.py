@@ -81,8 +81,18 @@ class LogFileInfo:
 
             new_inode = os.stat(self.filename).st_ino
             if open_inode != new_inode:
+                new_size = os.path.getsize(self.filename)
+
                 self.file_handle = open(self.filename, "rb")
-                self.file_handle.seek(self.file_position)
+
+                # Seek to old position if file the new file size is
+                # >= the old one
+                if new_size < self.file_position:
+                    self.file_position = 0
+                else:
+                    self.file_handle.seek(self.file_position)
+
+                self.size_when_last_opened = new_size
         except Exception:
             logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
 
