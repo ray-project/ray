@@ -111,6 +111,9 @@ def test_daemon_processes_not_killed_until_actor_dead(
         logger.info(get_process_info(daemon_pid))  # subprocess killed
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="setsid/PG semantics are POSIX-only"
+)
 def test_detached_setsido_escape(pg_cleanup_enabled, shutdown_only):
     ray.init()
 
@@ -118,9 +121,9 @@ def test_detached_setsido_escape(pg_cleanup_enabled, shutdown_only):
     class A:
         def spawn_detached(self):
             # Detach into a new session (escape worker PG); sleep long.
-            script = 'python -c "import os,sys,time; os.setsid(); time.sleep(1000)"'
-            p = subprocess.Popen(script, shell=True)
-            return p.pid
+            return subprocess.Popen(
+                [sys.executable, "-c", "import os,time; os.setsid(); time.sleep(1000)"]
+            ).pid
 
         def pid(self):
             return os.getpid()

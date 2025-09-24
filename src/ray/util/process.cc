@@ -257,7 +257,16 @@ class ProcessFD {
       // Put this child into a new process group if requested, before exec.
       if (new_process_group) {
         // setpgrp() is equivalent to setpgid(0,0).
-        (void)setpgrp();
+        if (setpgrp() == -1) {
+          // If this fails, the process remains in the parent's process group.
+          // Parent-side cleanup logic revalidates PGIDs to avoid mis-signaling.
+          char buf[128];
+          const char *msg = strerror_r(errno, buf, sizeof(buf)) ? "setpgrp failed" : buf;
+          dprintf(STDERR_FILENO,
+                  "ray: setpgrp() failed in child: errno=%d (%s)\n",
+                  errno,
+                  msg);
+        }
       }
 #endif
 

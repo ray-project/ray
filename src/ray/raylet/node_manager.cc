@@ -1385,35 +1385,47 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         return;
       }
       pid_t worker_pid = worker->GetProcess().GetId();
-      pid_t current_pgid = -1;
       errno = 0;
-      current_pgid = getpgid(worker_pid);
+      pid_t current_pgid = getpgid(worker_pid);
       if (current_pgid == -1 || current_pgid != *saved) {
-        // Skip if worker already exited or PGID changed (possible reuse).
+        return;
+      }
+      // Guard against targeting the raylet's own process group if isolation failed.
+      pid_t raylet_pgid = getpgid(0);
+      if (raylet_pgid == *saved) {
+        RAY_LOG(WARNING).WithField(worker->WorkerId())
+            << "Skipping PG cleanup: worker pgid equals raylet pgid (isolation failed): "
+            << *saved;
         return;
       }
       RAY_LOG(INFO).WithField(worker->WorkerId())
           << "Attempting process-group cleanup for worker pid=" << worker_pid
           << ", pgid=" << *saved;
-      auto err = KillProcessGroup(*saved, SIGTERM);
-      if (err && *err) {
+      auto err_term = KillProcessGroup(*saved, SIGTERM);
+      if (err_term && *err_term) {
         RAY_LOG(WARNING).WithField(worker->WorkerId())
-            << "Failed to SIGTERM process group " << *saved << ": " << err->message()
-            << ", errno=" << err->value();
+            << "Failed to SIGTERM process group " << *saved << ": " << err_term->message()
+            << ", errno=" << err_term->value();
       }
-      // TODO(codope): consider making the grace period configurable.
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-      // Revalidate before SIGKILL.
-      errno = 0;
-      current_pgid = getpgid(worker_pid);
-      if (current_pgid != -1 && current_pgid == *saved) {
-        err = KillProcessGroup(*saved, SIGKILL);
-      }
-      if (err && *err) {
-        RAY_LOG(WARNING).WithField(worker->WorkerId())
-            << "Failed to SIGKILL process group " << *saved << ": " << err->message()
-            << ", errno=" << err->value();
-      }
+      // Schedule async SIGKILL after a grace period to avoid blocking the event loop.
+      auto timer = std::make_shared<boost::asio::deadline_timer>(
+          io_service_, boost::posix_time::milliseconds(1000));
+      timer->async_wait([timer, worker_pid, saved = *saved, wid = worker->WorkerId()](
+                            const boost::system::error_code &ec) mutable {
+        if (ec) {
+          return;
+        }
+        errno = 0;
+        pid_t pgid_now = getpgid(worker_pid);
+        if (pgid_now != -1 && pgid_now == saved) {
+          auto err_kill = KillProcessGroup(saved, SIGKILL);
+          if (err_kill && *err_kill) {
+            RAY_LOG(WARNING).WithField(wid)
+                << "Failed to SIGKILL process group " << saved << ": "
+                << err_kill->message() << ", errno=" << err_kill->value();
+          }
+        }
+      });
     }
 #endif
 
@@ -2780,33 +2792,48 @@ void NodeManager::Stop() {
         continue;
       }
       pid_t worker_pid = w->GetProcess().GetId();
-      pid_t current_pgid = -1;
       errno = 0;
-      current_pgid = getpgid(worker_pid);
+      pid_t current_pgid = getpgid(worker_pid);
       if (current_pgid == -1 || current_pgid != *saved) {
+        continue;
+      }
+      // Guard against targeting the raylet's own process group if isolation failed.
+      pid_t raylet_pgid = getpgid(0);
+      if (raylet_pgid == *saved) {
+        RAY_LOG(WARNING).WithField(w->WorkerId())
+            << "Stop(): skipping PG cleanup: worker pgid equals raylet pgid (isolation "
+               "failed): "
+            << *saved;
         continue;
       }
       RAY_LOG(INFO).WithField(w->WorkerId())
           << "Stop(): attempting process-group cleanup for worker pid=" << worker_pid
           << ", pgid=" << *saved;
-      auto err = KillProcessGroup(*saved, SIGTERM);
-      if (err && *err) {
+      auto err_term = KillProcessGroup(*saved, SIGTERM);
+      if (err_term && *err_term) {
         RAY_LOG(WARNING).WithField(w->WorkerId())
             << "Stop(): failed to SIGTERM process group " << *saved << ": "
-            << err->message() << ", errno=" << err->value();
+            << err_term->message() << ", errno=" << err_term->value();
       }
-      // TODO(codope): consider making the grace period configurable.
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-      errno = 0;
-      current_pgid = getpgid(worker_pid);
-      if (current_pgid != -1 && current_pgid == *saved) {
-        err = KillProcessGroup(*saved, SIGKILL);
-        if (err && *err) {
-          RAY_LOG(WARNING).WithField(w->WorkerId())
-              << "Stop(): failed to SIGKILL process group " << *saved << ": "
-              << err->message() << ", errno=" << err->value();
+      // Schedule async SIGKILL after a grace period to avoid blocking during Stop().
+      auto timer = std::make_shared<boost::asio::deadline_timer>(
+          io_service_, boost::posix_time::milliseconds(1000));
+      timer->async_wait([timer, worker_pid, saved = *saved, wid = w->WorkerId()](
+                            const boost::system::error_code &ec) mutable {
+        if (ec) {
+          return;
         }
-      }
+        errno = 0;
+        pid_t pgid_now = getpgid(worker_pid);
+        if (pgid_now != -1 && pgid_now == saved) {
+          auto err_kill = KillProcessGroup(saved, SIGKILL);
+          if (err_kill && *err_kill) {
+            RAY_LOG(WARNING).WithField(wid)
+                << "Stop(): failed to SIGKILL process group " << saved << ": "
+                << err_kill->message() << ", errno=" << err_kill->value();
+          }
+        }
+      });
     }
   }
 #endif
