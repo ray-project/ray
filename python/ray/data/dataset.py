@@ -1546,7 +1546,8 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @limit_op("repartition")
+    @PublicAPI(api_group=SSR_API_GROUP)
+    @shuffle()
     def repartition(
         self,
         num_blocks: Optional[int] = None,
@@ -3322,6 +3323,7 @@ class Dataset:
         self._plan._snapshot_stats = limited_ds._plan.stats()
         return output
 
+    @PublicAPI(api_group=CD_API_GROUP)
     @consume(["limit"])
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the rows in this :class:`Dataset`.
