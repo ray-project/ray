@@ -362,7 +362,7 @@ def _torch_zeros_allocator(
     import torch
 
     ctx = ChannelContext.get_current()
-    return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
+    return torch.empty(shape, dtype=dtype, device=ctx.torch_device)
 
 
 class _TorchTensorAcceleratorChannel(ChannelInterface):
