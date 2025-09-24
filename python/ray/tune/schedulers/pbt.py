@@ -24,7 +24,7 @@ from ray.util import PublicAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.train._checkpoint import Checkpoint as TrainCheckpoint
+    from ray.train import Checkpoint as TrainCheckpoint
     from ray.tune.execution.tune_controller import TuneController
 
     MaybeNone = Any
