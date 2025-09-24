@@ -1152,6 +1152,10 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
     # enable tensor transport, unless it was explicitly set to False by the
     # user.
     if has_tensor_transport_methods:
+        import os
+
+        print("jjyaooooooo cannot happen")
+        os._exit(1)
         if _filled_options["enable_tensor_transport"] is False:
             raise ValueError(
                 "Actor class has methods with @ray.method(tensor_transport=...) decorator but @ray.remote(enable_tensor_transport=False). "
@@ -1170,6 +1174,10 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
     # https://github.com/ray-project/ray/issues/54639 is fixed.
     enable_tensor_transport = _filled_options.get("enable_tensor_transport", False)
     if enable_tensor_transport:
+        import os
+
+        print("jjyaooooooo cannot happen")
+        os._exit(1)
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
         _filled_options["concurrency_groups"]["_ray_system"] = 1

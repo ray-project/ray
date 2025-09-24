@@ -2838,6 +2838,7 @@ Status CoreWorker::ExecuteTask(
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
       /*tensor_transport=*/task_spec.TensorTransport());
+  RAY_LOG(INFO) << "Task execution done";
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
