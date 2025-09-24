@@ -17,10 +17,10 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 
+#include "absl/synchronization/mutex.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -258,14 +258,14 @@ class ShutdownCoordinator {
   rpc::WorkerType worker_type_;
 
   // Mutex-guarded shutdown state
-  mutable std::mutex mu_;
-  ShutdownState state_ = ShutdownState::kRunning;
-  ShutdownReason reason_ = ShutdownReason::kNone;
-  bool force_executed_ = false;
-  bool force_started_ = false;
+  mutable absl::Mutex mu_;
+  ShutdownState state_ ABSL_GUARDED_BY(mu_) = ShutdownState::kRunning;
+  ShutdownReason reason_ ABSL_GUARDED_BY(mu_) = ShutdownReason::kNone;
+  bool force_executed_ ABSL_GUARDED_BY(mu_) = false;
+  bool force_started_ ABSL_GUARDED_BY(mu_) = false;
 
   /// Shutdown detail for observability (set once during shutdown initiation)
-  std::string shutdown_detail_;
+  std::string shutdown_detail_ ABSL_GUARDED_BY(mu_);
 };
 }  // namespace core
 }  // namespace ray
