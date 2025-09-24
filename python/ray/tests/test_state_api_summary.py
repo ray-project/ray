@@ -39,6 +39,14 @@ from ray.util.state.common import (
 from ray.util.state.state_cli import summary_state_cli_group
 from ray.util.state.state_manager import StateDataSourceClient
 
+# Run every test in this module twice: default and aggregator-enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
+
 
 @pytest.fixture
 def state_api_manager():

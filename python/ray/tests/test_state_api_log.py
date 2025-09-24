@@ -44,6 +44,14 @@ from ray.util.state.exception import RayStateApiException
 from ray.util.state.state_cli import logs_state_cli_group
 from ray.util.state.state_manager import StateDataSourceClient
 
+# Run every test in this module twice: default and aggregator-enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
+
 
 def generate_task_event(
     task_id,
