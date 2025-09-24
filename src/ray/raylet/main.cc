@@ -330,7 +330,7 @@ int main(int argc, char *argv[]) {
           ray::Status s = cgroup_mgr.AddProcessToApplicationCgroup(pid);
           if (!s.ok()) {
             RAY_LOG(WARNING) << absl::StrFormat(
-                "Failed to move process %s into the application cgroup with error % s.",
+                "Failed to move process %s into the application cgroup with error %s.",
                 pid,
                 s.ToString());
           }
