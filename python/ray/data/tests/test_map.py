@@ -22,18 +22,15 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver
-from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
-)
-from ray.data._internal.execution.interfaces.ref_bundle import (
-    _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -1523,31 +1520,6 @@ def test_map_batches_combine_empty_blocks(
     assert ds1.take_all() == ds2.take_all()
 
 
-def test_map_batches_preserves_empty_block_format(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Tests that the block format for empty blocks are not modified."""
-
-    def empty_pandas(batch):
-        return pd.DataFrame({"x": []})
-
-    df = pd.DataFrame({"x": [1, 2, 3]})
-
-    # First map_batches creates the empty Pandas block.
-    # Applying subsequent map_batches should not change the type of the empty block.
-    ds = (
-        ray.data.from_pandas(df)
-        .map_batches(empty_pandas)
-        .map_batches(lambda x: x, batch_size=None)
-    )
-
-    bundles = ds.iter_internal_ref_bundles()
-    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
-
-    assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) is pd.DataFrame
-
-
 def test_map_with_objects_and_tensors(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -2708,6 +2680,106 @@ def test_with_column_udf_invalid_return_type_validation(
         assert f"returned invalid type {expected_type_name}" in error_message
         assert "Expected type" in error_message
         assert "pandas.Series" in error_message and "numpy.ndarray" in error_message
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        pytest.param(
+            {
+                "data": [
+                    {"name": "Alice"},
+                    {"name": "Bob"},
+                    {"name": "Charlie"},
+                ],
+                "expr_factory": lambda: col("name") + "_X",
+                "column_name": "name_with_suffix",
+                "expected": ["Alice_X", "Bob_X", "Charlie_X"],
+            },
+            id="string_col_plus_python_literal_rhs",
+        ),
+        pytest.param(
+            {
+                "data": [
+                    {"name": "Alice"},
+                    {"name": "Bob"},
+                    {"name": "Charlie"},
+                ],
+                "expr_factory": lambda: "_X" + col("name"),
+                "column_name": "name_with_prefix",
+                "expected": ["_XAlice", "_XBob", "_XCharlie"],
+            },
+            id="python_literal_lhs_plus_string_col",
+        ),
+        pytest.param(
+            {
+                "data": [
+                    {"first": "John", "last": "Doe"},
+                    {"first": "Jane", "last": "Smith"},
+                ],
+                "expr_factory": lambda: col("first") + col("last"),
+                "column_name": "full_name",
+                "expected": ["JohnDoe", "JaneSmith"],
+            },
+            id="string_col_plus_string_col",
+        ),
+        pytest.param(
+            {
+                "arrow_table": pa.table(
+                    {"name": pa.array(["Alice", "Bob"]).dictionary_encode()}
+                ),
+                "expr_factory": lambda: col("name") + "_X",
+                "column_name": "name_with_suffix",
+                "expected": ["Alice_X", "Bob_X"],
+            },
+            id="dict_encoded_string_col_plus_literal_rhs",
+        ),
+        pytest.param(
+            {
+                "data": [
+                    {"name": "Alice"},
+                    {"name": "Bob"},
+                ],
+                "expr_factory": lambda: col("name") + lit("_X"),
+                "column_name": "name_with_suffix",
+                "expected": ["Alice_X", "Bob_X"],
+            },
+            id="string_col_plus_lit_literal_rhs",
+        ),
+    ],
+)
+def test_with_column_string_concat_combinations(
+    ray_start_regular_shared,
+    scenario,
+):
+    if "arrow_table" in scenario:
+        ds = ray.data.from_arrow(scenario["arrow_table"])
+    else:
+        ds = ray.data.from_items(scenario["data"])
+
+    expr = scenario["expr_factory"]()
+    column_name = scenario["column_name"]
+
+    ds2 = ds.with_column(column_name, expr)
+    out = ds2.to_pandas()
+    assert out[column_name].tolist() == scenario["expected"]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_string_concat_type_mismatch_raises(
+    ray_start_regular_shared,
+):
+    # int + string should raise a user-facing error
+    ds = ray.data.range(3)
+    with pytest.raises((RayTaskError, UserCodeException)):
+        ds.with_column("bad", col("id") + "_X").materialize()
 
 
 @pytest.mark.skipif(

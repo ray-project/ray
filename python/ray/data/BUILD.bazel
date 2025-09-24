@@ -589,6 +589,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "medium",
     srcs = ["tests/test_hudi.py"],
@@ -1590,6 +1604,34 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_custom_agg",
+    size = "small",
+    srcs = ["tests/test_custom_agg.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_stats",
+    size = "small",
+    srcs = ["tests/test_dataset_stats.py"],
     tags = [
         "exclusive",
         "team:data",
