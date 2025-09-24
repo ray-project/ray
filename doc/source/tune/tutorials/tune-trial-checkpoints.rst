@@ -17,7 +17,7 @@ Function API Checkpointing
 --------------------------
 
 If using Ray Tune's Function API, one can save and load checkpoints in the following manner.
-To create a checkpoint, use the :meth:`~ray.train.Checkpoint.from_directory` APIs.
+To create a checkpoint, use the :meth:`~ray.tune.Checkpoint.from_directory` APIs.
 
 .. literalinclude:: /tune/doc_code/trial_checkpoint.py
     :language: python
@@ -43,7 +43,7 @@ In the above code snippet:
         :end-before: __function_api_checkpointing_periodic_end__
 
 
-See :class:`here for more information on creating checkpoints <ray.train.Checkpoint>`.
+See :class:`here for more information on creating checkpoints <ray.tune.Checkpoint>`.
 
 
 .. _tune-class-trainable-checkpointing:
