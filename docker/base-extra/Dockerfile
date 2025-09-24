@@ -231,7 +231,7 @@ rm -rf "${HAPROXY_BUILD_DIR}"
 EOF
 
 # --- Return to main image ---
-FROM main-build as main
+FROM main-build AS main
 
 USER root
 

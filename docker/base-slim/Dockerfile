@@ -4,7 +4,7 @@
 # Mainly for use on Anyscale.
 
 ARG BASE_IMAGE
-FROM ${BASE_IMAGE} as main-build
+FROM ${BASE_IMAGE} AS main-build
 ARG PYTHON_VERSION
 
 RUN <<EOF
