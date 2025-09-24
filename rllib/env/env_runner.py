@@ -257,10 +257,6 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                     f"The original error type: {type(e)}. "
                     f"{e}"
                 )
-                if isinstance(e, StepFailedRecreateEnvError):
-                    raise RuntimeError(
-                        "Environment raised StepFailedRecreateEnvError but config.restart_failed_sub_environments is False."
-                    ) from e
                 raise RuntimeError from e
 
     def _convert_to_tensor(self, struct) -> TensorType:
