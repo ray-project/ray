@@ -168,8 +168,6 @@ class CollectiveTensorTransport(TensorTransportManager):
 
         for tensor in tensors:
             if tensor.device.type != device.type:
-                # TODO(swang): Right now there is no way to catch this error
-                # and the receiving Ray task will hang.
                 raise ValueError(
                     f"tensor device {tensor.device} does not match device {device}"
                 )

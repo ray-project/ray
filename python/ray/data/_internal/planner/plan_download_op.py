@@ -15,6 +15,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Download
+from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import RetryingPyFileSystem, make_async_gen
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -65,10 +66,19 @@ def plan_download_op(
             PartitionActor, (), {}, (uri_column_name, data_context), {}
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
+
         partition_transform_fns = [
-            BlockMapTransformFn(block_fn),
+            BlockMapTransformFn(
+                block_fn,
+                # NOTE: Disable block-shaping to produce blocks as is
+                disable_block_shaping=True,
+            ),
         ]
-        partition_map_transformer = MapTransformer(partition_transform_fns, init_fn)
+        partition_map_transformer = MapTransformer(
+            partition_transform_fns,
+            init_fn=init_fn,
+        )
+
         partition_map_operator = MapOperator.create(
             partition_map_transformer,
             input_physical_dag,
@@ -85,12 +95,23 @@ def plan_download_op(
         None,
         None,
     )
+
     download_transform_fn = _generate_transform_fn_for_map_batches(fn)
     transform_fns = [
-        BlockMapTransformFn(download_transform_fn),
+        BlockMapTransformFn(
+            download_transform_fn,
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_max_block_size=data_context.target_max_block_size
+            ),
+        ),
     ]
-    download_map_transformer = MapTransformer(transform_fns, init_fn)
+
     download_compute = TaskPoolStrategy()
+    download_map_transformer = MapTransformer(
+        transform_fns,
+        init_fn=init_fn,
+    )
+
     download_map_operator = MapOperator.create(
         download_map_transformer,
         partition_map_operator if partition_map_operator else input_physical_dag,

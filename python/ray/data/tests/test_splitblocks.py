@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.map_transformer import _splitrange
+from ray.data._internal.execution.operators.map_operator import _splitrange
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,

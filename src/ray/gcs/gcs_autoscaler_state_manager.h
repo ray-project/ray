@@ -31,7 +31,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/state_util.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 

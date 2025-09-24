@@ -12,6 +12,13 @@ VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 # The name of the file that is used to store the checkpoint manager snapshot.
 CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
 
+AWS_RETRYABLE_TOKENS = (
+    "AWS Error SLOW_DOWN",
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error SERVICE_UNAVAILABLE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error UNKNOWN",
+)
 
 # -----------------------------------------------------------------------
 # Environment variables used in the controller, workers, and state actor.

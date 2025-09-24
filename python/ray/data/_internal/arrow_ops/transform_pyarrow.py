@@ -22,6 +22,7 @@ except ImportError:
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
+MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES = parse_version("12.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
 
 
@@ -140,13 +141,13 @@ def take_table(
     """
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
-        _is_column_extension_type,
+        _is_pa_extension_type,
     )
 
-    if any(_is_column_extension_type(col) for col in table.columns):
+    if any(_is_pa_extension_type(col.type) for col in table.columns):
         new_cols = []
         for col in table.columns:
-            if _is_column_extension_type(col) and col.num_chunks > 1:
+            if _is_pa_extension_type(col.type) and col.num_chunks > 1:
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)
@@ -871,14 +872,14 @@ def combine_chunked_array(
 
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
-        _is_column_extension_type,
+        _is_pa_extension_type,
     )
 
     assert isinstance(
         array, pa.ChunkedArray
     ), f"Expected `ChunkedArray`, got {type(array)}"
 
-    if _is_column_extension_type(array):
+    if _is_pa_extension_type(array.type):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
         return _concatenate_extension_column(array, ensure_copy)
@@ -952,10 +953,10 @@ def _try_combine_chunks_safe(
 
     import pyarrow as pa
 
-    from ray.air.util.transform_pyarrow import _is_column_extension_type
+    from ray.air.util.transform_pyarrow import _is_pa_extension_type
 
-    assert not _is_column_extension_type(
-        array
+    assert not _is_pa_extension_type(
+        array.type
     ), f"Arrow `ExtensionType`s are not accepted (got {array.type})"
 
     # It's safe to combine provided `ChunkedArray` in either of 2 cases:

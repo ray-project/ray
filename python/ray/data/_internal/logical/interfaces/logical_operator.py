@@ -26,7 +26,8 @@ class LogicalOperator(Operator):
         )
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
-        self._num_outputs = num_outputs
+
+        self._num_outputs: Optional[int] = num_outputs
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that

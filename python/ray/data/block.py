@@ -72,6 +72,14 @@ class BlockType(Enum):
     PANDAS = "pandas"
 
 
+@DeveloperAPI
+class BatchFormat(str, Enum):
+    # NOTE: This is to maintain compatibility w/ existing APIs
+    ARROW = "pyarrow"
+    PANDAS = "pandas"
+    NUMPY = "numpy"
+
+
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]

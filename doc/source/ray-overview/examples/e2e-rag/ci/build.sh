@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -exo pipefail
+set -euxo pipefail
 
 # Install system dependencies
 RUN sudo apt-get update && \

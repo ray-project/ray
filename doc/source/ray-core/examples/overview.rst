@@ -30,7 +30,7 @@ Intermediate
 .. list-table::
 
   * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
-  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
+  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web_crawler>`
 
 
 Advanced

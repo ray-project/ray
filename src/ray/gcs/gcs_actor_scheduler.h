@@ -24,13 +24,13 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
 using raylet::ClusterLeaseManager;
@@ -254,7 +254,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
   void LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                           std::shared_ptr<rpc::GcsNodeInfo> node);
+                           std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// Handler to process a worker lease reply.
   ///
@@ -263,7 +263,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param status Status of the reply of `RequestWorkerLeaseRequest`.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
   virtual void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
-                                      std::shared_ptr<rpc::GcsNodeInfo> node,
+                                      std::shared_ptr<const rpc::GcsNodeInfo> node,
                                       const Status &status,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
@@ -274,7 +274,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
   virtual void RetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                          std::shared_ptr<rpc::GcsNodeInfo> node);
+                                          std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// This method is only invoked inside `RetryLeasingWorkerFromNode`, the purpose of this
   /// is to make it easy to write unit tests.
@@ -283,7 +283,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
   void DoRetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                    std::shared_ptr<rpc::GcsNodeInfo> node);
+                                    std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// Handler to process a granted lease.
   ///
@@ -398,11 +398,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor The actor to be forwarded.
   /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
   NodeID SelectForwardingNode(std::shared_ptr<GcsActor> actor);
-
-  /// A helper function to select a node from alive nodes randomly.
-  ///
-  /// \return The selected node. If the selection fails, `nullptr` is returned.
-  std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;
 
   friend class GcsActorSchedulerTest;
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode);

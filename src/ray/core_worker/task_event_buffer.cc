@@ -190,6 +190,9 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.mutable_required_resources()->insert(
       std::make_move_iterator(required_resources.begin()),
       std::make_move_iterator(required_resources.end()));
+  definition_event_data.set_serialized_runtime_env(
+      task_spec_->RuntimeEnvInfo().serialized_runtime_env());
+  // TODO(CORE-2277): Remove this once runtime_env_info is fully deprecated.
   definition_event_data.mutable_runtime_env_info()->CopyFrom(
       task_spec_->RuntimeEnvInfo());
   definition_event_data.set_job_id(job_id_.Binary());

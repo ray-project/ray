@@ -75,8 +75,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   (*task_def_event->mutable_required_resources())["memory"] = 1024.0;
 
   // Set runtime env info
-  auto *runtime_env = task_def_event->mutable_runtime_env_info();
-  runtime_env->set_serialized_runtime_env("test_env");
+  task_def_event->set_serialized_runtime_env("test_env");
 
   // Convert
   auto task_event_data_requests =
@@ -385,8 +384,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   actor_def_event.set_placement_group_id("pg-actor");
 
   // Set runtime env info
-  auto *runtime_env = actor_def_event.mutable_runtime_env_info();
-  runtime_env->set_serialized_runtime_env("test_actor_env");
+  actor_def_event.set_serialized_runtime_env("test_actor_env");
 
   // Set actor function descriptor (Python)
   auto *func_desc = actor_def_event.mutable_actor_func();

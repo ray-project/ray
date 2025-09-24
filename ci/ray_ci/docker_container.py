@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from enum import Enum
-from typing import List
+from typing import Dict, List
 
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.linux_container import LinuxContainer
@@ -36,7 +36,19 @@ class RayType(str, Enum):
     RAY = "ray"
     RAY_EXTRA = "ray-extra"
     RAY_ML = "ray-ml"
+    RAY_ML_EXTRA = "ray-ml-extra"
     RAY_LLM = "ray-llm"
+    RAY_LLM_EXTRA = "ray-llm-extra"
+
+
+RAY_REPO_MAP: Dict[str, str] = {
+    RayType.RAY.value: RayType.RAY.value,
+    RayType.RAY_ML.value: RayType.RAY_ML.value,
+    RayType.RAY_LLM.value: RayType.RAY_LLM.value,
+    RayType.RAY_EXTRA.value: RayType.RAY.value,
+    RayType.RAY_ML_EXTRA.value: RayType.RAY_ML.value,
+    RayType.RAY_LLM_EXTRA.value: RayType.RAY_LLM.value,
+}
 
 
 class DockerContainer(LinuxContainer):
@@ -55,11 +67,11 @@ class DockerContainer(LinuxContainer):
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
 
-        if image_type == RayType.RAY_ML:
+        if image_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
             assert python_version in PYTHON_VERSIONS_RAY_ML
             assert platform in PLATFORMS_RAY_ML
             assert architecture in ARCHITECTURES_RAY_ML
-        elif image_type == RayType.RAY_LLM:
+        elif image_type in [RayType.RAY_LLM, RayType.RAY_LLM_EXTRA]:
             assert python_version in PYTHON_VERSIONS_RAY_LLM
             assert platform in PLATFORMS_RAY_LLM
             assert architecture in ARCHITECTURES_RAY_LLM
@@ -159,7 +171,7 @@ class DockerContainer(LinuxContainer):
         elif self.platform == GPU_PLATFORM:
             # gpu is alias to cu118 for ray image
             platforms.append("-gpu")
-            if self.image_type == RayType.RAY_ML:
+            if self.image_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
@@ -168,7 +180,11 @@ class DockerContainer(LinuxContainer):
             py_versions.append("")
 
         variation = ""
-        if self.image_type == RayType.RAY_EXTRA:
+        if self.image_type in [
+            RayType.RAY_EXTRA,
+            RayType.RAY_ML_EXTRA,
+            RayType.RAY_LLM_EXTRA,
+        ]:
             variation = "-extra"
 
         tags = []

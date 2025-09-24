@@ -17,6 +17,9 @@ ray_cc_test(
     srcs = ["ray_event_recorder_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/observability:fake_metric",
+        "//src/ray/observability:ray_actor_definition_event",
+        "//src/ray/observability:ray_actor_lifecycle_event",
         "//src/ray/observability:ray_driver_job_definition_event",
         "//src/ray/observability:ray_driver_job_execution_event",
         "//src/ray/observability:ray_event_recorder",
@@ -31,6 +34,28 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_driver_job_execution_event",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_actor_definition_event_test",
+    size = "small",
+    srcs = ["ray_actor_definition_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_actor_definition_event",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_actor_lifecycle_event_test",
+    size = "small",
+    srcs = ["ray_actor_lifecycle_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_actor_lifecycle_event",
         "@com_google_googletest//:gtest_main",
     ],
 )

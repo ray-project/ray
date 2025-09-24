@@ -135,7 +135,7 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
     task_info->set_placement_group_id(event.placement_group_id());
   }
 
-  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_runtime_env_info()),
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_task_func()),
                                      std::move(*event.mutable_required_resources()),
                                      event.language(),
@@ -182,7 +182,7 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   if (!event.actor_id().empty()) {
     task_info->set_actor_id(event.actor_id());
   }
-  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_runtime_env_info()),
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_actor_func()),
                                      std::move(*event.mutable_required_resources()),
                                      event.language(),
@@ -202,13 +202,14 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
 }
 
 void GcsRayEventConverter::PopulateTaskRuntimeAndFunctionInfo(
-    rpc::RuntimeEnvInfo &&runtime_env_info,
+    std::string &&serialized_runtime_env,
     rpc::FunctionDescriptor &&function_descriptor,
     ::google::protobuf::Map<std::string, double> &&required_resources,
     rpc::Language language,
     rpc::TaskInfoEntry *task_info) {
   task_info->set_language(language);
-  task_info->mutable_runtime_env_info()->Swap(&runtime_env_info);
+  task_info->mutable_runtime_env_info()->set_serialized_runtime_env(
+      std::move(serialized_runtime_env));
   switch (language) {
   case rpc::Language::CPP:
     if (function_descriptor.has_cpp_function_descriptor()) {
