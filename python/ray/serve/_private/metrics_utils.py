@@ -1,5 +1,6 @@
 import asyncio
 import bisect
+import heapq
 import logging
 import statistics
 from collections import defaultdict
@@ -321,71 +322,153 @@ class InMemoryMetricsStore:
         return self._aggregate_reduce(keys, statistics.mean)
 
 
-def _bucket_latest_by_window(
-    series: List[TimeStampedValue],
-    start: float,
-    window_s: float,
-) -> Dict[int, float]:
+def time_weighted_average(
+    step_series: List[TimeStampedValue],
+    window_start: Optional[float] = None,
+    window_end: Optional[float] = None,
+    last_window_s: float = 1.0,
+) -> Optional[float]:
     """
-    Map each window index -> latest value seen in that window.
-    Assumes series is sorted by timestamp ascending.
+    Compute time-weighted average of a step function over a time interval.
+
+    Args:
+        step_series: Step function as list of (timestamp, value) points, sorted by time.
+            Values are right-continuous (constant until next change).
+        window_start: Start of averaging window (inclusive). If None, uses the start of the series.
+        window_end: End of averaging window (exclusive). If None, uses the end of the series.
+        last_window_s: when window_end is None, uses the last_window_s to compute the end of the window.
+    Returns:
+        Time-weighted average over the interval, or None if no data overlaps.
     """
-    buckets: Dict[int, float] = {}
-    for p in series:
-        w = int((p.timestamp - start) // window_s)
-        buckets[w] = p.value  # overwrite keeps the latest within the window
-    return buckets
+    if not step_series:
+        return None
+
+    # Handle None values by using full timeseries bounds
+    if window_start is None:
+        window_start = step_series[0].timestamp
+    if window_end is None:
+        # Use timestamp after the last point to include the final segment
+        window_end = step_series[-1].timestamp + last_window_s
+
+    if window_end <= window_start:
+        return None
+
+    total_weighted_value = 0.0
+    total_duration = 0.0
+    current_value = 0.0  # Default if no data before window_start
+    current_time = window_start
+
+    # Process each segment that overlaps with the window
+    for point in step_series:
+        if point.timestamp <= window_start:
+            # Find the value at window_start (LOCF)
+            current_value = point.value
+            continue
+        if point.timestamp >= window_end:
+            break  # Beyond our window
+
+        # Add contribution of current segment
+        segment_end = min(point.timestamp, window_end)
+        duration = segment_end - current_time
+        if duration > 0:
+            total_weighted_value += current_value * duration
+            total_duration += duration
+
+        current_value = point.value
+        current_time = segment_end
+
+    # Add final segment if it extends to window_end
+    if current_time < window_end:
+        duration = window_end - current_time
+        total_weighted_value += current_value * duration
+        total_duration += duration
+
+    return total_weighted_value / total_duration if total_duration > 0 else None
 
 
-def _merge_two_timeseries(
-    t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_s: float
+def merge_instantaneous_total(
+    replicas_timeseries: List[List[TimeStampedValue]],
 ) -> List[TimeStampedValue]:
     """
-    Merge two ascending time series by summing values within a specified time window.
-    If multiple values fall within the same window in a series, the latest value is used.
-    The output contains one point per window that had at least one value, timestamped
-    at the window center.
-    """
-    if window_s <= 0:
-        raise ValueError(f"window_s must be positive, got {window_s}")
+    Merge multiple gauge time series (right-continuous, LOCF) into an
+    instantaneous total time series as a step function.
 
-    if not t1 and not t2:
+    This approach treats each replica's gauge as right-continuous, last-observation-
+    carried-forward (LOCF), which matches gauge semantics. It produces an exact
+    instantaneous total across replicas without bias from arbitrary windowing.
+
+    Uses a k-way merge algorithm for O(n log k) complexity where k is the number
+    of timeseries and n is the total number of events.
+
+    Args:
+        replicas_timeseries: List of time series, one per replica. Each time series
+            is a list of TimeStampedValue objects sorted by timestamp.
+
+    Returns:
+        A list of TimeStampedValue representing the instantaneous total at event times.
+        Between events, the total remains constant (step function).
+    """
+    # Filter out empty timeseries
+    active_series = [series for series in replicas_timeseries if series]
+    if not active_series:
         return []
 
-    # Align windows so each output timestamp sits at the start of its window.
-    # start is snapped to window_s boundary for binning stability
-    earliest = min(x[0].timestamp for x in (t1, t2) if x)
-    start = earliest // window_s * window_s
+    # True k-way merge: heap maintains exactly k elements (one per series)
+    # Each element is (timestamp, replica_id, iterator)
+    merge_heap = []
+    current_values = [0.0] * len(active_series)  # Current value for each replica (LOCF)
 
-    b1 = _bucket_latest_by_window(t1, start, window_s)
-    b2 = _bucket_latest_by_window(t2, start, window_s)
-
-    windows = sorted(set(b1.keys()) | set(b2.keys()))
+    # Initialize heap with first element from each series
+    for replica_idx, series in enumerate(active_series):
+        if series:  # Non-empty series
+            iterator = iter(series)
+            try:
+                first_point = next(iterator)
+                heapq.heappush(
+                    merge_heap,
+                    (first_point.timestamp, replica_idx, first_point.value, iterator),
+                )
+            except StopIteration:
+                pass
 
     merged: List[TimeStampedValue] = []
-    for w in windows:
-        v = b1.get(w, 0.0) + b2.get(w, 0.0)
-        ts_start = start + w * window_s
-        merged.append(TimeStampedValue(timestamp=ts_start, value=v))
+    running_total = 0.0
+
+    while merge_heap:
+        # Pop the earliest event (heap size stays ≤ k)
+        timestamp, replica_idx, value, iterator = heapq.heappop(merge_heap)
+
+        old_value = current_values[replica_idx]
+        current_values[replica_idx] = value
+        running_total += value - old_value
+
+        # Try to get the next point from this replica's series and push it back
+        try:
+            next_point: TimeStampedValue = next(iterator)
+            heapq.heappush(
+                merge_heap,
+                (next_point.timestamp, replica_idx, next_point.value, iterator),
+            )
+        except StopIteration:
+            pass  # This series is exhausted
+
+        # Only add a point if the total actually changed
+        if value != old_value:  # Equivalent to new_total != old_total
+            merged.append(TimeStampedValue(timestamp, running_total))
+
     return merged
 
 
 def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
-    window_s: float,
 ) -> DefaultDict[Hashable, List[TimeStampedValue]]:
     """
-    Merge multiple time-series dictionaries, typically contained within
-    InMemoryMetricsStore().data. For the same key across stores, time series
-    are merged with a windowed sum, where each series keeps only its latest
-    value per window before summing.
+    Merge multiple time-series dictionaries using instantaneous merge approach.
     """
     merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
-    for timeseries_dict in timeseries_dicts:
-        for key, ts in timeseries_dict.items():
-            if key in merged:
-                merged[key] = _merge_two_timeseries(merged[key], ts, window_s)
-            else:
-                # Window the data, even if the key is unique.
-                merged[key] = _merge_two_timeseries(ts, [], window_s)
-    return merged
+
+    for ts_dict in timeseries_dicts:
+        for key, ts in ts_dict.items():
+            merged[key].append(ts)
+
+    return {key: merge_instantaneous_total(ts_list) for key, ts_list in merged.items()}

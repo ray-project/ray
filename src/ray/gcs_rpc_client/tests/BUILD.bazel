@@ -1,0 +1,102 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "accessor_test",
+    size = "small",
+    srcs = [
+        "accessor_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "global_state_accessor_test",
+    size = "small",
+    srcs = [
+        "global_state_accessor_test.cc",
+    ],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs:gcs_server_lib",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/gcs_rpc_client:global_state_accessor_lib",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_client_test",
+    size = "medium",
+    srcs = [
+        "gcs_client_test.cc",
+    ],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = [
+        "exclusive",
+        "no_tsan",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs:gcs_server_lib",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/util:network_util",
+        "//src/ray/util:raii",
+        "//src/ray/util:time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_client_reconnection_test",
+    srcs = [
+        "gcs_client_reconnection_test.cc",
+    ],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs:gcs_server_lib",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

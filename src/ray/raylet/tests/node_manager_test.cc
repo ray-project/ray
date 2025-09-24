@@ -33,13 +33,15 @@
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/rpc/utils.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -297,7 +299,7 @@ class NodeManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
         raylet_client_pool_(
-            [](const auto &) { return std::make_shared<FakeRayletClient>(); }) {
+            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }) {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
