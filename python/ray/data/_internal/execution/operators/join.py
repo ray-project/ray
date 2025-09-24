@@ -339,16 +339,24 @@ class JoinOperator(HashShufflingOperatorBase):
             finalize_progress_bar_name="Join",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> int:
+    def _get_default_num_cpus_per_partition(self) -> float:
         """Get the default number of CPUs to allocate per partition.
 
-        This method provides a reasonable default for CPU allocation based on
-        the join operation characteristics.
+        CPU allocation for aggregating actors of Join operator is calculated as:
+        num_cpus (per partition) = CPU budget / # partitions
+
+        Assuming:
+        - Default number of partitions: 16
+        - Total operator's CPU budget with default settings: 2 cores
+        - Number of CPUs per partition: 2 / 16 = 0.125
+
+        These CPU budgets are derived such that Ray Data pipeline could run on a
+        single node (using the default settings).
 
         Returns:
             Default number of CPUs per partition.
         """
-        return 1
+        return 0.125
 
     def _get_operator_num_cpus_per_partition_override(self) -> int:
         """Get the operator-specific CPU allocation override per partition.
