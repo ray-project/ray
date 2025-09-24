@@ -174,7 +174,6 @@ def train_fn(config):
         print("Loaded back state from checkpoint:", state)
         start = state["iter"] + 1
 
-    # modoru: here failed     assert len(ray.train.get_all_reported_checkpoints()) == min(
     got = len(ray.train.get_all_reported_checkpoints())
     expected = min(start, config.get("num_to_keep", float("inf")))
     assert got == expected, f"Expected {expected} checkpoints, got {got}"

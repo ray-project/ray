@@ -39,7 +39,6 @@ from ray._private.dict import flatten_dict
 from ray.air.constants import TRAINING_ITERATION
 from ray.air._internal.uri_utils import URI
 from ray.train import Checkpoint
-from ray.train.base_trainer import TrainingFailedError
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.constants import is_v2_enabled
 
@@ -48,12 +47,15 @@ if is_v2_enabled():
         train_fn,
         _assert_storage_contents,
     )
+    from ray.train.v2.api.exceptions import TrainingFailedError
 else:
     from test_v1_persistence import (
         train_fn,
         _assert_storage_contents,
         _resume_from_checkpoint,
     )
+    from ray.train.base_trainer import TrainingFailedError
+
 
 # Add a unique ID to the storage path to avoid collisions between release test runs.
 TEST_ID = uuid.uuid4().hex[:4] + "_" + datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -213,9 +215,8 @@ def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
 
     root_path, storage_filesystem, label = root_path_storage_filesystem_label
     storage_path = root_path + label
-    checkpoint_config = train.CheckpointConfig(
-        num_to_keep=TestConstants.NUM_ITERATIONS // 2
-    )
+    num_to_keep = TestConstants.NUM_ITERATIONS // 2
+    checkpoint_config = train.CheckpointConfig(num_to_keep=num_to_keep)
     exp_name = "test_trainer"
 
     print(
@@ -228,6 +229,7 @@ def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
         "num_iterations": TestConstants.NUM_ITERATIONS,
         "custom_save_fn": custom_save_fn,
         "custom_restore_fn": custom_restore_fn,
+        "num_to_keep": num_to_keep,
     }
     scaling_config = train.ScalingConfig(
         num_workers=TestConstants.NUM_WORKERS,
@@ -407,10 +409,10 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
     )
     result = trainer.fit()
 
-    # modoru: TypeError: 'NoneType' object is not subscriptable
-    print(result)
-    assert result.metrics[TRAINING_ITERATION] == TestConstants.NUM_ITERATIONS
-    assert len(result.metrics_dataframe) == TestConstants.NUM_ITERATIONS
+    # v2 does not support free floating metrics
+    if not is_v2_enabled():
+        assert result.metrics[TRAINING_ITERATION] == TestConstants.NUM_ITERATIONS
+        assert len(result.metrics_dataframe) == TestConstants.NUM_ITERATIONS
 
 
 if __name__ == "__main__":
