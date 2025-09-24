@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 #include "ray/util/thread_utils.h"

@@ -42,7 +42,6 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
-#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"

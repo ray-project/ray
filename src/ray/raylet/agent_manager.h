@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "ray/common/id.h"
-#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -33,6 +32,9 @@ namespace raylet {
 
 using DelayExecutorFn = std::function<std::shared_ptr<boost::asio::deadline_timer>(
     std::function<void()>, uint32_t)>;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 // Manages a separate "Agent" process. In constructor (or the `StartAgent` method) it
 // starts a process with `agent_commands` plus some additional arguments.

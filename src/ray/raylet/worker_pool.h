@@ -37,7 +37,6 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet_ipc_client/client_connection.h"
@@ -49,6 +48,9 @@ namespace raylet {
 
 using WorkerCommandMap =
     absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 enum PopWorkerStatus {
   // OK.
@@ -305,7 +307,9 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
-  /// adding itself into appropriate cgroup.
+  /// \param add_to_cgroup_hook A lifecycle hook that the forked worker process will
+  /// execute becoming a worker process. The hook adds a newly forked process into
+  /// the appropriate cgroup.
   WorkerPool(
       instrumented_io_context &io_service,
       const NodeID &node_id,
@@ -322,7 +326,7 @@ class WorkerPool : public WorkerPoolInterface {
       std::function<void()> starting_worker_timeout_callback,
       int ray_debugger_external,
       std::function<absl::Time()> get_time,
-      AddProcessToCgroupHook add_to_cgroup_hook_ = [](const std::string &) {});
+      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;

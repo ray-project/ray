@@ -42,7 +42,6 @@
 #include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
-#include "ray/raylet/raylet_cgroup_types.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -61,6 +60,9 @@ using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
 using rpc::ResourceUsageBatchData;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
