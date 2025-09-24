@@ -94,19 +94,20 @@ class _SerializationContext:
 
     def serialize_mesh(
         self, dm: "DeviceMesh"
-    ) -> Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]]]:
+    ) -> Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]], List[int]]:
         import torch.distributed as dist
 
-        group = dist.group.WORLD
-        world_size = dist.get_world_size(group=group)
         mesh_np = dm.mesh.numpy().copy()
         dim_group_names = (
             dm._dim_group_names if hasattr(dm, "_dim_group_names") else None
         )
+        dim_groups = dm.get_all_groups()
+        world_size = [dist.get_world_size(group=group) for group in dim_groups]
         return dm.device_type, mesh_np, dm.mesh_dim_names, dim_group_names, world_size
 
     def deserialize_mesh(
-        self, val: Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]]]
+        self,
+        val: Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]], List[int]],
     ) -> "DeviceMesh":
         import torch.distributed as dist
         from torch.distributed.device_mesh import DeviceMesh
@@ -115,19 +116,14 @@ class _SerializationContext:
         dm = DeviceMesh(
             device_type, mesh_np, mesh_dim_names=mesh_dim_names, _init_backend=False
         )
-        group = dist.group.WORLD
-        current_world_size = dist.get_world_size(group=group)
-        if current_world_size != world_size:
-            raise RuntimeError(
-                f"World size mismatch, expected {world_size}, but got {current_world_size}!"
-            )
-        # TODO: add more checks for the mesh
-        if dm.mesh.numel() > world_size:
-            raise RuntimeError(
-                f"Mesh should not be bigger than default world size {world_size}, but found {self.mesh.numel()} ranks!"
-            )
-        if dim_group_names is not None:
-            dm._dim_group_names = dim_group_names
+        dm._dim_group_names = dim_group_names
+        dim_groups = dm.get_all_groups()
+        for i, group in enumerate(dim_groups):
+            current_world_size = dist.get_world_size(group=group)
+            if current_world_size != world_size[i]:
+                raise RuntimeError(
+                    f"World size mismatch, expected {world_size[i]}, but got {current_world_size}!"
+                )
         return dm
 
     def serialize_tensor(
