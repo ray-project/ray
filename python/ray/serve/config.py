@@ -346,9 +346,6 @@ class AutoscalingConfig(BaseModel):
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests
 
-    def get_aggregation_function(self) -> AggregationFunction:
-        return self.aggregation_function
-
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
 @Deprecated
