@@ -1204,7 +1204,32 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     rpc::TaskStatus::FAILED,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
-
+      // Push the error to the driver if the task will still retry.
+      bool enable_output_error_log_if_still_retry =
+          RayConfig::instance().enable_output_error_log_if_still_retry();
+      if (enable_output_error_log_if_still_retry) {
+        std::string num_retries_left_str;
+        if (task_failed_due_to_oom) {
+          num_retries_left_str = num_oom_retries_left == -1
+                                     ? "infinite"
+                                     : std::to_string(num_oom_retries_left);
+        } else {
+          num_retries_left_str =
+              num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+        }
+        auto error_message = "Task " + spec.FunctionDescriptor()->CallString() +
+                             " failed. There are " + num_retries_left_str +
+                             " retries remaining, so the task will be retried. Error: " +
+                             error_info.error_message();
+        Status push_error_status =
+            push_error_callback_(task_entry.spec_.JobId(),
+                                 rpc::ErrorType_Name(error_info.error_type()),
+                                 error_message,
+                                 current_time_ms());
+        if (!push_error_status.ok()) {
+          RAY_LOG(ERROR) << "Failed to push error to driver for task " << spec.TaskId();
+        }
+      }
       // Mark the new status and also include task spec info for the new attempt.
       SetTaskStatus(task_entry,
                     rpc::TaskStatus::PENDING_ARGS_AVAIL,
