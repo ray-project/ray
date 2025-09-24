@@ -85,10 +85,7 @@ class MockWorker : public WorkerInterface {
   }
 
   void MarkDead() override { RAY_CHECK(false) << "Method unused"; }
-  bool IsDead() const override {
-    RAY_CHECK(false) << "Method unused";
-    return killing_.load(std::memory_order_acquire);
-  }
+  bool IsDead() const override { return killing_.load(std::memory_order_acquire); }
   void KillAsync(instrumented_io_context &io_service, bool force) override {
     bool expected = false;
     killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
