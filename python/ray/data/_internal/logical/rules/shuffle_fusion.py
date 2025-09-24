@@ -18,7 +18,6 @@ from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
     StreamingRepartition,
 )
-from ray.data.context import ShuffleStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -44,15 +43,23 @@ class ShuffleFusion(Rule):
             parent_op = parent_ops[0]
             if isinstance(parent_op, Repartition) and isinstance(child_op, Repartition):
                 return _disown_op(parent_op)
-            elif isinstance(parent_op, StreamingRepartition) and isinstance(child_op, Repartition):
+            elif isinstance(parent_op, StreamingRepartition) and isinstance(
+                child_op, Repartition
+            ):
                 return _disown_op(parent_op)
-            elif isinstance(parent_op, RandomShuffle) and isinstance(child_op, RandomShuffle):
+            elif isinstance(parent_op, RandomShuffle) and isinstance(
+                child_op, RandomShuffle
+            ):
                 return _disown_op(parent_op)
-            elif isinstance(parent_op, RandomShuffle) and isinstance(child_op, Repartition):
+            elif isinstance(parent_op, RandomShuffle) and isinstance(
+                child_op, Repartition
+            ):
                 uncle_op: Repartition = _disown_op(parent_op)
                 uncle_op._shuffle = True
                 return uncle_op
-            elif isinstance(parent_op, Repartition) and isinstance(child_op, RandomShuffle):
+            elif isinstance(parent_op, Repartition) and isinstance(
+                child_op, RandomShuffle
+            ):
                 return _disown_op(parent_op)
             elif isinstance(parent_op, Repartition) and isinstance(child_op, Aggregate):
                 parent_keys = set(parent_op._keys)
@@ -84,7 +91,6 @@ class ShuffleFusion(Rule):
                     return _disown_op(parent_op)
             elif isinstance(parent_op, Sort) and isinstance(child_op, Sort):
                 twin_op: Sort = _disown_op(parent_op)
-                # TODO(justin): could be a single str
                 twin_op._sort_key._columns.extend(parent_op._sort_key)
                 return twin_op
             elif isinstance(parent_op, Sort) and isinstance(child_op, RandomShuffle):
@@ -93,6 +99,7 @@ class ShuffleFusion(Rule):
                 return _disown_op(parent_op)
 
         return op
+
 
 # TODO(justin): apply this to other Rules
 def _disown_op(child_op: Operator) -> Operator:
@@ -106,18 +113,15 @@ def _disown_op(child_op: Operator) -> Operator:
     Returns: A new(copy) grandchild operator
     """
 
-    # TODO(justin): check for boundary conditions
-    parent_op = []
-    if child_op.input_dependencies:
-        parent_op = child_op.input_dependencies
+    parent_ops = child_op.input_dependencies
+    grandchild_ops = child_op.output_dependencies
 
-    grandchild_op = []
-    if child_op.output_dependencies:
-        grandchild_op = child_op.output_dependencies
+    assert len(parent_ops) == 1
+    assert len(grandchild_ops) == 1
 
-    grandtwin_op = copy.copy(grandchild_op)
-    grandtwin_op.input_dependencies = parent_op
-    parent_op.output_dependencies = grandtwin_op
+    grandtwin_op = copy.copy(grandchild_ops)
+    grandtwin_op.input_dependencies = parent_ops
+    parent_ops.output_dependencies = grandtwin_op
 
     del child_op
 
