@@ -190,7 +190,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends socat
 
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
-chown -R ray:ray /run/haproxy
+chown -R ray:"$(id -gn ray)" /run/haproxy
 
 rm -rf /var/lib/apt/lists/*
 
