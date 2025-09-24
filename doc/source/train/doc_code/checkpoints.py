@@ -435,3 +435,47 @@ checkpoint = result.checkpoint
 with checkpoint.as_directory() as checkpoint_dir:
     lightning_checkpoint_path = f"{checkpoint_dir}/checkpoint.ckpt"
 # __inspect_lightning_checkpoint_example_end__
+
+# __checkpoint_upload_mode_sync_start__
+def train_fn(config):
+    ...
+    metrics = {...}
+    checkpoint = ...
+    # These report calls are equivalent:
+    train.report(metrics, checkpoint=checkpoint)
+    train.report(
+        metrics,
+        checkpoint=checkpoint,
+        checkpoint_upload_mode=train.CheckpointUploadMode.SYNC,
+    )
+
+
+# __checkpoint_upload_mode_sync_end__
+
+# __checkpoint_upload_mode_async_start__
+def train_fn(config):
+    ...
+    metrics = {...}
+    checkpoint = ...
+    train.report(
+        metrics,
+        checkpoint=checkpoint,
+        checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
+    )
+
+
+# __checkpoint_upload_mode_async_end__
+
+# __checkpoint_upload_mode_no_upload_start__
+def train_fn(config):
+    ...
+    metrics = {...}
+    checkpoint = ...
+    train.report(
+        metrics,
+        checkpoint=checkpoint,
+        checkpoint_upload_mode=train.CheckpointUploadMode.NO_UPLOAD,
+    )
+
+
+# __checkpoint_upload_mode_no_upload_end__
