@@ -112,7 +112,7 @@ def _disconnect_op(child_op: Operator, copy=True) -> Operator:
         After: parent -> grandchild
 
     This method will remove the child operator from the dag by
-    performing a cross product between parent output dependencies with
+    performing a cross join between parent output dependencies with
     the grandchild's input dependencies. Be mindful that if you plan
     on modifying the grandchild operator afterwards, copy should be True.
 
