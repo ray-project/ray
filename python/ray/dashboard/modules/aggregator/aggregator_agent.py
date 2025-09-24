@@ -63,8 +63,8 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
     f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
 )
 # flag to enable publishing events to the external HTTP service
-PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
+PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
 )
 
 
@@ -102,7 +102,6 @@ class AggregatorAgent(
             thread_name_prefix="aggregator_agent_executor",
         )
 
-        self._lock = asyncio.Lock()
         self._events_export_addr = (
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
         )
@@ -114,7 +113,7 @@ class AggregatorAgent(
         }
 
         self._event_processing_enabled = False
-        if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC and self._events_export_addr:
+        if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE and self._events_export_addr:
             logger.info(
                 f"Publishing events to external HTTP service is enabled. events_export_addr: {self._events_export_addr}"
             )
