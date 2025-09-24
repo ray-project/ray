@@ -228,14 +228,14 @@ class ApplicationState:
         logging_config: LoggingConfig,
     ):
         """
+        Initialize an ApplicationState instance.
+
         Args:
             name: Application name.
-            deployment_state_manager: State manager for all deployments
-                in the cluster.
-            autoscaling_state_manager: State manager for autoscaling
-                decisions in the cluster.
-            endpoint_state: State manager for endpoints in the system.
-            logging_config: Logging config schema to configure logs.
+            deployment_state_manager: Manages the state of all deployments in the cluster.
+            autoscaling_state_manager: Manages autoscaling decisions in the cluster.
+            endpoint_state: Manages endpoints in the system.
+            logging_config: Logging configuration schema.
         """
 
         self._name = name
@@ -513,13 +513,19 @@ class ApplicationState:
         return target_state_changed
 
     def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
-        """(Re-)deploy the application from list of deployment infos.
+        """
+        (Re-)deploy the application from a set of deployment infos.
 
         This function should only be called to deploy an app from an
-        imperative API (i.e., `serve.run` or Java API).
+        imperative API (e.g., `serve.run` or the Java API).
 
-        Raises: RayServeException if there is more than one route prefix
-            or docs path.
+        Args:
+            deployment_infos (Dict[str, DeploymentInfo]): Mapping of deployment
+                names to their corresponding DeploymentInfo objects, used to
+                build and deploy the application.
+
+        Raises:
+            RayServeException: If there is more than one route prefix or docs path.
         """
 
         # Check routes are unique in deployment infos
@@ -1322,7 +1328,6 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
