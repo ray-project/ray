@@ -1,4 +1,3 @@
-import copy
 import logging
 
 from ray.data import DataContext
@@ -40,89 +39,146 @@ class ShuffleFusion(Rule):
         child_op = op
         parent_ops = op.input_dependencies
         if len(parent_ops) == 1:
+
             parent_op = parent_ops[0]
-            if isinstance(parent_op, Repartition) and isinstance(child_op, Repartition):
-                return _disown_op(parent_op)
-            elif isinstance(parent_op, StreamingRepartition) and isinstance(
+
+            # Simple disown cases - same operator types
+            if (
+                (
+                    isinstance(parent_op, Repartition)
+                    and isinstance(child_op, Repartition)
+                )
+                or (
+                    isinstance(parent_op, StreamingRepartition)
+                    and isinstance(child_op, Repartition)
+                )
+                or (
+                    isinstance(parent_op, RandomShuffle)
+                    and isinstance(child_op, RandomShuffle)
+                )
+                or (
+                    isinstance(parent_op, Repartition)
+                    and isinstance(child_op, RandomShuffle)
+                )
+                or (isinstance(parent_op, RandomShuffle) and isinstance(child_op, Sort))
+            ):
+                return _disconnect_op(parent_op)
+
+            # Special case: RandomShuffle -> Repartition with shuffle flag
+            elif isinstance(parent_op, RandomShuffle) and isinstance(
                 child_op, Repartition
             ):
-                return _disown_op(parent_op)
-            elif isinstance(parent_op, RandomShuffle) and isinstance(
-                child_op, RandomShuffle
-            ):
-                return _disown_op(parent_op)
-            elif isinstance(parent_op, RandomShuffle) and isinstance(
-                child_op, Repartition
-            ):
-                uncle_op: Repartition = _disown_op(parent_op)
-                uncle_op._shuffle = True
-                return uncle_op
+                twin_op: Repartition = _disconnect_op(parent_op)
+                twin_op._shuffle = True
+                return twin_op
+
+            # Key-based fusion cases - Repartition with key-based ops
             elif isinstance(parent_op, Repartition) and isinstance(
-                child_op, RandomShuffle
+                child_op, (Aggregate, Join, Sort)
             ):
-                return _disown_op(parent_op)
-            elif isinstance(parent_op, Repartition) and isinstance(child_op, Aggregate):
-                parent_keys = set(parent_op._keys)
-                child_keys = set(child_op._key)
-                if child_keys == parent_keys:
-                    return _disown_op(parent_op)
-            elif isinstance(parent_op, Repartition) and isinstance(child_op, Join):
-                parent_keys = set(parent_op._keys)
-                child_keys = set(child_op._left_key_columns)
-                if child_keys == parent_keys:
-                    return _disown_op(parent_op)
-            elif isinstance(parent_op, Repartition) and isinstance(child_op, Sort):
-                parent_keys = set(parent_op._keys)
-                child_keys = set(child_op._sort_key)
-                if child_keys == parent_keys:
-                    return _disown_op(parent_op)
+                if _keys_can_fuse(parent_op, child_op):
+                    return _disconnect_op(parent_op)
+
+            # Aggregate -> Aggregate fusion
             elif isinstance(parent_op, Aggregate) and isinstance(child_op, Aggregate):
-                parent_keys = set(parent_op._key)
-                child_keys = set(child_op._key)
-                if child_keys == parent_keys:
-                    twin_op = _disown_op(parent_op)
+                if _keys_can_fuse(parent_op, child_op):
+                    twin_op = _disconnect_op(parent_op)
                     assert isinstance(twin_op, Aggregate)
                     twin_op._aggs.extend(parent_op._aggs)
+
+            # Sort -> Aggregate fusion (sort-based shuffle only)
             elif isinstance(parent_op, Sort) and isinstance(child_op, Aggregate):
-                parent_keys = set(parent_op._sort_key)
-                child_keys = set(child_op._key)
                 ctx = DataContext.get_current()
-                if child_keys == parent_keys and ctx.shuffle_strategy.is_sort_based():
-                    return _disown_op(parent_op)
+                if (
+                    _keys_can_fuse(parent_op, child_op)
+                    and ctx.shuffle_strategy.is_sort_based()
+                ):
+                    return _disconnect_op(parent_op)
+
+            # Sort -> Sort fusion
             elif isinstance(parent_op, Sort) and isinstance(child_op, Sort):
-                twin_op: Sort = _disown_op(parent_op)
+                twin_op: Sort = _disconnect_op(parent_op)
                 twin_op._sort_key._columns.extend(parent_op._sort_key)
                 return twin_op
-            elif isinstance(parent_op, Sort) and isinstance(child_op, RandomShuffle):
-                return _disown_op(parent_op)
-            elif isinstance(parent_op, RandomShuffle) and isinstance(child_op, Sort):
-                return _disown_op(parent_op)
 
         return op
 
 
 # TODO(justin): apply this to other Rules
-def _disown_op(child_op: Operator) -> Operator:
-    """Visually is does this:
+def _disconnect_op(child_op: Operator) -> Operator:
+    """Visually it does this for AbstractOneToOne operators:
 
         Before: parent -> child -> grandchild
         After: parent -> grandchild
 
-    This method assumes that all of the operators are 1-to-1
+    This method will remove the child operator from the dag by
+    performing a cross product between parent output dependencies with
+    the grandchild's input dependencies. Be mindful that it will
+    SHALLOW COPY the grandchild_op.
 
-    Returns: A new(copy) grandchild operator
+    Returns: The first grandchild operator.
     """
 
-    parent_ops = child_op.input_dependencies
     grandchild_ops = child_op.output_dependencies
+    assert len(grandchild_ops) > 0, "Must have >= 1 output dep"
+    for grandchild_op in grandchild_ops:
+        grandchild_op.input_dependencies.remove(child_op)
 
-    assert len(parent_ops) == 1
-    assert len(grandchild_ops) == 1
-
-    grandtwin_op = copy.copy(grandchild_ops)
-    grandtwin_op.input_dependencies = parent_ops
-    parent_ops.output_dependencies = grandtwin_op
+    parent_ops = child_op.input_dependencies
+    for parent_op in parent_ops:
+        parent_op.output_dependencies.remove(child_op)
+        parent_op.output_dependencies.extend(grandchild_ops)
 
     del child_op
+    import copy
 
-    return grandtwin_op
+    return copy.copy(grandchild_ops[0])
+
+
+# TODO(justin): Im thinking about a function for partitioning operators
+# but joins are a bit quirky because they contain two keys.
+def _keys_can_fuse(parent_op, child_op) -> bool:
+    """Check if parent and child operators can fuse based on key matching."""
+    # Get parent keys based on operator type
+    parent_keys = None
+    if isinstance(parent_op, (Repartition, StreamingRepartition)):
+        parent_keys = parent_op._keys
+    elif isinstance(parent_op, Aggregate):
+        parent_keys = parent_op._key
+    elif isinstance(parent_op, Sort):
+        parent_keys = parent_op._sort_key
+
+    # Get child keys based on operator type
+    child_keys = None
+    if isinstance(child_op, (Repartition, StreamingRepartition)):
+        child_keys = child_op._keys
+    elif isinstance(child_op, Aggregate):
+        child_keys = child_op._key
+    elif isinstance(child_op, Sort):
+        child_keys = child_op._sort_key
+    elif isinstance(child_op, Join):
+        # For joins, both left and right keys must match parent keys
+        if (
+            parent_keys
+            and child_op._left_key_columns
+            and child_op._right_key_columns
+            and set(parent_keys) == set(child_op._left_key_columns)
+            and set(parent_keys) == set(child_op._right_key_columns)
+        ):
+            return True
+        # Or all are None
+        elif (
+            parent_keys is None
+            and child_op._left_key_columns is None
+            and child_op._right_key_columns is None
+        ):
+            return True
+        return False
+
+    # Compare keys: either both match or both are None
+    if parent_keys and child_keys:
+        return set(parent_keys) == set(child_keys)
+    elif parent_keys is None and child_keys is None:
+        return True
+    else:
+        return False
