@@ -206,18 +206,21 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.column_names
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.column_names
-
         import pyarrow.compute as pc
 
-        if isinstance(value, pyarrow.Scalar):
-            type = value.type
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pyarrow.Array, pyarrow.ChunkedArray)):
+            return self.upsert_column(name, value)
         else:
-            type = pyarrow.infer_type([value])
+            # Scalar value - use original fill_column logic
+            if isinstance(value, pyarrow.Scalar):
+                type = value.type
+            else:
+                type = pyarrow.infer_type([value])
 
-        array = pyarrow.nulls(len(self._table), type=type)
-        array = pc.fill_null(array, value)
-        return self._table.append_column(name, array)
+            array = pyarrow.nulls(len(self._table), type=type)
+            array = pc.fill_null(array, value)
+            return self._table.append_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":

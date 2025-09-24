@@ -130,10 +130,14 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
+                    # Use expr.name if available, otherwise fall back to the dict key name
+                    actual_name = expr.name if expr.name is not None else name
                     result = eval_expr(expr, result_block)
                     result_block_accessor = BlockAccessor.for_block(result_block)
-                    result_block = result_block_accessor.upsert_column(name, result)
-
+                    # fill_column handles both scalars and arrays
+                    result_block = result_block_accessor.fill_column(
+                        actual_name, result
+                    )
                 block = result_block
 
             # 2. (optional) column projection
