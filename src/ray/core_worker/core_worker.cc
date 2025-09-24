@@ -2712,6 +2712,15 @@ Status CoreWorker::ExecuteTask(
         absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
   }
 
+  std::vector<std::shared_ptr<RayObject>> args;
+  std::vector<rpc::ObjectReference> arg_refs;
+  // This includes all IDs that were passed by reference and any IDs that were
+  // inlined in the task spec. These references will be pinned during the task
+  // execution and unpinned once the task completes. We will notify the caller
+  // about any IDs that we are still borrowing by the time the task completes.
+  std::vector<ObjectID> borrowed_ids;
+  RAY_RETURN_NOT_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
+
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -2750,15 +2759,6 @@ Status CoreWorker::ExecuteTask(
   }
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
-
-  std::vector<std::shared_ptr<RayObject>> args;
-  std::vector<rpc::ObjectReference> arg_refs;
-  // This includes all IDs that were passed by reference and any IDs that were
-  // inlined in the task spec. These references will be pinned during the task
-  // execution and unpinned once the task completes. We will notify the caller
-  // about any IDs that we are still borrowing by the time the task completes.
-  std::vector<ObjectID> borrowed_ids;
-  RAY_RETURN_NOT_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
