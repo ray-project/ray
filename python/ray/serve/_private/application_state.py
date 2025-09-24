@@ -235,6 +235,7 @@ class ApplicationState:
             autoscaling_state_manager: State manager for autoscaling
                 decisions in the cluster.
             endpoint_state: State manager for endpoints in the system.
+            logging_config: Logging config schema to configure logs.
         """
 
         self._name = name
@@ -535,14 +536,6 @@ class ApplicationState:
 
         self._register_autoscaling_if_needed()
 
-    def _register_autoscaling_if_needed(self):
-        if self.should_autoscale():
-            self._autoscaling_state_manager.register_application(
-                self._name,
-                self._target_state.config,
-                self._target_state.deployment_infos,
-            )
-
     def apply_app_config(
         self,
         config: ServeApplicationSchema,
@@ -633,6 +626,14 @@ class ApplicationState:
                 target_capacity=target_capacity,
                 target_capacity_direction=target_capacity_direction,
                 finished=False,
+            )
+
+    def _register_autoscaling_if_needed(self):
+        if self.should_autoscale():
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                self._target_state.config,
+                self._target_state.deployment_infos,
             )
 
     def _get_live_deployments(self) -> List[str]:
