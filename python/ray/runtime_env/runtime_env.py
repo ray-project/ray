@@ -301,7 +301,7 @@ class RuntimeEnv(dict):
         "worker_process_setup_hook",
         "_nsight",
         "_rocprof_sys",
-        "_unitrace",
+        "unitrace",
         "mpi",
         "image_uri",
     }
@@ -353,7 +353,7 @@ class RuntimeEnv(dict):
         if rocprof_sys is not None:
             runtime_env["_rocprof_sys"] = rocprof_sys
         if unitrace is not None:
-            runtime_env["_unitrace"] = unitrace
+            runtime_env["unitrace"] = unitrace
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -544,7 +544,7 @@ class RuntimeEnv(dict):
         return self.get("_rocprof_sys", None)
 
     def unitrace(self) -> Optional[Union[str, Dict[str, str]]]:
-        return self.get("_unitrace", None)
+        return self.get("unitrace", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})

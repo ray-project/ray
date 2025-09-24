@@ -112,7 +112,7 @@ class RemoteFunction:
             num_gpus > 0 and self._default_options.get("max_calls", None) is None
         ) or any(
             [
-                s in (self._default_options.get(s) or {})
+                s in (self._default_options.get("runtime_env") or {})
                 for s in ["nsight", "rocprof-sys", "unitrace"]
             ]
         ):
