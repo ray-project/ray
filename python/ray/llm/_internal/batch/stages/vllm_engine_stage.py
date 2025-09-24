@@ -24,6 +24,7 @@ from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
+    EXCLUDE_TENSORIZER_MODES
 )
 from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -475,10 +476,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
-        exclude_safetensors = self.engine_kwargs.get("load_format") in [
-            "runai_streamer",
-            "tensorizer",
-        ]
+        exclude_safetensors = self.engine_kwargs.get("load_format") in EXCLUDE_TENSORIZER_MODES
         if exclude_safetensors:
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
