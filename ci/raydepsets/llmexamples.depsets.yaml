@@ -1,7 +1,7 @@
 build_arg_sets:
   gpu_py311:
-    PYTHON_VERSION: "3.11"
-    PYTHON_SHORT: "311"
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
     CUDA_VERSION: "gpu"
 
 
@@ -16,5 +16,6 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --find-links=.whl/
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
     build_arg_sets:
       - gpu_py311
