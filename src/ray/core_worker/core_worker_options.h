@@ -97,7 +97,6 @@ struct CoreWorkerOptions {
         cancel_async_actor_task(nullptr),
         actor_shutdown_callback(nullptr),
         is_local_mode(false),
-        terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
         metrics_agent_port(-1),
         runtime_env_hash(0),
@@ -177,8 +176,6 @@ struct CoreWorkerOptions {
   std::function<void()> actor_shutdown_callback;
   /// Is local mode being used.
   bool is_local_mode;
-  /// The function to destroy asyncio event and loops.
-  std::function<void()> terminate_asyncio_thread;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
   /// The port number of a metrics agent that imports metrics from core workers.
