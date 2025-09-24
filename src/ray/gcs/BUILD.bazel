@@ -255,7 +255,7 @@ ray_cc_library(
         "//src/ray/common:runtime_env",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/observability:ray_driver_job_definition_event",
-        "//src/ray/observability:ray_driver_job_execution_event",
+        "//src/ray/observability:ray_driver_job_lifecycle_event",
         "//src/ray/observability:ray_event_recorder_interface",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/stats:stats_metric",
