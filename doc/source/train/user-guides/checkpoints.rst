@@ -263,7 +263,7 @@ start the next training step in parallel. If so, you should use
     need to worry about OOM's. If the previous checkpoint upload is still happening
     during the current ``report``, ``report`` will block until that upload completes.
 
-Both of these ``CheckpointUploadMode``s upload your checkpoint from disk to remote
+Both of these values of ``CheckpointUploadMode`` upload your checkpoint from disk to remote
 storage with a pyarrow copy, but you may want to use a different upload method,
 such as PyTorch's ``async_save``, instead. If so, you can upload the checkpoint to
 the remote storage directory defined by your ``RunConfig`` using your method of choice,
