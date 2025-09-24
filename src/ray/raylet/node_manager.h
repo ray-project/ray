@@ -32,8 +32,8 @@
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
@@ -49,9 +49,10 @@
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/util/throttler.h"
 
 namespace ray::raylet {

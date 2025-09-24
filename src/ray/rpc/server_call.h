@@ -27,6 +27,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
 
@@ -52,16 +53,6 @@ void DrainServerCallExecutor();
 /// you need to regenerate the executor
 /// because they are global.
 void ResetServerCallExecutor();
-
-/// Represents the callback function to be called when a `ServiceHandler` finishes
-/// handling a request.
-/// \param status The status would be returned to client.
-/// \param success Success callback which will be invoked when the reply is successfully
-/// sent to the client.
-/// \param failure Failure callback which will be invoked when the reply fails to be
-/// sent to the client.
-using SendReplyCallback = std::function<void(
-    Status status, std::function<void()> success, std::function<void()> failure)>;
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {

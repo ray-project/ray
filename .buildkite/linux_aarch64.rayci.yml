@@ -118,6 +118,33 @@ steps:
       - forge-aarch64
     job_env: forge-aarch64
 
+  - label: ":tapioca: build: ray-extra py{{matrix}} docker (aarch64)"
+    key: ray_extra_images_aarch64
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
+        --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
+        --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
+        --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
+        --image-type ray-extra --architecture aarch64 --upload
+    depends_on:
+      - manylinux-aarch64
+      - forge-aarch64
+      - raycudabaseextra-aarch64
+      - raycpubaseextra-aarch64
+    job_env: forge-aarch64
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+
   - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
     key: ray_images_aarch64
     tags:
