@@ -21,6 +21,9 @@
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
+/// The duration at which the GCS tries to run global GC.
+RAY_CONFIG(uint64_t, gcs_global_gc_interval_milliseconds, 10000)
+
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
@@ -33,8 +36,8 @@ RAY_CONFIG(bool, emit_main_service_metrics, false)
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// The interval of periodic event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are available to
-/// debug_state_*.txt
+/// -1 means the feature is disabled. In this case, stats are available
+/// in the associated process's log file.
 /// NOTE: This requires event_stats=1.
 RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
 

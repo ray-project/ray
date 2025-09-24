@@ -33,9 +33,6 @@
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/gcs/pubsub_handler.h"
 #include "ray/gcs/runtime_env_handler.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/store_client/observable_store_client.h"
-#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
@@ -203,9 +200,6 @@ class GcsServer {
 
   /// Print debug info periodically.
   std::string GetDebugState() const;
-
-  /// Dump the debug info to debug_state_gcs.txt.
-  void DumpDebugStateToFile() const;
 
   /// Collect stats from each module.
   void RecordMetrics() const;
