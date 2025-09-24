@@ -13,7 +13,8 @@ from ci.ray_ci.builder_container import (
     BuilderContainer,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.linux_tester_container import LinuxTesterContainer, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.linux_container import DEFAULT_PYTHON_VERSION
+from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import ci_init, ecr_docker_login
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
