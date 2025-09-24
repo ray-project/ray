@@ -81,12 +81,12 @@ class LogFileInfo:
 
             new_inode = os.stat(self.filename).st_ino
             if open_inode != new_inode:
+                self.file_handle = open(self.filename, "rb")
                 new_size = os.path.getsize(self.filename)
 
-                self.file_handle = open(self.filename, "rb")
-
-                # Seek to old position if file the new file size is
-                # >= the old one
+                # If the new file is smaller than our last read position,
+                # we should read from the beginning. Otherwise, we
+                # should continue from our last read position.
                 if new_size < self.file_position:
                     self.file_position = 0
                 else:
