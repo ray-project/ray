@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Tuple, Union
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -69,17 +69,17 @@ def make_time_major(
     return tensor
 
 
-def vtrace_torch_fast(
-    *,
+@torch.jit.script
+def vtrace_torch(
     target_action_log_probs: "torch.Tensor",
     behaviour_action_log_probs: "torch.Tensor",
     discounts: "torch.Tensor",
     rewards: "torch.Tensor",
     values: "torch.Tensor",
     bootstrap_values: "torch.Tensor",
-    clip_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
-    clip_pg_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
-):
+    clip_rho_threshold: float = 1.0,
+    clip_pg_rho_threshold: float = 1.0,
+) -> Tuple["torch.Tensor", "torch.Tensor"]:
     r"""V-trace for softmax policies implemented with torch.
 
     Calculates V-trace actor critic targets for softmax polices as described in
@@ -128,25 +128,23 @@ def vtrace_torch_fast(
     clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
     cs = torch.clamp(rhos, max=1.0)
 
-    # Preallocate values_t_plus_1
+    # values[t+1]
     values_t_plus_1 = torch.empty_like(values)
     values_t_plus_1[:-1] = values[1:]
     values_t_plus_1[-1] = bootstrap_values
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
-    # Vectorized discounted cumulative sum (GPU friendly)
     T, B = deltas.shape
-    vs_minus_v_xs = torch.zeros_like(deltas)
+    vs_minus_v_xs = torch.empty_like(deltas)
     running = torch.zeros(B, device=deltas.device, dtype=deltas.dtype)
     dc = discounts * cs
-    for t in reversed(range(T)):
+    for t in range(T - 1, -1, -1):
         running = deltas[t] + dc[t] * running
         vs_minus_v_xs[t] = running
 
     vs = vs_minus_v_xs + values
 
-    # Preallocate vs_t_plus_1
     vs_t_plus_1 = torch.empty_like(values)
     vs_t_plus_1[:-1] = vs[1:]
     vs_t_plus_1[-1] = bootstrap_values
