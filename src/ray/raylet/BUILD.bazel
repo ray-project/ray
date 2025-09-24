@@ -221,7 +221,6 @@ ray_cc_library(
         "//src/ray/common:flatbuf_utils",
         "//src/ray/common:lease",
         "//src/ray/common:memory_monitor",
-        "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/flatbuffers:node_manager_generated",
