@@ -246,10 +246,8 @@ set -euo pipefail
 apt-get update -y
 apt-get install -y --no-install-recommends socat
 
-groupadd -r haproxy || true
-useradd -r -g haproxy haproxy || true
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
-chown -R haproxy:haproxy /run/haproxy
+chown -R ray:ray /run/haproxy
 
 rm -rf /var/lib/apt/lists/*
 EOF
