@@ -1,13 +1,26 @@
 import os
 import ray
 import subprocess
+import logging
 from ray.air.util.node import _force_on_node
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+@ray.remote
+def _write(stream: bytes, path: str):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, "wb") as f:
+        f.write(stream)
 
 
 @ray.remote
 def _torch_run_launch(
     master_address: str,
     node_rank: int,
+    absolute_path: str,
     n_nodes: int = 4,
     n_processes_per_node: int = 4,
     master_port: str = 29500,
@@ -20,7 +33,7 @@ def _torch_run_launch(
         "--rdzv_backend=c10d",
         f"--rdzv_endpoint={master_address}:{master_port}",
         "--rdzv_id=local_mode_job",
-        "torch_local_mode_test.py",
+        absolute_path,
     ]
 
     env = os.environ.copy()
@@ -47,10 +60,21 @@ def torch_run_launch_on_nodes():
     assert len(node_id_ips) == 4, f"Expected 4 nodes, got {len(node_id_ips)}"
     master_address = node_id_ips[0][1]
     futures = []
+    absolute_path = os.path.abspath("torch_local_mode_test.py")
+    with open(absolute_path, "rb") as f:
+        stream = f.read()
+    logger.info(f"Uploading file to all nodes: {absolute_path}")
+    for i in range(len(node_id_ips)):
+        futures.append(
+            _force_on_node(node_id_ips[i][0], _write).remote(stream, absolute_path)
+        )
+    ray.get(futures)
+    logger.info("Uploaded file to all nodes, starting torch run launch")
+    futures = []
     for i in range(len(node_id_ips)):
         futures.append(
             _force_on_node(node_id_ips[i][0], _torch_run_launch).remote(
-                master_address, i
+                master_address, i, absolute_path
             )
         )
     ray.get(futures)

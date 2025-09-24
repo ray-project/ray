@@ -4,6 +4,8 @@
 import os
 import tempfile
 
+import logging
+
 import torch
 from torch.nn import CrossEntropyLoss
 from torch.optim import Adam
@@ -11,11 +13,21 @@ from torch.utils.data import DataLoader
 from torchvision.models import resnet18
 from torchvision.datasets import FashionMNIST
 from torchvision.transforms import ToTensor, Normalize, Compose
-
+from filelock import FileLock
+import torch.distributed as dist
 
 import ray
-from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+from ray.train import (
+    Checkpoint,
+    CheckpointConfig,
+    RunConfig,
+    ScalingConfig,
+    get_context,
+)
 from ray.train.torch import TorchTrainer
+
+logger = logging.getLogger(__name__)
+DATA_ROOT = "/tmp/test_data"
 
 
 def train_func():
@@ -24,18 +36,29 @@ def train_func():
     model.conv1 = torch.nn.Conv2d(
         1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
     )
+    lock = FileLock(os.path.join(DATA_ROOT, "fashionmnist.lock"))
     # [1] Prepare model.
     model = ray.train.torch.prepare_model(model)
+
     # model.to("cuda")  # This is done by `prepare_model`
     criterion = CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=0.001)
 
     # Data
     transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
-    data_dir = os.path.join(tempfile.gettempdir(), "data")
+    local_rank = get_context().get_local_rank()
+    if local_rank == 0:
+        logger.info(f"Downloading FashionMNIST data to {DATA_ROOT}")
+        with lock:
+            _ = FashionMNIST(
+                root=DATA_ROOT, train=True, download=True, transform=transform
+            )
+    dist.barrier()
+    logger.info(f"Loading FashionMNIST data from {DATA_ROOT}")
     train_data = FashionMNIST(
-        root=data_dir, train=True, download=True, transform=transform
+        root=DATA_ROOT, train=True, download=False, transform=transform
     )
+
     train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
     # [2] Prepare dataloader.
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
@@ -65,7 +88,7 @@ def train_func():
                 checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
             )
         if ray.train.get_context().get_world_rank() == 0:
-            print(metrics)
+            logger.info(f"metrics: {metrics}")
 
 
 def fit_func():
@@ -87,7 +110,7 @@ def fit_func():
 
     # Inspect the results.
     final_loss = result.metrics["loss"]
-    print(final_loss)
+    logger.info(f"final_loss: {final_loss}")
 
 
 if __name__ == "__main__":
