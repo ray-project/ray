@@ -582,7 +582,7 @@ class TestInstantaneousMerge:
             TimeStampedValue(1.500, 7.0),  # series2 starts: 5+2=7
             TimeStampedValue(
                 2.001, 11.0
-            ),  # series1 changes to 7, series2 changes to 4: 2+(7-5)+(4-2)=9, but series2 change happens at same rounded time
+            ),  # s1 becomes 7, s2 becomes 4. Total: 7 + 4 = 11.0
             TimeStampedValue(3.001, 7.0),  # series1 changes: 11+(3-7)=7
         ]
         assert_timeseries_equal(result, expected)
@@ -629,7 +629,7 @@ class TestInstantaneousMerge:
             TimeStampedValue(1.0004999, 5.0),  # Should round to 1.000
             TimeStampedValue(
                 1.0005000, 7.0
-            ),  # Should round to 1.001 (exactly at 0.5ms)
+            ),  # Should round to 1.000 (round half to even)
             TimeStampedValue(1.0005001, 9.0),  # Should round to 1.001
         ]
 
@@ -644,8 +644,8 @@ class TestInstantaneousMerge:
         expected = [
             TimeStampedValue(
                 1.000, 7.0
-            ),  # Final state after changes at 1.000 (5.0 then 7.0)
-            TimeStampedValue(1.001, 9.0),  # Final state after both changes at 1.001
+            ),  # Final state after changes at 1.0004999 and 1.0005000
+            TimeStampedValue(1.001, 9.0),  # State after change at 1.0005001
         ]
         assert_timeseries_equal(result, expected)
 
