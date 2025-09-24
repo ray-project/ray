@@ -105,11 +105,18 @@ class _SerializationContext:
         self, val: Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]]]
     ) -> "DeviceMesh":
         from torch.distributed.device_mesh import DeviceMesh
+        from torch.distributed.distributed_c10d import get_world_size
 
         device_type, mesh_np, mesh_dim_names, dim_group_names = val
         dm = DeviceMesh(
             device_type, mesh_np, mesh_dim_names=mesh_dim_names, _init_backend=False
         )
+        world_size = get_world_size()
+        # TODO: add more checks for the mesh
+        if dm.mesh.numel() > world_size:
+            raise RuntimeError(
+                f"Mesh should not be bigger than default world size {world_size}, but found {self.mesh.numel()} ranks!"
+            )
         if dim_group_names is not None:
             dm._dim_group_names = dim_group_names
         return dm
