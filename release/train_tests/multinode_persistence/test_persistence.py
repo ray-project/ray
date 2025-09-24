@@ -407,6 +407,8 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
     )
     result = trainer.fit()
 
+    # modoru: TypeError: 'NoneType' object is not subscriptable
+    print(result)
     assert result.metrics[TRAINING_ITERATION] == TestConstants.NUM_ITERATIONS
     assert len(result.metrics_dataframe) == TestConstants.NUM_ITERATIONS
 
