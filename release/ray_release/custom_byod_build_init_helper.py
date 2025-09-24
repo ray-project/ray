@@ -95,4 +95,4 @@ def _get_step_name(image: str, step_key: str, tests: List[Test]) -> str:
     step_name = f":tapioca: build custom: {ecr_repo}:{'-'.join(tag_without_build_id_and_custom_hash)} ({step_key})"
     for test in tests[:2]:
         step_name += f" {test.get_name()}"
-    return step_name[:70]
+    return step_name
