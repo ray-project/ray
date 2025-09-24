@@ -144,23 +144,6 @@ class GPUObjectManager:
                 return False
         return False
 
-    def _get_tensor_meta(
-        self, src_actor: "ray.actor.ActorHandle", obj_id: str
-    ) -> ObjectRef:
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
-            __ray_get_tensor_meta__,
-        )
-
-        # Submit a Ray actor task to the source actor to get the tensor metadata.
-        # The metadata is a list of tuples, where each tuple contains the shape and dtype
-        # of a tensor in the GPU object store. This function returns an ObjectRef that
-        # points to the tensor metadata.
-        # NOTE(swang): We put this task on the background thread to avoid tasks
-        # executing on the main thread blocking this task.
-        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_get_tensor_meta__, obj_id
-        )
-
     def is_managed_object(self, obj_id: str) -> bool:
         """
         Check if the GPU object is managed by this process.

@@ -20,7 +20,10 @@ class GPUTestActor:
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_colocated_actors(ray_start_regular):
     world_size = 2
-    actors = [GPUTestActor.options(num_gpus=0.5, num_cpus=0).remote() for _ in range(world_size)]
+    actors = [
+        GPUTestActor.options(num_gpus=0.5, num_cpus=0).remote()
+        for _ in range(world_size)
+    ]
     create_collective_group(actors, backend="nccl")
 
     src_actor, dst_actor = actors[0], actors[1]
@@ -38,7 +41,9 @@ def test_colocated_actors(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_ipc_fail(ray_start_regular):
     world_size = 2
-    actors = [GPUTestActor.options(num_gpus=1, num_cpus=0).remote() for _ in range(world_size)]
+    actors = [
+        GPUTestActor.options(num_gpus=1, num_cpus=0).remote() for _ in range(world_size)
+    ]
     create_collective_group(actors, backend="nccl")
 
     src_actor, dst_actor = actors[0], actors[1]
