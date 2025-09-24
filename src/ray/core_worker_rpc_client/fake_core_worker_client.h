@@ -123,7 +123,7 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
       const AssignObjectOwnerRequest &request,
       const ClientCallback<AssignObjectOwnerReply> &callback) override {}
 
-  void FreeActorObject(const FreeActorObjectRequest &request,
+  void FreeActorObject(FreeActorObjectRequest &&request,
                        const ClientCallback<FreeActorObjectReply> &callback) override {}
 
   // SubscriberClientInterface methods
