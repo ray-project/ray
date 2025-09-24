@@ -91,7 +91,7 @@ def __ray_recv__(
     tensors = []
     for meta in tensor_meta:
         shape, dtype = meta
-        tensor = torch.zeros(shape, dtype=dtype, device=device)
+        tensor = torch.empty(shape, dtype=dtype, device=device)
         tensors.append(tensor)
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
