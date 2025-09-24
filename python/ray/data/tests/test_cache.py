@@ -1,12 +1,13 @@
 """Tests for Ray Data caching functionality."""
 
 import time
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray.data.context import DataContext
-from ray.data.dataset import MaterializedDataset
+from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 

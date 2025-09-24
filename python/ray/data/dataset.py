@@ -61,6 +61,7 @@ from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIte
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.cache.dataset_cache import (
     cache_result,
+    invalidate_cache_on_transform,
 )
 from ray.data._internal.operation_decorators import (
     transform,
