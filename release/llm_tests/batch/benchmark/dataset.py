@@ -4,13 +4,10 @@ This module defines a dataset framework for sampling benchmark requests.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Union
 
 from datasets import load_dataset, load_from_disk
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -54,7 +51,7 @@ class BenchmarkDataset(ABC):
         raise NotImplementedError("load_data must be implemented in subclasses.")
 
     @abstractmethod
-    def sample(self, num_requests: int) -> List[str]:
+    def sample(self, num_requests: int) -> List[Dict]:
         """
         Sample prompts from the loaded dataset.
 
@@ -99,7 +96,7 @@ class ShareGPTDataset(BenchmarkDataset):
         if self._data is None:
             self._data = self._load_dataset_data()
 
-    def sample(self, num_requests: int) -> List[str]:
+    def sample(self, num_requests: int) -> List[Dict]:
         """Sample prompts from the loaded dataset."""
         if self._data is None:
             self.load_data()
@@ -109,8 +106,9 @@ class ShareGPTDataset(BenchmarkDataset):
             if len(prompts) >= num_requests:
                 break
 
-            if prompt := self._extract_prompt(item):
-                prompts.append(prompt)
+            prompt_data = self._extract_prompt(item)
+            if prompt_data is not None:
+                prompts.append(prompt_data)
 
         if not prompts:
             raise ValueError("ShareGPT dataset yielded no usable prompts")
@@ -119,14 +117,14 @@ class ShareGPTDataset(BenchmarkDataset):
     def _load_dataset(self):
         """Load dataset from disk or Hugging Face."""
         path = Path(self._dataset_path)
-        logger.info(f"Attempting to load dataset from: {path}")
-        logger.info(f"Path exists: {path.exists()}")
+        print(f"Attempting to load dataset from {path}")
+        print(f"Dataset exists on disk: {path.exists()}")
 
         try:
             if path.exists():
                 dataset = load_from_disk(str(path))
             else:
-                logger.info(
+                print(
                     f"Dataset not found on disk, downloading from Hugging Face: {self._hf_dataset_id}"
                 )
 
@@ -146,10 +144,10 @@ class ShareGPTDataset(BenchmarkDataset):
         for i, row in enumerate(ds):
             data.append(row)
 
-        logger.info(f"Loaded {len(data)} samples from dataset")
+        print(f"Loaded {len(data)} samples from dataset")
         return data
 
-    def _extract_prompt(self, item: Dict) -> str | None:
+    def _extract_prompt(self, item: Dict) -> Dict | None:
         """
         Extracts the first human message of a conversation or None.
 
@@ -166,7 +164,10 @@ class ShareGPTDataset(BenchmarkDataset):
             None,
         )
 
-        if prompt and self._truncate_prompt:
-            prompt = prompt[: self._truncate_prompt]
+        # Only return a valid prompt if it's not empty
+        if prompt and prompt.strip():
+            if self._truncate_prompt:
+                prompt = prompt[: self._truncate_prompt]
+            return {"prompt": prompt}
 
-        return {"prompt": prompt}
+        return None

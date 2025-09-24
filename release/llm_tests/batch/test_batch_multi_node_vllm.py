@@ -9,7 +9,6 @@ def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
     ray.shutdown()
-    ray.init()
 
 
 @pytest.mark.parametrize(
