@@ -200,7 +200,7 @@ class GcsServer {
   StorageType GetStorageType() const;
 
   /// Print debug info periodically.
-  std::string GetDebugState() const;
+  void PrintDebugState() const;
 
   /// Collect stats from each module.
   void RecordMetrics() const;
@@ -210,9 +210,6 @@ class GcsServer {
   /// Expected to be idempotent while server is up.
   /// Makes several InternalKV calls, all in continuation.io_context().
   void GetOrGenerateClusterId(Postable<void(ClusterID cluster_id)> continuation);
-
-  /// Print the asio event loop stats for debugging.
-  void PrintAsioStats();
 
   RedisClientOptions GetRedisClientOptions();
 

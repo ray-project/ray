@@ -288,10 +288,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       "GCSServer.deadline_timer.metrics_report");
 
   periodical_runner_->RunFnPeriodically(
-      [this] {
-        RAY_LOG(INFO) << GetDebugState();
-        PrintAsioStats();
-      },
+      [this] { PrintDebugState(); },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
 
@@ -878,29 +875,17 @@ void GcsServer::RecordMetrics() const {
   gcs_job_manager_->RecordMetrics();
 }
 
-std::string GcsServer::GetDebugState() const {
-  std::ostringstream stream;
-  stream << "Gcs Debug state:\n\n"
-         << gcs_node_manager_->DebugString() << "\n\n"
-         << gcs_actor_manager_->DebugString() << "\n\n"
-         << gcs_resource_manager_->DebugString() << "\n\n"
-         << gcs_placement_group_manager_->DebugString() << "\n\n"
-         << gcs_publisher_->DebugString() << "\n\n"
-         << runtime_env_manager_->DebugString() << "\n\n"
-         << gcs_task_manager_->DebugString() << "\n\n"
-         << gcs_autoscaler_state_manager_->DebugString() << "\n\n";
-  return stream.str();
-}
+void GcsServer::PrintDebugState() const {
+  RAY_LOG(INFO) << "Gcs Debug state:\n\n"
+                << gcs_node_manager_->DebugString() << "\n\n"
+                << gcs_actor_manager_->DebugString() << "\n\n"
+                << gcs_resource_manager_->DebugString() << "\n\n"
+                << gcs_placement_group_manager_->DebugString() << "\n\n"
+                << gcs_publisher_->DebugString() << "\n\n"
+                << runtime_env_manager_->DebugString() << "\n\n"
+                << gcs_task_manager_->DebugString() << "\n\n"
+                << gcs_autoscaler_state_manager_->DebugString() << "\n\n";
 
-RedisClientOptions GcsServer::GetRedisClientOptions() {
-  return RedisClientOptions{config_.redis_address,
-                            config_.redis_port,
-                            config_.redis_username,
-                            config_.redis_password,
-                            config_.enable_redis_ssl};
-}
-
-void GcsServer::PrintAsioStats() {
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -913,6 +898,14 @@ void GcsServer::PrintAsioStats() {
                     << io_context->GetIoService().stats().StatsString() << "\n\n";
     }
   }
+}
+
+RedisClientOptions GcsServer::GetRedisClientOptions() {
+  return RedisClientOptions{config_.redis_address,
+                            config_.redis_port,
+                            config_.redis_username,
+                            config_.redis_password,
+                            config_.enable_redis_ssl};
 }
 
 void GcsServer::TryGlobalGC() {
