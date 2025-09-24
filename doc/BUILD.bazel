@@ -108,12 +108,28 @@ py_test(
 )
 
 py_test(
+    name = "map_reduce",
+    size = "medium",
+    srcs = ["test_myst_doc.py"],
+    args = [
+        "--path",
+        "doc/source/ray-core/examples/map_reduce.ipynb",
+    ],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    main = "test_myst_doc.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
+
+py_test(
     name = "web_crawler",
     size = "medium",
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/web-crawler.ipynb",
+        "doc/source/ray-core/examples/web_crawler.ipynb",
     ],
     data = ["//doc/source/ray-core/examples:core_examples"],
     main = "test_myst_doc.py",
@@ -346,6 +362,7 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:ml",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # --------------------------------------------------------------------
@@ -511,6 +528,7 @@ doctest(
         ],
         exclude = [
             "source/ray-core/handling-dependencies.rst",
+            # The `doc_code/` snippet for `nested-tasks.rst` is tested.
             "source/ray-core/tasks/nested-tasks.rst",
         ],
     ),
@@ -629,6 +647,7 @@ doctest(
         "source/tune/**/*.rst",
     ],
     tags = ["team:ml"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 filegroup(
