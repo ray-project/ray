@@ -2,7 +2,7 @@
 
 ARG BASE_IMAGE="rayproject/ray:latest"
 
-FROM "$BASE_IMAGE" as main-build
+FROM "$BASE_IMAGE" AS main-build
 
 ENV TERM=xterm
 
@@ -203,7 +203,7 @@ sudo rm -rf /var/lib/apt/lists/*
 EOF
 
 # --- HAProxy Build Stage ---
-FROM ubuntu:22.04 as haproxy-builder
+FROM $BASE_IMAGE AS haproxy-builder
 
 RUN <<EOF
 #!/bin/bash

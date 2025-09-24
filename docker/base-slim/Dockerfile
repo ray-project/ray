@@ -145,7 +145,7 @@ EOF
 ENV PATH="/home/ray/anaconda3/bin:$PATH"
 
 # --- HAProxy Build Stage ---
-FROM ubuntu:22.04 as haproxy-builder
+FROM $BASE_IMAGE AS haproxy-builder
 
 RUN <<EOF
 #!/bin/bash
@@ -173,7 +173,7 @@ rm -rf "${BUILD_DIR}"
 EOF
 
 # --- Return to main image ---
-FROM main-build as main
+FROM main-build AS main
 
 # Switch to root for system-level HAProxy setup
 USER root
