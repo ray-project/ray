@@ -116,7 +116,7 @@ def _disconnect_op(child_op: Operator) -> Operator:
     the grandchild's input dependencies. Be mindful that it will
     SHALLOW COPY the grandchild_op.
 
-    Returns: The first grandchild operator.
+    Returns: A copy of the first grandchild operator.
     """
 
     grandchild_ops = child_op.output_dependencies
