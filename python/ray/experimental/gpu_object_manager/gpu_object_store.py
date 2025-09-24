@@ -130,6 +130,24 @@ def __ray_get_cuda_device__(self) -> int:
     return -1
 
 
+# Helper invoked on an actor process to report the UUID of its current CUDA device.
+# Returns None if CUDA is not available or UUID cannot be retrieved.
+def __ray_get_cuda_uuid__(self) -> Optional[str]:
+    try:
+        import torch as _torch
+
+        print("loc9: _torch.cuda.is_available():", _torch.cuda.is_available())
+        if _torch.cuda.is_available():
+            device = _torch.cuda.current_device()
+            print("loc10: device:", device)
+            uuid = _torch.cuda.get_device_properties(device).uuid
+            print("loc11: uuid", uuid)
+            return str(uuid)
+    except Exception:
+        pass
+    return None
+
+
 def _extract_cuda_metadata(tensor: torch.Tensor):
     storage = tensor._typed_storage()
     (

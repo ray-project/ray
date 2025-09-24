@@ -107,14 +107,11 @@ class GPUObjectManager:
             from ray.experimental.gpu_object_manager.gpu_object_store import (
                 __ray_get_cuda_uuid__,
             )
-            try:
-                return ray.get(
-                    actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                        __ray_get_cuda_uuid__
-                    )
+            return ray.get(
+                actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                    __ray_get_cuda_uuid__
                 )
-            except Exception:
-                return None
+            )
 
         src_uuid = _get_uuid(src_actor)
         dst_uuid = _get_uuid(dst_actor)
