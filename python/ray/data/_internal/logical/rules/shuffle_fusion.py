@@ -151,7 +151,7 @@ def _keys_can_fuse(parent_op, child_op) -> bool:
     elif isinstance(parent_op, Aggregate):
         parent_keys = parent_op._key
     elif isinstance(parent_op, Sort):
-        parent_keys = parent_op._sort_key
+        parent_keys = parent_op._sort_key._columns
 
     # Get child keys based on operator type
     child_keys = None
@@ -160,22 +160,16 @@ def _keys_can_fuse(parent_op, child_op) -> bool:
     elif isinstance(child_op, Aggregate):
         child_keys = child_op._key
     elif isinstance(child_op, Sort):
-        child_keys = child_op._sort_key
+        child_keys = child_op._sort_key._columns
     elif isinstance(child_op, Join):
-        # For joins, both left and right keys must match parent keys
+        # For joins, both left and right keys must match parent keys,
+        # and they are guarenteed to be non-empty
         if (
             parent_keys
             and child_op._left_key_columns
             and child_op._right_key_columns
             and set(parent_keys) == set(child_op._left_key_columns)
             and set(parent_keys) == set(child_op._right_key_columns)
-        ):
-            return True
-        # Or all are None
-        elif (
-            parent_keys is None
-            and child_op._left_key_columns is None
-            and child_op._right_key_columns is None
         ):
             return True
         return False
