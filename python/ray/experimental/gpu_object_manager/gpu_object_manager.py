@@ -90,13 +90,11 @@ class GPUObjectManager:
         dst_actor: "ray.actor.ActorHandle",
         obj_ref: ObjectRef,
     ) -> bool:
-        print("loc4: Trying IPC transfer2")
         """
         Attempt a same-GPU transfer using CUDA IPC when both actors are on the
         same CUDA device. Returns True on success; False to fall back to network.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
-            __ray_get_cuda_device__,
             __ray_cuda_ipc_export__,
             __ray_cuda_ipc_import__,
         )
@@ -317,23 +315,7 @@ class GPUObjectManager:
             if self.is_managed_object(arg.hex()):
                 gpu_object_refs.add(arg)
         if gpu_object_refs:
-            # Only print when refs are actually eligible for collective/IPC (i.e.,
-            # not falling back to object store). We detect fallback by checking
-            # if the stored tensor_transport_meta is an ObjectRef placeholder.
-            collective_refs = set()
-            for r in gpu_object_refs:
-                meta = self._get_gpu_object_metadata(r)
-                if not isinstance(meta.tensor_transport_meta, ObjectRef):
-                    collective_refs.add(r)
-            if collective_refs:
-                print(
-                    "GPU_OBJECTS: triggering collective/IPC transfer for",
-                    len(collective_refs),
-                    "ref(s)",
-                )
             from ray.experimental.collective import get_tensor_transport_manager
-        
-            print("loc8: GPU object refs:", gpu_object_refs)
 
         # Count the number of readers for each GPU object.
         for obj_ref in gpu_object_refs:

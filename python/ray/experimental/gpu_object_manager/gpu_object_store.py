@@ -117,19 +117,6 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     return gpu_object
 
 
-# Helper invoked on an actor process to report its current CUDA device id.
-# Returns -1 if CUDA is not available.
-def __ray_get_cuda_device__(self) -> int:
-    try:
-        import torch as _torch
-
-        if _torch.cuda.is_available():
-            return int(_torch.cuda.current_device())
-    except Exception:
-        pass
-    return -1
-
-
 # Helper invoked on an actor process to report the UUID of its current CUDA device.
 # Returns None if CUDA is not available or UUID cannot be retrieved.
 def __ray_get_cuda_uuid__(self) -> Optional[str]:
@@ -160,6 +147,7 @@ def _extract_cuda_metadata(tensor: torch.Tensor):
         event_handle,
         event_sync_required,
     ) = storage._share_cuda_()
+    # Fields specified in https://github.com/pytorch/pytorch/blob/1495b35d29512f303ab37780760c5e692158514b/torch/multiprocessing/reductions.py#L155
     return {
         "tensor_cls": type(tensor),
         "tensor_size": tensor.size(),
