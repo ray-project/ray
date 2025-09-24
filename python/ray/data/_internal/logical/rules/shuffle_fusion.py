@@ -1,4 +1,5 @@
 import logging
+from typing import List, Tuple
 
 from ray.data import DataContext
 from ray.data._internal.logical.interfaces import (
@@ -62,13 +63,16 @@ class ShuffleFusion(Rule):
                 )
                 or (isinstance(parent_op, RandomShuffle) and isinstance(child_op, Sort))
             ):
-                return _disconnect_op(parent_op, copy=False)
+                _, child_op = _disconnect_op(parent_op, copy=False)
+                return child_op[0]
 
             # Special case: RandomShuffle -> Repartition with shuffle flag
             elif isinstance(parent_op, RandomShuffle) and isinstance(
                 child_op, Repartition
             ):
-                twin_op: Repartition = _disconnect_op(parent_op)
+                _, child_op = _disconnect_op(parent_op)
+                twin_op = child_op[0]
+                assert isinstance(twin_op, Repartition)
                 twin_op._shuffle = True
                 return twin_op
 
@@ -77,12 +81,14 @@ class ShuffleFusion(Rule):
                 child_op, (Aggregate, Join, Sort)
             ):
                 if _keys_can_fuse(parent_op, child_op):
-                    return _disconnect_op(parent_op, copy=False)
+                    _, child_op = _disconnect_op(parent_op, copy=False)
+                    return child_op[0]
 
             # Aggregate -> Aggregate fusion
             elif isinstance(parent_op, Aggregate) and isinstance(child_op, Aggregate):
                 if _keys_can_fuse(parent_op, child_op):
-                    twin_op = _disconnect_op(parent_op)
+                    _, child_op = _disconnect_op(parent_op)
+                    twin_op = child_op[0]
                     assert isinstance(twin_op, Aggregate)
                     twin_op._aggs.extend(parent_op._aggs)
 
@@ -93,35 +99,46 @@ class ShuffleFusion(Rule):
                     _keys_can_fuse(parent_op, child_op)
                     and ctx.shuffle_strategy.is_sort_based()
                 ):
-                    return _disconnect_op(parent_op, copy=False)
+                    _, child_op = _disconnect_op(parent_op, copy=False)
+                    return child_op[0]
 
             # Sort -> Sort fusion
             elif isinstance(parent_op, Sort) and isinstance(child_op, Sort):
-                twin_op: Sort = _disconnect_op(parent_op)
-                twin_op._sort_key._columns.extend(parent_op._sort_key)
-                return twin_op
+                if parent_op._sort_key._descending == child_op._sort_key._descending:
+                    _, child_op = _disconnect_op(parent_op)
+                    twin_op = child_op[0]
+                    assert isinstance(twin_op, Sort)
+                    twin_op._sort_key._columns.extend(parent_op._sort_key)
+                    return twin_op
 
         return op
 
 
 # TODO(justin): apply this to other Rules
-def _disconnect_op(child_op: Operator, copy=True) -> Operator:
-    """Visually it does this for AbstractOneToOne operators:
+def _disconnect_op(
+    child_op: Operator, copy=True
+) -> Tuple[List[Operator], List[Operator]]:
+    """Disconnect a child operator from the DAG by connecting its parents directly to its grandchildren.
 
+    Visually this transforms:
         Before: parent -> child -> grandchild
-        After: parent -> grandchild
+        After:  parent -> grandchild
 
-    This method will remove the child operator from the dag by
-    performing a cross join between parent output dependencies with
-    the grandchild's input dependencies. Be mindful that if you plan
-    on modifying the grandchild operator afterwards, copy should be True.
+    Args:
+        child_op: The operator to remove from the DAG
+        copy: If True, returns copies of the operators. If False, returns references.
+              Use copy=True if you plan to modify the returned operators.
 
-    Returns: if copy=True, a copy of the 1st grandchild operator,
-             if copy=False, a reference to the 1st grandchild operator.
+    Returns:
+        Tuple of (parent_operators, grandchild_operators):
+        - parent_operators: List of parent operators that were connected to child_op
+        - grandchild_operators: List of grandchild operators that child_op was connected to
+
+        If copy=True, both lists contain shallow copies of the operators.
+        If copy=False, both lists contain references to the original operators.
     """
 
     grandchild_ops = child_op.output_dependencies
-    assert len(grandchild_ops) > 0, "Must have >= 1 output dep"
     for grandchild_op in grandchild_ops:
         grandchild_op.input_dependencies.remove(child_op)
 
@@ -135,9 +152,12 @@ def _disconnect_op(child_op: Operator, copy=True) -> Operator:
     if copy:
         import copy as cp
 
-        return cp.copy(grandchild_ops[0])
+        parent_copies = [cp.copy(parent) for parent in parent_ops]
+        grandchild_copies = [cp.copy(grandchild_op) for grandchild_op in grandchild_ops]
 
-    return grandchild_ops[0]
+        return parent_copies, grandchild_copies
+
+    return parent_ops, grandchild_ops
 
 
 # TODO(justin): Im thinking about a function for partitioning operators
