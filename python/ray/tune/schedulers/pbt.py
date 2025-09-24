@@ -37,7 +37,6 @@ class _PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
     def __init__(self, trial: Trial):
-        self._trial_repr: str = repr(trial)
         self.orig_tag = trial.experiment_tag
         self.last_score: Union[float, MaybeNone] = None  # Set on _save_trial_state
         self.last_checkpoint: Union[TrainCheckpoint, _FutureTrainingResult, None] = None
