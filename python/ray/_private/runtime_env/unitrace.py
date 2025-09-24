@@ -70,7 +70,7 @@ class UnitracePlugin(RuntimeEnvPlugin):
 
             if process.returncode == 0:
                 if isinstance(stdout, bytes) and (
-                     "--chrome-kernel-logging" in stdout.decode()
+                    "--chrome-kernel-logging" in stdout.decode()
                 ):
                     return True, None
                 else:
