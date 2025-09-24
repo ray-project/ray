@@ -72,6 +72,7 @@ class GPUObjectManager:
         self._gpu_object_store: Optional["GPUObjectStore"] = None
         # Lock to ensure we only create the GPU object store once.
         self.gpu_object_store_lock = threading.Lock()
+        self.actor_uuid_cache: Dict[str, Optional[str]] = {}
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -102,19 +103,23 @@ class GPUObjectManager:
         # Compare physical GPU UUIDs instead of device indices to avoid
         # false positives due to CUDA_VISIBLE_DEVICES remapping.
         def _get_uuid(actor):
+            if actor._actor_id in self.actor_uuid_cache:
+                return self.actor_uuid_cache[actor._actor_id]
+
             from ray.experimental.gpu_object_manager.gpu_object_store import (
                 __ray_get_cuda_uuid__,
             )
 
-            return ray.get(
+            uuid = ray.get(
                 actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                     __ray_get_cuda_uuid__
                 )
             )
+            self.actor_uuid_cache[actor._actor_id] = uuid
+            return uuid
 
         src_uuid = _get_uuid(src_actor)
         dst_uuid = _get_uuid(dst_actor)
-        print(f"loc5: src_uuid: {src_uuid}, dst_uuid: {dst_uuid}")
         if src_uuid and dst_uuid and src_uuid == dst_uuid:
             obj_id = obj_ref.hex()
             try:
