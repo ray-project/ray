@@ -782,6 +782,9 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
 def _sample_fragments(
     fragments: List[_ParquetFragment],
 ) -> List[_ParquetFragment]:
+    if not fragments:
+        return []
+
     target_num_samples = math.ceil(
         len(fragments) * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
 
@@ -789,6 +792,9 @@ def _sample_fragments(
         min(target_num_samples, PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES),
         PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES,
     )
+
+    # Make sure number of samples doesn't exceed total # of files
+    target_num_samples = min(target_num_samples, len(fragments))
 
     # Evenly distributed to choose which file to sample, to avoid biased prediction
     # if data is skewed.
