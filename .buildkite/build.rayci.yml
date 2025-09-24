@@ -14,6 +14,11 @@ steps:
       ARCH_SUFFIX: ""
     depends_on: manylinux
 
+  - name: wanda_ray_dashboard
+    label: "wanda: dashboard"
+    wanda: ci/docker/ray-dashboard.wanda.yaml
+    depends_on: manylinux
+
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
     tags:
