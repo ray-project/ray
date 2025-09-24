@@ -4172,6 +4172,7 @@
   cluster:
     byod:
       type: gpu
+      lock_file: distributing_pytorch_py311_gpu.lock
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
