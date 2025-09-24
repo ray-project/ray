@@ -1,10 +1,11 @@
 import time
 
-from python.ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
-from python.ray.util.collective.types import Backend
-
 import ray
 import ray.util.collective as col
+from ray.util.collective.collective_group.torch_gloo_collective_group import (
+    TorchGLOOGroup as GLOOGroup,
+)
+from ray.util.collective.types import Backend
 
 
 @ray.remote
@@ -27,7 +28,7 @@ class Worker:
         return g._gloo_context.getTimeout()
 
 
-def test_two_groups_in_one_cluster(ray_start_regular_shared):
+def test_two_groups_in_one_cluster(ray_start_single_node):
     name1 = "name_1"
     name2 = "name_2"
     time1 = 40000
