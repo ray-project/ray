@@ -23,7 +23,6 @@ def _torch_run_launch(
         "torch_local_mode_test.py",
     ]
 
-    # Set up environment with RAY_TRAIN_V2_ENABLED=1
     env = os.environ.copy()
     env["RAY_TRAIN_V2_ENABLED"] = "1"
 
@@ -58,5 +57,10 @@ def torch_run_launch_on_nodes():
 
 
 if __name__ == "__main__":
-    ray.init("auto")
+    # https://docs.ray.io/en/latest/ray-core/scheduling/accelerators.html#using-accelerators-in-tasks-and-actors
+    # we don't want actors to override CUDA_VISIBLE_DEVICES
+    ray.init(
+        "auto",
+        runtime_env={"env_vars": {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"}},
+    )
     torch_run_launch_on_nodes()
