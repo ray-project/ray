@@ -104,7 +104,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: gpu
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
