@@ -47,7 +47,7 @@ if is_v2_enabled():
         train_fn,
         _assert_storage_contents,
     )
-    from ray.train.v2.api.exceptions import TrainingFailedError
+    from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 else:
     from test_v1_persistence import (
         train_fn,
@@ -253,8 +253,12 @@ def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
         run_config=run_config,
     )
     print("\nStarting initial run.\n")
-    with pytest.raises(TrainingFailedError):
-        result = trainer.fit()
+    if is_v2_enabled():
+        with pytest.raises(WorkerGroupError):
+            trainer.fit()
+    else:
+        with pytest.raises(TrainingFailedError):
+            result = trainer.fit()
 
     print("\nStarting manually restored run.\n")
     if is_v2_enabled():
@@ -373,8 +377,12 @@ def test_no_storage_error(tmp_path, monkeypatch):
         scaling_config=scaling_config,
         run_config=train.RunConfig(name="test_trainer", storage_path=None),
     )
-    with pytest.raises(TrainingFailedError):
-        trainer.fit()
+    if is_v2_enabled():
+        with pytest.raises(ControllerError):
+            trainer.fit()
+    else:
+        with pytest.raises(TrainingFailedError):
+            trainer.fit()
 
 
 def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
