@@ -2918,7 +2918,7 @@ def get(
                     "on object ref with asyncio.gather if you want to "
                     "yield execution to the event loop instead."
                 )
-            blocking_get_inside_async_warned = True
+                blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
         # TODO(sang): Should make ObjectRefGenerator
