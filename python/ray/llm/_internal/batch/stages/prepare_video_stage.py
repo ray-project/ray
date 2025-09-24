@@ -500,7 +500,7 @@ class VideoProcessor:
 
             if use_memory:
                 data = self._http.download_bytes_chunked(
-                    source, timeout_s=self._timeout_s
+                    source, timeout=self._timeout_s
                 )
                 return io.BytesIO(data), True, None
 
@@ -509,7 +509,7 @@ class VideoProcessor:
                 fname = f"video-{_sha256_16(source)}.bin"
                 tmp = str(self._cache_dir / f".{fname}.tmp")
                 final = str(self._cache_dir / fname)
-                self._http.download_file(source, tmp, timeout_s=self._timeout_s)
+                self._http.download_file(source, tmp, timeout=self._timeout_s)
                 os.replace(tmp, final)
                 return final, False, (None if self._keep_downloaded else final)
 
