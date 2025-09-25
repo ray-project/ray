@@ -27,10 +27,10 @@
 #include "ray/observability/ray_actor_definition_event.h"
 #include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/observability/ray_driver_job_definition_event.h"
-#include "ray/observability/ray_driver_job_execution_event.h"
+#include "ray/observability/ray_driver_job_lifecycle_event.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
-#include "src/ray/protobuf/public/events_driver_job_execution_event.pb.h"
+#include "src/ray/protobuf/public/events_driver_job_lifecycle_event.pb.h"
 
 namespace ray {
 namespace observability {
@@ -116,8 +116,8 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   std::vector<std::unique_ptr<RayEventInterface>> events;
   events.push_back(
       std::make_unique<RayDriverJobDefinitionEvent>(data1, "test_session_name_1"));
-  events.push_back(std::make_unique<RayDriverJobExecutionEvent>(
-      data2, rpc::events::DriverJobExecutionEvent::FINISHED, "test_session_name_2"));
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data2, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name_2"));
   events.push_back(
       std::make_unique<RayActorDefinitionEvent>(actor_def_data, "test_session_name_3"));
   events.push_back(std::make_unique<RayActorLifecycleEvent>(
@@ -140,10 +140,10 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   ASSERT_EQ(recorded_events[1].source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(recorded_events[1].session_name(), "test_session_name_2");
   ASSERT_EQ(recorded_events[1].event_type(),
-            rpc::events::RayEvent::DRIVER_JOB_EXECUTION_EVENT);
+            rpc::events::RayEvent::DRIVER_JOB_LIFECYCLE_EVENT);
   ASSERT_EQ(recorded_events[1].severity(), rpc::events::RayEvent::INFO);
-  ASSERT_TRUE(recorded_events[1].has_driver_job_execution_event());
-  ASSERT_EQ(recorded_events[1].driver_job_execution_event().job_id(), "test_job_id_2");
+  ASSERT_TRUE(recorded_events[1].has_driver_job_lifecycle_event());
+  ASSERT_EQ(recorded_events[1].driver_job_lifecycle_event().job_id(), "test_job_id_2");
 
   // Verify third event (actor definition)
   ASSERT_EQ(recorded_events[2].source_type(), rpc::events::RayEvent::GCS);
