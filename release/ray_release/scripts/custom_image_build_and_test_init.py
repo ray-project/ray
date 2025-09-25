@@ -118,7 +118,7 @@ def main(
             "'New build', leave the commit at HEAD, and only specify the commit "
             "in the dialog that asks for the Ray wheels."
         ) from e
-    
+
     filtered_tests = filter_tests(
         test_collection,
         frequency=frequency,
@@ -184,7 +184,6 @@ def main(
         block_step_key=block_step["key"] if block_step else None,
     )
     steps = [{"group": "block", "steps": [block_step]}] + steps if block_step else steps
-
 
     if "BUILDKITE" in os.environ:
         if os.path.exists(PIPELINE_ARTIFACT_PATH):
