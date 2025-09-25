@@ -302,6 +302,14 @@ steps:
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash
         "./src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh"
 
+  - label: ":ray: core: cpp gcs placement group manager test"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //src/ray/gcs/tests:gcs_placement_group_manager_test core --except-tags=cgroup --build-type clang
+        --cache-test-results --parallelism-per-worker 2 || true
+      - sleep 3600
+
   - label: ":ray: core: cpp tests"
     tags: core_cpp
     instance_type: medium
