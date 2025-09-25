@@ -35,11 +35,13 @@ During cluster initilization or as autoscaling events add nodes to your cluster,
 | `ray.io/node-id` | A unique ID generated for the node. |
 | `ray.io/accelerator-type` | The accelerator type of the node, for example `L4`. CPU-only machines have an empty string. See {ref}`accelerator types <accelerator-types>` for a mapping of values. |
 
-.. note:: You can override default values using `ray start` parameters.
+```{note} 
+You can override default values using `ray start` parameters.
+```
 
 The following are examples of default labels:
 
-```python
+```{python}
 "ray.io/accelerator-type": "" # Default label indicating the machine is CPU-only.
 ```
 
@@ -48,9 +50,9 @@ The following are examples of default labels:
 
 You can add custom labels to your nodes using the `--labels` or `--labels-file` parameter when running `ray start`.
 
-<!-- INSERT EXAMPLES -->
-
-.. note:: You can't set labels using `ray.init()`. Local Ray clusters don't support labels.
+```{note} 
+You can't set labels using `ray.init()`. Local Ray clusters don't support labels.
+```
 
 (label-selectors)=
 ## Specify label selectors
@@ -82,7 +84,7 @@ label_selector={"instance_type": "m5.16xlarge", “ray.io/node-id”: “123”}
 
 Use the following syntax to add label selectors to tasks and actors:
 
-```python
+```{python}
 # An example for specifing label_selector in task's @ray.remote annotation
 @ray.remote(label_selector={"label_name":"label_value"})
 def f():
@@ -114,7 +116,7 @@ actor_1 = Actor.options(
 
 Use the `bundle_label_selector` option to add label selector to placement group bundles. See the following examples:
 
-```python
+```{python}
 # All bundles require the same labels:
 ray.util.placement_group(
     bundles=[{"GPU": 1}, {"GPU": 1}],
@@ -131,27 +133,22 @@ ray.util.placement_group(
 
 Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up nodes to fulfill label requirements, you need to create multiple worker groups for different label requirement combinations and specify the all the corresponding labels in the `rayStartParams` field in the Ray cluster configuration. For example:
 
-```python
+```{python}
     rayStartParams: {
       labels: "region=me-central1,ray.io/accelerator-type=nvidia-h100"
     }
 ```
 
-<!-- Comment out future plans from published docs.
-
-In the future, Ray plans to support creating pods with default labels. This can help reduce the effort to create multiple worker groups and specifying the labels in the `rayStartParams`. -->
-
 ## Monitor nodes using labels
 
 The Ray dashboard automatically shows the following information:
-- Labels for each node.
-- Label selectors set for each task, actor, or placement group bundle.
-
-<!-- ADD LINKS TO THE ABOVE WHEN AVAILABLE -->
+- Labels for each node. See {py:attr}`ray.util.state.common.NodeState.labels`.
+- Label selectors set for each task, actor, or placement group bundle. See {py:attr}`ray.util.state.common.TaskState.label_selector` and {py:attr}`ray.util.state.common.ActorState.label_selector`.
 
 Within a task, you can programmatically obtain the node label from the RuntimeContextAPI using `ray.get_runtime_context().get_node_labels()`. This returns a Python dict.
 See the following examples:
-```python
+
+```{python}
 @ray.remote
 def test_task_label():
    node_labels = ray.get_runtime_context().get_node_labels()
@@ -163,6 +160,3 @@ Example output:
 """
 ```
 You can also access information about node label and label selector information using the state API and state CLI.
-
-<!-- DJS: cannot figure out how to document this. -->
-
