@@ -122,9 +122,7 @@ def train_func(config):
     trainer.train()
 
 
-# TODO: Re-enable GPU tests. Right now, ray turbo has no GPU CI.
-# @pytest.mark.parametrize("config_id", ["epoch_gpu", "steps_gpu", "steps_cpu"])
-@pytest.mark.parametrize("config_id", ["steps_cpu"])
+@pytest.mark.parametrize("config_id", ["epoch_gpu", "steps_gpu", "steps_cpu"])
 def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     def train_func(config):
         # Datasets

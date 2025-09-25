@@ -462,7 +462,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
