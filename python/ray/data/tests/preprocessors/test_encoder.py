@@ -166,6 +166,46 @@ def test_ordinal_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
+def test_ordinal_encoder_mixed_types_after_imputation():
+    """Tests that OrdinalEncoder can handle mixed types after imputation."""
+    import ray
+    from ray.data.preprocessors import SimpleImputer, OrdinalEncoder
+
+    # Data with a mixed-type column (bool and None)
+    ds = ray.data.from_items([
+        {"feature": True},
+        {"feature": False},
+        {"feature": None},
+    ])
+
+    # Imputing None introduces a string, creating a mix of bool and str.
+    imputer = SimpleImputer(
+        columns=["feature"], strategy="constant", fill_value="missing"
+    )
+    ds_imputed = imputer.fit_transform(ds)
+
+    # This step previously failed due to the TypeError.
+    encoder = OrdinalEncoder(columns=["feature"])
+    encoder.fit(ds_imputed)
+
+    # Verify that the encoding is stable and correct.
+    # sorted([True, False, "missing"], key=str) -> [False, True, "missing"]
+    expected_stats = {"unique_values(feature)": {False: 0, True: 1, "missing": 2}}
+    assert encoder.stats_ == expected_stats
+
+    # Also test with another unorderable mix of int and str
+    ds = ray.data.from_items([
+        {"feature": 1},
+        {"feature": "a"},
+        {"feature": 2},
+        {"feature": "b"},
+    ])
+    encoder = OrdinalEncoder(columns=["feature"])
+    encoder.fit(ds)
+    # sorted([1, "a", 2, "b"], key=str) -> ["1", "2", "a", "b"]
+    expected_stats = {"unique_values(feature)": {1: 0, 2: 1, "a": 2, "b": 3}}
+    assert encoder.stats_ == expected_stats
+
 def test_ordinal_encoder_no_encode_list():
     """Tests OrdinalEncoder with encode_lists=False."""
     col_a = ["red", "green", "blue", "red"]
