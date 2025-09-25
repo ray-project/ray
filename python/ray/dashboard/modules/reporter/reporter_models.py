@@ -81,8 +81,8 @@ if PYDANTIC_INSTALLED:
 
         rss: float
         vms: float
-        pfaults: float
-        pageins: float
+        pfaults: Optional[float] = None
+        pageins: Optional[float] = None
 
     class MemoryFullInfo(MemoryInfo):
         """
@@ -163,8 +163,8 @@ if PYDANTIC_INSTALLED:
         mem: MemoryUsage  # (total, available, percent, used) in bytes
         shm: Optional[int] = None  # shared memory in bytes, None if not available
         workers: List[ProcessInfo]
-        raylet: ProcessInfo
-        agent: ProcessInfo
+        raylet: Optional[ProcessInfo] = None
+        agent: Optional[ProcessInfo] = None
         bootTime: float  # POSIX timestamp
         loadAvg: LoadAverage  # (load, perCpuLoad) where load is (1min, 5min, 15min)
         disk: Dict[str, DiskUsage]  # mount point -> psutil disk usage object
