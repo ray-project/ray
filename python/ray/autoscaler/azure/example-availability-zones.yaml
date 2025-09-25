@@ -1,0 +1,76 @@
+# Unique identifier for the head node and workers of this cluster.
+cluster_name: nightly-cpu-minimal-2
+max_workers: 6
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+  type: azure
+    # https://azure.microsoft.com/en-us/global-infrastructure/locations
+  location: westus2
+  resource_group: ray-zones
+  cache_stopped_nodes: False
+  # Provider-level availability zone configuration (comma-separated)
+  # This will be used as default for all node types unless overridden
+  availability_zone: "1,2,3"
+
+auth:
+  ssh_user: ubuntu
+  ssh_private_key: ~/.ssh/id_rsa
+  ssh_public_key: ~/.ssh/id_rsa.pub
+
+available_node_types:
+  ray.head.default:
+    resources: {"CPU": 2}
+    node_config:
+      azure_arm_parameters:
+        vmSize: Standard_D2s_v3
+        imagePublisher: microsoft-dsvm
+        imageOffer: ubuntu-2004
+        imageSku: 2004-gen2
+        imageVersion: latest
+        # Head node: explicitly disable availability zones
+        availability_zone: "none"
+  ray.worker.default:
+    min_workers: 0
+    max_workers: 2
+    resources: {"CPU": 2}
+    node_config:
+      azure_arm_parameters:
+        vmSize: Standard_D2s_v3
+        imagePublisher: microsoft-dsvm
+        imageOffer: ubuntu-2004
+        imageSku: 2004-gen2
+        imageVersion: latest
+        # Workers will use provider specified availability zones
+  ray.worker.specific_zone:
+    min_workers: 0
+    max_workers: 2
+    resources: {"CPU": 2}
+    node_config:
+      azure_arm_parameters:
+        vmSize: Standard_D2s_v3
+        imagePublisher: microsoft-dsvm
+        imageOffer: ubuntu-2004
+        imageSku: 2004-gen2
+        imageVersion: latest
+        # Workers will use availability zone 2 only (overrides provider setting)
+        availability_zone: "2"
+
+# Note: The Ubuntu 20.04 dsvm image has a few venvs already configured but
+# they all contain python modules that are not compatible with Ray at the moment.
+setup_commands:
+    - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
+    - conda tos accept
+    - conda create -n ray-env python=3.10 -y
+    - conda activate ray-env && echo 'conda activate ray-env' >> ~/.bashrc
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+
+file_mounts_sync_continuously: False
+
+file_mounts: {
+    "~/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
+}
+
+head_setup_commands:
+- pip install azure-core==1.35.0 azure-identity==1.23.1 azure-mgmt-compute==35.0.0 azure-mgmt-network==29.0.0 azure-mgmt-resource==24.0.0 azure-common==1.1.28 msrest==0.7.1 msrestazure==0.6.4.post1
