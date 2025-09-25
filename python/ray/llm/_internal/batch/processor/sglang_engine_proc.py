@@ -26,6 +26,11 @@ from ray.llm._internal.batch.stages import (
 )
 from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
+    EXCLUDE_SAFETENSORS_MODES,
+)
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
@@ -157,8 +162,18 @@ def build_sglang_engine_processor(
                 ),
             )
         )
+    if config.engine_kwargs.get("load_format", None) in EXCLUDE_SAFETENSORS_MODES:
+        download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+    else:
+        download_model_mode = NodeModelDownloadable.TOKENIZER_ONLY
+    model_path = download_model_files(
+        model_id=config.model_source,
+        mirror_config=None,
+        download_model=download_model_mode,
+        download_extra_files=False,
+    )
 
-    hf_config = transformers.AutoConfig.from_pretrained(config.model_source)
+    hf_config = transformers.AutoConfig.from_pretrained(model_path)
     architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
 
     telemetry_agent = get_or_create_telemetry_agent()
