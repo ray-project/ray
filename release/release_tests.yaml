@@ -745,7 +745,7 @@
 # Long running tests
 #######################
 
-- name: core_long_running_actor_deaths
+- name: long_running_actor_deaths
   group: Long running tests
   working_dir: long_running_tests
 
@@ -871,7 +871,7 @@
       cluster:
         cluster_compute: tpl_cpu_1_large_gce.yaml
 
-- name: core_long_running_many_actor_tasks
+- name: long_running_many_actor_tasks
   group: Long running tests
   working_dir: long_running_tests
 
@@ -912,7 +912,7 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: core_long_running_many_drivers
+- name: long_running_many_drivers
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1001,7 +1001,7 @@
       cluster:
         cluster_compute: many_ppo_gce.yaml
 
-- name: core_long_running_many_tasks
+- name: long_running_many_tasks
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1042,7 +1042,7 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: core_long_running_many_tasks_serialized_ids
+- name: long_running_many_tasks_serialized_ids
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1083,7 +1083,7 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: core_long_running_node_failures
+- name: long_running_node_failures
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1388,7 +1388,7 @@
 ########################
 # Runtime env tests
 ########################
-- name: core_runtime_env_rte_many_tasks_actors
+- name: runtime_env_rte_many_tasks_actors
   group: Runtime env tests
   working_dir: runtime_env_tests
 
@@ -1417,7 +1417,7 @@
         cluster_compute: rte_gce_small.yaml
 
 
-- name: core_runtime_env_wheel_urls
+- name: runtime_env_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
 
@@ -2211,7 +2211,7 @@
 # Core Nightly Tests
 ########################
 
-- name: core_shuffle_100gb
+- name: shuffle_100gb
   group: core-multi-test
   working_dir: nightly_tests
 
@@ -2239,7 +2239,7 @@
         cluster_compute: shuffle/shuffle_compute_multi_gce.yaml
 
 
-- name: core_stress_test_placement_group
+- name: stress_test_placement_group
   group: core-multi-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2263,7 +2263,7 @@
       cluster:
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
-- name: core_decision_tree_autoscaling_20_runs
+- name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
 
@@ -2286,7 +2286,7 @@
       cluster:
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
-- name: core_autoscaling_shuffle_1tb_1000_partitions
+- name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
   working_dir: nightly_tests
 
@@ -2312,7 +2312,7 @@
       cluster:
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
-- name: core_microbenchmark
+- name: microbenchmark
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2339,7 +2339,7 @@
       frequency: weekly
       python: "3.12"
 
-- name: core_compiled_graphs
+- name: compiled_graphs
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2355,7 +2355,7 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
-- name: core_compiled_graphs_GPU
+- name: compiled_graphs_GPU
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2372,7 +2372,7 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
-- name: core_compiled_graphs_GPU_multinode
+- name: compiled_graphs_GPU_multinode
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2389,7 +2389,7 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
-- name: core_gpu_object_GPU
+- name: gpu_object_GPU
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2406,7 +2406,7 @@
     timeout: 1800
     script: python experimental/gpu_object_microbenchmark.py
 
-- name: core_gpu_object_GPU_multinode
+- name: gpu_object_GPU_multinode
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2423,7 +2423,7 @@
     timeout: 1800
     script: python experimental/gpu_object_microbenchmark.py --distributed
 
-- name: core_benchmark_worker_startup
+- name: benchmark_worker_startup
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2516,7 +2516,7 @@
       wait_for_nodes:
         num_nodes: 5
 
-- name: core_stress_test_state_api_scale
+- name: stress_test_state_api_scale
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2565,7 +2565,7 @@
         frequency: manual
 
 
-- name: core_shuffle_20gb_with_state_api
+- name: shuffle_20gb_with_state_api
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2591,7 +2591,7 @@
       cluster:
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
-- name: core_stress_test_many_tasks
+- name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2631,7 +2631,7 @@
       smoke_test:
         frequency: manual
 
-- name: core_stress_test_dead_actors
+- name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2674,7 +2674,7 @@
 
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
-- name: core_threaded_actors_stress_test
+- name: threaded_actors_stress_test
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2733,7 +2733,7 @@
 #         num_nodes: 5
 #         timeout: 600
 
-- name: core_stress_test_many_runtime_envs
+- name: stress_test_many_runtime_envs
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2760,7 +2760,7 @@
       smoke_test:
         frequency: manual
 
-- name: core_single_node_oom
+- name: single_node_oom
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2787,7 +2787,7 @@
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
 
 
-- name: core_tune_air_oom
+- name: tune_air_oom
   group: core-daily-test
   working_dir: air_tests
 
@@ -2830,7 +2830,7 @@
       num_nodes: 32
 
 
-- name: core_many_nodes_actor_test_on_v2
+- name: many_nodes_actor_test_on_v2
   group: core-daily-test
   working_dir: benchmarks
 
@@ -2872,7 +2872,7 @@
 #      num_nodes: 251
 #
 
-- name: core_pg_autoscaling_regression_test
+- name: pg_autoscaling_regression_test
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2894,7 +2894,7 @@
       cluster:
         cluster_compute: placement_group_tests/compute_gce.yaml
 
-- name: core_placement_group_performance_test
+- name: placement_group_performance_test
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2923,7 +2923,7 @@
 # Core Scalability Tests
 #########################
 
-- name: core_single_node
+- name: single_node
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2950,7 +2950,7 @@
       cluster:
         cluster_compute: single_node_gce.yaml
 
-- name: core_object_store
+- name: object_store
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2978,7 +2978,7 @@
       cluster:
         cluster_compute: object_store_gce.yaml
 
-- name: core_small_objects
+- name: small_objects
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3001,7 +3001,7 @@
   variations:
     - __suffix__: aws
 
-- name: core_large_objects
+- name: large_objects
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3024,7 +3024,7 @@
   variations:
     - __suffix__: aws
 
-- name: core_many_actors
+- name: many_actors
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3052,7 +3052,7 @@
       cluster:
         cluster_compute: distributed_gce.yaml
 
-- name: core_many_actors_smoke_test
+- name: many_actors_smoke_test
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3072,7 +3072,7 @@
       num_nodes: 2
 
 
-- name: core_many_tasks
+- name: many_tasks
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3100,7 +3100,7 @@
       cluster:
         cluster_compute: distributed_gce.yaml
 
-- name: core_many_pgs
+- name: many_pgs
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3129,7 +3129,7 @@
         cluster_compute: distributed_gce.yaml
 
 
-- name: core_many_pgs_smoke_test
+- name: many_pgs_smoke_test
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3149,7 +3149,7 @@
       num_nodes: 2
 
 
-- name: core_many_nodes
+- name: many_nodes
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3177,7 +3177,7 @@
       cluster:
         cluster_compute: many_nodes_gce.yaml
 
-- name: core_scheduling_test_many_0s_tasks_many_nodes
+- name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3252,7 +3252,7 @@
 # Core Chaos tests
 ##################
 
-- name: core_chaos_many_tasks_kill_raylet
+- name: chaos_many_tasks_kill_raylet
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3277,7 +3277,7 @@
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
 
-- name: core_chaos_many_tasks_terminate_instance
+- name: chaos_many_tasks_terminate_instance
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3297,7 +3297,7 @@
   variations:
     - __suffix__: aws
 
-- name: core_chaos_many_actors_kill_raylet
+- name: chaos_many_actors_kill_raylet
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3322,7 +3322,7 @@
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
 
-- name: core_chaos_many_actors_terminate_instance
+- name: chaos_many_actors_terminate_instance
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3403,7 +3403,7 @@
 #####################
 # Observability tests
 #####################
-- name: core_agent_stress_test
+- name: agent_stress_test
   group: core-observability-test
   working_dir: dashboard
 
@@ -3732,7 +3732,7 @@
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
-- name: core_autoscaler_aws
+- name: autoscaler_aws
   group: autoscaler-test
   working_dir: autoscaling_tests
 
