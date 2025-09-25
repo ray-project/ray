@@ -2466,26 +2466,26 @@ class Dataset:
     @PublicAPI(stability="alpha", pi_group=SMJ_API_GROUP)
     def streaming_train_test_split(
         self,
-        test_proportion: float,
+        test_size: float,
         *,
-        split_type: Literal["hash", "bernoulli"] = "bernoulli",
-        key_column: Optional[str] = None,
+        split_type: Literal["hash", "random"] = "random",
+        hash_column: Optional[str] = None,
         seed: Optional[int] = None,
         **ray_remote_kwargs,
     ) -> Tuple["Dataset", "Dataset"]:
         """split the dataset into train and test subsets in a streaming manner.
         This method is recommended for large datasets.
 
-        The split type can be either "hash" or "bernoulli".
+        The split type can be either "hash" or "random".
+        - "random": The dataset is split into random train and test subsets.
         - "hash": The dataset is split into train and test subsets based on the hash of the key column.
-        - "bernoulli": The dataset is split into train and test subsets based on the Bernoulli distribution.
 
         Examples:
-            Examples with Bernoulli split:
+            Examples with Random split:
 
             >>> import ray
             >>> ds = ray.data.range(8)
-            >>> train, test = ds.streaming_train_test_split(test_proportion=0.25)
+            >>> train, test = ds.streaming_train_test_split(test_size=0.25)
             >>> train.take_batch()
             {'id': array([0, 1, 3, 5, 7])}
             >>> test.take_batch()
@@ -2495,18 +2495,19 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.range(8)
-            >>> train, test = ds.streaming_train_test_split(test_proportion=0.25, split_type="hash", key_column="id")
+            >>> train, test = ds.streaming_train_test_split(test_size=0.25, split_type="hash", hash_column="id")
             >>> train.take_batch()
             {'id': array([0, 2, 3, 4, 5, 6])}
             >>> test.take_batch()
             {'id': array([1, 7])}
 
         Args:
-            test_proportion: The proportion of the dataset to include in the test split.
-            split_type: The type of split to perform. Can be "hash" or "bernoulli".
-            key_column: The column to use for the hash split. Required for hash split and
-                ignored for Bernoulli split.
-            seed: The seed to use for the Bernoulli split. Ignored for hash split.
+            test_size: The proportion of the dataset to include in the test split.
+                Must be between 0.0 and 1.0.
+            split_type: The type of split to perform. Can be "hash" or "random".
+            hash_column: The column to use for the hash split. Required for hash split and
+                ignored for random split.
+            seed: The seed to use for the random split. Ignored for hash split.
             **ray_remote_kwargs: Additional kwargs to pass to the Ray remote function.
 
         Returns:
@@ -2522,14 +2523,38 @@ class Dataset:
 
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
-        if test_proportion < 0 or test_proportion > 1:
+        if test_size < 0 or test_size > 1:
             raise ValueError("Test proportion must be between 0 and 1.")
 
         if seed is not None and split_type == "hash":
             raise ValueError("seed is not supported for hash split")
 
-        if key_column is not None and split_type == "bernoulli":
-            raise ValueError("key_column is not supported for bernoulli split")
+        if hash_column is not None and split_type == "random":
+            raise ValueError("hash_column is not supported for random split")
+
+        def random_split(batch: pa.Table):
+            """
+            Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
+            or to test otherwise.
+
+            This version ensures that the random choices are **stable per Ray task execution** by seeding
+            the RNG with a combination of a user-specified seed and the Ray task ID.
+            """
+            ctx = TaskContext.get_current()
+            if "train_test_split_rng" in ctx.kwargs:
+                rng = ctx.kwargs["train_test_split_rng"]
+            elif seed is None:
+                rng = np.random.default_rng([ctx.task_idx])
+                ctx.kwargs["train_test_split_rng"] = rng
+            else:
+                rng = np.random.default_rng([ctx.task_idx, seed])
+                ctx.kwargs["train_test_split_rng"] = rng
+
+            # Draw Bernoulli samples: 1 = train, 0 = test
+            is_train = rng.random(batch.num_rows) < (1 - test_size)
+            return batch.append_column(
+                _TRAIN_TEST_SPLIT_COLUMN, pa.array(is_train, type=pa.bool_())
+            )
 
         def hash_split(batch: pa.Table) -> tuple[pa.Table, pa.Table]:
             def key_to_bucket(key: Any) -> int:
@@ -2537,50 +2562,26 @@ class Dataset:
                 h = int.from_bytes(
                     hashlib.blake2b(str(key).encode(), digest_size=8).digest(), "big"
                 )
-                return True if h < (1 - test_proportion) * (1 << 64) else False
+                return True if h < (1 - test_size) * (1 << 64) else False
 
-            if key_column in batch.column_names:
+            if hash_column in batch.column_names:
                 # Use provided key for hashing
-                keys = batch[key_column].to_numpy()
+                keys = batch[hash_column].to_numpy()
             else:
-                raise ValueError(f"Key column {key_column} not found in batch")
+                raise ValueError(f"Key column {hash_column} not found in batch")
 
             bucket_arr = pa.array([key_to_bucket(key) for key in keys], type=pa.bool_())
             return batch.append_column(_TRAIN_TEST_SPLIT_COLUMN, bucket_arr)
 
-        def bernoulli_split(batch: pa.Table):
-            """
-            Perform a Bernoulli split on a batch: each row goes to train with probability (1 - test_proportion),
-            or to test otherwise.
-
-            This version ensures that the random choices are **stable per Ray task execution** by seeding
-            the RNG with a combination of a user-specified seed and the Ray task ID.
-            """
-            ctx = TaskContext.get_current()
-            if "rng" in ctx.kwargs:
-                rng = ctx.kwargs["rng"]
-            elif seed is None:
-                rng = np.random.default_rng([ctx.task_idx])
-                ctx.kwargs["rng"] = rng
-            else:
-                rng = np.random.default_rng([ctx.task_idx, seed])
-                ctx.kwargs["rng"] = rng
-
-            # Draw Bernoulli samples: 1 = train, 0 = test
-            is_train = rng.random(batch.num_rows) < (1 - test_proportion)
-            return batch.append_column(
-                _TRAIN_TEST_SPLIT_COLUMN, pa.array(is_train, type=pa.bool_())
-            )
-
-        if split_type == "bernoulli":
+        if split_type == "random":
             bucketted = self.map_batches(
-                bernoulli_split,
+                random_split,
                 batch_format="pyarrow",
                 **ray_remote_kwargs,
             )
         elif split_type == "hash":
-            if key_column is None:
-                raise ValueError("key_column is required for hash split")
+            if hash_column is None:
+                raise ValueError("hash_column is required for hash split")
             bucketted = self.map_batches(
                 hash_split,
                 batch_format="pyarrow",
