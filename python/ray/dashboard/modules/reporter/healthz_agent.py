@@ -52,6 +52,26 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/text",
         )
 
+    @routes.get("/api/healthz")
+    async def unified_health(self, req: Request) -> Response:
+        # Check Raylet health.
+        raylet_resp = await self.health_check(req)
+        if raylet_resp.status is not 200:
+            return raylet_resp
+
+        # Check GCS health.
+        try:
+            gcs_alive = await self._health_checker.check_gcs_liveness()
+            if not gcs_alive:
+                return Response(status=503, text="GCS health check failed.")
+        except Exception as e:
+            return Response(status=503, text=f"GCS health check failed: {e}")
+
+        return Response(
+            text="success",
+            content_type="application/text",
+        )
+
     async def run(self, server):
         pass
 
