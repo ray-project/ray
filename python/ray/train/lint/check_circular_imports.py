@@ -1,8 +1,9 @@
 import argparse
 import ast
+import os
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-import sys
 
 
 class ImportCollector(ast.NodeVisitor):
@@ -62,6 +63,8 @@ class ImportCollector(ast.NodeVisitor):
         )
         return ".".join(abs_module_parts)
 
+    # --- parsing functions ---
+
     def visit_If(self, node: ast.If) -> None:
         # If the test is not TYPE_CHECKING, visit statement body
         if not self._is_type_checking_test(node.test):
@@ -108,19 +111,32 @@ def collect_imports(module_name: str, is_package: bool, source_text: str) -> Set
 
 
 def get_base_dir() -> Path:
-    """Return the filesystem path to the ray directory (file-relative)."""
-    # This file lives at: .../python/ray/train/lint/check_circular_imports.py
-    # So ray is three directories up from here.
-    script_path = Path(__file__).resolve()
-    return script_path.parent.parent.parent.parent
+    """Return the filesystem path to the ray python directory."""
+    try:
+        import ray
+
+        package_dir = Path(os.path.dirname(ray.__file__)).parent
+        return package_dir
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("ray package not found")
 
 
 def get_base_train_dir() -> Path:
+    """Return the filesystem path to the ray train directory."""
     return get_base_dir() / "ray/train"
 
 
 def to_module_name_and_is_package(py_file: Path) -> Tuple[str, bool]:
-    """Returns tuple (dotted module name, is_package) for a given Python file."""
+    """
+    Convert a Python file path to its corresponding module name and determine if it is a package.
+
+    Args:
+        py_file: The path to the Python file.
+
+    Returns:
+        Tuple[str, bool]: A tuple containing the module name as a string and a boolean indicating
+                          whether the module is a package (True if it is an __init__.py file).
+    """
     file_path = py_file.relative_to(get_base_dir())
     module_path = file_path.with_suffix("")
     module_parts = module_path.parts
@@ -131,25 +147,29 @@ def to_module_name_and_is_package(py_file: Path) -> Tuple[str, bool]:
     return module_str, is_package
 
 
-def get_file_module_imports(files: List[Path], module_match_string: Optional[str] = None) -> Dict[str, List[str]]:
+def get_file_module_imports(
+    files: List[Path], module_match_string: Optional[str] = None
+) -> Dict[str, List[str]]:
     """
-    Builds a mapping from each Python file under the given train_dir to its module-level imports.
+    Collect and return the module-level imports for a list of Python files.
 
     Args:
-        train_dir: Path to the ray/train directory.
-        files: Set of Python file Paths under train_dir.
+        files: A list of Path objects representing Python files to analyze.
+        module_match_string: An optional string to filter imports. Only imports
+                             containing this string will be included in the result.
 
     Returns:
-        Dict mapping each file's dotted module name to a set of its module-level imports.
+        A dictionary mapping module names to a list of their import statements.
+        The module names are derived from the file paths, and the import statements
+        are filtered based on the optional module_match_string.
     """
     module_imports: Dict[str, List[str]] = {}
-    # Construct mapping
+
+    # Collect the imports for each python file
     for py_file in files:
         try:
             module_name, is_package = to_module_name_and_is_package(py_file)
             src = py_file.read_text(encoding="utf-8", errors="ignore")
-
-            # Collect imports from python file source
             imports = collect_imports(module_name, is_package, src)
             module_imports[module_name] = [
                 stmt
@@ -162,6 +182,15 @@ def get_file_module_imports(files: List[Path], module_match_string: Optional[str
 
 
 def convert_to_file_paths(import_strings: List[str]) -> List[Path]:
+    """
+    Convert a list of import strings to a list of file paths.
+
+    Args:
+        import_strings: A list of import strings.
+
+    Returns:
+        A list of file paths.
+    """
     base_dir = get_base_dir()
     file_paths = []
     for import_string in import_strings:
@@ -170,59 +199,83 @@ def convert_to_file_paths(import_strings: List[str]) -> List[Path]:
     return file_paths
 
 
-def check_violations(base_train_patching_imports: Dict[str, List[str]], patch_dir: Path) -> List[str]:
-    """Refactoring"""
+def check_violations(
+    base_train_patching_imports: Dict[str, List[str]], patch_dir: Path
+) -> List[str]:
+    """
+    Check for circular import violations between base and patch train modules.
+
+    Args:
+        base_train_patching_imports: A dictionary mapping base train module names to their imports.
+        patch_dir: The directory path containing patch train modules.
+
+    Returns:
+        A list of strings describing any circular import violations found.
+    """
     violations: List[str] = []
 
     # Get the imports from the patch train init files
-    patch_train_init_files = [f for f in patch_dir.rglob("__init__.py")]
-    patch_train_init_imports = get_file_module_imports(patch_train_init_files, module_match_string="ray.train")
+    patch_train_init_files = list(patch_dir.rglob("__init__.py"))
+    patch_train_init_imports = get_file_module_imports(
+        patch_train_init_files, module_match_string="ray.train"
+    )
 
-    # Process each init module 
+    # Process each patch train init module
     for base_train_init_module, imports in base_train_patching_imports.items():
 
+        # Get the imports from the patch train files
         patch_train_files = convert_to_file_paths(imports)
-        patch_train_file_imports = get_file_module_imports(patch_train_files, module_match_string="ray.train")
-
+        patch_train_file_imports = get_file_module_imports(
+            patch_train_files, module_match_string="ray.train"
+        )
 
         for patch_module, imports in patch_train_file_imports.items():
             # Skip if the base train init module is in the import path of the patch module
             if base_train_init_module in patch_module:
                 continue
 
-            # If the patch train module init file imports the base train init module, violations are avoided
+            # Skip if the patch train module init file imports the base train init module
             patch_init_module = ".".join(patch_module.split(".")[:-1])
-            if base_train_init_module in patch_train_init_imports.get(patch_init_module, set()):
+            if base_train_init_module in patch_train_init_imports.get(
+                patch_init_module, set()
+            ):
                 continue
 
             for patch_import in imports:
-                if "ray.train.v2" in patch_import:
-                    continue
-
                 # If any of those v1 imports go through the init file, then it is a violation
                 if base_train_init_module in patch_import:
-                    violations.append(f"circular-import-train: Circular import between {base_train_init_module} (importing {patch_module}) and {patch_module} (importing {patch_import}). Resolve by importing {base_train_init_module} in the __init__.py of {patch_init_module}.")
-    
+                    violations.append(
+                        f"circular-import-train: Circular import between {base_train_init_module} (importing {patch_module}) and {patch_module} (importing {patch_import}). Resolve by importing {base_train_init_module} in the __init__.py of {patch_init_module}."
+                    )
+
     return violations
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--patch_dir", default="/Users/jasonli/ray/python/ray/train/v2")
+    parser.add_argument(
+        "--patch_dir",
+        default="ray/train/v2",
+        help="Path to the directory containing patching contents",
+    )
     args = parser.parse_args()
 
     base_dir = get_base_dir()
     base_train_dir = get_base_train_dir()
-    patch_train_dir = Path(args.patch_dir)
+    patch_train_dir = base_dir / Path(args.patch_dir)
 
-    # Enumerate all the v1 init files, need to exclude the v2 init files
+    # Enumerate all the base train init files, excluding the patch train init files
     base_train_init_files = [
-        f for f in base_train_dir.rglob("__init__.py") if not f.is_relative_to(patch_train_dir)
+        f
+        for f in base_train_dir.rglob("__init__.py")
+        if not f.is_relative_to(patch_train_dir)
     ]
 
-    # Get the v2 imports of all the v1 init files
+    # Get the patch train imports of all the base train init files
     dotted_module_prefix = str(patch_train_dir.relative_to(base_dir)).replace("/", ".")
-    patching_imports = get_file_module_imports(base_train_init_files, module_match_string=dotted_module_prefix)
+    patching_imports = get_file_module_imports(
+        base_train_init_files, module_match_string=dotted_module_prefix
+    )
 
     violations = check_violations(patching_imports, patch_train_dir)
     if violations:
