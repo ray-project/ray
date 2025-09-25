@@ -444,8 +444,7 @@ py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
-    # TODO: move over
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -526,12 +525,11 @@ py_test(
     name = "test_gpu_examples",
     size = "large",
     srcs = ["tests/test_gpu_examples.py"],
-    # TODO: move over
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
