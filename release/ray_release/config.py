@@ -260,11 +260,16 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
 def validate_byod_type(byod_type: str, python_version: str) -> None:
     if byod_type not in ALLOWED_BYOD_TYPES:
         raise Exception(f"Invalid BYOD type: {byod_type}")
-    if byod_type == "gpu" and python_version != "3.9":
-        raise Exception("GPU BYOD tests must use Python 3.9")
+    if byod_type == "gpu" and python_version != "3.10":
+        raise Exception("GPU BYOD tests must use Python 3.10")
     if byod_type == "llm-cu124" and python_version != "3.11":
         raise Exception("LLM BYOD tests must use Python 3.11")
-    if byod_type in ["cpu", "cu123"] and python_version not in ["3.9", "3.11", "3.12"]:
+    if byod_type in ["cpu", "cu123"] and python_version not in [
+        "3.9",
+        "3.10",
+        "3.11",
+        "3.12",
+    ]:
         raise Exception(
             f"Invalid Python version for BYOD type {byod_type}: {python_version}"
         )

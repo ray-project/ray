@@ -4,13 +4,13 @@ steps:
     label: "wanda: ray.py{{matrix}}.cpu.base-extra-testdeps"
     wanda: docker/base-extra-testdeps/cpu.wanda.yaml
     matrix:
-      - "3.9"
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "requirements_byod_{{matrix}}.txt"
+      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix}}.lock"
     depends_on:
       - raycpubaseextra
 
@@ -20,7 +20,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
+          - "3.10"
           - "3.11"
           - "3.12"
         cuda:
@@ -29,7 +29,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "requirements_byod_{{matrix.python}}.txt"
+      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix.python}}.lock"
     depends_on:
       - raycudabaseextra
 
@@ -56,14 +56,14 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
+          - "3.10"
         cuda:
           - "12.1.1-cudnn8"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
-      REQUIREMENTS_FILE: "requirements_ml_byod_{{matrix.python}}.txt"
+      REQUIREMENTS_FILE: "ray_ml_base_extra_testdeps_py{{matrix.python}}.lock"
     depends_on:
       - ray-mlcudabaseextra
 
@@ -86,7 +86,7 @@ steps:
         python:
           # This list should be kept in sync with the list of supported Python in
           # release test suite. We don't have release tests for Python 3.10 yet.
-          - "3.9"
+          - "3.10"
           - "3.11"
           - "3.12"
         platform:
@@ -124,4 +124,4 @@ steps:
       # This list should be kept in sync with the list of supported Python in
       # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11
       # yet.
-      - "3.9"
+      - "3.10"
