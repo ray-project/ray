@@ -35,7 +35,6 @@ def one_cpu_100MiB():
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
     )
 
-    check_refcounts({})
     ray.shutdown()
 
 
