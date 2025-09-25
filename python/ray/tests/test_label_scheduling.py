@@ -110,7 +110,7 @@ def test_fallback_strategy(cluster_with_labeled_nodes):
     ]
 
     # Attempt to schedule the actor. The scheduler should fail to find a node with the
-    # primary `label_selector` and fall back to the first available option, 'B200'.
+    # primary `label_selector` and fall back to the first available option, 'A100'.
     label_selector_actor = MyActor.options(
         label_selector=tpu_label_selector, fallback_strategy=accelerator_fallbacks
     ).remote()
