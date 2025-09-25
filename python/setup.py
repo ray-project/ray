@@ -28,7 +28,8 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 # in WORKSPACE file as well.
 
 ROOT_DIR = os.path.dirname(__file__)
-BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CORE = os.getenv("RAY_BUILD_CORE", "1") == "1"
+BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA", "0") == "1"
 BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 BUILD_REDIS = os.getenv("RAY_BUILD_REDIS", "1") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
@@ -713,7 +714,7 @@ def pip_run(build_ext):
     if SKIP_BAZEL_BUILD or setup_spec.build_type == BuildType.DEPS_ONLY:
         build(False, False, False, False)
     else:
-        build(True, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
+        build(BUILD_CORE, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
 
     if setup_spec.type == SetupType.RAY:
         if setup_spec.build_type == BuildType.DEPS_ONLY:

@@ -104,7 +104,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: gpu
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
@@ -173,7 +173,7 @@
 
   run:
     timeout: 4800
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -213,14 +213,14 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_cpu_8_aws.yaml
+    cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
 
     wait_for_nodes:
-      num_nodes: 8
+      num_nodes: 4
 
   variations:
     - __suffix__: aws
@@ -228,7 +228,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_cpu_8_gce.yaml
+        cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
 
@@ -2218,9 +2218,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2293,9 +2291,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2461,9 +2457,7 @@
   stable: false
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2488,9 +2482,7 @@
   team: data
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -2815,9 +2807,7 @@
   team: core
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
