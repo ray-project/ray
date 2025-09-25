@@ -21,13 +21,6 @@ from ray._private.test_utils import (
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(autouse=True)
-def check_refcounts_empty():
-    """Verify that all tests leave the ref counter empty."""
-    yield
-    check_refcounts({})
-
-
 @pytest.fixture(scope="function")
 def one_cpu_100MiB():
     # It has lots of tests that don't require object spilling.
@@ -41,6 +34,8 @@ def one_cpu_100MiB():
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
     )
+
+    check_refcounts({})
     ray.shutdown()
 
 
