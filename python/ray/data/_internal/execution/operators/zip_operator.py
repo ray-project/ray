@@ -49,7 +49,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             collections.deque() for _ in range(len(input_ops))
         ]
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
-        self._stats: StatsDict = {}
+        self._stats: StatsDict = {"Zip": []}
+        self._leftover_blocks: List[BlockPartition] = [
+            [] for _ in range(len(input_ops))
+        ]
         super().__init__(
             data_context,
             *input_ops,
@@ -85,33 +88,30 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
+        if (
+            refs.blocks[0][1].num_rows == 0
+        ):  # If the block has 0 rows, don't add it to the input buffer
+            return
         self._input_buffers[input_index].append(refs)
+
         self._metrics.on_input_queued(refs)
+        ref, _ = self._zip(self._input_buffers)
+        if ref is None:
+            return
+        self._output_buffer.append(ref)
+        self._metrics.on_output_queued(ref)
 
     def all_inputs_done(self) -> None:
-        assert len(self._output_buffer) == 0, len(self._output_buffer)
-
-        # Start with the first input buffer
-        while self._input_buffers[0]:
-            refs = self._input_buffers[0].popleft()
-            self._output_buffer.append(refs)
-            self._metrics.on_input_dequeued(refs)
-
-        # Process each additional input buffer
-        for input_buffer in self._input_buffers[1:]:
-            self._output_buffer, self._stats = self._zip(
-                self._output_buffer, input_buffer
-            )
-
-            # Clear the input buffer AFTER using it in _zip
-            while input_buffer:
-                refs = input_buffer.popleft()
-                self._metrics.on_input_dequeued(refs)
-
-        # Mark outputs as ready
-        for ref in self._output_buffer:
+        while self.check_still_has_blocks(self._input_buffers, self._leftover_blocks):
+            ref, _ = self._zip(self._input_buffers)
+            self._output_buffer.append(ref)
             self._metrics.on_output_queued(ref)
-
+        assert all(len(buffer) == 0 for buffer in self._input_buffers), list(
+            self._input_buffers
+        )
+        assert all(
+            len(leftover_blocks) == 0 for leftover_blocks in self._leftover_blocks
+        ), "leftover blocks should be empty"
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -127,134 +127,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def implements_accurate_memory_accounting(self):
         return True
-
-    def _zip(
-        self,
-        left_input: collections.deque[RefBundle],
-        right_input: collections.deque[RefBundle],
-    ) -> Tuple[collections.deque[RefBundle], StatsDict]:
-        """Zip the RefBundles from `left_input` and `right_input` together.
-
-        Zip is done in 2 steps: aligning blocks, and zipping blocks from
-        both sides.
-
-        Aligning blocks (optional): check the blocks from `left_input` and
-        `right_input` are aligned or not, i.e. if having different number of blocks, or
-        having different number of rows in some blocks. If not aligned, repartition the
-        smaller input with `_split_at_indices` to align with larger input.
-
-        Zipping blocks: after blocks from both sides are aligned, zip
-        blocks from both sides together in parallel.
-        """
-        left_blocks_with_metadata = []
-        for bundle in left_input:
-            for block, meta in bundle.blocks:
-                left_blocks_with_metadata.append((block, meta))
-        right_blocks_with_metadata = []
-        for bundle in right_input:
-            for block, meta in bundle.blocks:
-                right_blocks_with_metadata.append((block, meta))
-
-        left_block_rows, left_block_bytes = self._calculate_blocks_rows_and_bytes(
-            left_blocks_with_metadata
-        )
-        right_block_rows, right_block_bytes = self._calculate_blocks_rows_and_bytes(
-            right_blocks_with_metadata
-        )
-
-        # Check that both sides have the same number of rows.
-        # TODO(Clark): Support different number of rows via user-directed
-        # dropping/padding.
-        total_left_rows = sum(left_block_rows)
-        total_right_rows = sum(right_block_rows)
-        if total_left_rows != total_right_rows:
-            raise ValueError(
-                "Cannot zip datasets of different number of rows: "
-                f"{total_left_rows}, {total_right_rows}"
-            )
-
-        # Whether the left and right input sides are inverted
-        input_side_inverted = False
-        if sum(right_block_bytes) > sum(left_block_bytes):
-            # Make sure that right side is smaller, so we minimize splitting
-            # work when aligning both sides.
-            # TODO(Clark): Improve this heuristic for minimizing splitting work,
-            # e.g. by generating the splitting plans for each route (via
-            # _generate_per_block_split_indices) and choosing the plan that splits
-            # the least cumulative bytes.
-            left_blocks_with_metadata, right_blocks_with_metadata = (
-                right_blocks_with_metadata,
-                left_blocks_with_metadata,
-            )
-            left_block_rows, right_block_rows = right_block_rows, left_block_rows
-            input_side_inverted = True
-
-        # Get the split indices that will align both sides.
-        indices = list(itertools.accumulate(left_block_rows))
-        indices.pop(-1)
-
-        # Split other at the alignment indices, such that for every block from
-        # left side, we have a list of blocks from right side that have the same
-        # cumulative number of rows as that left block.
-        # NOTE: _split_at_indices has a no-op fastpath if the blocks are already
-        # aligned.
-        aligned_right_blocks_with_metadata = _split_at_indices(
-            right_blocks_with_metadata,
-            indices,
-            block_rows=right_block_rows,
-        )
-        del right_blocks_with_metadata
-
-        left_blocks = [b for b, _ in left_blocks_with_metadata]
-        right_blocks_list = aligned_right_blocks_with_metadata[0]
-        del left_blocks_with_metadata, aligned_right_blocks_with_metadata
-
-        zip_one_block = cached_remote_fn(_zip_one_block, num_returns=2)
-
-        output_blocks = []
-        output_metadata_schema = []
-        for left_block, right_blocks in zip(left_blocks, right_blocks_list):
-            # For each block from left side, zip it together with 1 or more blocks from
-            # right side. We're guaranteed to have that left_block has the same number
-            # of rows as right_blocks has cumulatively.
-            res, meta_with_schema = zip_one_block.remote(
-                left_block, *right_blocks, inverted=input_side_inverted
-            )
-            output_blocks.append(res)
-            output_metadata_schema.append(meta_with_schema)
-
-        # Early release memory.
-        del left_blocks, right_blocks_list
-
-        # TODO(ekl) it might be nice to have a progress bar here.
-        output_metadata_schema: List[BlockMetadataWithSchema] = ray.get(
-            output_metadata_schema
-        )
-
-        output_refs: collections.deque[RefBundle] = collections.deque()
-        input_owned = all(b.owns_blocks for b in left_input)
-        for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
-            output_refs.append(
-                RefBundle(
-                    [
-                        (
-                            block,
-                            meta_with_schema.metadata,
-                        )
-                    ],
-                    owns_blocks=input_owned,
-                    schema=meta_with_schema.schema,
-                )
-            )
-        stats = {self._name: to_stats(output_metadata_schema)}
-
-        # Clean up inputs.
-        for ref in left_input:
-            ref.destroy_if_owned()
-        for ref in right_input:
-            ref.destroy_if_owned()
-
-        return output_refs, stats
 
     def _calculate_blocks_rows_and_bytes(
         self,
@@ -277,6 +149,122 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             block_bytes.append(metadata.size_bytes)
         return block_rows, block_bytes
 
+    def check_still_has_blocks(
+        self,
+        input_buffers: List[collections.deque[RefBundle]],
+        leftover_blocks: List[BlockPartition],
+    ) -> bool:
+        """Check if the input buffers or leftover blocks have at least one bundle reference."""
+
+        return not all(len(buffer) == 0 for buffer in input_buffers) or not all(
+            len(leftover_blocks) == 0 for leftover_blocks in self._leftover_blocks
+        )
+
+    def _zip(
+        self, input_buffers: List[collections.deque[RefBundle]]
+    ) -> Tuple[RefBundle, StatsDict]:
+        """Zip the RefBundles from `input_buffers` together."""
+        # 1. Get a ref bundle from each input buffer and extract the blocks from the ref bundles (Also add the rest from previous iteration to block list's front)
+        # 2. Calculate the number of rows and bytes for the blocks, and calculate the total number of rows and bytes for all blocks and get the smallest row count, if the smallest row count is 0, add all other block to _leftover_blocks and return
+        # 3. Split the blocks into smaller blocks based on the number of rows and bytes, and store the rest somewhere else (the row count from the Bundle might differ)
+        # 4. Zip the blocks together
+        # 5. Return the ref bundles
+
+        input_length = len(input_buffers)
+
+        # 1. Get a ref bundle from each input buffer (we already checked that each buffer has at least one bundle reference)
+        #    and extract the blocks from the ref bundles (Also add the rest from previous iteration to block list's front)
+        all_blocks_with_metadata: List[BlockPartition] = [
+            [] for _ in range(input_length)
+        ]  # [[(ObjectRef[Block], BlockMetadata), ...], ...]
+        from_buffer = [False for _ in range(input_length)]
+        for idx in range(input_length):
+            # Add the rest from previous iteration to block list's front
+            if len(self._leftover_blocks[idx]) > 0:
+                all_blocks_with_metadata[idx].append(self._leftover_blocks[idx])
+            # Add the blocks from the current bundle
+            elif len(input_buffers[idx]) > 0:
+                from_buffer[idx] = True
+                for block, metadata in input_buffers[idx][0].blocks:
+                    all_blocks_with_metadata[idx].append((block, metadata))
+        if not all(
+            [
+                len(blocks_with_metadata) > 0
+                for blocks_with_metadata in all_blocks_with_metadata
+            ]
+        ):
+            return None, {}
+        self._leftover_blocks = [[] for _ in range(input_length)]
+
+        # 2. Calculate the number of rows and bytes for the blocks, and calculate the total number of rows and bytes for all blocks and get the smallest row count
+        block_rows_for_each_bundle: List[
+            List[int]
+        ] = []  # [[block1_rows, block2_rows, ...], ...]
+        smallest_row_count = float("inf")
+        smallest_row_count_bundle_idx = -1
+        for idx, blocks_with_metadata in enumerate(all_blocks_with_metadata):
+            block_rows, _ = self._calculate_blocks_rows_and_bytes(blocks_with_metadata)
+            block_rows_for_each_bundle.append(block_rows)
+            total_block_rows = sum(block_rows)
+            if total_block_rows < smallest_row_count:
+                smallest_row_count = total_block_rows
+                smallest_row_count_bundle_idx = idx
+        if smallest_row_count == float("inf"):
+            for idx, blocks_with_metadata in enumerate(all_blocks_with_metadata):
+                self._leftover_blocks[
+                    idx
+                ] = blocks_with_metadata  # Add block partition to leftover blocks since we can't zip anything if the smallest row count is 0
+            return [], {}
+
+        # 3. Split the blocks into smaller blocks based on the number of rows and bytes, and store the rest somewhere else (the row count from the Bundle might differ)
+        indices = list(
+            itertools.accumulate(
+                block_rows_for_each_bundle[smallest_row_count_bundle_idx]
+            )
+        )  # we dont pop the last index because the row num may not be the same throughout the inputs we handle that later
+        aligned_all_blocks_with_metadata = [[] for _ in range(input_length)]
+        for idx, blocks_with_metadata in enumerate(all_blocks_with_metadata):
+            aligned_all_blocks_with_metadata[idx] = _split_at_indices(
+                blocks_with_metadata,
+                indices,
+                block_rows_for_each_bundle[idx],
+            )
+        del all_blocks_with_metadata
+        for idx, blocks_with_metadata in enumerate(aligned_all_blocks_with_metadata):
+            block_list = aligned_all_blocks_with_metadata[idx][0].pop()
+            metadata_list = aligned_all_blocks_with_metadata[idx][1].pop()
+            if len(block_list) > 0:
+                self._leftover_blocks[idx] = (block_list[0], metadata_list[0])
+            # remove the last block
+            # [input_idx][block or metadata][object refs]
+
+        # 4. Zip the blocks together
+        zip_blocks = cached_remote_fn(_zip_blocks, num_returns=2)
+
+        output_blocks = []
+        output_metadata_schema = []
+        blocks_to_zip = []
+        for blocks_metadata in aligned_all_blocks_with_metadata:
+            for blocks in blocks_metadata[0]:
+                blocks_to_zip.extend(blocks)
+
+        output_blocks, output_metadata_schema = zip_blocks.remote(blocks_to_zip)
+        output_metadata_schema = ray.get(output_metadata_schema)
+        input_owned = all(b.owns_blocks for b in input_buffers[0])
+        output_ref = RefBundle(
+            [(output_blocks, output_metadata_schema.metadata)],
+            owns_blocks=input_owned,
+            schema=output_metadata_schema.schema,
+        )
+        for idx in range(input_length):
+            if from_buffer[idx]:
+                ref = input_buffers[idx].popleft()
+                ref.destroy_if_owned()
+
+        stats = {self._name: to_stats([output_metadata_schema])}
+
+        return output_ref, stats
+
 
 def _zip_one_block(
     block: Block, *other_blocks: Block, inverted: bool = False
@@ -298,6 +286,26 @@ def _zip_one_block(
     from ray.data.block import BlockMetadataWithSchema
 
     return result, BlockMetadataWithSchema.from_block(result, stats=stats.build())
+
+
+def _zip_blocks(blocks: List[Block]) -> Block:
+    """Zip the blocks together using _zip_one_block in a chain."""
+    if len(blocks) == 0:
+        raise ValueError("Cannot zip empty list of blocks")
+
+    if len(blocks) == 1:
+        from ray.data.block import BlockMetadataWithSchema
+
+        return blocks[0], BlockMetadataWithSchema.from_block(blocks[0])
+
+    # Chain zip: start with first block, then zip with each subsequent block
+    blocks = ray.get(blocks)
+    result = blocks[0]
+    for i in range(1, len(blocks)):
+        # Zip current result with the next block
+        result, meta_with_schema = _zip_one_block(result, blocks[i], inverted=False)
+
+    return result, meta_with_schema
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
