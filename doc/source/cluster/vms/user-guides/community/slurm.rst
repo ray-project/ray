@@ -107,7 +107,7 @@ Next, we'll want to obtain a hostname and a node IP address for the head node. T
 Starting Ray and executing your script
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. note:: `ray symmetric-run` is available in Ray 2.49 and above. Check older versions of the documentation if you are using a older version of Ray.
+.. note:: `ray symmetric-run` is available in Ray 2.49 and above. Check older versions of the documentation if you are using an older version of Ray.
 
 Now, we'll use `ray symmetric-run` to start Ray on all nodes with given CPU and GPU resources and run your entrypoint script ONLY the head node.
 
