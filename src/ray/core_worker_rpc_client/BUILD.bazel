@@ -1,0 +1,66 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "core_worker_client_interface",
+    hdrs = [
+        "core_worker_client_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "//src/ray/pubsub:subscriber_interface",
+        "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "core_worker_client",
+    srcs = [
+        "core_worker_client.cc",
+    ],
+    hdrs = [
+        "core_worker_client.h",
+    ],
+    deps = [
+        ":core_worker_client_interface",
+        "//src/ray/protobuf:core_worker_cc_grpc",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/rpc:retryable_grpc_client",
+        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "core_worker_client_pool",
+    srcs = [
+        "core_worker_client_pool.cc",
+    ],
+    hdrs = [
+        "core_worker_client_pool.h",
+    ],
+    deps = [
+        ":core_worker_client_interface",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "//src/ray/util:logging",
+        "//src/ray/util:network_util",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_core_worker_client",
+    hdrs = [
+        "fake_core_worker_client.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_worker_client_interface",
+        "@com_google_absl//absl/synchronization",
+    ],
+)

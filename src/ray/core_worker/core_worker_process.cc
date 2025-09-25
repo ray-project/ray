@@ -33,10 +33,12 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
-#include "ray/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/container_util.h"
@@ -413,12 +415,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   // Initialize task event buffer before it is used by TaskManager.
   // Store a raw pointer so we can start it later after metrics agent is ready.
-  this->task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options),
       std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
                                                        *client_call_manager),
       options.session_name);
-  this->task_event_buffer_raw_ = this->task_event_buffer_.get();
+  this->task_event_buffer_raw_ = task_event_buffer.get();
   // If metrics agent is already ready, start the task event buffer (Start() is
   // idempotent).
   StartTaskEventBufferIfReady();
@@ -462,7 +464,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      *task_event_buffer_,
+      *task_event_buffer,
       /*get_actor_rpc_client_callback=*/
       [this](const ActorID &actor_id)
           -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
@@ -677,7 +679,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(object_recovery_manager),
                                    std::move(actor_manager),
                                    task_execution_service_,
-                                   std::move(task_event_buffer_),
+                                   std::move(task_event_buffer),
                                    pid,
                                    task_by_state_counter_);
   return core_worker;
@@ -825,7 +827,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         *write_locked.Get()->client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       stats::InitOpenTelemetryExporter(options_.metrics_agent_port, server_status);
-      metrics_agent_ready_ = true;
+      metrics_agent_ready_ = server_status.ok();
       StartTaskEventBufferIfReady();
     });
   }

@@ -188,7 +188,6 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
 
   ray::stats::Gauge task_by_state_counter_{GetTaskMetric()};
-  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_;
   // Non-owning pointer to the task event buffer so we can Start() it after
   // it's moved into CoreWorker.
   worker::TaskEventBuffer *task_event_buffer_raw_ = nullptr;
