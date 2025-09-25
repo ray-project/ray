@@ -10,6 +10,11 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy a large-sized LLM
 
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Flarge-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-proj    ect/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/large-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 A large LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. When higher latency, complexity, and cost are acceptable trade-offs because you require state-of-the-art results.
 
 This tutorial deploys DeepSeek-R1, a large LLM with 685&nbsp;B parameters, using Ray Serve LLM. For smaller models, see [Deploying a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html).
@@ -64,7 +69,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
 
-**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -125,10 +130,10 @@ Example Python:
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 response = client.chat.completions.create(
     model="my-deepseek-r1",
@@ -176,7 +181,7 @@ For production deployment, use Anyscale services to deploy the Ray Serve app to 
 
 The following template runs only on H100 GPUs in your self-hosted Anyscale cloud, as H100s aren't available in Anyscale’s public cloud. This example uses two nodes of type *8xH100-80&nbsp;GB:208CPU-1830&nbsp;GB* on an AWS cloud.
 
-To provision nodes with 1000 GB of disk capacity, see [Changing the default disk size for GCP clusters](https://docs.anyscale.com/configuration/compute/gcp/#changing-the-default-disk-size) for Google Cloud Platform (GCP) or [Changing the default disk size for AWS clusters](https://docs.anyscale.com/configuration/compute/aws/#changing-the-default-disk-size) for Amazon Web Services (AWS). 
+To provision nodes with 1000 GB of disk capacity, see [Changing the default disk size for GCP clusters](https://docs.anyscale.com/configuration/compute/gcp#disk-size) for Google Cloud Platform (GCP) or [Changing the default disk size for AWS clusters](https://docs.anyscale.com/configuration/compute/aws#disk-size) for Amazon Web Services (AWS). 
 
 ---
 
@@ -326,8 +331,8 @@ Quantizing or distilling your model reduces its memory footprint, freeing up spa
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
 **Scale with more replicas**  
-In addition to tuning per-GPU concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
-Each replica runs on its own GPU, so raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
+In addition to tuning per-replica concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
+Raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
 ```yaml
 deployment_config:
   autoscaling_config:

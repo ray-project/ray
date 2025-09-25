@@ -5,13 +5,13 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.numpy import (
     SMALL_NUMBER,
 )  # Assuming SMALL_NUMBER is a small float like 1e-8
 from ray.rllib.utils.typing import TensorStructType
 from ray.rllib.utils.serialization import _serialize_ndarray, _deserialize_ndarray
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 

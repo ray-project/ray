@@ -67,6 +67,7 @@
 
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
+/python/ray/data/llm.py @ray-project/ray-llm
 
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve

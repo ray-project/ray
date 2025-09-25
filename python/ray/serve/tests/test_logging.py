@@ -22,8 +22,8 @@ from starlette.responses import PlainTextResponse
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.formatters import JSONFormatter
 from ray._common.test_utils import wait_for_condition
-from ray._private.ray_logging.formatters import JSONFormatter
 from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
@@ -1369,7 +1369,7 @@ def test_configure_default_serve_logger_with_stderr_redirect(
     ],
     indirect=True,
 )
-def test_request_id_uniqueness_with_buffering(ray_instance):
+def test_request_id_uniqueness_with_buffering(serve_and_ray_shutdown, ray_instance):
     """Test request IDs are unique when buffering is enabled."""
 
     logger = logging.getLogger("ray.serve")

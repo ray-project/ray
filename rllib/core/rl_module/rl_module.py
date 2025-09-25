@@ -14,7 +14,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
