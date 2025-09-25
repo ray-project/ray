@@ -153,7 +153,7 @@ class GPUObjectManager:
                         not_done[0],
                         ref_info_map,
                         TimeoutError(
-                            f"RDT transfer failed after {ray.constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
+                            f"RDT transfer failed after {ray_constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
                         ),
                     )
                 else:
