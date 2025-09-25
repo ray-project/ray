@@ -343,7 +343,7 @@ def test_report_stats():
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
-    stats["raylet"] = {}
+    stats["raylet"] = None
     records = agent._to_records(stats, cluster_stats)
     assert len(records) == 37
     # Test stats with gpus
@@ -432,15 +432,6 @@ def test_report_stats_gpu():
             "memory_total": GPU_MEMORY,
             "processes": [],
         },
-        {
-            "index": 4,
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
-            "name": "NVIDIA A10G",
-            "utilization_gpu": 3,
-            "memory_used": 3,
-            "memory_total": 22731,
-            "processes": [],
-        },
     ]
     gpu_metrics_aggregatd = {
         "node_gpus_available": 0,
@@ -466,22 +457,14 @@ def test_report_stats_gpu():
         records.sort(key=lambda e: e.tags["GpuIndex"])
         index = 0
         for record in records:
-            if record.tags["GpuIndex"] == "3":
-                assert record.tags == {
-                    "ip": ip,
-                    "GpuIndex": "3",
-                    "IsHeadNode": "true",
-                    "RayNodeType": "head",
-                }
-            else:
-                assert record.tags == {
-                    "ip": ip,
-                    # The tag value must be string for prometheus.
-                    "GpuIndex": str(index),
-                    "GpuDeviceName": "NVIDIA A10G",
-                    "RayNodeType": "head",
-                    "IsHeadNode": "true",
-                }
+            assert record.tags == {
+                "ip": ip,
+                # The tag value must be string for prometheus.
+                "GpuIndex": str(index),
+                "GpuDeviceName": "NVIDIA A10G",
+                "RayNodeType": "head",
+                "IsHeadNode": "true",
+            }
 
             if name == "node_gram_available":
                 assert record.value == GPU_MEMORY - index
@@ -652,7 +635,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(
             rss=55934976, vms=7026937856, uss=1234567, pfaults=15354, pageins=0
         ),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "cpu_percent": 5.0,
         "num_fds": 11,
         "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
@@ -667,7 +650,7 @@ def test_report_per_component_stats():
     }
     func_stats = {
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "cpu_percent": 6.0,
         "num_fds": 12,
         "cmdline": ["ray::func", "", "", "", "", "", "", "", "", "", "", ""],
@@ -682,7 +665,7 @@ def test_report_per_component_stats():
     }
     gcs_stats = {
         "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
-        "memory_full_info": Bunch(uss=51428384),
+        "memory_full_info": Bunch(uss=51428384, rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
         "cpu_percent": 5.0,
         "num_fds": 14,
         "cmdline": ["fake gcs cmdline"],
@@ -697,7 +680,7 @@ def test_report_per_component_stats():
     }
     raylet_stats = {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(uss=51428381, rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 4.0,
         "num_fds": 13,
         "cmdline": ["fake raylet cmdline"],
@@ -712,7 +695,7 @@ def test_report_per_component_stats():
     }
     agent_stats = {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(uss=51428381, rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 6.0,
         "num_fds": 14,
         "cmdline": ["fake raylet cmdline"],
@@ -841,7 +824,7 @@ def test_report_per_component_stats():
     # Verify if the command doesn't start with ray::, metrics are not reported.
     unknown_stats = {
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "cpu_percent": 6.0,
         "num_fds": 8,
         "cmdline": ["python mock", "", "", "", "", "", "", "", "", "", "", ""],
