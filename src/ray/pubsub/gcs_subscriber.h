@@ -18,7 +18,7 @@
 #include <string>
 #include <utility>
 
-#include "ray/common/gcs_callbacks.h"
+#include "ray/common/gcs_callback_types.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 

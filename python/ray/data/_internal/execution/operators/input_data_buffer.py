@@ -33,7 +33,7 @@ class InputDataBuffer(PhysicalOperator):
             num_output_blocks: The number of output blocks. If not specified, progress
                 bars total will be set based on num output bundles instead.
         """
-        super().__init__("Input", [], data_context, target_max_block_size=None)
+        super().__init__("Input", [], data_context)
         if input_data is not None:
             assert input_data_factory is None
             # Copy the input data to avoid mutating the original list.
@@ -51,7 +51,8 @@ class InputDataBuffer(PhysicalOperator):
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
             self._input_data = self._input_data_factory(
-                self.actual_target_max_block_size
+                self.target_max_block_size_override
+                or self.data_context.target_max_block_size
             )
             self._is_input_initialized = True
             self._initialize_metadata()

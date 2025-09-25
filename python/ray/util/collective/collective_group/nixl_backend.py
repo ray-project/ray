@@ -1,8 +1,10 @@
+import time
+from typing import TYPE_CHECKING, List, Tuple
+
 from nixl._api import nixl_agent, nixl_agent_config
+
 import ray
 from ray.util.collective.types import Backend
-from typing import TYPE_CHECKING, List, Tuple
-import time
 
 if TYPE_CHECKING:
     import torch
@@ -23,6 +25,11 @@ class NixlBackend:
         agent_config = nixl_agent_config(backends=["UCX"])
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
+        if actor_id is None:
+            # If the actor id is None, it means the current process is a driver.
+            import uuid
+
+            actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
         self._nixl_agent = nixl_agent(actor_id, agent_config)
 
     @classmethod
@@ -56,7 +63,13 @@ class NixlBackend:
         remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
         xfer_handle = nixl_agent.initialize_xfer(
-            "READ", local_descs.trim(), remote_descs, remote_name
+            # "UUID" here is just a placeholder, can be any bytes, but without it,
+            # nixl will fail to transfer multiple times.
+            "READ",
+            local_descs.trim(),
+            remote_descs,
+            remote_name,
+            "UUID",
         )
 
         state = nixl_agent.transfer(xfer_handle)

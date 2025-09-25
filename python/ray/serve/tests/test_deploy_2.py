@@ -325,12 +325,14 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "upscale_delay_s": 30.0,
         "look_back_period_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
     }
 
 
@@ -378,12 +380,14 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         # Untouched defaults
         "look_back_period_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
     }
 
     for i in range(3):

@@ -28,20 +28,28 @@ try:
 
     if "datasets_modules" not in sys.modules and is_datasets_available():
         import importlib
+        import importlib.metadata
         import os
 
         import datasets.load
+        from packaging.version import parse
 
-        dynamic_modules_path = os.path.join(
-            datasets.load.init_dynamic_modules(), "__init__.py"
-        )
-        # load dynamic_modules from path
-        spec = importlib.util.spec_from_file_location(
-            "datasets_modules", dynamic_modules_path
-        )
-        datasets_modules = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = datasets_modules
-        spec.loader.exec_module(datasets_modules)
+        # Datasets >= 4.0 removed dataset scripts support and the dynamic-modules cache.
+        # Only initialize dynamic modules on <= 3.x where the initializer `init_dynamic_modules` exists.
+        DATASETS_VERSION = parse(importlib.metadata.version("datasets"))
+        DATASETS_VERSION_WITHOUT_SCRIPT_SUPPORT = parse("4.0.0")
+
+        if DATASETS_VERSION < DATASETS_VERSION_WITHOUT_SCRIPT_SUPPORT:
+            dynamic_modules_path = os.path.join(
+                datasets.load.init_dynamic_modules(), "__init__.py"
+            )
+            # load dynamic_modules from path
+            spec = importlib.util.spec_from_file_location(
+                "datasets_modules", dynamic_modules_path
+            )
+            datasets_modules = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = datasets_modules
+            spec.loader.exec_module(datasets_modules)
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
 

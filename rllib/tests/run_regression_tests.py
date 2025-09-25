@@ -16,7 +16,7 @@ import ray
 from ray import air
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,

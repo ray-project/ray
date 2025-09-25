@@ -1089,6 +1089,14 @@ class APIType(str, Enum):
     IMPERATIVE = "imperative"
     DECLARATIVE = "declarative"
 
+    @classmethod
+    def get_valid_user_values(cls):
+        """Get list of valid APIType values that users can explicitly pass.
+
+        Excludes 'unknown' which is for internal use only.
+        """
+        return [cls.IMPERATIVE.value, cls.DECLARATIVE.value]
+
 
 @PublicAPI(stability="stable")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
@@ -1170,6 +1178,7 @@ class Target(BaseModel, frozen=True):
     ip: str = Field(description="IP address of the target.")
     port: int = Field(description="Port of the target.")
     instance_id: str = Field(description="Instance ID of the target.")
+    name: str = Field(description="Name of the target.")
 
 
 @PublicAPI(stability="alpha")

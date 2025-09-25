@@ -1,0 +1,56 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package ray.rpc.events;
+
+// Message containing the lifecycle information of a node, as observed via GCS.
+// It can be used to capture the full state transition history.
+//
+// For static information associated with this event, see NodeDefinitionEvent.
+message NodeLifecycleEvent {
+  enum State {
+    ALIVE = 0;
+    DEAD = 1;
+  }
+
+  message DeathInfo {
+    enum Reason {
+      UNSPECIFIED = 0;
+      EXPECTED_TERMINATION = 1;
+      UNEXPECTED_TERMINATION = 2;
+      AUTOSCALER_DRAIN_PREEMPTED = 3;
+      AUTOSCALER_DRAIN_IDLE = 4;
+    }
+    Reason reason = 1;
+    string reason_message = 2;
+  }
+
+  message StateTransition {
+    State state = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    map<string, double> resources = 3; // Resources (cpu, gpu, etc.) and their counts,
+                                       // available only in the ALIVE state.
+    DeathInfo death_info = 4;  // Available only in the DEAD state
+  }
+
+  bytes node_id = 1;
+  // This records the state transitions within each export interval. The consumer should
+  // concatenate these intervals over the node’s lifetime to reconstruct the complete
+  // state transition time series.
+  repeated StateTransition state_transitions = 2;
+}
