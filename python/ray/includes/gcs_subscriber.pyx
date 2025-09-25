@@ -149,4 +149,3 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
 
         result["lines"] = log_lines
         return result
-
