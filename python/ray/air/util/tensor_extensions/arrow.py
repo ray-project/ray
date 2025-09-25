@@ -1117,6 +1117,13 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     def __repr__(self) -> str:
         return str(self)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, ArrowVariableShapedTensorType)
+            and other.scalar_type == self.scalar_type
+            and other.ndim == self.ndim
+        )
+
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
         Convert an ExtensionScalar to a tensor element.
