@@ -97,8 +97,7 @@ void PopulateTaskRuntimeAndFunctionInfo(
     }
     break;
   default:
-    // Other languages are not handled.
-    break;
+    RAY_CHECK(false) << "Unsupported language: " << language;
   }
   task_info->mutable_required_resources()->swap(required_resources);
 }
@@ -227,8 +226,7 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
       break;
     }
     default:
-      // TODO(can-anyscale): Handle other event types
-      break;
+      RAY_CHECK(false) << "Unsupported event type: " << event.event_type();
     }
 
     // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
