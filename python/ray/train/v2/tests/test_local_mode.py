@@ -1,6 +1,7 @@
 import math
+import os
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import lightgbm
 import pandas as pd
@@ -38,6 +39,8 @@ from ray.train.tests._huggingface_data import train_data, validation_data
 from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.torch import TorchTrainer
+from ray.train.v2._internal.execution.local_mode.torch import LocalTorchController
+from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.jax import JaxTrainer
 from ray.train.xgboost import (
@@ -520,6 +523,95 @@ def test_xgboost_trainer_local_mode(ray_start_4_cpus):
     result = trainer.fit()
     with pytest.raises(DeprecationWarning):
         XGBoostTrainer.get_model(result.checkpoint)
+
+
+def test_torch_distributed_variables_local_train_fn_utils():
+    """Test that torch distributed variables are correctly used to create LocalTrainFnUtils."""
+
+    # Test scenario 1: Without torch distributed environment variables
+    with patch.dict(os.environ, {}, clear=True):
+        controller = LocalTorchController("test_experiment")
+
+        def dummy_train_func():
+            train_fn_utils = get_train_fn_utils()
+            # Verify default values when no torch distributed env vars are set
+            context = train_fn_utils.get_context()
+            assert context.get_world_size() == 1
+            assert context.get_world_rank() == 0
+            assert context.get_local_rank() == 0
+            assert context.get_local_world_size() == 1
+            assert context.get_node_rank() == 0
+
+        controller.run(dummy_train_func)
+
+    # Test scenario 2: With torch distributed environment variables (CPU)
+    torch_env_vars = {
+        "RANK": "2",
+        "LOCAL_RANK": "1",
+        "WORLD_SIZE": "4",
+        "LOCAL_WORLD_SIZE": "2",
+        "MASTER_ADDR": "127.0.0.1",
+        "MASTER_PORT": "29500",
+    }
+
+    with patch.dict(os.environ, torch_env_vars, clear=True), patch(
+        "torch.distributed.is_initialized", return_value=False
+    ), patch("torch.distributed.get_world_size", return_value=4), patch(
+        "torch.distributed.get_rank", return_value=2
+    ), patch(
+        "torch.cuda.is_available", return_value=False
+    ), patch(
+        "torch.distributed.init_process_group"
+    ) as mock_init_pg:
+
+        controller = LocalTorchController("test_experiment")
+
+        def dummy_train_func():
+            train_fn_utils = get_train_fn_utils()
+            # Verify torch distributed values are correctly passed
+            context = train_fn_utils.get_context()
+            assert context.get_world_size() == 4
+            assert context.get_world_rank() == 2
+            assert context.get_local_rank() == 1
+            assert context.get_local_world_size() == 2
+            assert (
+                context.get_node_rank() == 1
+            )  # global_rank // nproc_per_node = 2 // 2 = 1
+
+        controller.run(dummy_train_func)
+
+        # Verify torch.distributed methods were called with CPU backend
+        mock_init_pg.assert_called_once_with(backend="gloo")
+
+    # Test scenario 3: With torch distributed environment variables (GPU)
+    with patch.dict(os.environ, torch_env_vars, clear=True), patch(
+        "torch.distributed.is_initialized", return_value=False
+    ), patch("torch.distributed.get_world_size", return_value=4), patch(
+        "torch.distributed.get_rank", return_value=2
+    ), patch(
+        "torch.cuda.is_available", return_value=True
+    ), patch(
+        "torch.distributed.init_process_group"
+    ) as mock_init_pg, patch(
+        "torch.cuda.set_device"
+    ) as mock_set_device:
+
+        controller = LocalTorchController("test_experiment")
+
+        def dummy_train_func():
+            train_fn_utils = get_train_fn_utils()
+            # Verify torch distributed values are correctly passed
+            context = train_fn_utils.get_context()
+            assert context.get_world_size() == 4
+            assert context.get_world_rank() == 2
+            assert context.get_local_rank() == 1
+            assert context.get_local_world_size() == 2
+            assert context.get_node_rank() == 1
+
+        controller.run(dummy_train_func)
+
+        mock_init_pg.assert_called_once_with(backend="nccl")
+        mock_set_device.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

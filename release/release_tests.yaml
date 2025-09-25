@@ -96,6 +96,27 @@
   variations:
     - __suffix__: aws
 
+- name: hello_world_custom_byod
+  team: reef
+  group: hello_world_custom_byod
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_hello_world.sh
+      python_depset: emoji.lock
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world_emoji.py
+
+  variations:
+    - __suffix__: aws
+
+
 #######################
 # Cluster scaling tests
 #######################
@@ -153,7 +174,7 @@
 
   run:
     timeout: 4800
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -193,14 +214,14 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_cpu_8_aws.yaml
+    cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
 
     wait_for_nodes:
-      num_nodes: 8
+      num_nodes: 4
 
   variations:
     - __suffix__: aws
@@ -208,7 +229,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_cpu_8_gce.yaml
+        cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
 
@@ -2198,9 +2219,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2273,9 +2292,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2441,9 +2458,7 @@
   stable: false
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2468,9 +2483,7 @@
   team: data
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -2795,9 +2808,7 @@
   team: core
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -4152,6 +4163,30 @@
     byod:
       type: gpu
       post_build_script: byod_distributing_pytorch.sh
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: pytorch_fsdp  # do not use dashes (regex sensitive)
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/pytorch-fsdp
+
+  cluster:
+    byod:
+      type: gpu
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:

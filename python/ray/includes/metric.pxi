@@ -9,8 +9,8 @@ from ray.includes.metric cimport (
 from libcpp.utility cimport move
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
+from libcpp.pair cimport pair as c_pair
 
 cdef class TagKey:
     """Cython wrapper class of C++ `opencensus::stats::TagKey`."""
@@ -45,16 +45,19 @@ cdef class Metric:
             value (double): metric name.
             tags (dict): default none.
         """
-        cdef unordered_map[c_string, c_string] c_tags
+        cdef c_vector[c_pair[c_string, c_string]] c_tags
         cdef double c_value
         # Default tags will be exported if it's empty map.
         if tags:
+            c_tags.reserve(len(tags))
             for tag_k, tag_v in tags.items():
                 if tag_v is not None:
-                    c_tags[tag_k.encode("ascii")] = tag_v.encode("ascii")
+                    c_tags.push_back(c_pair[c_string, c_string](
+                        tag_k.encode("ascii"),
+                        tag_v.encode("ascii")))
         c_value = value
         with nogil:
-            self.metric.get().Record(c_value, move(c_tags))
+            self.metric.get().RecordForCython(c_value, move(c_tags))
 
     def get_name(self):
         return self.metric.get().GetName()
