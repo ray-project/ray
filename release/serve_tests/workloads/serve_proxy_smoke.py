@@ -75,14 +75,10 @@ def start_fastapi(host, port):
     uvicorn.run(app, host=host, port=port)
 
 
-# -------------------
-# Main Flow
-# -------------------
 if __name__ == "__main__":
     host = "127.0.0.1"
     fastapi_port = get_free_port()
 
-    # Start FastAPI in background thread
     threading.Thread(
         target=start_fastapi, args=(host, fastapi_port), daemon=True
     ).start()
