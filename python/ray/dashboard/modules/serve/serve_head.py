@@ -264,7 +264,6 @@ class ServeHead(SubprocessModule):
                     {"error": "Internal Server Error"}, 503
                 )
 
-
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.
 
