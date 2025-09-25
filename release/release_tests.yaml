@@ -1494,10 +1494,6 @@
 
   variations:
     - __suffix__: base-extra
-      cluster:
-        byod:
-          base_image: cr.ray.io/rayproject/ray-py3.9-cpu-base-extra
-        cluster_compute: compute_tpl_single_node.yaml
 
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
