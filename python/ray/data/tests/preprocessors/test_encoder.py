@@ -202,7 +202,7 @@ def test_ordinal_encoder_mixed_types_after_imputation():
     ])
     encoder = OrdinalEncoder(columns=["feature"])
     encoder.fit(ds)
-    # sorted([1, "a", 2, "b"], key=str) -> ["1", "2", "a", "b"]
+    # sorted([1, "a", 2, "b"], key=str) -> [1, 2, "a", "b"]
     expected_stats = {"unique_values(feature)": {1: 0, 2: 1, "a": 2, "b": 3}}
     assert encoder.stats_ == expected_stats
 
