@@ -22,6 +22,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 
@@ -64,17 +65,17 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     }
 
     // Create a object eviction subscription message.
-    auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
-    wait_request->set_object_id(object_id.Binary());
-    wait_request->set_intended_worker_id(owner_address.worker_id());
+    rpc::WorkerObjectEvictionSubMessage wait_request;
+    wait_request.set_object_id(object_id.Binary());
+    wait_request.set_intended_worker_id(owner_address.worker_id());
     if (!generator_id.IsNil()) {
-      wait_request->set_generator_id(generator_id.Binary());
+      wait_request.set_generator_id(generator_id.Binary());
     }
     rpc::Address subscriber_address;
     subscriber_address.set_node_id(self_node_id_.Binary());
     subscriber_address.set_ip_address(self_node_address_);
     subscriber_address.set_port(self_node_port_);
-    wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
+    *wait_request.mutable_subscriber_address() = std::move(subscriber_address);
 
     // If the subscription succeeds, register the subscription callback.
     // Callback is invoked when the owner publishes the object to evict.
@@ -95,7 +96,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
+    *sub_message->mutable_worker_object_eviction_message() = std::move(wait_request);
 
     core_worker_subscriber_->Subscribe(std::move(sub_message),
                                        rpc::ChannelType::WORKER_OBJECT_EVICTION,
@@ -646,9 +647,8 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
                                                        "Restored");
 
-  ray::stats::STATS_object_store_memory.Record(
-      spilled_bytes_current_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocSpilled}});
+  stats::STATS_object_store_memory.Record(
+      spilled_bytes_current_, {{std::string_view(stats::LocationKey.name()), "SPILLED"}});
 
   ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
                                                        "FailedDeletion");
