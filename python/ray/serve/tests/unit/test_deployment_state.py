@@ -2818,7 +2818,6 @@ def _make_deployment_state(
 
 @pytest.fixture
 def inject_scale_globals(monkeypatch):
-    # Patch the module-level names used by DeploymentState.scale
     ReplicaState = types.SimpleNamespace(RUNNING="RUNNING")
     Triggers = types.SimpleNamespace(AUTOSCALE_UP="UP", AUTOSCALE_DOWN="DOWN")
     logger = Mock()
@@ -2838,7 +2837,7 @@ def inject_scale_globals(monkeypatch):
         (False, 3, 3),  # decision equals current -> no-op
     ],
 )
-def test_scale_noop_cases(inject_scale_globals, deleting, initial_target, decision):
+def test_scale_no_op_cases(inject_scale_globals, deleting, initial_target, decision):
     _, _, logger = inject_scale_globals
     ds = _make_deployment_state(
         target_state=_make_target_state(deleting=deleting, target=initial_target)
