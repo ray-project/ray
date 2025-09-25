@@ -6,7 +6,6 @@ import pytest
 
 from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -34,13 +33,13 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
 
     assert num_workers == num_ckpt + num_dummy + num_none
     ckpt_tr = _TrainingReport(
-        training_result=_TrainingResult(
-            metrics={}, checkpoint=Checkpoint("mock://bucket/path")
-        ),
+        metrics={},
+        checkpoint=Checkpoint("mock://bucket/path"),
         validation_spec=None,
     )
     dummy_tr = _TrainingReport(
-        training_result=_TrainingResult(metrics={}, checkpoint=None),
+        metrics={},
+        checkpoint=None,
         validation_spec=None,
     )
     ckpt_ws = WorkerStatus(running=True, error=None, training_report=ckpt_tr)

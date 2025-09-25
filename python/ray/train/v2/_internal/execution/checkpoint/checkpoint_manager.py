@@ -16,7 +16,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
-from ray.train.v2._internal.execution.training_report import _ValidationSpec
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -330,18 +330,18 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
     def after_report(
         self,
+        training_report: _TrainingReport,
         metrics: List[Dict[str, Any]],
-        checkpoint: Optional[Checkpoint],
-        validation_spec: Optional[_ValidationSpec],
     ):
-        if not checkpoint:
+        if not training_report.checkpoint:
             self._current_report_index += 1
             return
 
-        rank_0_metrics = metrics[0]
         self.register_checkpoint(
-            _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics),
-            bool(validation_spec),
+            _TrainingResult(
+                checkpoint=training_report.checkpoint, metrics=training_report.metrics
+            ),
+            bool(training_report.validation_spec),
         )
 
     # --------------------------

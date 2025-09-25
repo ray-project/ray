@@ -11,7 +11,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train._internal import session
-from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
@@ -242,7 +241,7 @@ class TrainContext:
 
         if not checkpoint:
             return _TrainingReport(
-                _TrainingResult(checkpoint=None, metrics=metrics), validation_spec=None
+                checkpoint=None, metrics=metrics, validation_spec=None
             )
 
         # Persist the checkpoint to the remote storage path.
@@ -268,7 +267,8 @@ class TrainContext:
                 )
 
         return _TrainingReport(
-            _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics),
+            checkpoint=persisted_checkpoint,
+            metrics=metrics,
             validation_spec=validation_spec,
         )
 
@@ -293,8 +293,8 @@ class TrainContext:
                 f"Reporting training result {report_call_index}: {training_report}"
             )
             # Update latest checkpoint as the persisted checkpoint.
-            if training_report.training_result.checkpoint:
-                self.checkpoint = training_report.training_result.checkpoint
+            if training_report.checkpoint:
+                self.checkpoint = training_report.checkpoint
             self.get_result_queue().put(training_report)
             self.current_report_index += 1
             self.report_order_condition.notify_all()
@@ -338,7 +338,9 @@ class TrainContext:
         ):
             if validate_fn:
                 validation_spec = _ValidationSpec(
-                    validate_fn=validate_fn, validate_config=validate_config
+                    validate_fn=validate_fn,
+                    validate_config=validate_config,
+                    checkpoint=checkpoint,
                 )
             else:
                 validation_spec = None
@@ -363,7 +365,8 @@ class TrainContext:
 
             elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
                 training_report = _TrainingReport(
-                    _TrainingResult(checkpoint=checkpoint, metrics=metrics),
+                    checkpoint=checkpoint,
+                    metrics=metrics,
                     validation_spec=validation_spec,
                 )
                 self._wait_then_report(training_report, report_call_index)
@@ -377,14 +380,14 @@ class TrainContext:
                     report_call_index: int,
                 ) -> None:
                     try:
-                        training_result = self._upload_checkpoint(
+                        training_report = self._upload_checkpoint(
                             checkpoint_dir_name,
                             metrics,
                             checkpoint,
                             delete_local_checkpoint_after_upload,
                             validation_spec,
                         )
-                        self._wait_then_report(training_result, report_call_index)
+                        self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
                         logger.exception(
                             "Async checkpoint upload failed - shutting down workers"

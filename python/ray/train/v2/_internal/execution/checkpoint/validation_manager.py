@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import ray
 from ray.train._checkpoint import Checkpoint
@@ -9,7 +9,10 @@ from ray.train.v2._internal.execution.callback import ControllerCallback, Report
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
-from ray.train.v2._internal.execution.training_report import _ValidationSpec
+from ray.train.v2._internal.execution.training_report import (
+    _TrainingReport,
+    _ValidationSpec,
+)
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.controller import TrainControllerState
@@ -21,10 +24,10 @@ VALIDATION_TASK_POLL_INTERVAL_S = 1
 
 
 @ray.remote
-def run_validate_fn(validation_spec: _ValidationSpec, checkpoint: Checkpoint) -> Dict:
+def run_validate_fn(validation_spec: _ValidationSpec) -> Dict:
     """Run the user-defined validation function."""
     metrics_dict = validation_spec.validate_fn(
-        checkpoint,
+        validation_spec.checkpoint,
         validation_spec.validate_config,
     )
     if not isinstance(metrics_dict, dict):
@@ -53,17 +56,21 @@ class ValidationManager(ControllerCallback, ReportCallback):
 
     def after_report(
         self,
+        training_report: _TrainingReport,
         metrics: List[Dict[str, Any]],
-        checkpoint: Optional[Checkpoint],
-        validation_spec: Optional[_ValidationSpec],
     ):
-        if validation_spec and validation_spec.validate_fn:
+        if (
+            training_report.validation_spec
+            and training_report.validation_spec.validate_fn
+        ):
             # TODO: rate limit this by using a queue?
             # TODO: figure out where to place run_validate_fn task:
             # head node is faster but want to avoid putting too much there
-            validate_task = run_validate_fn.remote(validation_spec, checkpoint)
-            self._pending_validations[validate_task] = checkpoint
-            logger.info(f"Launched async validation task for checkpoint {checkpoint}")
+            validate_task = run_validate_fn.remote(training_report.validation_spec)
+            self._pending_validations[validate_task] = training_report.checkpoint
+            logger.info(
+                f"Launched async validation task for checkpoint {training_report.checkpoint}"
+            )
 
     def _poll_validations(self) -> int:
         """Poll/process validations, update checkpoint manager, return num pending validations."""
@@ -106,6 +113,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
             # TODO: retry validations and time out appropriately.
+            # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
         return checkpoint_to_metrics
 
     def before_controller_shutdown(self):
@@ -115,7 +123,6 @@ class ValidationManager(ControllerCallback, ReportCallback):
         tasks = list(self._finished_validations.keys())
         for task in tasks:
             checkpoint = self._finished_validations[task]
-            # modoru: remove failed here too
             checkpoint_to_metrics.update(
                 self._process_finished_validation(task, checkpoint)
             )

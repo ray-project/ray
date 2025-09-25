@@ -1,14 +1,13 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.train.v2._internal.execution.training_report import _ValidationSpec
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.api.result import Result
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.train import Checkpoint
     from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2._internal.execution.controller import (
         TrainControllerState,
@@ -142,9 +141,8 @@ class ControllerCallback(RayTrainCallback):
 class ReportCallback(RayTrainCallback):
     def after_report(
         self,
+        training_report: _TrainingReport,
         metrics: List[Dict[str, Any]],
-        checkpoint: Optional["Checkpoint"],
-        validation_spec: Optional[_ValidationSpec],
     ):
         """Called after all workers have reported a training result.
 

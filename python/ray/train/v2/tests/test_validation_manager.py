@@ -11,7 +11,10 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2._internal.execution.training_report import _ValidationSpec
+from ray.train.v2._internal.execution.training_report import (
+    _TrainingReport,
+    _ValidationSpec,
+)
 from ray.train.v2.tests.util import create_dummy_training_results
 
 
@@ -64,24 +67,32 @@ def test_checkpoint_validation_management(tmp_path):
 
     # Register passing, failing, and timing out checkpoints
     vm.after_report(
-        metrics=[low_initial_high_final_training_result.metrics],
-        checkpoint=low_initial_high_final_training_result.checkpoint,
-        validation_spec=_ValidationSpec(
-            validate_fn=lambda checkpoint, config: {"score": 200},
-            validate_config=None,
+        training_report=_TrainingReport(
+            metrics=low_initial_high_final_training_result.metrics,
+            checkpoint=low_initial_high_final_training_result.checkpoint,
+            validation_spec=_ValidationSpec(
+                validate_fn=lambda checkpoint, config: {"score": 200},
+                validate_config=None,
+                checkpoint=low_initial_high_final_training_result.checkpoint,
+            ),
         ),
+        metrics={},
     )
 
     def failing_validate_fn(checkpoint, config):
         return "invalid_return_type"
 
     vm.after_report(
-        metrics=[failing_training_result.metrics],
-        checkpoint=failing_training_result.checkpoint,
-        validation_spec=_ValidationSpec(
-            validate_fn=failing_validate_fn,
-            validate_config=None,
+        training_report=_TrainingReport(
+            metrics=failing_training_result.metrics,
+            checkpoint=failing_training_result.checkpoint,
+            validation_spec=_ValidationSpec(
+                validate_fn=failing_validate_fn,
+                validate_config=None,
+                checkpoint=failing_training_result.checkpoint,
+            ),
         ),
+        metrics={},
     )
 
     def infinite_waiting_validate_fn(checkpoint, config):
@@ -89,21 +100,29 @@ def test_checkpoint_validation_management(tmp_path):
             time.sleep(1)
 
     vm.after_report(
-        metrics=[timing_out_training_result.metrics],
-        checkpoint=timing_out_training_result.checkpoint,
-        validation_spec=_ValidationSpec(
-            validate_fn=infinite_waiting_validate_fn,
-            validate_config=None,
+        training_report=_TrainingReport(
+            metrics=timing_out_training_result.metrics,
+            checkpoint=timing_out_training_result.checkpoint,
+            validation_spec=_ValidationSpec(
+                validate_fn=infinite_waiting_validate_fn,
+                validate_config=None,
+                checkpoint=timing_out_training_result.checkpoint,
+            ),
         ),
+        metrics={},
     )
 
     vm.after_report(
-        metrics=[high_initial_low_final_training_result.metrics],
-        checkpoint=high_initial_low_final_training_result.checkpoint,
-        validation_spec=_ValidationSpec(
-            validate_fn=lambda checkpoint, config: config,
-            validate_config={"score": 100},
+        training_report=_TrainingReport(
+            metrics=high_initial_low_final_training_result.metrics,
+            checkpoint=high_initial_low_final_training_result.checkpoint,
+            validation_spec=_ValidationSpec(
+                validate_fn=lambda checkpoint, config: config,
+                validate_config={"score": 100},
+                checkpoint=high_initial_low_final_training_result.checkpoint,
+            ),
         ),
+        metrics={},
     )
 
     # Assert ValidationManager state after most tasks are done
