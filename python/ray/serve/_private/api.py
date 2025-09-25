@@ -14,10 +14,10 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import RayServeConfigException, RayServeException
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -33,17 +33,26 @@ def _check_http_options(
             if isinstance(http_options, HTTPOptions)
             else HTTPOptions.parse_obj(http_options)
         )
-        different_fields = []
+        diff_http_options = {}
         all_http_option_fields = new_http_options.__dict__
         for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
-                different_fields.append(field)
+            prev_value = getattr(client_http_options, field)
+            new_value = getattr(new_http_options, field)
+            if isinstance(prev_value, DeploymentMode) or isinstance(
+                new_value, DeploymentMode
+            ):
+                # restore ProxyLocation as this is the property user configured
+                prev_value = ProxyLocation._from_deployment_mode(prev_value)
+                new_value = ProxyLocation._from_deployment_mode(new_value)
+            if prev_value != new_value:
+                diff_http_options[field] = {"previous": prev_value, "new": new_value}
 
-        if len(different_fields):
-            logger.warning(
-                "The new client HTTP config differs from the existing one "
-                f"in the following fields: {different_fields}. "
-                "The new HTTP config is ignored."
+        if diff_http_options:
+            raise RayServeConfigException(
+                "Attempt to update `http_options` or `proxy_location` has been detected! "
+                f"Attempted updates: {diff_http_options}. "
+                "HTTP config is global to your Ray cluster, and you can't update it during runtime. "
+                "Please restart Ray Serve to apply the change."
             )
 
 

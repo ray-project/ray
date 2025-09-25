@@ -64,6 +64,24 @@ from ray.serve._private import api as _private_api  # isort:skip
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _prepare_http_options(
+    proxy_location: Union[None, str, ProxyLocation],
+    http_options: Union[None, dict, HTTPOptions],
+) -> HTTPOptions:
+    if http_options is None:
+        http_options = HTTPOptions()
+    elif isinstance(http_options, dict):
+        http_options = HTTPOptions(**http_options)
+
+    if proxy_location is None:
+        # according to `proxy-config` doc
+        http_options.location = DeploymentMode.EveryNode
+    else:
+        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
+
+    return http_options
+
+
 @PublicAPI(stability="stable")
 def start(
     proxy_location: Union[None, str, ProxyLocation] = None,
@@ -96,20 +114,7 @@ def start(
         logging_config: logging config options for the serve component (
             controller & proxy).
     """
-    if proxy_location is None:
-        if http_options is None:
-            http_options = HTTPOptions(location=DeploymentMode.EveryNode)
-    else:
-        if http_options is None:
-            http_options = HTTPOptions()
-        elif isinstance(http_options, dict):
-            http_options = HTTPOptions(**http_options)
-
-        if isinstance(proxy_location, str):
-            proxy_location = ProxyLocation(proxy_location)
-
-        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
-
+    http_options = _prepare_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
