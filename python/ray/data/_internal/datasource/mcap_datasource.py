@@ -138,9 +138,8 @@ class MCAPDatasource(FileBasedDatasource):
 
         try:
             reader = make_reader(f)
-            # Get summary for potential optimization, but don't require it
-            # MCAP summaries are optional and iter_messages works without them
-            summary = reader.get_summary()
+            # Note: MCAP summaries are optional and iter_messages works without them
+            # We don't need to validate the summary since it's not required
 
             # Determine which topics to filter on for MCAP's built-in filtering
             # Use topics if specified, otherwise use channels (which map to topics)
