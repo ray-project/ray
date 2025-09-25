@@ -113,7 +113,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
             ),
             0,
         )
-        time.sleep(1)
+        time.sleep(0.1)
 
         # Second call to foreach_env_runner_async_fetch_ready should return ready results.
         self.assertEqual(

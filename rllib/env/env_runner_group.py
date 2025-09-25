@@ -556,13 +556,18 @@ class EnvRunnerGroup:
             if rl_module_state:
                 env_runner_states.update(rl_module_state)
 
+            self.fetch_ready_async_reqs(
+                tags="sync_env_runner_states_set_states",
+                return_obj_refs=False,
+            )
+
             # Broadcast updated states back to all workers.
-            self.foreach_env_runner(
+            self.foreach_env_runner_async(
                 "set_state",  # Call the `set_state()` remote method.
+                tag="sync_env_runner_states_set_states",
                 kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
                 local_env_runner=False,
-                timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
 
     def foreach_env_runner_async_fetch_ready(
@@ -578,7 +583,7 @@ class EnvRunnerGroup:
         local_env_runner: bool = False,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
-    ) -> List[Tuple[int, T]]:
+    ) -> List[Union[Tuple[int, T], T]]:
         """Calls the given function asynchronously and returns previous results if any.
 
         This is a convenience function that calls `foreach_env_runner_async()` and `fetch_ready_async_reqs()`.
@@ -979,7 +984,12 @@ class EnvRunnerGroup:
             ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
 
-        return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
+        # Add remote results
+        all_results.extend(
+            [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
+        )
+
+        return all_results
 
     @OldAPIStack
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
