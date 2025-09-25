@@ -1,6 +1,6 @@
 group: build
 steps:
-  - name: wanda_ray_core
+  - name: ray-core-build
     label: "wanda: core binary parts py{{matrix}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
@@ -14,7 +14,7 @@ steps:
       ARCH_SUFFIX: ""
     depends_on: manylinux
 
-  - name: wanda_ray_dashboard
+  - name: ray-dashboard-build
     label: "wanda: dashboard"
     wanda: ci/docker/ray-dashboard.wanda.yaml
     depends_on: manylinux
