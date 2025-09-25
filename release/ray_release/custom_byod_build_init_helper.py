@@ -46,9 +46,8 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     if not custom_byod_images:
         return
     build_config = {"group": "Custom images build", "steps": []}
-
+    ray_want_commit = os.getenv("RAY_WANT_COMMIT_IN_IMAGE", "")
     for image, base_image, post_build_script, python_depset in custom_byod_images:
-        ray_want_commit = os.getenv("RAY_WANT_COMMIT_IN_IMAGE", "")
         logger.info(
             f"Building custom BYOD image: {image}, base image: {base_image}, post build script: {post_build_script}, python depset: {python_depset}"
         )
