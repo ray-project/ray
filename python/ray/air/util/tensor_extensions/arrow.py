@@ -530,6 +530,14 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
     def __repr__(self) -> str:
         return str(self)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, type(self))
+            and other.extension_name == self.extension_name
+            and other.shape == self.shape
+            and other.scalar_type == self.scalar_type
+        )
+
     @classmethod
     def _need_variable_shaped_tensor_array(
         cls,
@@ -605,13 +613,6 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
         shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
-    def __eq__(self, other):
-        return (
-            isinstance(other, ArrowTensorType)
-            and other.shape == self.shape
-            and other.scalar_type == self.scalar_type
-        )
-
 
 @PublicAPI(stability="alpha")
 class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
@@ -635,13 +636,6 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
         shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, ArrowTensorTypeV2)
-            and other.shape == self.shape
-            and other.scalar_type == self.scalar_type
-        )
 
 
 if _arrow_extension_scalars_are_subclassable():
@@ -1120,9 +1114,13 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     def __eq__(self, other):
         return (
             isinstance(other, ArrowVariableShapedTensorType)
+            and other.extension_name == self.extension_name
             and other.scalar_type == self.scalar_type
             and other.ndim == self.ndim
         )
+
+    def __hash__(self) -> int:
+        return hash((self.extension_name, self.storage_type, self._ndim))
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
@@ -1141,9 +1139,6 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         offset = raw_values.offset
         data_buffer = raw_values.buffers()[1]
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
-
-    def __hash__(self) -> int:
-        return hash((type(self), self.extension_name, self.storage_type, self._ndim))
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
