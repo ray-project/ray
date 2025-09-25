@@ -5,6 +5,7 @@ autonomous systems, commonly used for sensor data, control commands, and other
 time-series data.
 """
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
 
@@ -177,6 +178,7 @@ class MCAPDatasource(FileBasedDatasource):
 
         except Exception as e:
             logger.error(f"Error reading MCAP file {path}: {e}")
+            logger.debug(f"MCAP file read error details: {type(e).__name__}: {e}")
             raise ValueError(f"Failed to read MCAP file {path}: {e}") from e
 
     def _should_include_message(self, schema: Any, channel: Any, message: Any) -> bool:
@@ -225,8 +227,6 @@ class MCAPDatasource(FileBasedDatasource):
         decoded_data = message.data
         if channel.message_encoding == "json" and isinstance(message.data, bytes):
             try:
-                import json
-
                 decoded_data = json.loads(message.data.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 # Keep raw bytes if decoding fails
