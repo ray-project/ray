@@ -1573,13 +1573,7 @@ python/ray/serve/_private/api.py
     DOC201: Function `serve_start` does not have a return section in docstring
 --------------------
 python/ray/serve/_private/application_state.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `ApplicationState.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ApplicationState.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [deployment_state_manager: DeploymentStateManager, endpoint_state: EndpointState, logging_config: LoggingConfig, name: str].
     DOC103: Method `ApplicationStateManager.deploy_app`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [deployment_args: List[Dict]]. Arguments in the docstring but not in the function signature: [deployment_args_list: ].
-    DOC102: Function `override_deployment_info`: Docstring contains more arguments than in function signature.
-    DOC103: Function `override_deployment_info`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [app_name: ].
     DOC201: Function `override_deployment_info` does not have a return section in docstring
 --------------------
 python/ray/serve/_private/benchmarks/common.py
@@ -2454,59 +2448,6 @@ python/ray/util/collective/collective_group/base_collective_group.py
 python/ray/util/collective/collective_group/cuda_stream.py
     DOC106: Method `StreamPool.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `StreamPool.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
-python/ray/util/collective/collective_group/gloo_collective_group.py
-    DOC101: Method `Rendezvous.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC106: Method `Rendezvous.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `Rendezvous.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Method `Rendezvous.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [context: , device_type: , store_type: ].
-    DOC106: Method `Rendezvous.meet`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `Rendezvous.meet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Method `GLOOGroup.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Method `GLOOGroup.allreduce`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.allreduce`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Method `GLOOGroup.allreduce`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [tensors: ]. Arguments in the docstring but not in the function signature: [tensor: ].
-    DOC202: Method `GLOOGroup.allreduce` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.barrier`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.barrier`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.barrier` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.reduce`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.reduce`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.reduce` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.broadcast`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.broadcast`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.broadcast` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.allgather`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.allgather`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC111: Method `GLOOGroup.allgather`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC202: Method `GLOOGroup.allgather` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.reducescatter`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.reducescatter`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC111: Method `GLOOGroup.reducescatter`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC202: Method `GLOOGroup.reducescatter` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.send`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.send`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.send` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.recv`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.recv`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.recv` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup._collective`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup._collective`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup._collective` has a return section in docstring, but there are no return statements or annotations
-    DOC107: Method `GLOOGroup._point2point`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup._point2point` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Function `_flatten_for_scatter_gather`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `_flatten_for_scatter_gather`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
-python/ray/util/collective/collective_group/gloo_util.py
-    DOC106: Function `create_gloo_context`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `create_gloo_context`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `get_gloo_reduce_op`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `get_gloo_reduce_op`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `copy_tensor`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `copy_tensor`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Function `copy_tensor` has a return section in docstring, but there are no return statements or annotations
 --------------------
 python/ray/util/collective/collective_group/nccl_collective_group.py
     DOC106: Method `Rendezvous.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
