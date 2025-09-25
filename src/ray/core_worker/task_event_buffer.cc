@@ -427,6 +427,10 @@ TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
+  if (enabled_) {
+    // already started, return OK
+    return Status::OK();
+  }
   send_task_events_to_gcs_enabled_ =
       RayConfig::instance().enable_core_worker_task_event_to_gcs();
   send_ray_events_to_aggregator_enabled_ =
