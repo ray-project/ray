@@ -538,6 +538,9 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             and other.scalar_type == self.scalar_type
         )
 
+    def __hash__(self) -> int:
+        return hash((self.extension_name, self.scalar_type, self._shape))
+
     @classmethod
     def _need_variable_shaped_tensor_array(
         cls,
@@ -582,9 +585,6 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             shape = arr_type.shape
         return False
 
-    def __hash__(self) -> int:
-        return hash((type(self), self.extension_name, self.storage_type, self._shape))
-
 
 @PublicAPI(stability="beta")
 class ArrowTensorType(_BaseFixedShapeArrowTensorType):
@@ -595,7 +595,6 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     """
 
     OFFSET_DTYPE = np.int32
-    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -619,7 +618,6 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
     OFFSET_DTYPE = np.int64
-    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -1120,7 +1118,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         )
 
     def __hash__(self) -> int:
-        return hash((self.extension_name, self.storage_type, self._ndim))
+        return hash((self.extension_name, self.scalar_type, self._ndim))
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
