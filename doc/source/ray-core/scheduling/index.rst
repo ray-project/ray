@@ -11,7 +11,7 @@ This page provides an overview of how Ray decides to schedule tasks and actors t
 Labels
 ------
 
-Labels provide a simplified solution for controlling scheduling for tasks, actors, and placement group bundles using default and custom labels. See :doc:`./labels.md`.
+Labels provide a simplified solution for controlling scheduling for tasks, actors, and placement group bundles using default and custom labels. See :doc:`./labels`.
 
 Labels are currently offered as an alpha feature. As this feature becomes stable, the Ray team recommends using labels instead of the following patterns:
 
