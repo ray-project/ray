@@ -769,7 +769,8 @@ class NodeHead(SubprocessModule):
 def _parse_node_stats(node_stats_str: str) -> dict:
     stats_dict = json.loads(node_stats_str)
     if StatsPayload is not None:
-        parsed_stats = StatsPayload.parse_obj(stats_dict)
-        return parsed_stats.dict()
+        # Validate the response by parsing the stats_dict.
+        StatsPayload.parse_obj(stats_dict)
+        return stats_dict
     else:
         return stats_dict
