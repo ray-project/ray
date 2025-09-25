@@ -164,6 +164,7 @@ __all__ = [
     "read_images",
     "read_json",
     "read_lance",
+    "read_mcap",
     "read_numpy",
     "read_mongo",
     "read_parquet",
