@@ -759,7 +759,7 @@ def _get_unique_value_indices(
         else:
             # Output sorted by column name.
             unique_values_with_indices[key_format.format(column)] = {
-                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys()))
+                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys(), key=lambda x: str(x)))
             }
     return unique_values_with_indices
 
