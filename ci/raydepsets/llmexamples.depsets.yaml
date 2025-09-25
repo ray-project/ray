@@ -7,7 +7,7 @@ build_arg_sets:
 depsets:
 ########## LLM EXAMPLES ##########
 # Subset (compile) from RayLLM dependencies. (to get rid of vllm constraint)
-  - name: e2e_multimodal_ai_workloads_${PYTHON_VERSION}_${CUDA_VERSION}
+  - name: e2e_multimodal_ai_workloads_${PYTHON_SHORT}_${CUDA_VERSION}
     operation: compile
     requirements:
       - python/requirements.txt
@@ -16,6 +16,5 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
     build_arg_sets:
       - cu124_py312
