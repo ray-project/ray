@@ -82,6 +82,7 @@ if __name__ == "__main__":
     threading.Thread(
         target=start_fastapi, args=(host, fastapi_port), daemon=True
     ).start()
+
     time.sleep(2)
 
     print(f"FastAPI running on {host}:{fastapi_port}")
