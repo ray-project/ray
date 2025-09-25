@@ -1,4 +1,8 @@
-"""Symmetric Run for Ray."""
+"""Symmetric Run for Ray.
+
+This script launches a Ray cluster across all nodes and executes a specified entrypoint command.
+It is useful in environments where the same command is executed on every node, such as with SLURM.
+"""
 
 import socket
 import subprocess
