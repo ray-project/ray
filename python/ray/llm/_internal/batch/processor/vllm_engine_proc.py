@@ -30,7 +30,7 @@ from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_T
 from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
-    EXCLUDE_TENSORIZER_MODES,
+    EXCLUDE_SAFETENSORS_MODES,
 )
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
@@ -186,13 +186,14 @@ def build_vllm_engine_processor(
                 ),
             )
         )
-    if config.engine_kwargs.get("load_format", None) in EXCLUDE_TENSORIZER_MODES:
-        print("Downloading model with runai_streamer format and excluding safetensors")
+    if config.engine_kwargs.get("load_format", None) in EXCLUDE_SAFETENSORS_MODES:
         download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+    else:
+        download_model_mode = NodeModelDownloadable.TOKENIZER_ONLY
     model_path = download_model_files(
         model_id=config.model_source,
         mirror_config=None,
-        download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+        download_model=download_model_mode,
         download_extra_files=False,
     )
     hf_config = transformers.AutoConfig.from_pretrained(

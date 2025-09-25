@@ -18,7 +18,7 @@ torch = try_import("torch")
 
 logger = get_logger(__name__)
 
-EXCLUDE_TENSORIZER_MODES = ["runai_streamer", "tensorizer"]
+EXCLUDE_SAFETENSORS_MODES = ["runai_streamer", "tensorizer"]
 
 class NodeModelDownloadable(enum.Enum):
     """Defines which files to download from cloud storage."""
