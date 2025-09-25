@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.state import actors
 from ray._private.utils import parse_pg_formatted_resources_to_original
 from ray._raylet import TaskID
 from ray.runtime_env import RuntimeEnv
@@ -405,7 +406,7 @@ class RuntimeContext(object):
         assert (
             not self.actor_id.is_nil()
         ), "This method should't be called inside Ray tasks."
-        actor_info = ray._private.state.actors(self.actor_id.hex())
+        actor_info = actors(actor_id=self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
     @property

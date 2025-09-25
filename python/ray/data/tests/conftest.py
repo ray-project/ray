@@ -10,7 +10,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-import ray.util.state
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -24,6 +23,7 @@ from ray.data.tests.mock_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
+from ray.util.state import list_actors
 
 
 @pytest.fixture(scope="module")
@@ -586,7 +586,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             ),
         }
 
-        self.actor_metrics = ray.util.state.list_actors(limit=10_000)
+        self.actor_metrics = list_actors(limit=10_000)
 
     def clear_task_count(self):
         self.task_metrics = []

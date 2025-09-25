@@ -14,7 +14,6 @@ import requests
 from starlette.requests import Request
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
@@ -37,6 +36,7 @@ from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import ApplicationStatus, TargetGroup
+from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -279,7 +279,7 @@ def get_num_alive_replicas(
     """Get the replicas currently running for the given deployment."""
 
     dep_id = DeploymentID(name=deployment_name, app_name=app_name)
-    actors = state_api.list_actors(
+    actors = list_actors(
         filters=[
             ("class_name", "=", dep_id.to_replica_actor_class_name()),
             ("state", "=", "ALIVE"),
