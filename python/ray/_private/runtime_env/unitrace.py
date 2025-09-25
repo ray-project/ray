@@ -9,7 +9,7 @@ from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 
-# unitrace options used when runtime_env={"unitrace": "default"}
+# unitrace options used when runtime_env={"_unitrace": "default"}
 UNITRACE_DEFAULT_CONFIG = {
     "chrome-kernel-logging": "",
     "teardown-on-signal": "0",
@@ -41,7 +41,7 @@ def parse_unitrace_config(unitrace_config: Dict[str, str]) -> List[str]:
 
 
 class UnitracePlugin(RuntimeEnvPlugin):
-    name = "unitrace"
+    name = "_unitrace"
 
     def __init__(self, resources_dir: str):
         self.unitrace_cmd = []
