@@ -29,7 +29,7 @@ export PATH="${PWD}/google-cloud-sdk/bin:$PATH"
 
 echo "Generate custom build steps"
 echo "Downloading Bazel"
-curl -Lo /tmp/bazel https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64
+curl -sSfLo /tmp/bazel https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64
 echo "Making Bazel executable"
 chmod +x /tmp/bazel
 
