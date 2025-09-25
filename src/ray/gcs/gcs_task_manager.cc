@@ -28,6 +28,8 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/gcs/gcs_ray_event_converter.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
@@ -38,7 +40,6 @@ GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
           std::make_unique<FinishedTaskActorTaskGcPolicy>())),
-      ray_event_converter_(std::make_unique<GcsRayEventConverter>()),
       periodical_runner_(PeriodicalRunner::Create(io_service_)) {
   periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
                                         5 * 1000,
@@ -62,7 +63,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
-    JobID job_id) const {
+    const JobID &job_id) const {
   auto task_locators_itr = job_index_.find(job_id);
   if (task_locators_itr == job_index_.end()) {
     // Not found any tasks related to this job.
@@ -447,7 +448,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
 
     if (job_ids.size() == 1) {
-      JobID job_id = *job_ids.begin();
+      const JobID &job_id = *job_ids.begin();
       task_events = task_event_storage_->GetTaskEvents(job_id);
 
       // Populate per-job data loss.
@@ -643,7 +644,7 @@ void GcsTaskManager::RecordTaskEventData(rpc::AddTaskEventDataRequest &request) 
   auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
-  for (auto events_by_task : *data.mutable_events_by_task()) {
+  for (auto &events_by_task : *data.mutable_events_by_task()) {
     stats_counter_.Increment(kTotalNumTaskEventsReported);
     task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
   }
@@ -661,8 +662,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
                                      rpc::events::AddEventsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto task_event_data_requests =
-      ray_event_converter_->ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   for (auto &task_event_data : task_event_data_requests) {
     RecordTaskEventData(task_event_data);
