@@ -157,8 +157,10 @@ def test_nixl_abort(ray_start_regular):
     ray.kill(actors[0])
     signal_actor.send.remote()
 
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
         ray.get(result)
+
+    assert "ActorDiedError" in str(excinfo.value)
 
     # Try a transfer with actor[1] receiving again
     new_actor = GPUTestActor.remote()
