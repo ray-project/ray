@@ -249,7 +249,10 @@ For collective-based tensor transports (Gloo and NCCL):
 * Similarly, the process that created the collective group cannot serialize and pass RDT :class:`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the :class:`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
-* If a system-level error occurs during a collective operation, the collective group will be destroyed and the actors will no longer be able to communicate via the collective group. Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects. System-level errors include:
+* If a system-level error occurs during a GLOO or NCCL collective operation, the collective group will be destroyed and the actors will be killed.
+If the error occurs during a NIXL transfer, Ray will attempt to abort the transfer and raise an exception inside the task using the object ref.
+Note that it's more likely NIXL will abort the transport before Ray does, but Ray will still propagate the NIXL error in the task using the object ref.
+Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects. System-level errors include:
 
    * Errors internal to the third-party transport, e.g., NCCL network errors
    * Actor and node failure
