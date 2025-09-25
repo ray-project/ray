@@ -45,6 +45,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
     Project,
+    ProjectionMode,
     StreamingRepartition,
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
@@ -60,6 +61,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import AliasExpr, ColumnExpr, Expr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,34 @@ class _MapActorContext:
         self.udf_map_asyncio_thread = thread
 
 
+def _handle_rename_mode(block: Block, exprs: Dict[str, Expr]) -> Block:
+    """Handle RENAME mode projection with support for fused expressions."""
+    rename_mapping = {}
+    result_block = block
+
+    for output_name, expr in exprs.items():
+        if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
+            # Standard rename: col("old").alias("new")
+            rename_mapping[expr.expr.name] = output_name
+        elif isinstance(expr, ColumnExpr):
+            # Direct column reference (from fusion): col("old") -> "new"
+            rename_mapping[expr.name] = output_name
+        else:
+            # Complex expression: evaluate and add as new column
+            value = eval_expr(expr, result_block)
+            result_block = BlockAccessor.for_block(result_block).fill_column(
+                output_name, value
+            )
+
+    # Apply all simple renames at once
+    if rename_mapping:
+        result_block = BlockAccessor.for_block(result_block).rename_columns(
+            rename_mapping
+        )
+
+    return result_block
+
+
 def plan_project_op(
     op: Project,
     physical_children: List[PhysicalOperator],
@@ -114,43 +144,40 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    columns = op.cols
-    columns_rename = op.cols_rename
-    exprs = op.exprs
-
     def _project_block(block: Block) -> Block:
         try:
             block_accessor = BlockAccessor.for_block(block)
             if not block_accessor.num_rows():
                 return block
 
-            # 1. evaluate / add expressions
-            if exprs:
-                block_accessor = BlockAccessor.for_block(block)
-                # Add/update with expression results
-                result_block = block
-                for name, expr in exprs.items():
-                    # Use expr.name if available, otherwise fall back to the dict key name
-                    actual_name = expr.name if expr.name is not None else name
-                    result = eval_expr(expr, result_block)
-                    result_block_accessor = BlockAccessor.for_block(result_block)
-                    # fill_column handles both scalars and arrays
-                    result_block = result_block_accessor.fill_column(
-                        actual_name, result
-                    )
-                block = result_block
+            # Handle RENAME mode separately - it has different semantics
+            if op._mode == ProjectionMode.RENAME:
+                return _handle_rename_mode(block, op.exprs)
 
-            # 2. (optional) column projection
-            if columns:
-                block = BlockAccessor.for_block(block).select(columns)
+            # Handle empty SELECT mode (used by count()) - preserve row count
+            if op._mode == ProjectionMode.SELECT and not op.exprs:
+                # For empty projection, we need to preserve the number of rows
+                # but remove all columns. Return the original block for now,
+                # as the Count operator will handle it correctly.
+                return block
 
-            # 3. (optional) rename
-            if columns_rename:
-                block = block.rename_columns(
-                    [columns_rename.get(col, col) for col in block.schema.names]
+            # For SELECT and HSTACK modes, evaluate all expressions
+            result_block = block
+            for output_name, expr in op.exprs.items():
+                value = eval_expr(expr, result_block)
+                result_block = BlockAccessor.for_block(result_block).fill_column(
+                    output_name, value
                 )
 
-            return block
+            # SELECT mode: keep only specified columns
+            if op._mode == ProjectionMode.SELECT:
+                columns_to_select = list(op.exprs.keys())
+                result_block = BlockAccessor.for_block(result_block).select(
+                    columns_to_select
+                )
+
+            # HSTACK mode: all columns are preserved (fill_column already added them)
+            return result_block
         except Exception as e:
             _try_wrap_udf_exception(e)
 

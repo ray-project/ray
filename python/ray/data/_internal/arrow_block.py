@@ -212,7 +212,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if isinstance(value, (pyarrow.Array, pyarrow.ChunkedArray)):
             return self.upsert_column(name, value)
         else:
-            # Scalar value - use original fill_column logic
+            # Scalar value - create array and upsert
             if isinstance(value, pyarrow.Scalar):
                 type = value.type
             else:
@@ -220,7 +220,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
             array = pyarrow.nulls(len(self._table), type=type)
             array = pc.fill_null(array, value)
-            return self._table.append_column(name, array)
+
+            # Use upsert logic instead of append_column to handle overwrites
+            column_idx = self._table.schema.get_field_index(name)
+            if column_idx == -1:
+                return self._table.append_column(name, array)
+            else:
+                return self._table.set_column(column_idx, name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":

@@ -74,6 +74,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
     Project,
+    ProjectionMode,
     StreamingRepartition,
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
@@ -852,9 +853,8 @@ class Dataset:
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                cols=None,
-                cols_rename=None,
                 exprs={column_name: expr},
+                mode=ProjectionMode.HSTACK,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
@@ -1101,14 +1101,16 @@ class Dataset:
 
         # Don't feel like we really need this
         from ray.data._internal.compute import TaskPoolStrategy
+        from ray.data.expressions import col
 
         compute = TaskPoolStrategy(size=concurrency)
+        exprs = {column_name: col(column_name) for column_name in cols}
 
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            cols=cols,
-            cols_rename=None,
+            exprs=exprs,
+            mode=ProjectionMode.SELECT,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1227,14 +1229,22 @@ class Dataset:
 
         # Construct the plan and project operation
         from ray.data._internal.compute import TaskPoolStrategy
+        from ray.data._internal.logical.operators.map_operator import ProjectionMode
+        from ray.data.expressions import col
 
         compute = TaskPoolStrategy(size=concurrency)
 
         plan = self._plan.copy()
+        exprs = {}
+
+        # Add renamed columns
+        for old_name, new_name in cols_rename.items():
+            exprs[new_name] = col(old_name).alias(new_name)
+
         select_op = Project(
             self._logical_plan.dag,
-            cols=None,
-            cols_rename=cols_rename,
+            exprs=exprs,
+            mode=ProjectionMode.RENAME,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -3415,10 +3425,13 @@ class Dataset:
             return meta_count
 
         plan = self._plan.copy()
+        from ray.data._internal.logical.operators.map_operator import ProjectionMode
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(Project(self._logical_plan.dag, cols=[]))
+        count_op = Count(
+            Project(self._logical_plan.dag, exprs={}, mode=ProjectionMode.SELECT)
+        )
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
