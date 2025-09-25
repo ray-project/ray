@@ -49,6 +49,10 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
     with patch("ray.wait") as mocked_ray_wait:
         with patch("ray.get") as mocked_ray_get:
             c = mocked_worker.core_worker
+
+            # # 重置 mock 的调用记录
+            # c.async_delete_object_ref_stream.reset_mock()
+
             generator_ref = ray.ObjectRef.from_random()
             generator = ObjectRefGenerator(generator_ref, mocked_worker)
 
@@ -93,6 +97,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             with pytest.raises(TypeError):
                 dumps(generator)
 
+            generator.__del__()
             del generator
             c.async_delete_object_ref_stream.assert_called()
 

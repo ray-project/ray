@@ -47,8 +47,13 @@ class ObjectRefGenerator:
     ...     for i in range(3):
     ...         yield i
     >>> gen = generator_task.remote()
-    >>> ray.get(next(gen))
-    >>> await gen.__anext__()
+    >>> ray.get(gen.__next__.remote())
+    0
+    >>> ray.get(gen.__next__.remote())
+    1
+    >>> ray.get(gen.__next__.remote())
+    2
+    >>> await gen.__anext__() # doctest: +SKIP
     """
 
     def __init__(self, generator_ref: ray.ObjectRef, worker: "Worker"):
