@@ -32,6 +32,12 @@ provider:
     # set unique id for resources in this cluster
     # if not set a default id will be generated based on the resource group and cluster name
     # unique_id: RAY1
+    # Availability zones for VM placement (comma-separated). Examples:
+    # availability_zone: "1,2,3"  # Use zones 1, 2, and 3
+    # availability_zone: "1"      # Use only zone 1
+    # availability_zone: "none"   # Explicitly disable zones
+    availability_zone: "auto"    # Let Azure automatically pick zones
+
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -61,6 +67,8 @@ available_node_types:
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
                 imageVersion: latest
+                # Head node: explicitly disable availability zones
+                availability_zone: "none"
 
     ray.worker.default:
         # The minimum number of nodes of this type to launch.
@@ -82,6 +90,9 @@ available_node_types:
                 # set a maximum price for spot instances if desired
                 # billingProfile:
                 #     maxPrice: -1
+                # Workers: inherit provider availability_zone setting
+                # Options: "1,2,3" for specific zones, "none" to disable zones,
+                #  or "auto" to let Azure pick zones automatically
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.default
