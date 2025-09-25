@@ -53,11 +53,6 @@ class TaskMetadataBuffer:
                 # Add current metadata to buffer, if buffer is full, drop the oldest entry
                 if len(self._buffer) >= self._buffer_maxlen:
                     # Record the number of dropped attempts
-                    self._metric_recorder.set_metric_value(
-                        self._dropped_metadata_count_metric_name,
-                        self._common_metric_tags,
-                        len(self._current_metadata_batch.dropped_task_attempts),
-                    )
                     oldest_entry = self._buffer.popleft()
                     self._metric_recorder.set_metric_value(
                         self._dropped_metadata_count_metric_name,
