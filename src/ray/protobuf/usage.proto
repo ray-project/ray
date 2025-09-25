@@ -100,6 +100,8 @@ enum TagKey {
   SERVE_AUTO_NUM_REPLICAS_USED = 31;
   // Whether custom request router was used ("1" if used)
   SERVE_CUSTOM_REQUEST_ROUTER_USED = 32;
+  // Whether num_replicas changed via manual API call
+  SERVE_NUM_REPLICAS_VIA_API_CALL_UPDATED = 33;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
