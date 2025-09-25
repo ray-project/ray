@@ -31,7 +31,7 @@ class AvroDatasource(FileBasedDatasource):
         reader = fastavro.reader(f)
 
         ctx = DataContext.get_current()
-        output_block_size_option = OutputBlockSizeOption(
+        output_block_size_option = OutputBlockSizeOption.of(
             target_max_block_size=ctx.target_max_block_size
         )
         output_buffer = BlockOutputBuffer(output_block_size_option)

@@ -108,19 +108,12 @@ class Rendezvous:
         """
         if not self._store:
             raise ValueError("Rendezvous store is not setup.")
-        uid = None
-        timeout_delta = datetime.timedelta(seconds=timeout_s)
-        elapsed = datetime.timedelta(seconds=0)
-        start_time = datetime.datetime.now()
-        while elapsed < timeout_delta:
-            uid = ray.get(self._store.get_id.remote())
-            if not uid:
-                time.sleep(1)
-                elapsed = datetime.datetime.now() - start_time
-                continue
-            break
-        if not uid:
-            raise RuntimeError("Unable to get the NCCLUniqueID from the store.")
+        try:
+            uid = ray.get(self._store.wait_and_get_id.remote(), timeout=timeout_s)
+        except ray.exceptions.GetTimeoutError:
+            raise RuntimeError(
+                f"Unable to get the NCCLUniqueID from the store within {timeout_s} seconds."
+            ) from None
         return uid
 
 
@@ -663,7 +656,7 @@ class NCCLGroup(BaseGroup):
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
         for i, tensor in enumerate(tensors):
-            p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
+            p2p_fn(tensor, comms[i], streams[i], peer_p2p_rank)
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
@@ -683,9 +676,19 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
 
     # TODO(wuxibin): cupy doesn't support bfloat16 for now,
     # once it is supported, we can eliminate this if statement.
+    #
+    # Allocate using the same backend as the tensors in `tensor_list`.
+    # Use torch only when the tensors are torch.Tensor; otherwise fall back to CuPy.
+    use_torch = False
     if torch_available():
-        import torch
+        try:
+            import torch
 
+            use_torch = isinstance(t, torch.Tensor)
+        except ImportError:
+            use_torch = False
+
+    if use_torch:
         buffer = torch.empty(tuple(buffer_shape), dtype=t.dtype, device=t.device)
     else:
         # note we need a cupy dtype here.
