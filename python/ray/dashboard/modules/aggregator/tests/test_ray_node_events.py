@@ -52,7 +52,6 @@ def test_ray_node_events(ray_start_cluster, httpserver):
     wait_for_condition(lambda: len(httpserver.log) >= 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
-    print(req_json)
     assert len(req_json) == 2
     assert (
         base64.b64decode(req_json[0]["nodeDefinitionEvent"]["nodeId"]).hex()
