@@ -7,7 +7,7 @@ import random
 import shutil
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
@@ -27,9 +27,6 @@ if TYPE_CHECKING:
     from ray.train import Checkpoint as TrainCheckpoint
     from ray.tune.execution.tune_controller import TuneController
 
-    MaybeNone = Any
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +35,7 @@ class _PBTTrialState:
 
     def __init__(self, trial: Trial):
         self.orig_tag = trial.experiment_tag
-        self.last_score: Union[float, MaybeNone] = None  # Set on _save_trial_state
+        self.last_score: Union[float, None] = None  # Set on _save_trial_state
         self.last_checkpoint: Union[TrainCheckpoint, _FutureTrainingResult, None] = None
         self.last_perturbation_time: int = 0
         self.last_train_time: int = 0  # Used for synchronous mode
@@ -969,7 +966,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 logger.debug("Trial {} is finished".format(trial))
             if state.last_score is not None and not trial.is_finished():
                 trials.append(trial)
-        trials.sort(key=lambda t: self._trial_state[t].last_score)
+        # last_score is by construction never None
+        trials.sort(key=lambda t: self._trial_state[t].last_score)  # type: ignore[arg-type,return-value]
 
         if len(trials) <= 1:
             return [], []
