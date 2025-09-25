@@ -17,8 +17,8 @@ First, install and import the required Python modules.
 
 
 ```bash
-%%bash
-pip install torch torchvision
+# %%bash
+# pip install torch torchvision
 ```
 
 
