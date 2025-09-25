@@ -12,7 +12,6 @@ import httpx
 import pytest
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.autoscaling_state import AutoscalingContext
@@ -990,13 +989,13 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
     assert len(pids) == 2
 
     def check_num_replicas(live: int, dead: int):
-        live_actors = state_api.list_actors(
+        live_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )
-        dead_actors = state_api.list_actors(
+        dead_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "DEAD"),
