@@ -187,7 +187,7 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
 
-uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
+int32_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
 

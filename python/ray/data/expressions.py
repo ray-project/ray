@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -23,26 +23,40 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
         GE: Greater than or equal comparison (>=)
         LE: Less than or equal comparison (<=)
         EQ: Equality comparison (==)
+        NE: Not equal comparison (!=)
         AND: Logical AND operation (&)
         OR: Logical OR operation (|)
+        NOT: Logical NOT operation (~)
+        IS_NULL: Check if value is null
+        IS_NOT_NULL: Check if value is not null
+        IN: Check if value is in a list
+        NOT_IN: Check if value is not in a list
     """
 
     ADD = "add"
     SUB = "sub"
     MUL = "mul"
     DIV = "div"
+    FLOORDIV = "floordiv"
     GT = "gt"
     LT = "lt"
     GE = "ge"
     LE = "le"
     EQ = "eq"
+    NE = "ne"
     AND = "and"
     OR = "or"
+    NOT = "not"
+    IS_NULL = "is_null"
+    IS_NOT_NULL = "is_not_null"
+    IN = "in"
+    NOT_IN = "not_in"
 
 
 @DeveloperAPI(stability="alpha")
@@ -71,6 +85,16 @@ class Expr(ABC):
     """
 
     data_type: DataType
+
+    @property
+    def name(self) -> str | None:
+        """Get the name associated with this expression.
+
+        Returns:
+            The name for expressions that have one (ColumnExpr, AliasExpr),
+            None otherwise.
+        """
+        return None
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -127,6 +151,14 @@ class Expr(ABC):
         """Reverse division operator (for literal / expr)."""
         return LiteralExpr(other)._bin(self, Operation.DIV)
 
+    def __floordiv__(self, other: Any) -> "Expr":
+        """Floor division operator (//)."""
+        return self._bin(other, Operation.FLOORDIV)
+
+    def __rfloordiv__(self, other: Any) -> "Expr":
+        """Reverse floor division operator (for literal // expr)."""
+        return LiteralExpr(other)._bin(self, Operation.FLOORDIV)
+
     # comparison
     def __gt__(self, other: Any) -> "Expr":
         """Greater than operator (>)."""
@@ -148,6 +180,10 @@ class Expr(ABC):
         """Equality operator (==)."""
         return self._bin(other, Operation.EQ)
 
+    def __ne__(self, other: Any) -> "Expr":
+        """Not equal operator (!=)."""
+        return self._bin(other, Operation.NE)
+
     # boolean
     def __and__(self, other: Any) -> "Expr":
         """Logical AND operator (&)."""
@@ -156,6 +192,52 @@ class Expr(ABC):
     def __or__(self, other: Any) -> "Expr":
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
+
+    def __invert__(self) -> "Expr":
+        """Logical NOT operator (~)."""
+        return UnaryExpr(Operation.NOT, self)
+
+    # predicate methods
+    def is_null(self) -> "Expr":
+        """Check if the expression value is null."""
+        return UnaryExpr(Operation.IS_NULL, self)
+
+    def is_not_null(self) -> "Expr":
+        """Check if the expression value is not null."""
+        return UnaryExpr(Operation.IS_NOT_NULL, self)
+
+    def is_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
+        """Check if the expression value is in a list of values."""
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.IN)
+
+    def not_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
+        """Check if the expression value is not in a list of values."""
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.NOT_IN)
+
+    def alias(self, name: str) -> "Expr":
+        """Rename the expression.
+
+        This method allows you to assign a new name to an expression result.
+        This is particularly useful when you want to specify the output column name
+        directly within the expression rather than as a separate parameter.
+
+        Args:
+            name: The new name for the expression
+
+        Returns:
+            An AliasExpr that wraps this expression with the specified name
+
+        Example:
+            >>> from ray.data.expressions import col, lit
+            >>> # Create an expression with a new aliased name
+            >>> expr = (col("price") * col("quantity")).alias("total")
+            >>> # Can be used with Dataset operations that support named expressions
+        """
+        return AliasExpr(data_type=self.data_type, expr=self, _name=name)
 
 
 @DeveloperAPI(stability="alpha")
@@ -176,8 +258,13 @@ class ColumnExpr(Expr):
         >>> age_expr = col("age") # Creates ColumnExpr(name="age")
     """
 
-    name: str
+    _name: str
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    @property
+    def name(self) -> str:
+        """Get the column name."""
+        return self._name
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -254,6 +341,39 @@ class BinaryExpr(Expr):
             and self.op is other.op
             and self.left.structurally_equals(other.left)
             and self.right.structurally_equals(other.right)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class UnaryExpr(Expr):
+    """Expression that represents a unary operation on a single expression.
+
+    This expression type represents an operation with one operand.
+    Common unary operations include logical NOT, IS NULL, IS NOT NULL, etc.
+
+    Args:
+        op: The operation to perform (from Operation enum)
+        operand: The operand expression
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Check if a column is null
+        >>> expr = col("age").is_null()  # Creates UnaryExpr(IS_NULL, col("age"))
+        >>> # Logical not
+        >>> expr = ~(col("active"))  # Creates UnaryExpr(NOT, col("active"))
+    """
+
+    op: Operation
+    operand: Expr
+
+    data_type: DataType = field(init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, UnaryExpr)
+            and self.op is other.op
+            and self.operand.structurally_equals(other.operand)
         )
 
 
@@ -414,6 +534,27 @@ class DownloadExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class AliasExpr(Expr):
+    """Expression that represents an alias for an expression."""
+
+    expr: Expr
+    _name: str
+
+    @property
+    def name(self) -> str:
+        """Get the alias name."""
+        return self._name
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, AliasExpr)
+            and self.expr.structurally_equals(other.expr)
+            and self.name == other.name
+        )
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -517,9 +658,11 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "UnaryExpr",
     "UDFExpr",
-    "udf",
     "DownloadExpr",
+    "AliasExpr",
+    "udf",
     "col",
     "lit",
     "download",

@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
 #define PRINT_REF_COUNT(it) \
