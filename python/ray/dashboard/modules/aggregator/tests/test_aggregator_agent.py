@@ -1120,11 +1120,11 @@ def test_aggregator_agent_gcs_filtering_driver_job_events(
         timestamp=fake_timestamp[0],
         severity=RayEvent.Severity.INFO,
         message="driver job execution event - should be filtered",
-        driver_job_execution_event=DriverJobExecutionEvent(
+        driver_job_execution_event=DriverJobLifecycleEvent(
             job_id=b"test_job_1",
             states=[
-                DriverJobExecutionEvent.StateTimestamp(
-                    state=DriverJobExecutionEvent.State.CREATED,
+                DriverJobLifecycleEvent.StateTransition(
+                    state=DriverJobLifecycleEvent.State.CREATED,
                     timestamp=Timestamp(seconds=1234567890),
                 ),
             ],
