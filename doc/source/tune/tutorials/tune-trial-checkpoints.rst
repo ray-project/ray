@@ -62,8 +62,8 @@ You can checkpoint with three different mechanisms: manually, periodically, and 
 
 .. _tune-class-trainable-checkpointing_manual-checkpointing:
 
-Manual Checkpointing
-~~~~~~~~~~~~~~~~~~~~
+Manual Checkpointing by Trainable
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A custom Trainable can manually trigger checkpointing by returning ``should_checkpoint: True``
 (or ``tune.result.SHOULD_CHECKPOINT: True``) in the result dictionary of `step`.
@@ -75,6 +75,25 @@ This can be especially helpful in spot instances:
     :end-before: __class_api_manual_checkpointing_end__
 
 In the above example, if ``detect_instance_preemption`` returns True, manual checkpointing can be triggered.
+
+
+.. _tune-callback-checkpointing:
+
+Manual Checkpointing by Tuner Callback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Similar to :ref:`tune-class-trainable-checkpointing_manual-checkpointing`,
+you can also trigger checkpointing through :class:`Tuner <ray.tune.Tuner>` :class:`Callback <ray.tune.callback.Callback>` methods
+by setting the ``result["should_checkpoint"] = True`` (or ``result[tune.result.SHOULD_CHECKPOINT] = True``) flag
+within the :meth:`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback.
+In contrast to checkpointing within the Trainable Class API, this approach decouples checkpointing logic from
+the training logic, and provides access to all :class:`Trial <ray.tune.Trial>` instances allowing for more
+complex checkpointing strategies.
+
+.. literalinclude:: /tune/doc_code/trial_checkpoint.py
+    :language: python
+    :start-after: __callback_api_checkpointing_start__
+    :end-before: __callback_api_checkpointing_end__
 
 
 Periodic Checkpointing
@@ -98,24 +117,6 @@ If you want a checkpoint to be created at the end of a trial, you can additional
     :language: python
     :start-after: __class_api_end_checkpointing_start__
     :end-before: __class_api_end_checkpointing_end__
-
-.. _tune-callback-checkpointing:
-
-Manual Checkpointing by Callback
---------------------------------
-
-Similar to :ref:`tune-class-trainable-checkpointing_manual-checkpointing`,
-you can also trigger checkpointing through :class:`Tuner <ray.tune.Tuner>` :class:`Callback <ray.tune.callback.Callback>` methods
-by setting the ``result["should_checkpoint"] = True`` (or ``result[tune.result.SHOULD_CHECKPOINT] = True``) flag
-within the :meth:`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback.
-In contrast to checkpointing within the Trainable Class API, this approach decouples checkpointing logic from
-the training logic, and provides access to all :class:`Trial <ray.tune.Trial>` instances allowing for more
-complex checkpointing strategies.
-
-.. literalinclude:: /tune/doc_code/trial_checkpoint.py
-    :language: python
-    :start-after: __callback_api_checkpointing_start__
-    :end-before: __callback_api_checkpointing_end__
 
 
 Configurations
