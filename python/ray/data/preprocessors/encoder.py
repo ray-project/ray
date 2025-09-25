@@ -758,8 +758,33 @@ def _get_unique_value_indices(
             }
         else:
             # Output sorted by column name.
+            # Use mixed-type sorting that preserves numeric order while handling all type combinations
+            def _is_nan(x):
+                try:
+                    return isinstance(x, float) and np.isnan(x)
+                except Exception:
+                    return False
+            
+            def _is_number(x):
+                # Treat bools as numbers to preserve legacy behavior (False < True)
+                return isinstance(x, (int, float, bool, np.number))
+            
+            def _mixed_category_sort_key(x):
+                # group: 0=numbers (incl. bool), 1=str, 2=other, 3=None, 4=NaN
+                if _is_nan(x):
+                    return (4, 0)
+                if x is None:
+                    return (3, 0)
+                if _is_number(x):
+                    # Compare numerically; bools naturally map to 0/1
+                    return (0, float(x))
+                if isinstance(x, str):
+                    return (1, x)
+                # Fallback: stable string repr for other objects
+                return (2, str(x))
+            
             unique_values_with_indices[key_format.format(column)] = {
-                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys(), key=lambda x: str(x)))
+                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys(), key=_mixed_category_sort_key))
             }
     return unique_values_with_indices
 
