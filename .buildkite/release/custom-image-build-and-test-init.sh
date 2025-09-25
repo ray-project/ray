@@ -47,5 +47,9 @@ if [[ "${BUILDKITE_BRANCH}" != "releases/"* ]]; then
 fi
 
 echo "---- Build test steps"
-/tmp/bazel run //release:custom_image_build_and_test_init -- "${RUN_FLAGS[@]}"
+/tmp/bazel run //release:custom_image_build_and_test_init\
+  -- "${RUN_FLAGS[@]}" \
+  --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.yaml \
+  --test-jobs-output-file .buildkite/release/release_tests.json \
+
 buildkite-agent pipeline upload .buildkite/release/release_tests.json
