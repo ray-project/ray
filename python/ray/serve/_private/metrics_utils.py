@@ -400,7 +400,7 @@ def merge_instantaneous_total(
     Uses a k-way merge algorithm for O(n log k) complexity where k is the number
     of timeseries and n is the total number of events.
 
-    Timestamps are rounded to 1ms precision (3 decimal places) and datapoints
+    Timestamps are rounded to 10ms precision (2 decimal places) and datapoints
     with the same rounded timestamp are combined, keeping the most recent value.
 
     Args:
@@ -410,7 +410,7 @@ def merge_instantaneous_total(
     Returns:
         A list of TimeStampedValue representing the instantaneous total at event times.
         Between events, the total remains constant (step function). Timestamps are
-        rounded to 1ms precision and duplicate timestamps are combined.
+        rounded to 10ms precision and duplicate timestamps are combined.
     """
     # Filter out empty timeseries
     active_series = [series for series in replicas_timeseries if series]
@@ -458,8 +458,8 @@ def merge_instantaneous_total(
 
         # Only add a point if the total actually changed
         if value != old_value:  # Equivalent to new_total != old_total
-            # Round timestamp to 1ms precision (3 decimal places)
-            rounded_timestamp = round(timestamp, 3)
+            # Round timestamp to 10ms precision (2 decimal places)
+            rounded_timestamp = round(timestamp, 2)
 
             # Check if we already have a point with this rounded timestamp
             # If so, update its value; otherwise, add a new point
