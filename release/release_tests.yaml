@@ -135,36 +135,6 @@
 #########################
 # AIR release tests
 #########################
-- name: tune_with_frequent_pausing
-  group: AIR tests
-  working_dir: air_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_usage_threshold=0.5
-        - automatic_object_spilling_enabled=0
-    cluster_compute: frequent_pausing/compute_config_aws.yaml
-
-  run:
-    timeout: 600  # 10min
-    long_running: true
-    script: python frequent_pausing/script.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: frequent_pausing/compute_config_gce.yaml
-
-  alert: default
-
-
 
 # Ray Train distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_gpu_4x4
@@ -183,7 +153,7 @@
 
   run:
     timeout: 4800
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -223,14 +193,14 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_cpu_8_aws.yaml
+    cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
 
     wait_for_nodes:
-      num_nodes: 8
+      num_nodes: 4
 
   variations:
     - __suffix__: aws
@@ -238,7 +208,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_cpu_8_gce.yaml
+        cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
 
@@ -385,6 +355,36 @@
 #######################
 # Tune tests
 #######################
+- name: tune_with_frequent_pausing
+  group: Tune tests
+  working_dir: tune_tests
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_memory_usage_threshold=0.5
+        - automatic_object_spilling_enabled=0
+    cluster_compute: frequent_pausing/compute_config_aws.yaml
+
+  run:
+    timeout: 600  # 10min
+    long_running: true
+    script: RAY_TRAIN_V2_ENABLED=1 python frequent_pausing/script.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: frequent_pausing/compute_config_gce.yaml
+
+  alert: default
+
+
 - name: tune_rllib_connect_test
   group: Tune tests
   working_dir: ml_user_tests
@@ -1839,135 +1839,25 @@
   alert: default
 
 
-- name: xgboost_train_batch_inference_benchmark_10G
+- name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
-  frequency: nightly
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_aws_1worker.yaml
-
-  run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "xgboost" --size=10G
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_1worker.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
-- name: xgboost_train_batch_inference_benchmark_100G
-  group: Train tests
-  working_dir: train_tests/xgboost_lightgbm
+  matrix:
+    setup:
+      framework: [xgboost, lightgbm]
+      size: [10G, 100G]
 
   frequency: nightly-3x
   team: ml
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_aws_10workers.yaml
+    cluster_compute: compute_aws_{{size}}.yaml
 
   run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "xgboost" --size=100G
-
-    wait_for_nodes:
-      num_nodes: 11
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_10workers.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
-
-- name: lightgbm_train_batch_inference_benchmark_10G
-  group: Train tests
-  working_dir: train_tests/xgboost_lightgbm
-
-  frequency: nightly
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_aws_1worker.yaml
-
-  run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "lightgbm" --size=10G
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_1worker.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
-
-- name: lightgbm_train_batch_inference_benchmark_100G
-  group: Train tests
-  working_dir: train_tests/xgboost_lightgbm
-
-  frequency: nightly-3x
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_aws_10workers.yaml
-
-  run:
-    timeout: 36000
-    script: python train_batch_inference_benchmark.py "lightgbm" --size=100G
-
-    wait_for_nodes:
-      num_nodes: 11
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gce_10workers.yaml
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python train_batch_inference_benchmark.py "{{framework}}" --size={{size}}
 
   smoke_test:
     frequency: manual
@@ -2308,9 +2198,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2383,9 +2271,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2551,9 +2437,7 @@
   stable: false
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2578,9 +2462,7 @@
   team: data
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -2905,9 +2787,7 @@
   team: core
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
+    byod: {}
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:

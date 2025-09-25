@@ -27,6 +27,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
@@ -114,7 +115,7 @@ static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
 }
 
-class MockCoreWorkerClientInterface : public rpc::CoreWorkerClientInterface {
+class MockCoreWorkerClientInterface : public rpc::FakeCoreWorkerClient {
  public:
   ~MockCoreWorkerClientInterface() = default;
   virtual void WaitForRefRemoved(const ObjectID object_id,
