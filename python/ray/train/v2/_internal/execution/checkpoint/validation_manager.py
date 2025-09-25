@@ -135,4 +135,5 @@ class ValidationManager(ControllerCallback, ReportCallback):
         current_state: "TrainControllerState",
     ):
         # TODO: figure out if there's a better place to poll validations
+        # TODO: consider cleaning up validation tasks in before_controller_abort
         self._poll_validations()
