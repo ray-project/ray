@@ -106,8 +106,6 @@ def test_checkpoint_validation_management(tmp_path):
         ),
     )
 
-    assert not vm.failed_validations
-
     # Assert ValidationManager state after most tasks are done
     non_timeout_validations = [
         validation_task
@@ -132,11 +130,6 @@ def test_checkpoint_validation_management(tmp_path):
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
         {high_initial_low_final_training_result.checkpoint: {"score": 100}}
     )
-    assert len(vm.failed_validations) == 1
-    assert vm.failed_validations[0].checkpoint == failing_training_result.checkpoint
-    assert isinstance(
-        vm.failed_validations[0].validation_failed_error.validation_failure, ValueError
-    )
 
     # Assert ValidationManager state after all tasks are done
     timing_out_task = next(iter(vm._pending_validations))
@@ -148,16 +141,6 @@ def test_checkpoint_validation_management(tmp_path):
         {
             timing_out_training_result.checkpoint: {},
         }
-    )
-    assert len(vm.failed_validations) == 2
-    assert vm.failed_validations[0].checkpoint == failing_training_result.checkpoint
-    assert isinstance(
-        vm.failed_validations[0].validation_failed_error.validation_failure, ValueError
-    )
-    assert vm.failed_validations[1].checkpoint == timing_out_training_result.checkpoint
-    assert isinstance(
-        vm.failed_validations[1].validation_failed_error.validation_failure,
-        ray.exceptions.TaskCancelledError,
     )
 
 

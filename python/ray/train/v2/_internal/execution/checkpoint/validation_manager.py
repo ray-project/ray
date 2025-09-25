@@ -10,8 +10,6 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
 from ray.train.v2._internal.execution.training_report import _ValidationSpec
-from ray.train.v2.api.exceptions import ValidationFailedError
-from ray.train.v2.api.validation_failure import ValidationFailure
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.controller import TrainControllerState
@@ -50,9 +48,6 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # Map from validation task to checkpoint
         # Finished validations that have yet to be processed
         self._finished_validations = OrderedDict()
-
-        # Map from checkpoint to ValidationFailure
-        self._failed_validations = OrderedDict()
 
         # TODO: checkpoint/restore validation manager state
 
@@ -107,24 +102,11 @@ class ValidationManager(ControllerCallback, ReportCallback):
         self._finished_validations.pop(task)
         try:
             checkpoint_to_metrics[checkpoint] = ray.get(task)
-        except ray.exceptions.RayTaskError as e:
+        except ray.exceptions.RayTaskError:
             checkpoint_to_metrics[checkpoint] = {}
-            self._failed_validations[checkpoint] = ValidationFailure(
-                checkpoint=checkpoint,
-                validation_failed_error=ValidationFailedError(e.cause),
-            )
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
             # TODO: retry validations and time out appropriately.
         return checkpoint_to_metrics
-
-    @property
-    def failed_validations(self) -> Optional[List[ValidationFailure]]:
-        """Return all the failed validations."""
-        return (
-            list(self._failed_validations.values())
-            if self._failed_validations
-            else None
-        )
 
     def before_controller_shutdown(self):
         while self._poll_validations() != 0:
@@ -133,6 +115,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         tasks = list(self._finished_validations.keys())
         for task in tasks:
             checkpoint = self._finished_validations[task]
+            # modoru: remove failed here too
             checkpoint_to_metrics.update(
                 self._process_finished_validation(task, checkpoint)
             )

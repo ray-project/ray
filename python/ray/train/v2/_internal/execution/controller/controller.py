@@ -535,7 +535,6 @@ class TrainController:
             error=self.get_training_failed_error(),
             path=storage.experiment_fs_path,
             best_checkpoints=best_checkpoints,
-            failed_validations=self._validation_manager.failed_validations,
             metrics_dataframe=metrics_dataframe,
             _storage_filesystem=storage.storage_filesystem,
         )

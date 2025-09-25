@@ -9,7 +9,7 @@ from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.exceptions import ValidationFailedError, WorkerGroupError
+from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.report_config import CheckpointUploadMode
 
 
@@ -290,7 +290,6 @@ def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
         ),
     )
     result = trainer.fit()
-    assert result.failed_validations is None
     assert result.error is None
     assert result.checkpoint == result.best_checkpoints[1][0]
     assert len(result.best_checkpoints) == 2
@@ -326,15 +325,6 @@ def test_report_validate_fn_error():
         scaling_config=ScalingConfig(num_workers=2),
     )
     result = trainer.fit()
-    assert len(result.failed_validations) == 1
-    assert isinstance(
-        result.failed_validations[0].validation_failed_error, ValidationFailedError
-    )
-    assert isinstance(
-        result.failed_validations[0].validation_failed_error.validation_failure,
-        ValueError,
-    )
-    assert result.failed_validations[0].checkpoint == result.best_checkpoints[0][0]
     assert result.error is None
     assert result.checkpoint == result.best_checkpoints[1][0]
     assert len(result.best_checkpoints) == 2
