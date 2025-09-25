@@ -47,7 +47,7 @@ if is_v2_enabled():
         train_fn,
         _assert_storage_contents,
     )
-    from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
+    from ray.train.v2.api.exceptions import WorkerGroupError
 else:
     from test_v1_persistence import (
         train_fn,
@@ -378,7 +378,7 @@ def test_no_storage_error(tmp_path, monkeypatch):
         run_config=train.RunConfig(name="test_trainer", storage_path=None),
     )
     if is_v2_enabled():
-        with pytest.raises(ControllerError):
+        with pytest.raises(WorkerGroupError):
             trainer.fit()
     else:
         with pytest.raises(TrainingFailedError):
