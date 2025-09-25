@@ -89,7 +89,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //doc/... ml
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --build-name mlgpubuild
-        --only-tags train_v2,gpu
+        --only-tags train_v2_gpu
     depends_on: [ "mlgpubuild", "forge" ]
 
   - label: ":train: ml: {{matrix.python}} tests ({{matrix.worker_id}})"
