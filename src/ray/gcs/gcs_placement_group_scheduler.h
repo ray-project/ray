@@ -29,8 +29,8 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -373,7 +373,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param callback
   void PrepareResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 
   /// Send bundles COMMIT request to a node. This means the placement group creation
@@ -384,7 +384,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param callback
   void CommitResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback callback);
 
   /// Cacnel prepared or committed resources from a node.
@@ -397,7 +397,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param retry_cnt The number of times the cancel request is retried.
   void CancelResourceReserve(
       const std::shared_ptr<const BundleSpecification> &bundle_spec,
-      const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
       int current_retry_cnt);
 
@@ -407,7 +407,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Get an existing lease client for a given node.
   std::shared_ptr<RayletClientInterface> GetRayletClientFromNode(
-      const std::shared_ptr<ray::rpc::GcsNodeInfo> &node);
+      const std::shared_ptr<const ray::rpc::GcsNodeInfo> &node);
 
   /// Called when all prepare requests are returned from nodes.
   void OnAllBundlePrepareRequestReturned(
