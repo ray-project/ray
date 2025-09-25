@@ -318,10 +318,13 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
             rpc::FreeActorObjectRequest request;
             request.set_object_id(object_id.Binary());
             rpc_client.value()->FreeActorObject(
-                request,
+                std::move(request),
                 [object_id, actor_id](const Status &status,
                                       const rpc::FreeActorObjectReply &reply) {
-                  if (!status.ok()) {
+                  if (status.IsDisconnected()) {
+                    RAY_LOG(DEBUG).WithField(object_id).WithField(actor_id)
+                        << "FreeActorObject failed because actor worker is dead";
+                  } else if (!status.ok()) {
                     RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
                         << "Failed to free actor object: " << status;
                   }
@@ -792,7 +795,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
-  uint64_t attempt_number = request.attempt_number();
+  int64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
