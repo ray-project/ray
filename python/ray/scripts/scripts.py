@@ -1099,9 +1099,6 @@ def start(
         )
         temp_dir = node.get_temp_dir_path()
 
-        # TODO(hjiang): Validate whether specified resource is true for physical
-        # resource.
-
         # Ray and Python versions should probably be checked before
         # initializing Node.
         node.check_version_info()
