@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+import ray.serve._private.deployment_state as ds_mod
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -33,7 +34,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
-import ray.serve._private.deployment_state as ds_mod
 from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
     SLOW_STARTUP_WARNING_S,
