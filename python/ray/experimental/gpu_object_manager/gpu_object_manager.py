@@ -174,11 +174,14 @@ class GPUObjectManager:
         Cleans up the ref_info_map, kill the src and dst actors, and destroy the
         collective group if necessary.
         """
-        from ray.experimental.collective import destroy_collective_group
+        from ray.experimental.collective import (
+            destroy_collective_group,
+            get_tensor_transport_manager,
+        )
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_abort_transport__,
         )
-        from ray.util.collective.types import Backend, CollectiveCommunicatorMetadata
+        from ray.util.collective.types import CollectiveCommunicatorMetadata
 
         ref_info = ref_info_map.pop(failed_ref.hex(), None)
         if ref_info is None:
@@ -188,9 +191,18 @@ class GPUObjectManager:
             ref_info_map.pop(ref_info.send_ref.hex(), None)
         ref_info_map.pop(ref_info.recv_ref.hex(), None)
 
-        error_string = ""
-        if ref_info.backend == Backend.NIXL:
-            # Only need to abort on receiver side for NIXL since it's one-sided.
+        tensor_transport_manager = get_tensor_transport_manager(ref_info.backend)
+        if tensor_transport_manager.can_abort_transport():
+            if not tensor_transport_manager.is_one_sided():
+                # This is dead code until we implement a NCCL abort since NIXL
+                # is the only abortable transport for now and is one-sided.
+                ref_info.src_actor.__ray_call__.options(
+                    concurrency_group="_ray_system_error"
+                ).remote(
+                    __ray_abort_transport__,
+                    ref_info.obj_id,
+                    ref_info.communicator_meta,
+                )
             ref_info.dst_actor.__ray_call__.options(
                 concurrency_group="_ray_system_error"
             ).remote(
@@ -198,21 +210,23 @@ class GPUObjectManager:
                 ref_info.obj_id,
                 ref_info.communicator_meta,
             )
-            error_string = "Aborting the transfer."
+            logger.info(
+                "RDT transfer with src actor %s and dst actor %s failed due to %s.",
+                ref_info.src_actor,
+                ref_info.dst_actor,
+                exception,
+            )
         else:
             # TODO(#51276): Kill all actors in the collective group when we support more collective operations
             ray.kill(ref_info.src_actor)
             ray.kill(ref_info.dst_actor)
-            error_string = "Killing the actors."
-
-        logger.error(
-            "RDT transfer with src actor %s and dst actor %s failed. %s "
-            "Transfer failed with exception: %s",
-            ref_info.src_actor,
-            ref_info.dst_actor,
-            error_string,
-            exception,
-        )
+            logger.error(
+                "RDT transfer with src actor %s and dst actor %s failed. Killing the actors."
+                "Transfer failed with exception: %s",
+                ref_info.src_actor,
+                ref_info.dst_actor,
+                exception,
+            )
 
         # isinstance does an implicit cast and makes communicator_name inaccessible
         # so we have to get communicator_name before the cast.
@@ -471,7 +485,7 @@ class GPUObjectManager:
                 ).remote(
                     __ray_send__,
                     obj_id,
-                    [tensor_transport_meta],
+                    tensor_transport_meta,
                     communicator_meta,
                 )
 

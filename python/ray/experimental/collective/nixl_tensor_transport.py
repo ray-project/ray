@@ -24,6 +24,10 @@ class NixlTensorTransport(TensorTransportManager):
     def is_one_sided() -> bool:
         return True
 
+    @staticmethod
+    def can_abort_transport() -> bool:
+        return True
+
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",

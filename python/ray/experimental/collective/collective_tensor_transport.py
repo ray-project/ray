@@ -26,6 +26,10 @@ class CollectiveTensorTransport(TensorTransportManager):
     def is_one_sided() -> bool:
         return False
 
+    @staticmethod
+    def can_abort_transport() -> bool:
+        return False
+
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         from ray.experimental.collective import get_collective_groups
 
