@@ -76,11 +76,20 @@ class ShuffleFusion(Rule):
                 twin_op._shuffle = True
                 return twin_op
 
-            # Key-based fusion cases - Repartition with key-based ops
-            elif isinstance(parent_op, Repartition) and isinstance(
-                child_op, (Aggregate, Join, Sort)
-            ):
-                if _keys_can_fuse(parent_op, child_op):
+            # Key-based fusion cases - Repartition with Join
+            elif isinstance(parent_op, Repartition) and isinstance(child_op, Join):
+                if parent_op._num_outputs == child_op._num_outputs and _keys_can_fuse(
+                    parent_op, child_op
+                ):
+                    _, child_op = _disconnect_op(parent_op, copy=False)
+                    return child_op[0]
+
+            # Key-based fusion cases - Repartition with Aggregate
+            elif isinstance(parent_op, Repartition) and isinstance(child_op, Aggregate):
+                if (
+                    parent_op._num_outputs == child_op._num_partitions
+                    and _keys_can_fuse(parent_op, child_op)
+                ):
                     _, child_op = _disconnect_op(parent_op, copy=False)
                     return child_op[0]
 
@@ -137,12 +146,13 @@ def _disconnect_op(
         If copy=True, both lists contain shallow copies of the operators.
         If copy=False, both lists contain references to the original operators.
     """
-
     grandchild_ops = child_op.output_dependencies
+    parent_ops = child_op.input_dependencies
+
     for grandchild_op in grandchild_ops:
         grandchild_op.input_dependencies.remove(child_op)
+        grandchild_op.input_dependencies.extend(parent_ops)
 
-    parent_ops = child_op.input_dependencies
     for parent_op in parent_ops:
         parent_op.output_dependencies.remove(child_op)
         parent_op.output_dependencies.extend(grandchild_ops)
