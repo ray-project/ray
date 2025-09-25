@@ -1,6 +1,3 @@
-from ray.data._internal.datasource.delta_sharing_datasource import (
-    DeltaSharingDatasource,
-)
 from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
 )
@@ -34,7 +31,6 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
-from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -50,7 +46,6 @@ __all__ = [
     "Connection",
     "Datasink",
     "Datasource",
-    "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",
@@ -59,7 +54,6 @@ __all__ = [
     "FileMetadataProvider",
     "FilenameProvider",
     "MCAPDatasource",
-    "ParquetMetadataProvider",
     "PartitionStyle",
     "PathPartitionFilter",
     "PathPartitionParser",
