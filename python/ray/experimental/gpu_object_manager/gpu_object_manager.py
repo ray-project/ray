@@ -221,7 +221,7 @@ class GPUObjectManager:
             ray.kill(ref_info.src_actor)
             ray.kill(ref_info.dst_actor)
             logger.error(
-                "RDT transfer with src actor %s and dst actor %s failed. Killing the actors."
+                "RDT transfer with src actor %s and dst actor %s failed. Killing the actors. "
                 "Transfer failed with exception: %s",
                 ref_info.src_actor,
                 ref_info.dst_actor,
