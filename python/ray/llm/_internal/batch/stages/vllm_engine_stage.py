@@ -24,7 +24,7 @@ from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
-    EXCLUDE_TENSORIZER_MODES
+    EXCLUDE_SAFETENSORS_MODES
 )
 from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -476,7 +476,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
-        exclude_safetensors = self.engine_kwargs.get("load_format") in EXCLUDE_TENSORIZER_MODES
+        exclude_safetensors = self.engine_kwargs.get("load_format") in EXCLUDE_SAFETENSORS_MODES
         if exclude_safetensors:
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
@@ -489,12 +489,9 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             download_model=download_model,
             download_extra_files=False,
         )
-        logger.info("=" * 20)
-        logger.info("Model source: %s", model_source)
-        logger.info("=" * 20)
 
         # need to still go to the model passed in if we need to exclude safetensors
-        # because the model could be a cloud storage that contains the safetensors files.
+        # because the model could be a cloud storage that contains the safetensors files that we skipped.
         source = model_source if not exclude_safetensors else self.model
         self.llm = vLLMEngineWrapper(
             model=self.model,
