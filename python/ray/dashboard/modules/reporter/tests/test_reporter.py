@@ -53,7 +53,7 @@ STATS_TEMPLATE = {
             "memory_info": Bunch(
                 rss=55934976, vms=7026937856, pfaults=15354, pageins=0
             ),
-            "memory_full_info": Bunch(uss=51428381),
+            "memory_full_info": Bunch(uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
             "cpu_percent": 0.0,
             "num_fds": 10,
             "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
@@ -69,7 +69,7 @@ STATS_TEMPLATE = {
     ],
     "gcs": {
         "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
-        "memory_full_info": Bunch(uss=51428384),
+        "memory_full_info": Bunch(uss=51428384, rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
         "cpu_percent": 5.0,
         "num_fds": 14,
         "cmdline": ["fake gcs cmdline"],
@@ -127,6 +127,7 @@ STATS_TEMPLATE = {
     "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
+    "cmdline": ["fake raylet cmdline"],
 }
 
 
@@ -347,7 +348,7 @@ def test_report_stats():
     assert len(records) == 37
     # Test stats with gpus
     stats["gpus"] = [
-        {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
+        {"name": "foo", "uuid": "gpu-12345", "utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     # Test stats with tpus
     stats["tpus"] = [
@@ -422,17 +423,17 @@ def test_report_stats_gpu():
             "memory_total": GPU_MEMORY,
             "processes": [],
         },
-        # No name.
         {
             "index": 3,
+            "name": "NVIDIA A10G",
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
             "utilization_gpu": 3,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
             "processes": [],
         },
-        # No index
         {
+            "index": 4,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
             "name": "NVIDIA A10G",
             "utilization_gpu": 3,
