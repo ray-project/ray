@@ -6,16 +6,14 @@ build_arg_sets:
 
 
 depsets:
-  - name: distributing_pytorch_depset_${PYTHON_SHORT}_${CUDA_VERSION}
-    packages:
-      - ray[all]==100.0.0-dev
-    requirements:
-      - doc/source/train/examples/pytorch/distributing-pytorch/requirements.in
-    output: release/ray_release/byod/distributing_pytorch_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
+  - name: e2e_multimodal_ai_workloads_${PYTHON_SHORT}_${CUDA_VERSION}
     operation: compile
+    requirements:
+      - python/requirements.txt
+      - doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/requirements.txt
+    output: release/ray_release/byod/e2e_multimodal_ai_workloads_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
-      - --find-links=.whl/
-      - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
+      - --python-platform=linux
     build_arg_sets:
       - gpu_py311
