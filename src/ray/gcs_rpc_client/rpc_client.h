@@ -198,6 +198,8 @@ class GcsRpcClient {
             .grpc_client_check_connection_status_interval_milliseconds(),
         /*server_unavailable_timeout_seconds=*/
         ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
+        /*server_call_unavailable_timeout_immediately=*/
+        false,
         /*server_unavailable_timeout_callback=*/
         []() {
           RAY_LOG(ERROR) << "Failed to connect to GCS within "

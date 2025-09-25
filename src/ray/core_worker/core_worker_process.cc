@@ -241,10 +241,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_node_id, options.node_ip_address, options.node_manager_port);
-  auto local_raylet_rpc_client =
-      std::make_shared<rpc::RayletClient>(std::move(raylet_address),
-                                          *client_call_manager,
-                                          /*raylet_unavailable_timeout_callback=*/[] {});
+  auto local_raylet_rpc_client = std::make_shared<rpc::RayletClient>(
+      std::move(raylet_address),
+      *client_call_manager,
+      /*raylet_unavailable_timeout_callback=*/[] {},
+      -1,
+      true);
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
@@ -278,6 +280,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     }
   }
 
+  // NOTE: The raylet client server_unavailable_timeout_seconds is set to -1 because the
+  // core worker is notified when remote nodes have died from the GCS. Hence we only need
+  // to call the unavailable timeout once immediately to handle the case where the dead
+  // node was evicted from the cache prior subscription.
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
@@ -287,7 +293,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
                 core_worker->gcs_client_.get(),
                 core_worker->raylet_client_pool_.get(),
-                addr));
+                addr),
+            -1,
+            true);
       });
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
@@ -862,7 +870,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
-    rpc::RayletClient local_raylet_rpc_client(raylet_address, client_call_manager, [] {});
+    rpc::RayletClient local_raylet_rpc_client(
+        raylet_address, client_call_manager, [] {}, -1, true);
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,

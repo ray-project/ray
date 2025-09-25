@@ -543,9 +543,7 @@ ray.get(task.remote(), timeout=3)
 
 def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     cluster = ray_start_cluster
-    # Required for reducing the retry time of RequestWorkerLease
     system_configs = {
-        "raylet_rpc_server_reconnect_timeout_s": 0,
         "health_check_initial_delay_ms": 0,
         "health_check_timeout_ms": 10,
         "health_check_failure_threshold": 1,
