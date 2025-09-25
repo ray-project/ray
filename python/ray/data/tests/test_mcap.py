@@ -428,6 +428,42 @@ def test_read_mcap_ignore_missing_paths(
             ds.materialize()
 
 
+def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
+    """Test that JSON-encoded messages are properly decoded."""
+    path = os.path.join(tmp_path, "json_test.mcap")
+
+    # Test data with nested JSON structure
+    test_data = {
+        "sensor_data": {
+            "temperature": 23.5,
+            "humidity": 45.0,
+            "readings": [1, 2, 3, 4, 5],
+        },
+        "metadata": {"device_id": "sensor_001", "location": "room_a"},
+    }
+
+    messages = [
+        {
+            "topic": "/sensor/data",
+            "data": test_data,
+            "log_time": 1000000000,
+        }
+    ]
+    create_test_mcap_file(path, messages)
+
+    ds = ray.data.read_mcap(path)
+    rows = ds.take_all()
+
+    assert len(rows) == 1
+    row = rows[0]
+
+    # Verify the data field is properly decoded as a Python dict, not bytes
+    assert isinstance(row["data"], dict)
+    assert row["data"]["sensor_data"]["temperature"] == 23.5
+    assert row["data"]["metadata"]["device_id"] == "sensor_001"
+    assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
+
+
 if __name__ == "__main__":
     import sys
 

@@ -137,10 +137,9 @@ class MCAPDatasource(FileBasedDatasource):
 
         try:
             reader = make_reader(f)
-            # Validate that the file is a valid MCAP file by checking the summary
+            # Get summary for potential optimization, but don't require it
+            # MCAP summaries are optional and iter_messages works without them
             summary = reader.get_summary()
-            if summary is None:
-                raise ValueError("Invalid MCAP file: no summary found")
 
             # Determine which topics to filter on for MCAP's built-in filtering
             # Use topics if specified, otherwise use channels (which map to topics)
@@ -222,9 +221,20 @@ class MCAPDatasource(FileBasedDatasource):
         Returns:
             Dictionary containing message data in Ray Data format.
         """
+        # Decode message data based on encoding
+        decoded_data = message.data
+        if channel.message_encoding == "json" and isinstance(message.data, bytes):
+            try:
+                import json
+
+                decoded_data = json.loads(message.data.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                # Keep raw bytes if decoding fails
+                decoded_data = message.data
+
         # Core message data
         message_data = {
-            "data": message.data,
+            "data": decoded_data,
             "topic": channel.topic,
             "log_time": message.log_time,
             "publish_time": message.publish_time,
