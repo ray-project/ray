@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/stats/metric.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 

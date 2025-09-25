@@ -22,7 +22,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/stats/tag_defs.h"
 
 namespace ray {
 
@@ -647,8 +646,9 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
                                                        "Restored");
 
-  stats::STATS_object_store_memory.Record(
-      spilled_bytes_current_, {{std::string_view(stats::LocationKey.name()), "SPILLED"}});
+  ray::stats::STATS_object_store_memory.Record(
+      spilled_bytes_current_,
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocSpilled}});
 
   ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
                                                        "FailedDeletion");

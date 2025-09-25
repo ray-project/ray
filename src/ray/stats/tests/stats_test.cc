@@ -86,7 +86,7 @@ class StatsTest : public ::testing::Test {
     ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
     ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
     const stats::TagsType global_tags = {
-        {stats::TagKeyType::Register("ResourceName"), "CPU"}};
+        {stats::TagKeyType::Register(stats::kResourceNameKey), "CPU"}};
     ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());
     MockExporter::Register();
   }
@@ -99,7 +99,7 @@ class StatsTest : public ::testing::Test {
   ray::stats::Gauge ray_metric_test_metrics_{"local_available_resource",
                                              "The available resources on this node.",
                                              "",
-                                             {"ResourceName"}};
+                                             {stats::kResourceNameKey}};
 };
 
 TEST_F(StatsTest, F) {
@@ -179,7 +179,7 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
   // Spawn 10 threads that init and shutdown again and again.
   // The test will have memory corruption if it doesn't work as expected.
   const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                       {stats::WorkerIdKey, "1000"}};
+                                       {stats::WorkerPidKey, "1000"}};
   std::vector<std::thread> threads;
   for (int i = 0; i < 5; i++) {
     threads.emplace_back([global_tags]() {
@@ -210,7 +210,7 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   // Spawn 10 threads that init and shutdown again and again.
   // The test will have memory corruption if it doesn't work as expected.
   const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                       {stats::WorkerIdKey, "1000"}};
+                                       {stats::WorkerPidKey, "1000"}};
 
   // Flush interval is 30 seconds. Shutdown should not take 30 seconds in this case.
   uint32_t override_report_flush_interval = 30000;
