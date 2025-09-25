@@ -88,6 +88,13 @@ class DataParallelTrainer:
         self.data_config = dataset_config or DataConfig()
 
         self.running_in_local_mode = self.scaling_config.num_workers == 0
+        self._controller: Optional[ActorHandle[TrainController]] = None
+        
+        # Track this trainer instance for cleanup in Tune
+        from ray.train._internal.session import get_session
+        session = get_session()
+        if session:
+            session._attached_trainer = self
 
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
@@ -147,7 +154,25 @@ class DataParallelTrainer:
                 # the error will be raised here.
                 raise result.error
 
+            # Clear the attached trainer reference since training completed normally
+            from ray.train._internal.session import get_session
+            session = get_session()
+            if session:
+                session._attached_trainer = None
+
             return result
+
+    def _abort_controller(self) -> None:
+        """Best-effort abort of the remote controller to free resources."""
+
+        controller = self._controller
+        if not controller:
+            return
+
+        try:
+            ray.get(controller.abort.remote())
+        finally:
+            self._controller = None
 
     def _get_local_controller(self) -> LocalController:
         return LocalController(
@@ -225,6 +250,7 @@ class DataParallelTrainer:
         )(TrainController)
 
         controller = controller_actor_cls.remote(**controller_init_kwargs)
+        self._controller = controller
 
         # If this is not the main thread - as is the case when running in Tune -
         # registering the SIGINT handler raises an exception.

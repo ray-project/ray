@@ -104,6 +104,9 @@ def _train_coordinator_fn(
     # config already contains merged values.
     # Instantiate new Trainer in Trainable.
     trainer = trainer_cls(**config)
+    session = get_session()
+    if session:
+        session._attached_trainer = trainer
 
     # Get the checkpoint from Tune and pass it to workers later on.
     checkpoint = ray.tune.get_checkpoint()
@@ -881,6 +884,9 @@ class BaseTrainer(abc.ABC):
                 # We ignore the config passed by Tune and instead use the merged
                 # config which includes the initial Trainer args.
                 super()._trainable_func(self._merged_config)
+
+            def cleanup(self):
+                super().cleanup()
 
             @classmethod
             def default_resource_request(cls, config):
