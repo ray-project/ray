@@ -1478,7 +1478,6 @@
 
   frequency: nightly
   team: serve
-
   cluster:
     byod: {}
     cluster_compute: compute_tpl_single_node.yaml
