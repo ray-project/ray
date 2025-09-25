@@ -9,7 +9,11 @@ In Ray version 2.49.0 and above, you can use labels to control scheduling for Ku
 
 This page provides a conceptual overview and usage instructions for labels. Labels are key-value pairs that provide a human-readable configuration for users to control how Ray schedules tasks, actors, and placement group bundles to specific nodes.
 
-.. note:: Ray labels share the same syntax and formatting restrictions as Kubernetes labels, but are conceptually distinct. See the [Kubernetes docs on labels and selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set).
+
+```{note} 
+Ray labels share the same syntax and formatting restrictions as Kubernetes labels, but are conceptually distinct. See the [Kubernetes docs on labels and selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set).
+```
+
 
 ## How do labels work?
 
@@ -42,7 +46,7 @@ The following are examples of default labels:
 (custom)=
 ## Define custom labels
 
-You can add custom labels to your nodes using the `--labels` or `--labels-file` parameter when running `ray start`. See the following examples:
+You can add custom labels to your nodes using the `--labels` or `--labels-file` parameter when running `ray start`.
 
 <!-- INSERT EXAMPLES -->
 
@@ -70,7 +74,7 @@ The following table shows the basic syntax for label selector operator logic:
 
 You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require node id to be 123:
 
-```python
+```{python}
 label_selector={"instance_type": "m5.16xlarge", “ray.io/node-id”: “123”}  
 ```
 
