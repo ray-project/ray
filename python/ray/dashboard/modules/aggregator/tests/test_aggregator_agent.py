@@ -1112,19 +1112,23 @@ def test_aggregator_agent_gcs_filtering_driver_job_events(
         fake_timestamp[0], unique_task_name
     )
 
-    # This event should be filtered out (DRIVER_JOB_EXECUTION_EVENT is NOT in GCS_EXPOSABLE_EVENT_TYPES)
+    # This event should be filtered out (DRIVER_JOB_LIFECYCLE_EVENT is NOT in GCS_EXPOSABLE_EVENT_TYPES)
     driver_job_event = RayEvent(
         event_id=b"driver_job_1",
         source_type=RayEvent.SourceType.CORE_WORKER,
-        event_type=RayEvent.EventType.DRIVER_JOB_EXECUTION_EVENT,
+        event_type=RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
         timestamp=fake_timestamp[0],
         severity=RayEvent.Severity.INFO,
         message="driver job execution event - should be filtered",
-        driver_job_execution_event=DriverJobLifecycleEvent(
+        driver_job_lifecycle_event=DriverJobLifecycleEvent(
             job_id=b"test_job_1",
-            states=[
+            state_transitions=[
                 DriverJobLifecycleEvent.StateTransition(
                     state=DriverJobLifecycleEvent.State.CREATED,
+                    timestamp=Timestamp(seconds=1234567890),
+                ),
+                DriverJobLifecycleEvent.StateTransition(
+                    state=DriverJobLifecycleEvent.State.FINISHED,
                     timestamp=Timestamp(seconds=1234567890),
                 ),
             ],
