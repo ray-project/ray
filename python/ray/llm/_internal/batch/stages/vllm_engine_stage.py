@@ -457,10 +457,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
         """
-        logger.info("=" * 20)
-        logger.info("Initializing vLLM engine stage with model: %s", model)
-        logger.info("=" * 20)
-
         super().__init__(data_column, expected_input_keys)
         self.model = model
 
@@ -478,8 +474,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         exclude_safetensors = self.engine_kwargs.get("load_format") in EXCLUDE_SAFETENSORS_MODES
         if exclude_safetensors:
+            logger.info("Excluding safetensors files when downloading the model.")
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
+            logger.info("Downloading model and tokenizer.")
             download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Download the model if needed.
