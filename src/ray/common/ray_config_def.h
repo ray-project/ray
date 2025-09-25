@@ -90,12 +90,6 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, -1)
 
-/// The worker killing policy to use, available options are
-/// group_by_owner
-/// retriable_lifo
-/// retriable_fifo
-RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
-
 /// Whether to report placement or regular resource usage for an actor.
 /// Reporting placement may cause the autoscaler to overestimate the resources
 /// required of the cluster, but reporting regular resource may lead to no
@@ -967,3 +961,7 @@ RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
 
 // Whether to start a background thread to manage Python GC in workers.
 RAY_CONFIG(bool, start_python_gc_manager_thread, true)
+
+// Whether to enable the feature of outputting error log if the task is
+// still retryable.
+RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)

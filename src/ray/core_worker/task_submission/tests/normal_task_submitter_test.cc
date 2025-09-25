@@ -30,9 +30,10 @@
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 
 namespace ray {
 namespace core {
@@ -92,7 +93,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
                       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
@@ -222,7 +223,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_generator_failed_and_resubmitted = 0;
 };
 
-class MockRayletClient : public FakeRayletClient {
+class MockRayletClient : public rpc::FakeRayletClient {
  public:
   void ReturnWorkerLease(int worker_port,
                          const LeaseID &lease_id,
