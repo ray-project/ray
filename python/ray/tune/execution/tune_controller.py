@@ -1554,7 +1554,6 @@ class TuneController:
     def _process_trial_result(self, trial: Trial, result: dict[str, Any]):
         result.update(trial_id=trial.trial_id)
         is_duplicate = RESULT_DUPLICATE in result
-        # Never checkpoint on duplicate results, recheck after callbacks
         force_checkpoint = False
 
         # TrialScheduler and SearchAlgorithm still receive a
@@ -1584,14 +1583,13 @@ class TuneController:
             with warn_if_slow("search_alg.on_trial_result"):
                 self._search_alg.on_trial_result(trial.trial_id, flat_result)
 
-        # If this is not a duplicate result, the callbacks should
-        # be informed about the result and allow its manipulation.
         if not is_duplicate:
             with warn_if_slow("callbacks.on_trial_result"):
                 self._callbacks.on_trial_result(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
+                    # NOTE: Allow user callbacks to modify the Trial result in place.
                     result=result,
                 )
             force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
