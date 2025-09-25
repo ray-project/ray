@@ -49,7 +49,7 @@ fi
 echo "---- Build test steps"
 /tmp/bazel run //release:custom_image_build_and_test_init\
   -- "${RUN_FLAGS[@]}" \
-  --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.yaml \
+  --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
   --test-jobs-output-file .buildkite/release/release_tests.json \
 
 buildkite-agent pipeline upload .buildkite/release/release_tests.json
