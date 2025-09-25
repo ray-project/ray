@@ -95,6 +95,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # TODO: consider configuration to process multiple at a time
         if self._finished_validations:
             task, checkpoint = next(iter(self._finished_validations.items()))
+            self._finished_validations.pop(task)
             checkpoint_to_metrics = self._process_finished_validation(task, checkpoint)
             self._checkpoint_manager.update_checkpoints_with_metrics(
                 checkpoint_to_metrics
@@ -106,7 +107,6 @@ class ValidationManager(ControllerCallback, ReportCallback):
     ) -> Dict[Checkpoint, Dict[str, Any]]:
         """Process finished validation, update checkpoint manager, return metrics."""
         checkpoint_to_metrics = {}
-        self._finished_validations.pop(task)
         try:
             checkpoint_to_metrics[checkpoint] = ray.get(task)
         except ray.exceptions.RayTaskError:
@@ -123,6 +123,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         tasks = list(self._finished_validations.keys())
         for task in tasks:
             checkpoint = self._finished_validations[task]
+            self._finished_validations.pop(task)
             checkpoint_to_metrics.update(
                 self._process_finished_validation(task, checkpoint)
             )

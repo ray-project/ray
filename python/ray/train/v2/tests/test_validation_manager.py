@@ -72,7 +72,7 @@ def test_checkpoint_validation_management(tmp_path):
             checkpoint=low_initial_high_final_training_result.checkpoint,
             validation_spec=_ValidationSpec(
                 validate_fn=lambda checkpoint, config: {"score": 200},
-                validate_config=None,
+                validate_config={},
                 checkpoint=low_initial_high_final_training_result.checkpoint,
             ),
         ),
@@ -88,7 +88,7 @@ def test_checkpoint_validation_management(tmp_path):
             checkpoint=failing_training_result.checkpoint,
             validation_spec=_ValidationSpec(
                 validate_fn=failing_validate_fn,
-                validate_config=None,
+                validate_config={},
                 checkpoint=failing_training_result.checkpoint,
             ),
         ),
@@ -105,7 +105,7 @@ def test_checkpoint_validation_management(tmp_path):
             checkpoint=timing_out_training_result.checkpoint,
             validation_spec=_ValidationSpec(
                 validate_fn=infinite_waiting_validate_fn,
-                validate_config=None,
+                validate_config={},
                 checkpoint=timing_out_training_result.checkpoint,
             ),
         ),

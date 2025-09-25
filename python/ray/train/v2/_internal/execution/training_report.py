@@ -9,9 +9,9 @@ class _ValidationSpec:
 
     def __init__(
         self,
-        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-        validate_config: Optional[Dict] = None,
-        checkpoint: Optional["Checkpoint"] = None,
+        validate_fn: Callable[["Checkpoint", Optional[Dict]], Dict],
+        validate_config: Dict,
+        checkpoint: "Checkpoint",
     ):
         self.validate_fn = validate_fn
         self.validate_config = validate_config

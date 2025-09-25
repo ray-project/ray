@@ -179,7 +179,6 @@ Ray Train Errors
 
     ~train.v2.api.exceptions.ControllerError
     ~train.v2.api.exceptions.WorkerGroupError
-    ~train.v2.api.exceptions.ValidationFailedError
 
 Ray Tune Integration Utilities
 ------------------------------

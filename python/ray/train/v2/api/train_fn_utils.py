@@ -118,7 +118,7 @@ def report(
         checkpoint_upload_mode=checkpoint_upload_mode,
         delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
         validate_fn=validate_fn,
-        validate_config=validate_config,
+        validate_config=validate_config or {},
     )
 
 

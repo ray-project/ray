@@ -203,8 +203,10 @@ async def test_pending_checkpoint_management(tmp_path):
 
 
 def test_update_checkpoints_with_metrics(tmp_path):
-    # Set up CheckpointManager with _pending_training_results and _checkpoint_results
-    # that should not happen in practice but verify safe behavior
+    # This test verifies that update_checkpoints_with_metrics works regardless of
+    # CheckpointManager's internal state - even if the internal state can never
+    # be reached with proper use of the CheckpointManager API. For example, no
+    # checkpoint should exist in _pending_training_results but not _checkpoint_results.
     storage_context = StorageContext(
         storage_path=tmp_path,
         experiment_dir_name="pending_checkpoint_management_experiment",
