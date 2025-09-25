@@ -1493,7 +1493,7 @@
   alert: default
 
   variations:
-    - __suffix__: base-extra
+    - __suffix__: aws
 
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
