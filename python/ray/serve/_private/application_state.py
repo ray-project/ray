@@ -520,9 +520,8 @@ class ApplicationState:
         imperative API (e.g., `serve.run` or the Java API).
 
         Args:
-            deployment_infos (Dict[str, DeploymentInfo]): Mapping of deployment
-                names to their corresponding DeploymentInfo objects, used to
-                build and deploy the application.
+            deployment_infos: Mapping of deployment names to their corresponding
+                DeploymentInfo objects, used to build and deploy the application.
 
         Raises:
             RayServeException: If there is more than one route prefix or docs path.
