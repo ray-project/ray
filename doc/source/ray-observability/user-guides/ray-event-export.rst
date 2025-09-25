@@ -45,7 +45,7 @@ For each task, Ray exports two types of events: Task Definition Event and Task E
   and actor tasks respectively.
 * Task Execution Events contain task state transition information and metadata 
   generated during task execution. 
-  See `src/ray/protobuf/public/events_task_execution_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_execution_event.proto>`_ for the event format.
+  See `src/ray/protobuf/public/events_task_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_lifecycle_event.proto>`_ for the event format.
 
 An example of a Task Definition Event and a Task Execution Event:
 

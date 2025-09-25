@@ -51,11 +51,11 @@ class GcsRayEventConverter {
   /// \return The output TaskEvents to populate.
   rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event);
 
-  /// Convert a TaskExecutionEvent to a TaskEvents.
+  /// Convert a TaskLifecycleEvent to a TaskEvents.
   ///
-  /// \param event The TaskExecutionEvent to convert.
+  /// \param event The TaskLifecycleEvent to convert.
   /// \return The output TaskEvents to populate.
-  rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event);
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event);
 
   /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
   ///
@@ -99,7 +99,7 @@ class GcsRayEventConverter {
       std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
       absl::flat_hash_map<std::string, size_t> &job_id_to_index);
 
-  FRIEND_TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent);
+  FRIEND_TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEvent);
   FRIEND_TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent);
 };
 
