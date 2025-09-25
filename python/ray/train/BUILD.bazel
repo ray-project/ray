@@ -214,9 +214,8 @@ py_test(
     main = "examples/pytorch_geometric/distributed_sage_example.py",
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -335,9 +334,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -446,6 +444,8 @@ py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
+    # TODO: move over
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -497,9 +497,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -514,9 +513,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -528,6 +526,8 @@ py_test(
     name = "test_gpu_examples",
     size = "large",
     srcs = ["tests/test_gpu_examples.py"],
+    # TODO: move over
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "gpu",
@@ -546,10 +546,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "torch_1_11",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -631,9 +629,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -645,9 +642,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -659,9 +655,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -673,9 +668,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -819,9 +813,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -864,9 +857,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -881,9 +873,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -1004,7 +995,6 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "minimal",
         "team:ml",
     ],
     deps = [":train_lib"],
