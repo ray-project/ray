@@ -130,29 +130,21 @@ is determined manually within the user-defined training loop. See the compatibil
    * -
      - Class API
      - Function API
-     - Callback API
    * - ``num_to_keep``
-     - ✅
      - ✅
      - ✅
    * - ``checkpoint_score_attribute``
      - ✅
      - ✅
-     - ✅*
    * - ``checkpoint_score_order``
      - ✅
      - ✅
-     - ✅*
    * - ``checkpoint_frequency``
      - ✅
      - ❌
-     - ✅*
    * - ``checkpoint_at_end``
      - ✅
      - ❌
-     - ✅*
-
-.. [*] Manual behavior must be implemented for the Callback API
 
 
 
