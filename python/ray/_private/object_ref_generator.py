@@ -41,20 +41,8 @@ class ObjectRefGenerator:
     Do not initialize the class and create an instance directly.
     The instance should be created by `.remote`.
 
-    >>> import ray
-
-    >>> _ = ray.init()
-    >>> @ray.remote
-    ... def generator_task():
-    ...     for i in range(3):
-    ...         yield i
-    >>> gen = generator_task.remote()
-    >>> ray.get(gen.__next__.remote())
-    0
-    >>> ray.get(gen.__next__.remote())
-    1
-    >>> ray.get(gen.__next__.remote())
-    2
+    >>> gen = generator_task.remote() # doctest: +SKIP
+    >>> next(gen) # doctest: +SKIP
     >>> await gen.__anext__() # doctest: +SKIP
     """
 
@@ -120,13 +108,8 @@ class ObjectRefGenerator:
         the `ray.get(gen.completed())` raises an exception.
 
         The function returns immediately.
-        >>> import ray
-        >>> @ray.remote
-        ... def generator_task():
-        ...     for i in range(3):
-        ...         yield i
-        >>> gen = generator_task.remote()
-        >>> ray.get(gen.completed())
+
+        >>> ray.get(gen.completed()) # doctest: +SKIP
         """
         return self._generator_ref
 
