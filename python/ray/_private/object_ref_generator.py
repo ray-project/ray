@@ -42,7 +42,8 @@ class ObjectRefGenerator:
     The instance should be created by `.remote`.
 
     >>> import ray
-    >>> ray.init() 
+
+    >>> _ = ray.init()
     >>> @ray.remote
     ... def generator_task():
     ...     for i in range(3):
