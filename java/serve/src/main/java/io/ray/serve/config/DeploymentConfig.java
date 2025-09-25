@@ -311,7 +311,9 @@ public class DeploymentConfig implements Serializable {
           MessagePackSerializer.decode(
               proto.getUserConfig().toByteArray(), Object.class)); // TODO-xlang
     }
-    deploymentConfig.setMaxConstructorRetryCount(proto.getMaxConstructorRetryCount());
+    if (proto.getMaxConstructorRetryCount() > 0) {
+      deploymentConfig.setMaxConstructorRetryCount(proto.getMaxConstructorRetryCount());
+    }
     return deploymentConfig;
   }
 
