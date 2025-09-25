@@ -13,8 +13,6 @@ from ray._private.utils import is_in_test
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data.extensions import ArrowTensorArray
-
 RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION = (
     "RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION"
 )
@@ -611,22 +609,6 @@ def _map_array_to_array_payload(a: "pyarrow.MapArray") -> "PicklableArrayPayload
         null_count=a.null_count,
         offset=0,
         children=children,
-    )
-
-
-def _tensor_array_to_array_payload(a: "ArrowTensorArray") -> "PicklableArrayPayload":
-    """Serialize tensor arrays to PicklableArrayPayload."""
-    # Offset is propagated to storage array, and the storage array items align with the
-    # tensor elements, so we only need to do the straightforward creation of the storage
-    # array payload.
-    storage_payload = _array_to_array_payload(a.storage)
-    return PicklableArrayPayload(
-        type=a.type,
-        length=len(a),
-        buffers=[],
-        null_count=a.null_count,
-        offset=0,
-        children=[storage_payload],
     )
 
 
