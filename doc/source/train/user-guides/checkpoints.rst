@@ -239,7 +239,7 @@ Checkpoint Upload Modes
 -----------------------
 
 By default, when you ``ray.train.report``, Ray Train synchronously pushes your checkpoint
- from ``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on your ``storage_path``.
+from ``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on your ``storage_path``.
 This is equivalent to calling ``ray.train.report`` with ``checkpoint_upload_mode=CheckpointUploadMode.SYNC``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
