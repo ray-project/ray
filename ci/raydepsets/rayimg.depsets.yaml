@@ -18,7 +18,7 @@ depsets:
     packages:
       - ray[all]==100.0.0.dev0
     constraints:
-      - python/requirements_compiled.txt
+      - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
     operation: compile
     append_flags:
@@ -31,3 +31,4 @@ depsets:
       - py312
     pre_hooks:
       - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh

@@ -336,14 +336,12 @@ class TestCli(unittest.TestCase):
 
     def test_override_uv_flag_single_flag(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
-        expected_flags.remove("--extra-index-url")
-        expected_flags.remove("https://download.pytorch.org/whl/cpu")
-        expected_flags.extend(
-            ["--extra-index-url", "https://download.pytorch.org/whl/cu128"]
-        )
+        expected_flags.remove("--index-strategy")
+        expected_flags.remove("unsafe-best-match")
+        expected_flags.extend(["--index-strategy", "first-index"])
         assert (
             _override_uv_flags(
-                ["--extra-index-url https://download.pytorch.org/whl/cu128"],
+                ["--index-strategy first-index"],
                 DEFAULT_UV_FLAGS.copy(),
             )
             == expected_flags

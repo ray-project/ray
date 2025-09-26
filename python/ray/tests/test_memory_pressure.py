@@ -521,6 +521,7 @@ def test_last_task_of_the_group_fail_immediately():
 def test_one_actor_max_lifo_kill_next_actor(shutdown_only):
     with ray.init(
         _system_config={
+            "worker_killing_policy": "retriable_fifo",
             "memory_usage_threshold": 0.7,
             "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
         },

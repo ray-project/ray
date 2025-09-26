@@ -139,7 +139,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int GetRuntimeEnvHash() const;
 
-  int32_t AttemptNumber() const;
+  uint64_t AttemptNumber() const;
 
   bool IsRetry() const;
 

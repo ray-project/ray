@@ -25,7 +25,6 @@ import requests
 import yaml
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
@@ -48,6 +47,7 @@ from ray.core.generated import (
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -562,11 +562,10 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     while time.time() - start_time < timeout:
         if (
             len(
-                [
-                    _
-                    for _ in ray._private.state.actors().values()
-                    if state is None or _["State"] == state
-                ]
+                list_actors(
+                    filters=[("state", "=", state)] if state else None,
+                    limit=num_actors,
+                )
             )
             >= num_actors
         ):
@@ -577,14 +576,14 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
+    current_num_restarts = get_actor(id=actor_id).num_restarts
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray._private.state.actors(actor_id)
+        actor_state = get_actor(id=actor_id)
         if (
-            actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-            or actor_status["NumRestarts"] > current_num_restarts
+            actor_state.state == "DEAD"
+            or actor_state.num_restarts > current_num_restarts
         ):
             return
         time.sleep(retry_interval_ms / 1000.0)
