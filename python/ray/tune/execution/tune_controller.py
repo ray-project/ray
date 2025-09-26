@@ -1583,6 +1583,8 @@ class TuneController:
             with warn_if_slow("search_alg.on_trial_result"):
                 self._search_alg.on_trial_result(trial.trial_id, flat_result)
 
+        # If this is not a duplicate result, the callbacks should
+        # be informed about the result.
         if not is_duplicate:
             with warn_if_slow("callbacks.on_trial_result"):
                 self._callbacks.on_trial_result(
