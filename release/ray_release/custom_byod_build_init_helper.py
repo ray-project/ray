@@ -97,7 +97,6 @@ def get_prerequisite_step(image: str) -> str:
 
 
 def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:
-    print("Test names: ", test_names)
     ecr, tag = image.split(":")
     ecr_repo = ecr.split("/")[-1]
     tag_without_build_id_and_custom_hash = tag.split("-")[1:-1]
