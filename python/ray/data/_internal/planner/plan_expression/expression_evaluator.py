@@ -65,9 +65,9 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         op = node.ops[0]
         if isinstance(op, ast.In):
-            return left_expr.isin(comparators[0])
+            return left_expr.is_in(comparators[0])
         elif isinstance(op, ast.NotIn):
-            return ~left_expr.isin(comparators[0])
+            return ~left_expr.is_in(comparators[0])
         elif isinstance(op, ast.Eq):
             return left_expr == comparators[0]
         elif isinstance(op, ast.NotEq):
@@ -210,7 +210,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
                 nan_is_null=nan_is_null
             ),
             "is_valid": lambda arg: arg.is_valid(),
-            "isin": lambda arg1, arg2: arg1.isin(arg2),
+            "is_in": lambda arg1, arg2: arg1.is_in(arg2),
         }
 
         if func_name in function_map:
@@ -224,11 +224,11 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
                     return function_map[func_name](args[0], args[1])
                 else:
                     raise ValueError("is_null function requires one or two arguments.")
-            # Handle the "isin" function with exactly two arguments
-            elif func_name == "isin" and len(args) != 2:
-                raise ValueError("isin function requires two arguments.")
+            # Handle the "is_in" function with exactly two arguments
+            elif func_name == "is_in" and len(args) != 2:
+                raise ValueError("is_in function requires two arguments.")
             # Ensure the function has one argument (for functions like is_valid)
-            elif func_name != "isin" and len(args) != 1:
+            elif func_name != "is_in" and len(args) != 1:
                 raise ValueError(f"{func_name} function requires exactly one argument.")
             # Call the corresponding function with the arguments
             return function_map[func_name](*args)

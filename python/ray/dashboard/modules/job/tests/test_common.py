@@ -5,9 +5,9 @@ from google.protobuf.json_format import Parse
 
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
+    JobErrorType,
     JobInfo,
     JobStatus,
-    JobErrorType,
     JobSubmitRequest,
     http_uri_components_to_uri,
     uri_to_http_components,

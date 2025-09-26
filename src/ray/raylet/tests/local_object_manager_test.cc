@@ -25,17 +25,17 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/accessor.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -104,7 +104,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
       callbacks;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
       rpc::UpdateObjectLocationBatchRequest &&request,
@@ -133,7 +133,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       update_object_location_batch_callbacks;
 };
 
-class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockIOWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void SpillObjects(
       const rpc::SpillObjectsRequest &request,

@@ -102,7 +102,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
                        std::function<absl::Time()> get_time,
-                       bool enable_resource_isolation)
+                       AddProcessToCgroupHook add_to_cgroup_hook)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -124,7 +124,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       get_time_(std::move(get_time)),
-      enable_resource_isolation_(enable_resource_isolation) {
+      add_to_cgroup_hook_(std::move(add_to_cgroup_hook)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -443,12 +443,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   serialized_preload_python_modules);
   }
 
-  // Pass resource isolation flag to python worker.
-  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER) {
-    worker_command_args.emplace_back(absl::StrFormat(
-        "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
-  }
-
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -674,7 +668,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
+  Process child(
+      argv.data(), io_service_, ec, /*decouple=*/false, env, false, add_to_cgroup_hook_);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
