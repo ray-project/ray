@@ -8,6 +8,9 @@ import ray
 import json
 from ray._private.ray_microbenchmark_helpers import timeit
 from ray.experimental.collective import create_collective_group
+from ray._private.test_utils import (
+    kill_actor_and_wait_for_failure,
+)
 from dataclasses import dataclass
 
 DTYPE = torch.float16
@@ -112,8 +115,8 @@ def _exec_p2p_transfer(
 
     results = timeit(label, _run)
 
-    # kill_actor_and_wait_for_failure(sender)
-    # kill_actor_and_wait_for_failure(receiver)
+    kill_actor_and_wait_for_failure(sender)
+    kill_actor_and_wait_for_failure(receiver)
 
     return results
 
