@@ -265,8 +265,8 @@ def test_streaming_repartition_write_no_operator_fusion(
     # Verify that StreamingRepartition physical operator has supports_fusion=False
     up_physical_op = physical_op.input_dependencies[0]
     assert up_physical_op.name == "StreamingRepartition"
-    assert not getattr(
-        up_physical_op, "_supports_fusion", True
+    assert (
+        not up_physical_op.supports_fusion()
     ), "StreamingRepartition should have supports_fusion=False"
 
     # Write output to local Parquet files partitioned by key

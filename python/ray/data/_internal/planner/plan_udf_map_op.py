@@ -60,6 +60,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.operator_options import OperatorOptions
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -168,6 +169,7 @@ def plan_project_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        operator_options=op._operator_options,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
@@ -202,7 +204,7 @@ def plan_streaming_repartition_op(
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
-        supports_fusion=False,
+        operator_options=OperatorOptions(disable_fusion=True),
     )
 
 
@@ -262,6 +264,7 @@ def plan_filter_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        operator_options=op._operator_options,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
@@ -319,7 +322,6 @@ def plan_udf_map_op(
         )
 
     map_transformer = MapTransformer([transform_fn], init_fn=init_fn)
-
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -329,6 +331,7 @@ def plan_udf_map_op(
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
+        operator_options=op._operator_options,
     )
 
 
