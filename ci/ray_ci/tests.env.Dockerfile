@@ -91,8 +91,19 @@ else
     echo "--- Extract built ray core bits"
     unzip -o -q /opt/ray-core/ray_pkg.zip -d python
     unzip -o -q /opt/ray-core/ray_py_proto.zip -d python
+
+    echo "--- Extract redis binaries"
+
+    mkdir -p python/ray/core/src/ray/thirdparty/redis/src
+    if [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
+      REDIS_BINARY_URL="https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-arm64.tar.gz"
+    else
+      REDIS_BINARY_URL="https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-x86_64.tar.gz"
+    fi
+    curl -sSL "${REDIS_BINARY_URL}" -o - | tar -xzf - -C python/ray/core/src/ray/thirdparty/redis/src
+
     echo "--- Install Ray with -e"
-    RAY_BUILD_CORE=0 pip install -v -e python/
+    SKIP_BAZEL_BUILD=1 pip install -v -e python/
   else
     # Fall back to normal path.
     echo "--- Install Ray with -e"
