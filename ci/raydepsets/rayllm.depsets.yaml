@@ -11,12 +11,11 @@ build_arg_sets:
 
 
 .common_settings: &common_settings
-  override_flags:
-    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
   append_flags:
     - --python-version=3.11
     - --unsafe-package ray
     - --python-platform=linux
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
     - cu121
