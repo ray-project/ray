@@ -518,9 +518,10 @@ def test_last_task_of_the_group_fail_immediately():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_one_actor_max_kill_previous_actor(shutdown_only):
+def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
     with ray.init(
         _system_config={
+            "worker_killing_policy": "retriable_fifo",
             "memory_usage_threshold": 0.7,
             "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
         },
