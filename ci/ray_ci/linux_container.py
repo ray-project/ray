@@ -57,8 +57,8 @@ class LinuxContainer(Container):
         ]
 
         if not build_type or build_type == "optimized":
-            docker_file = "ci/ray_ci/tests.env.Dockerfile"
-            ray_core_image = get_docker_image(f"ray-core-py{self.python_version}")
+            python_version = self.python_version
+            ray_core_image = get_docker_image(f"ray-core-py{python_version}")
             build_cmd += ["--build-arg", f"RAY_CORE_IMAGE={ray_core_image}"]
             ray_dashboard_image = get_docker_image("ray-dashboard")
             build_cmd += ["--build-arg", f"RAY_DASHBOARD_IMAGE={ray_dashboard_image}"]
@@ -69,12 +69,11 @@ class LinuxContainer(Container):
                 raise ValueError(
                     "install mask is not supported for build type: " + build_type
                 )
-            docker_file = "ci/ray_ci/extra-tests.env.Dockerfile"
             if build_type == "with-cpp":
                 # Only set for Java tests because there's multi-language worker tests.
                 build_cmd += ["--build-arg", "RAY_DISABLE_EXTRA_CPP=0"]
 
-        build_cmd += ["-f", docker_file, "/ray"]
+        build_cmd += ["-f", "ci/ray_ci/tests.env.Dockerfile", "/ray"]
         subprocess.check_call(
             build_cmd,
             env=env,
