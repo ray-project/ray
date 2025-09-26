@@ -3,17 +3,16 @@ import random
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
+from libcpp.utility cimport move
 
 from ray.includes.common cimport(
+    CPythonGcsSubscriber,
     CErrorTableData,
     CLogBatch,
     PythonGetLogBatchLines,
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
 )
-
-include "includes/common.pxi"
-include "includes/network_util.pxi"
 
 cdef class _GcsSubscriber:
     """Cython wrapper class of C++ `ray::pubsub::PythonGcsSubscriber`."""

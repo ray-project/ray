@@ -184,12 +184,6 @@ from ray.includes.optional cimport (
     optional, nullopt
 )
 
-from ray.includes.gcs_subscriber import (
-    _GcsSubscriber,
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-)
-
 cimport cpython
 
 include "includes/network_util.pxi"
@@ -205,6 +199,7 @@ include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
 include "includes/setproctitle.pxi"
+include "includes/gcs_subscriber.pxi"
 
 import ray
 from ray.exceptions import (
@@ -4904,7 +4899,3 @@ def get_session_key_from_storage(host, port, username, password, use_ssl, config
     else:
         logger.info("Could not retrieve session key from storage.")
         return None
-
-_GcsSubscriber = _GcsSubscriber
-GcsErrorSubscriber = GcsErrorSubscriber
-GcsLogSubscriber = GcsLogSubscriber
