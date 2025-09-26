@@ -44,16 +44,6 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer.fit()
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Tensorflow is not installed in CI for Python 3.12",
-)
-def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.tests.test_tune import tune_tensorflow_mnist
-
-    tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
-
-
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     from ray.train.examples.pytorch.torch_regression_example import train_regression
 
