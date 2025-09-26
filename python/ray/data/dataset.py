@@ -2463,7 +2463,7 @@ class Dataset:
             )
         return ds_length
 
-    @PublicAPI(stability="alpha", pi_group=SMJ_API_GROUP)
+    @PublicAPI(stability="alpha", api_group=SMJ_API_GROUP)
     def streaming_train_test_split(
         self,
         test_size: float,
@@ -2479,6 +2479,12 @@ class Dataset:
         The split type can be either "hash" or "random".
         - "random": The dataset is split into random train and test subsets.
         - "hash": The dataset is split into train and test subsets based on the hash of the key column.
+
+        .. tip::
+            Make sure to set the `preserve_order` flag in the `ExecutionOptions` to True
+            to ensure that the split is deterministic across pipeline executions. This is important
+            to avoid test rows to end up in the train set and vice versa on multiple executions.
+            This can be set with ``ray.data.DataContext.get_current().execution_options.preserve_order = True``.
 
         Examples:
             Examples with Random split:
