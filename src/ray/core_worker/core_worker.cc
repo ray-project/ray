@@ -3786,7 +3786,7 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
     RAY_LOG(INFO) << "The ProcessSubscribeForRefRemoved message is for worker "
                   << intended_worker_id << ", but the current worker is "
                   << worker_context_->GetWorkerID() << ". The RPC will be no-op.";
-    reference_counter_->PublishRefRemoved(object_id);
+    reference_counter_->PublishRefRemoved(object_id, message.subscriber_worker_id());
     return;
   }
 
@@ -3794,7 +3794,8 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   ObjectID contained_in_id = ObjectID::FromBinary(message.contained_in_id());
   // So it will call PublishRefRemovedInternal to publish a message when the requested
   // object ID's ref count goes to 0.
-  reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
+  reference_counter_->SubscribeRefRemoved(
+      object_id, contained_in_id, owner_address, message.subscriber_worker_id());
 }
 
 void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
