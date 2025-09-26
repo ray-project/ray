@@ -32,6 +32,8 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
         num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
     )
 
+    logger.info(f"[myan] Getting log directory from GCS: {temp_dir}")
+
     return os.path.join(
         ray._common.utils.decode(temp_dir),
         ray._private.ray_constants.SESSION_LATEST,
@@ -99,13 +101,15 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         ).run()
 
 
-def _setup_logging() -> None:
+def _setup_logging(gcs_client: GcsClient) -> None:
     """Log to autoscaler log file
     (typically, /tmp/ray/session_latest/logs/monitor.*)
 
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
-    log_dir = _get_log_dir()
+    log_dir = _get_log_dir(gcs_client)
+    logger.info(f"[myan] Setting up logging to: {log_dir}")
+
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
 
