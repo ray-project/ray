@@ -30,6 +30,7 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   data.set_ray_namespace("test_ns");
   data.set_node_id("node-1");
   data.mutable_address()->set_worker_id("worker-123");
+  data.set_pid(123);
 
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
       data, rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY, "sess1");
@@ -54,6 +55,7 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
             rpc::events::ActorLifecycleEvent::ALIVE);
   ASSERT_EQ(actor_life.state_transitions(1).node_id(), "node-1");
   ASSERT_EQ(actor_life.state_transitions(1).worker_id(), "worker-123");
+  ASSERT_EQ(actor_life.state_transitions(1).worker_pid(), 123);
 }
 
 }  // namespace observability

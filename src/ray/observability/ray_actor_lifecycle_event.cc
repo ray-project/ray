@@ -37,6 +37,7 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(
     RAY_CHECK(data.has_node_id());
     state_transition.set_node_id(data.node_id());
     state_transition.set_worker_id(data.address().worker_id());
+    state_transition.set_worker_pid(data.pid());
   }
 
   if (state == rpc::events::ActorLifecycleEvent::DEAD) {
