@@ -91,7 +91,7 @@ from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, force_list
-from ray.rllib.utils.actor_manager import FaultTolerantActorManager, RemoteCallResults
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -1544,14 +1544,14 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                 )
 
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.0
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=_env_runner_remote,
+                        kwargs={"num": _num, "round": _round, "iter": algo_iteration},
+                        tag="_env_runner_remote",
+                    )
                 )
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
-                    ),
-                )
+
                 for wid, (env_s, ag_s, metrics, iter) in results:
                     # Ignore eval results kicked off in an earlier iteration.
                     # (those results would be outdated and thus misleading).
@@ -1564,12 +1564,13 @@ class Algorithm(Checkpointable, Trainable):
 
             # Old API stack -> RolloutWorkers return batches.
             else:
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
+                        tag="env_runner_sample_and_get_metrics",
+                    )
                 )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
-                )
+
                 for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
                         continue
@@ -1672,15 +1673,14 @@ class Algorithm(Checkpointable, Trainable):
 
             _round += 1
 
-            self.offline_eval_runner_group.foreach_runner_async(
-                func=functools.partial(
-                    _offline_eval_runner_remote,
-                    iter=algo_iteration,
-                ),
+            results = (
+                self.offline_eval_runner_group.foreach_env_runner_async_fetch_ready(
+                    func=_offline_eval_runner_remote,
+                    kwargs={"iter": algo_iteration},
+                    tag="_offline_eval_runner_remote",
+                )
             )
-            results = self.offline_eval_runner_group.fetch_ready_async_reqs(
-                return_obj_refs=False, timeout_seconds=0.01
-            )
+
             # Make sure we properly time out if we have not received any results
             # for more than `time_out` seconds.
             time_now = time.time()
@@ -1775,18 +1775,20 @@ class Algorithm(Checkpointable, Trainable):
                     + bool(i <= (units_left_to_do % num_healthy_workers))
                     for i in range(1, num_workers + 1)
                 ]
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=functools.partial(
-                        _env_runner_remote,
-                        num=_num,
-                        round=_round,
-                        iter=algo_iteration,
-                        _force_reset=force_reset,
-                    ),
+
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=_env_runner_remote,
+                        kwargs={
+                            "num": _num,
+                            "round": _round,
+                            "iter": algo_iteration,
+                            "_force_reset": force_reset,
+                        },
+                        tag="_env_runner_remote",
+                    )
                 )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
-                )
+
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
                 time_now = time.time()
@@ -1823,12 +1825,13 @@ class Algorithm(Checkpointable, Trainable):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
-                    remote_worker_ids=selected_eval_worker_ids,
-                )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
+
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
+                        remote_worker_ids=selected_eval_worker_ids,
+                        tags="env_runner_sample_and_get_metrics",
+                    )
                 )
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
@@ -3442,16 +3445,11 @@ class Algorithm(Checkpointable, Trainable):
                     )
 
         if self.config.num_aggregator_actors_per_learner:
-            remote_aggregator_metrics: RemoteCallResults = (
-                self._aggregator_actor_manager.fetch_ready_async_reqs(
-                    timeout_seconds=0.0,
-                    return_obj_refs=False,
-                    tags="metrics",
+            remote_aggregator_metrics = (
+                self._aggregator_actor_manager.foreach_env_runner_async_fetch_ready(
+                    func=lambda actor: actor.get_metrics(),
+                    tag="get_metrics",
                 )
-            )
-            self._aggregator_actor_manager.foreach_actor_async(
-                func=lambda actor: actor.get_metrics(),
-                tag="metrics",
             )
 
             FaultTolerantActorManager.handle_remote_call_result_errors(

@@ -644,9 +644,8 @@ class IMPALA(Algorithm):
 
             ma_batches_refs_remote_results = (
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
-                    timeout_seconds=0.0,
                     return_obj_refs=True,
-                    tags="batches",
+                    tags="impala_get_batches",
                 )
             )
             ma_batches_refs = []
@@ -668,7 +667,7 @@ class IMPALA(Algorithm):
                 sent = self._aggregator_actor_manager.foreach_actor_async(
                     func="get_batch",
                     kwargs=[dict(episode_refs=p) for p in packs],
-                    tag="batches",
+                    tag="impala_get_batches",
                 )
                 self.metrics.log_value(
                     (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
@@ -781,15 +780,16 @@ class IMPALA(Algorithm):
             self.metrics.set_value(
                 NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
             )
-            self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                self.env_runner_group.sync_env_runner_states(
+                did_sync_weights = self.env_runner_group.sync_env_runner_states(
                     config=self.config,
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                     env_to_module=self.env_to_module_connector,
                     module_to_env=self.module_to_env_connector,
                 )
+                if did_sync_weights:
+                    self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
 
     def _sample_and_get_connector_states(self):
         env_runner_indices_to_update = set()
@@ -800,14 +800,10 @@ class IMPALA(Algorithm):
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            async_results: List[
-                Tuple[int, ObjectRef]
-            ] = self.env_runner_group.fetch_ready_async_reqs(
+            async_results = self.env_runner_group.foreach_env_runner_async_fetch_ready(
+                func="sample_get_state_and_metrics",
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
-            )
-            self.env_runner_group.foreach_env_runner_async(
-                "sample_get_state_and_metrics"
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.
