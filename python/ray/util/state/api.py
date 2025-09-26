@@ -40,6 +40,7 @@ from ray.util.state.common import (
 from ray.util.state.exception import RayStateApiException, ServerUnavailable
 
 logger = logging.getLogger(__name__)
+_MAX_HTTP_RESPONSE_EXCEPTION_TEXT = 500
 
 
 @contextmanager
@@ -226,12 +227,9 @@ class StateApiClient(SubmissionClient):
             # Process the response.
             response = response.json()
         except requests.exceptions.JSONDecodeError as e:
-            text = response.text
-            if len(text) > 500:
-                text = f"{text[:500]}..."
             raise RayStateApiException(
                 f"Failed to parse Response(url={response.url}, "
-                f"status={response.status_code}, text='{text}')"
+                f"status={response.status_code}, text='{response.text[:_MAX_HTTP_RESPONSE_EXCEPTION_TEXT]}')"
             ) from e
         if response["result"] is False:
             raise RayStateApiException(
