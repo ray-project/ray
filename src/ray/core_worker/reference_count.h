@@ -30,10 +30,7 @@
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
-#include "ray/rpc/grpc_server.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/logging.h"
+#include "ray/rpc/utils.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {

@@ -23,10 +23,10 @@ from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data import DataContext
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 

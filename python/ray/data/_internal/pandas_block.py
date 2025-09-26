@@ -176,7 +176,15 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def unique(self) -> BlockColumn:
         pd = lazy_import_pandas()
-        return pd.Series(self._column.unique())
+        try:
+            return pd.Series(self._column.unique())
+        except ValueError as e:
+            if "buffer source array is read-only" in str(e):
+                # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
+                #       when computing unique values hence failing
+                return pd.Series(self._column.copy().unique())
+            else:
+                raise
 
     def flatten(self) -> BlockColumn:
         return self._column.list.flatten()
@@ -282,8 +290,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.columns.tolist()
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.columns
-
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pd.Series, np.ndarray)):
+            return self.upsert_column(name, value)
+        # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
 
     @staticmethod
