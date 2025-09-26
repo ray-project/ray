@@ -645,7 +645,7 @@ class IMPALA(Algorithm):
             ma_batches_refs_remote_results = (
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
                     return_obj_refs=True,
-                    tags="impala_get_batches",
+                    tags="get_batches",
                 )
             )
             ma_batches_refs = []
@@ -667,7 +667,7 @@ class IMPALA(Algorithm):
                 sent = self._aggregator_actor_manager.foreach_actor_async(
                     func="get_batch",
                     kwargs=[dict(episode_refs=p) for p in packs],
-                    tag="impala_get_batches",
+                    tag="get_batches",
                 )
                 self.metrics.log_value(
                     (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
