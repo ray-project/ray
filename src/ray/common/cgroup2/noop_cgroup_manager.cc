@@ -41,8 +41,4 @@ Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
   return Status::OK();
 }
 
-Status CgroupManager::AddProcessToApplicationCgroup(const std::string &pid) {
-  return Status::OK();
-}
-
 }  // namespace ray

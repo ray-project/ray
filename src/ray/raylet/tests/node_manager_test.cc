@@ -30,6 +30,7 @@
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -418,7 +419,7 @@ class NodeManagerTest : public ::testing::Test {
         std::move(mutable_object_provider),
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
-        [](const std::string &) {});
+        std::move(cgroup_manager_));
   }
 
   instrumented_io_context io_service_;
@@ -437,6 +438,7 @@ class NodeManagerTest : public ::testing::Test {
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
   std::unique_ptr<MockObjectManager> mock_object_manager_;
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
       std::make_shared<plasma::FakePlasmaClient>();

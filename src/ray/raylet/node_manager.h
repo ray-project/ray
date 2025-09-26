@@ -23,6 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
@@ -60,9 +61,6 @@ using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
 using rpc::ResourceUsageBatchData;
-
-// TODO(#54703): Put this type in a separate target.
-using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -153,7 +151,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      AddProcessToCgroupHook add_process_to_system_cgroup_hook);
+      std::unique_ptr<CgroupManagerInterface> cgroup_manager);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -881,8 +879,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
-  /// Used to move the dashboard and runtime_env agents into the system cgroup.
-  AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 };
 
 }  // namespace ray::raylet

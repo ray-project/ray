@@ -266,10 +266,6 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   std::unique_ptr<ray::CgroupManager> cgroup_manager;
-  AddProcessToCgroupHook add_process_to_cgroup_hook = [](const std::string &) {};
-  AddProcessToCgroupHook add_process_to_application_cgroup_hook =
-      [](const std::string &) {};
-  AddProcessToCgroupHook add_process_to_system_cgroup_hook = [](const std::string &) {};
 
   // TODO(#54703): Link OSS documentation once it's available in the error messages.
   if (enable_resource_isolation) {
@@ -325,27 +321,6 @@ int main(int argc, char *argv[]) {
             s.ToString());
       }
     }
-    add_process_to_application_cgroup_hook =
-        [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
-          ray::Status s = cgroup_mgr.AddProcessToApplicationCgroup(pid);
-          if (!s.ok()) {
-            RAY_LOG(WARNING) << absl::StrFormat(
-                "Failed to move process %s into the application cgroup with error %s.",
-                pid,
-                s.ToString());
-          }
-        };
-
-    add_process_to_system_cgroup_hook = [&cgroup_mgr =
-                                             *cgroup_manager](const std::string &pid) {
-      ray::Status s = cgroup_mgr.AddProcessToSystemCgroup(pid);
-      if (!s.ok()) {
-        RAY_LOG(WARNING) << absl::StrFormat(
-            "Failed to move process %s into the system cgroup with error %s.",
-            pid,
-            s.ToString());
-      }
-    };
   }
 
   // Configuration for the node manager.
@@ -672,8 +647,7 @@ int main(int argc, char *argv[]) {
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
-        /*get_time=*/[]() { return absl::Now(); },
-        std::move(add_process_to_application_cgroup_hook));
+        /*get_time=*/[]() { return absl::Now(); });
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
         main_service, /*record_stats=*/true);
@@ -976,7 +950,7 @@ int main(int argc, char *argv[]) {
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,
-        std::move(add_process_to_system_cgroup_hook));
+        std::move(cgroup_manager));
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

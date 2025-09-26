@@ -122,8 +122,7 @@ class ProcessFD {
                             std::error_code &ec,
                             bool decouple,
                             const ProcessEnvironment &env,
-                            bool pipe_to_stdin,
-                            std::function<void(const std::string &)> add_to_cgroup) {
+                            bool pipe_to_stdin) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -208,12 +207,6 @@ class ProcessFD {
     }
 
     pid = pipefds[1] != -1 ? fork() : -1;
-
-    // The process was forked successfully and we're executing in the child
-    // process.
-    if (pid == 0) {
-      add_to_cgroup(std::to_string(getpid()));
-    }
 
     // If we don't pipe to stdin close pipes that are not needed.
     if (pid <= 0 && pipefds[0] != -1) {
@@ -392,22 +385,19 @@ Process::Process(const char *argv[],
                  std::error_code &ec,
                  bool decouple,
                  const ProcessEnvironment &env,
-                 bool pipe_to_stdin,
-                 std::function<void(const std::string &)> add_to_cgroup) {
+                 bool pipe_to_stdin) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
 #ifdef __linux__
   KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
-    ProcessFD procfd = ProcessFD::spawnvpe(
-        argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup));
+    ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
     if (!ec) {
       this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
     }
     return this->GetId();
   });
 #else
-  ProcessFD procfd = ProcessFD::spawnvpe(
-      argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup));
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }

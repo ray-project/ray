@@ -33,9 +33,6 @@
 #include "ray/util/compat.h"
 #include "ray/util/logging.h"
 
-// TODO(#54703): Put this type in a separate target.
-using AddProcessToCgroupHook = std::function<void(const std::string &)>;
-
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
 // There's no guarantee for other OSes, but it's useful for testing purposes.
@@ -91,23 +88,19 @@ class Process {
   /// \param[in] pipe_to_stdin If true, it creates a pipe and redirect to child process'
   /// stdin. It is used for health checking from a child process.
   /// Child process can read stdin to detect when the current process dies.
-  /// \param add_to_cgroup_hook A lifecycle hook that the forked process will
-  /// call after fork and before exec to move itself into the appropriate cgroup.
-  //
+  ///
   // The subprocess is child of this process, so it's caller process's duty to handle
   // SIGCHLD signal and reap the zombie children.
   //
   // Note: if RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper is set to
   // true, Raylet will kill any orphan grandchildren processes when the spawned process
   // dies, *even if* `decouple` is set to `true`.
-  explicit Process(
-      const char *argv[],
-      void *io_service,
-      std::error_code &ec,
-      bool decouple = false,
-      const ProcessEnvironment &env = {},
-      bool pipe_to_stdin = false,
-      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
+  explicit Process(const char *argv[],
+                   void *io_service,
+                   std::error_code &ec,
+                   bool decouple = false,
+                   const ProcessEnvironment &env = {},
+                   bool pipe_to_stdin = false);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
