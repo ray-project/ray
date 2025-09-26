@@ -482,102 +482,70 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
 # Task Completion Time Percentiles
 TASK_COMPLETION_TIME_PANEL = Panel(
     id=38,
-    title="Task Completion Time Heatmap",
-    description="Time (in seconds) spent (including backpressure) running tasks to completion. Brighter colors indicate more tasks finished within that duration range.",
+    title="Task Completion Time Histogram (s)",
+    description="Time (in seconds) spent (including backpressure) running tasks to completion. Larger bars means more tasks finished within that duration range.",
     unit="s",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
-            legend="{{le}}",
-            template=TargetTemplate.HEATMAP,
+            expr='sum by (le) (max_over_time(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} s",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
     fill=0,
     stack=False,
-    template=PanelTemplate.HEATMAP,
-    options=PanelOptions(
-        color=Color(
-            mode="scheme",
-            scheme="Blues",
-        ),
-    ),
-    color=LEGACY_COLOR_BLUES,
-    dataFormat="tsbuckets",
+    template=PanelTemplate.BAR_CHART,
 )
 
 BLOCK_COMPLETION_TIME_PANEL = Panel(
     id=58,
-    title="Block Completion Time Heatmap",
-    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Brighter colors indicate more blocks finished within that duration range.",
+    title="Block Completion Time Histogram (s)",
+    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Larger bars means more blocks finished within that duration range.",
     unit="s",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
-            legend="{{le}}",
-            template=TargetTemplate.HEATMAP,
+            expr='sum by (le) (max_over_time(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} s",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
     fill=0,
     stack=False,
-    template=PanelTemplate.HEATMAP,
-    options=PanelOptions(
-        color=Color(
-            mode="scheme",
-            scheme="Blues",
-        ),
-    ),
-    color=LEGACY_COLOR_BLUES,
-    dataFormat="tsbuckets",
+    template=PanelTemplate.BAR_CHART,
 )
 
 BLOCK_SIZE_BYTES_PANEL = Panel(
     id=59,
-    title="Block Size (Bytes) Heatmap",
-    description="Size (in bytes) per block. Brighter colors indicate more blocks are within that size range.",
+    title="Block Size (Bytes) Histogram",
+    description="Size (in bytes) per block. Larger bars means more blocks are within that size range.",
     unit="bytes",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
+            expr='sum by (le) (max_over_time(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
             legend="{{le}}",
-            template=TargetTemplate.HEATMAP,
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
     fill=0,
     stack=False,
-    template=PanelTemplate.HEATMAP,
-    options=PanelOptions(
-        color=Color(
-            mode="scheme",
-            scheme="Blues",
-        ),
-    ),
-    color=LEGACY_COLOR_BLUES,
-    dataFormat="tsbuckets",
+    template=PanelTemplate.BAR_CHART,
 )
 
 BLOCK_SIZE_ROWS_PANEL = Panel(
     id=60,
-    title="Block Size (Rows) Heatmap",
-    description="Number of rows per block. Brighter colors indicate more blocks are within that number of rows range.",
+    title="Block Size (Rows) Histogram",
+    description="Number of rows per block. Larger bars means more blocks are within that number of rows range.",
     unit="rows",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
+            expr='sum by (le) (max_over_time(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
             legend="{{le}}",
-            template=TargetTemplate.HEATMAP,
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
     fill=0,
     stack=False,
-    template=PanelTemplate.HEATMAP,
-    options=PanelOptions(
-        color=Color(
-            mode="scheme",
-            scheme="Blues",
-        ),
-    ),
-    color=LEGACY_COLOR_BLUES,
-    dataFormat="tsbuckets",
+    template=PanelTemplate.BAR_CHART,
 )
 
 TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
