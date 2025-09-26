@@ -234,34 +234,45 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB):
 @pytest.mark.parametrize("use_ray_put", [False, True])
 @pytest.mark.parametrize("failure", [False, True])
 def test_basic_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
+    print("getting cluster memory usage 1", get_cluster_memory_usage())
+
     @ray.remote(max_retries=0)
     def pending(ref, dep):
         ray.get(ref[0])
         if failure:
             os._exit(0)
 
+    print("Putting object")
+    print("getting cluster memory usage 2", get_cluster_memory_usage())
     array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    print("Initializing signal actor")
+    print("getting cluster memory usage 3", get_cluster_memory_usage())
     signal = SignalActor.remote()
+    print("Calling pending")
     obj_ref = pending.remote([array_oid], signal.wait.remote())
-
+    print("getting cluster memory usage 4", get_cluster_memory_usage())
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
+    print("Deleting array oid bytes")
     del array_oid
-
     # Check that the remote reference pins the object.
+    print("Filling object store")
     _fill_object_store_and_get(array_oid_bytes)
-
+    print("getting cluster memory usage 5", get_cluster_memory_usage())
     # Fulfill the dependency, causing the task to finish.
+    print("Sending signal")
     ray.get(signal.send.remote())
-
+    print("getting cluster memory usage 6", get_cluster_memory_usage())
     # Reference should be gone, check that array gets evicted.
     def check_memory_usage():
         print(get_cluster_memory_usage())
         return get_cluster_memory_usage() == 0
 
+    print("Waiting for condition")
     wait_for_condition(check_memory_usage, timeout=30)
-
+    print("getting cluster memory usage 7", get_cluster_memory_usage())
     try:
+        print("Getting object")
         ray.get(obj_ref)
         assert not failure
     except ray.exceptions.WorkerCrashedError:
@@ -275,6 +286,8 @@ def test_basic_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
 def test_recursive_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
+    print("cluster memory usage 1", get_cluster_memory_usage())
+
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         if depth == max_depth:
@@ -285,28 +298,35 @@ def test_recursive_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
         else:
             return recursive.remote(ref, signal, max_depth, depth + 1)
 
+    print("Initializing signal actor")
     signal = SignalActor.remote()
 
     max_depth = 5
+    print("Putting object")
     array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    print("Calling recursive")
     head_oid = recursive.remote([array_oid], signal, max_depth)
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
+    print("Deleting array oid")
     del array_oid
     del head_oid
-
+    print("cluster memory usage 2", get_cluster_memory_usage())
     # Check that the remote reference pins the object.
+    print("Filling object store")
     _fill_object_store_and_get(array_oid_bytes)
-
+    print("cluster memory usage 3", get_cluster_memory_usage())
     # Fulfill the dependency, causing the tail task to finish.
+    print("Sending signal")
     ray.get(signal.send.remote())
-
+    print("cluster memory usage 4", get_cluster_memory_usage())
     # Reference should be gone, check that array gets evicted.
     def check_memory_usage():
         print(get_cluster_memory_usage())
         return get_cluster_memory_usage() == 0
 
+    print("Waiting for condition")
     wait_for_condition(check_memory_usage, timeout=30)
 
 
