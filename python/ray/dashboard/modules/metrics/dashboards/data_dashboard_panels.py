@@ -506,7 +506,7 @@ TASK_COMPLETION_TIME_PANEL = Panel(
 )
 
 BLOCK_COMPLETION_TIME_PANEL = Panel(
-    id=57,
+    id=58,
     title="Block Completion Time Heatmap",
     description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Brighter colors indicate more blocks finished within that duration range.",
     unit="s",
@@ -531,7 +531,7 @@ BLOCK_COMPLETION_TIME_PANEL = Panel(
 )
 
 BLOCK_SIZE_BYTES_PANEL = Panel(
-    id=58,
+    id=59,
     title="Block Size (Bytes) Heatmap",
     description="Size (in bytes) per block. Brighter colors indicate more blocks are within that size range.",
     unit="bytes",
@@ -556,7 +556,7 @@ BLOCK_SIZE_BYTES_PANEL = Panel(
 )
 
 BLOCK_SIZE_ROWS_PANEL = Panel(
-    id=59,
+    id=60,
     title="Block Size (Rows) Heatmap",
     description="Number of rows per block. Brighter colors indicate more blocks are within that number of rows range.",
     unit="rows",
