@@ -109,12 +109,7 @@ H AbslHashValue(H h, const LabelSelector &label_selector) {
                    constraint.GetLabelKey(),
                    static_cast<int>(constraint.GetOperator()));
 
-    // Sort values before hashing to guarantee a deterministic order.
-    std::vector<std::string> sorted_values(constraint.GetLabelValues().begin(),
-                                           constraint.GetLabelValues().end());
-    std::sort(sorted_values.begin(), sorted_values.end());
-
-    for (const auto &value : sorted_values) {
+    for (const auto &value : constraint.GetLabelValues()) {
       h = H::combine(std::move(h), value);
     }
   }
