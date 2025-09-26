@@ -1,5 +1,7 @@
 """Unit tests for GPU providers."""
 
+import hashlib
+
 import unittest
 from unittest.mock import Mock, patch
 
@@ -689,17 +691,21 @@ class TestHuaweiNpuProvider(unittest.TestCase):
         mock_proc.proc_mem_usage = 512 * MB  # 512 MiB in bytes
         mock_pynpudcmi.dcmi_get_device_resource_info.return_value = [mock_proc]
 
+        ip = "127.0.0.1"
+
         self.provider._pynpudcmi = mock_pynpudcmi
         self.provider._initialized = True
 
-        result = self.provider.get_gpu_utilization()
+        result = self.provider.get_gpu_utilization(ip)
 
         self.assertEqual(len(result), 1)
         gpu_info = result[0]
 
         self.assertEqual(gpu_info["index"], 0)
         self.assertEqual(gpu_info["name"], "Huawei Ascend 910B")
-        self.assertEqual(gpu_info["uuid"], hex(0))
+        self.assertEqual(
+            gpu_info["uuid"], hashlib.sha256(f"{0}{ip}".encode()).hexdigest()
+        )
         self.assertEqual(gpu_info["utilization_gpu"], 70)
         self.assertEqual(gpu_info["memory_used"], 8 * 1024)  # MB
         self.assertEqual(gpu_info["memory_total"], 32 * 1024)  # MB
