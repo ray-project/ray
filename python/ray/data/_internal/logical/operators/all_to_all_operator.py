@@ -1,6 +1,9 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorContainsPartitionKeys,
+)
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -67,7 +70,7 @@ class RandomizeBlocks(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class RandomShuffle(AbstractAllToAll):
+class RandomShuffle(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -88,6 +91,10 @@ class RandomShuffle(AbstractAllToAll):
         )
         self._seed = seed
 
+    def get_partition_keys(self) -> Optional[List[str]]:
+        """RandomShuffle has no partition keys since it shuffles randomly."""
+        return None
+
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
@@ -101,7 +108,7 @@ class RandomShuffle(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class Repartition(AbstractAllToAll):
+class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
     """Logical operator for repartition."""
 
     def __init__(
@@ -131,6 +138,10 @@ class Repartition(AbstractAllToAll):
         self._keys = keys
         self._sort = sort
 
+    def get_partition_keys(self) -> Optional[List[str]]:
+        """Return the partition keys for this repartition operation."""
+        return self._keys
+
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
@@ -144,7 +155,7 @@ class Repartition(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class Sort(AbstractAllToAll):
+class Sort(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
     """Logical operator for sort."""
 
     def __init__(
@@ -165,6 +176,10 @@ class Sort(AbstractAllToAll):
         self._sort_key = sort_key
         self._batch_format = batch_format
 
+    def get_partition_keys(self) -> Optional[List[str]]:
+        """Return the columns used for sorting as partition keys."""
+        return self._sort_key._columns
+
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
@@ -178,7 +193,7 @@ class Sort(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class Aggregate(AbstractAllToAll):
+class Aggregate(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
     """Logical operator for aggregate."""
 
     def __init__(
@@ -202,3 +217,12 @@ class Aggregate(AbstractAllToAll):
         self._aggs = aggs
         self._num_partitions = num_partitions
         self._batch_format = batch_format
+
+    def get_partition_keys(self) -> Optional[List[str]]:
+        """Return the groupby keys for this aggregate operation."""
+        if self._key is None:
+            return None
+        elif isinstance(self._key, str):
+            return [self._key]
+        else:
+            return self._key

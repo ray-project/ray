@@ -1,5 +1,5 @@
+import copy as cp
 import logging
-from typing import List, Tuple
 
 from ray.data import DataContext
 from ray.data._internal.logical.interfaces import (
@@ -7,6 +7,9 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Operator,
     Rule,
+)
+from ray.data._internal.logical.interfaces.logical_operator import (
+    LogicalOperatorContainsPartitionKeys,
 )
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Aggregate,
@@ -43,7 +46,7 @@ class ShuffleFusion(Rule):
 
             parent_op = parent_ops[0]
 
-            # Simple disown cases - same operator types
+            # Simple disconnect cases - same operator types
             if (
                 (
                     isinstance(parent_op, Repartition)
@@ -63,26 +66,34 @@ class ShuffleFusion(Rule):
                 )
                 or (isinstance(parent_op, RandomShuffle) and isinstance(child_op, Sort))
             ):
-                _, child_op = _disconnect_op(parent_op, copy=False)
-                return child_op[0]
+                _disconnect_op(parent_op)
+                return child_op
 
             # Special case: RandomShuffle -> Repartition with shuffle flag
             elif isinstance(parent_op, RandomShuffle) and isinstance(
                 child_op, Repartition
             ):
-                _, child_op = _disconnect_op(parent_op)
-                twin_op = child_op[0]
-                assert isinstance(twin_op, Repartition)
+                _disconnect_op(parent_op)
+                twin_op = cp.copy(child_op)
                 twin_op._shuffle = True
                 return twin_op
 
             # Key-based fusion cases - Repartition with Join
             elif isinstance(parent_op, Repartition) and isinstance(child_op, Join):
-                if parent_op._num_outputs == child_op._num_outputs and _keys_can_fuse(
-                    parent_op, child_op
-                ):
-                    _, child_op = _disconnect_op(parent_op, copy=False)
-                    return child_op[0]
+                # For joins, both left and right keys must match parent keys,
+                # and they are guarenteed to be non-empty
+                join_keys_match = (
+                    parent_op.get_partition_keys()
+                    and child_op._left_key_columns
+                    and child_op._right_key_columns
+                    and set(parent_op.get_partition_keys())
+                    == set(child_op._left_key_columns)
+                    and set(parent_op.get_partition_keys())
+                    == set(child_op._right_key_columns)
+                )
+                if parent_op._num_outputs == child_op._num_outputs and join_keys_match:
+                    _disconnect_op(parent_op)
+                    return cp.copy(child_op)
 
             # Key-based fusion cases - Repartition with Aggregate
             elif isinstance(parent_op, Repartition) and isinstance(child_op, Aggregate):
@@ -90,16 +101,16 @@ class ShuffleFusion(Rule):
                     parent_op._num_outputs == child_op._num_partitions
                     and _keys_can_fuse(parent_op, child_op)
                 ):
-                    _, child_op = _disconnect_op(parent_op, copy=False)
-                    return child_op[0]
+                    _disconnect_op(parent_op)
+                    return child_op
 
             # Aggregate -> Aggregate fusion
             elif isinstance(parent_op, Aggregate) and isinstance(child_op, Aggregate):
                 if _keys_can_fuse(parent_op, child_op):
-                    _, child_op = _disconnect_op(parent_op)
-                    twin_op = child_op[0]
-                    assert isinstance(twin_op, Aggregate)
+                    _disconnect_op(parent_op)
+                    twin_op = cp.copy(child_op)
                     twin_op._aggs.extend(parent_op._aggs)
+                    return twin_op
 
             # Sort -> Aggregate fusion (sort-based shuffle only)
             elif isinstance(parent_op, Sort) and isinstance(child_op, Aggregate):
@@ -108,25 +119,22 @@ class ShuffleFusion(Rule):
                     _keys_can_fuse(parent_op, child_op)
                     and ctx.shuffle_strategy.is_sort_based()
                 ):
-                    _, child_op = _disconnect_op(parent_op, copy=False)
-                    return child_op[0]
+                    _disconnect_op(parent_op)
+                    return child_op
 
             # Sort -> Sort fusion
             elif isinstance(parent_op, Sort) and isinstance(child_op, Sort):
                 if parent_op._sort_key._descending == child_op._sort_key._descending:
-                    _, child_op = _disconnect_op(parent_op)
-                    twin_op = child_op[0]
-                    assert isinstance(twin_op, Sort)
-                    twin_op._sort_key._columns.extend(parent_op._sort_key)
+                    _disconnect_op(parent_op)
+                    twin_op = cp.copy(child_op)
+                    twin_op._sort_key._columns.extend(parent_op._sort_key._columns)
                     return twin_op
 
         return op
 
 
 # TODO(justin): apply this to other Rules
-def _disconnect_op(
-    child_op: Operator, copy=True
-) -> Tuple[List[Operator], List[Operator]]:
+def _disconnect_op(child_op: Operator):
     """Disconnect a child operator from the DAG by connecting its parents directly to its grandchildren.
 
     Visually this transforms:
@@ -135,16 +143,6 @@ def _disconnect_op(
 
     Args:
         child_op: The operator to remove from the DAG
-        copy: If True, returns copies of the operators. If False, returns references.
-              Use copy=True if you plan to modify the returned operators.
-
-    Returns:
-        Tuple of (parent_operators, grandchild_operators):
-        - parent_operators: List of parent operators that were connected to child_op
-        - grandchild_operators: List of grandchild operators that child_op was connected to
-
-        If copy=True, both lists contain shallow copies of the operators.
-        If copy=False, both lists contain references to the original operators.
     """
     grandchild_ops = child_op.output_dependencies
     parent_ops = child_op.input_dependencies
@@ -159,50 +157,17 @@ def _disconnect_op(
 
     # the child_op is now disconnected
 
-    if copy:
-        import copy as cp
 
-        parent_copies = [cp.copy(parent) for parent in parent_ops]
-        grandchild_copies = [cp.copy(grandchild_op) for grandchild_op in grandchild_ops]
-
-        return parent_copies, grandchild_copies
-
-    return parent_ops, grandchild_ops
-
-
-# TODO(justin): Im thinking about a function for partitioning operators
-# but joins are a bit quirky because they contain two keys.
-def _keys_can_fuse(parent_op, child_op) -> bool:
+def _keys_can_fuse(
+    parent_op: LogicalOperatorContainsPartitionKeys,
+    child_op: LogicalOperatorContainsPartitionKeys,
+) -> bool:
     """Check if parent and child operators can fuse based on key matching."""
     # Get parent keys based on operator type
-    parent_keys = None
-    if isinstance(parent_op, (Repartition, StreamingRepartition)):
-        parent_keys = parent_op._keys
-    elif isinstance(parent_op, Aggregate):
-        parent_keys = parent_op._key
-    elif isinstance(parent_op, Sort):
-        parent_keys = parent_op._sort_key._columns
+    parent_keys = parent_op.get_partition_keys()
 
     # Get child keys based on operator type
-    child_keys = None
-    if isinstance(child_op, (Repartition, StreamingRepartition)):
-        child_keys = child_op._keys
-    elif isinstance(child_op, Aggregate):
-        child_keys = child_op._key
-    elif isinstance(child_op, Sort):
-        child_keys = child_op._sort_key._columns
-    elif isinstance(child_op, Join):
-        # For joins, both left and right keys must match parent keys,
-        # and they are guarenteed to be non-empty
-        if (
-            parent_keys
-            and child_op._left_key_columns
-            and child_op._right_key_columns
-            and set(parent_keys) == set(child_op._left_key_columns)
-            and set(parent_keys) == set(child_op._right_key_columns)
-        ):
-            return True
-        return False
+    child_keys = child_op.get_partition_keys()
 
     # Compare keys: either both match or both are None
     if parent_keys and child_keys:
