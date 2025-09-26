@@ -20,10 +20,9 @@ from fastapi import FastAPI
 from starlette.responses import PlainTextResponse
 
 import ray
-import ray.util.state as state_api
 from ray import serve
+from ray._common.formatters import JSONFormatter
 from ray._common.test_utils import wait_for_condition
-from ray._private.ray_logging.formatters import JSONFormatter
 from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
@@ -39,6 +38,7 @@ from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
+from ray.util.state import list_actors, list_nodes
 
 
 class FakeLogger:
@@ -441,7 +441,7 @@ def test_http_access_log_in_proxy_logs_file(serve_instance):
     serve.run(Handler.bind(), logging_config={"encoding": "TEXT"})
 
     # Get log file information
-    nodes = state_api.list_nodes()
+    nodes = list_nodes()
     serve_log_dir = get_serve_logs_dir()
     node_ip_address = nodes[0].node_ip
     proxy_log_file_name = get_component_file_name(
@@ -792,7 +792,7 @@ class TestLoggingAPI:
         serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
         serve_log_dir = get_serve_logs_dir()
         # Check controller log
-        actors = state_api.list_actors()
+        actors = list_actors()
         expected_log_regex = [".*logger with logging config.*"]
         for actor in actors:
             print(actor["name"])
@@ -805,7 +805,7 @@ class TestLoggingAPI:
         check_log_file(controller_log_path, expected_log_regex)
 
         # Check proxy log
-        nodes = state_api.list_nodes()
+        nodes = list_nodes()
         node_ip_address = nodes[0].node_ip
         proxy_log_file_name = get_component_file_name(
             "proxy", node_ip_address, component_type=None, suffix=".log"
@@ -1369,7 +1369,7 @@ def test_configure_default_serve_logger_with_stderr_redirect(
     ],
     indirect=True,
 )
-def test_request_id_uniqueness_with_buffering(ray_instance):
+def test_request_id_uniqueness_with_buffering(serve_and_ray_shutdown, ray_instance):
     """Test request IDs are unique when buffering is enabled."""
 
     logger = logging.getLogger("ray.serve")

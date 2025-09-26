@@ -52,7 +52,7 @@ You can implement the stopping criteria using either a dictionary, a function, o
 
     .. tab-item:: Dictionary
 
-        If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
+        If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the
         Function API or ``step()`` in the Class API.
 
         .. note::
@@ -100,7 +100,7 @@ You can implement the stopping criteria using either a dictionary, a function, o
         .. note::
 
             When returning ``True`` from ``stop_all``, currently running trials will not stop immediately.
-            They will stop after finishing their ongoing training iteration (after ``session.report`` or ``step``).
+            They will stop after finishing their ongoing training iteration (after ``tune.report`` or ``step``).
 
         Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 

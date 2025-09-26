@@ -11,11 +11,11 @@ build_arg_sets:
 
 
 .common_settings: &common_settings
-  override_flags:
-    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
   append_flags:
     - --python-version=3.11
+    - --unsafe-package ray
     - --python-platform=linux
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
     - cu121
@@ -25,6 +25,7 @@ depsets:
 # First, extract base test dependencies from the current compiled mono repo one.
 # This also expands to the indirect dependencies for this Python version & platform.
   - name: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: compile
     <<: *common_settings
     requirements:
       - python/requirements.txt
@@ -33,7 +34,8 @@ depsets:
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
-    operation: compile
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
 
 # Second, expand it into LLM test dependencies.
   - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
