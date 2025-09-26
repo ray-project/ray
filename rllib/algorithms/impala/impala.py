@@ -780,16 +780,15 @@ class IMPALA(Algorithm):
             self.metrics.set_value(
                 NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
             )
+            self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                did_sync_weights = self.env_runner_group.sync_env_runner_states(
+                self.env_runner_group.sync_env_runner_states(
                     config=self.config,
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                     env_to_module=self.env_to_module_connector,
                     module_to_env=self.module_to_env_connector,
                 )
-                if did_sync_weights:
-                    self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
 
     def _sample_and_get_connector_states(self):
         env_runner_indices_to_update = set()
