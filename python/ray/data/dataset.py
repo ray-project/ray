@@ -2515,12 +2515,13 @@ class Dataset:
         self,
         ds: "Dataset",
         join_type: str,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         on: Tuple[str] = ("id",),
         right_on: Optional[Tuple[str]] = None,
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
+        broadcast: bool = False,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
@@ -2531,13 +2532,15 @@ class Dataset:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
                 "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
-                "left_anti", "right_anti").
+                "left_anti", "right_anti"). Note that when using
+                broadcast=True, only these 4 join types are supported.
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
                 memory requirements when individual partitions are being joined. Note
                 that, consequently, this will also be a total number of blocks that will
-                be produced as a result of executing join.
+                be produced as a result of executing join. When `broadcast=True`, this
+                parameter is optional since broadcast joins don't perform hash shuffling.
             on: The columns from the left operand that will be used as
                 keys for the join operation.
             right_on: The columns from the right operand that will be
@@ -2548,6 +2551,13 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
+            broadcast: (Optional) Whether to use broadcast join instead of hash shuffle
+                join. In broadcast join, the smaller dataset is loaded into memory and
+                broadcasted to all workers using map_batches with PyArrow joins.
+                This is efficient when the smaller dataset is much smaller than the larger
+                dataset and can fit in a worker node's memory. Defaults to False.
+                Note that this will only check dataset counts if datasets are already
+                materialized to avoid expensive computation.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2558,6 +2568,7 @@ class Dataset:
             validate_schemas: (Optional) Controls whether validation of provided
                 configuration against input schemas will be performed (defaults to
                 false, since obtaining schemas could be prohibitively expensive).
+
 
         Returns:
             A :class:`Dataset` that holds rows of input left Dataset joined with the
@@ -2582,6 +2593,14 @@ class Dataset:
                 join_type="inner",
                 num_partitions=2,
                 on=("id",),
+            )
+
+            # Broadcast join example (num_partitions is optional)
+            broadcast_joined_ds = doubles_ds.join(
+                squares_ds,
+                join_type="inner",
+                on=("id",),
+                broadcast=True,
             )
 
             print(sorted(joined_ds.take_all(), key=lambda item: item["id"]))
@@ -2669,21 +2688,127 @@ class Dataset:
 
             Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
-        plan = self._plan.copy()
-        op = Join(
-            left_input_op=self._logical_plan.dag,
-            right_input_op=ds._logical_plan.dag,
-            left_key_columns=on,
-            right_key_columns=right_on,
-            join_type=join_type,
-            num_partitions=num_partitions,
-            left_columns_suffix=left_suffix,
-            right_columns_suffix=right_suffix,
-            partition_size_hint=partition_size_hint,
-            aggregator_ray_remote_args=aggregator_ray_remote_args,
-        )
+        # Validate that num_partitions is provided for non-broadcast joins
+        if not broadcast and num_partitions is None:
+            raise ValueError(
+                "num_partitions must be provided when broadcast=False. "
+                "For broadcast joins (broadcast=True), num_partitions is optional."
+            )
 
-        return Dataset(plan, LogicalPlan(op, self.context))
+        plan = self._plan.copy()
+
+        if broadcast:
+            # Validate that the join type is supported for broadcast joins
+            supported_broadcast_join_types = {
+                "inner",
+                "left_outer",
+                "right_outer",
+                "full_outer",
+            }
+            if join_type not in supported_broadcast_join_types:
+                raise ValueError(
+                    f"Join type '{join_type}' is not supported in broadcast joins. "
+                    f"Supported types are: {list(supported_broadcast_join_types)}"
+                )
+
+            # Create the broadcast join callable class
+            from ray.data._internal.logical.operators.broadcast_join import (
+                BroadcastJoinFunction,
+            )
+            from ray.data._internal.logical.operators.join_operator import JoinType
+
+            # Determine which dataset should be broadcast (smaller one)
+            # Only call count() if datasets are already materialized to avoid expensive computation
+            def _get_count_if_materialized(dataset):
+                """Get count only if dataset is already materialized."""
+                if hasattr(dataset, "_plan") and dataset._plan.has_computed_output():
+                    return dataset.count()
+                return None
+
+            ds_count = _get_count_if_materialized(ds)
+            self_count = _get_count_if_materialized(self)
+
+            # If both are materialized, use counts to determine which to broadcast
+            if ds_count is not None and self_count is not None:
+                if self_count >= ds_count:
+                    # self (left) is larger, ds (right) is smaller
+                    large_ds = self
+                    small_ds = ds
+                    large_key_columns = on
+                    small_key_columns = right_on
+                    datasets_swapped = False
+                else:
+                    # ds (right) is larger, self (left) is smaller
+                    large_ds = ds
+                    small_ds = self
+                    large_key_columns = right_on
+                    small_key_columns = on
+                    datasets_swapped = True
+            else:
+                # If not materialized, default to broadcasting the right dataset (ds)
+                # This is a reasonable default for most broadcast join use cases
+                large_ds = self
+                small_ds = ds
+                large_key_columns = on
+                small_key_columns = right_on
+                datasets_swapped = False
+
+            # Create the broadcast join function - PyArrow will handle the supported join types natively
+            # Note: left_suffix and right_suffix always refer to the original left and right datasets
+            # regardless of which one is larger/smaller
+            join_type_enum = JoinType(join_type)
+
+            # Determine the correct suffixes based on which dataset is large/small
+            if datasets_swapped:
+                # Original left (self) is now small, original right (ds) is now large
+                large_table_suffix = right_suffix  # large table is original right
+                small_table_suffix = left_suffix  # small table is original left
+            else:
+                # Original left (self) is large, original right (ds) is small
+                large_table_suffix = left_suffix  # large table is original left
+                small_table_suffix = right_suffix  # small table is original right
+
+            join_fn = BroadcastJoinFunction(
+                small_table_dataset=small_ds,
+                join_type=join_type_enum,
+                large_table_key_columns=large_key_columns,
+                small_table_key_columns=small_key_columns,
+                large_table_columns_suffix=large_table_suffix,
+                small_table_columns_suffix=small_table_suffix,
+                datasets_swapped=datasets_swapped,
+            )
+
+            # For broadcast joins, use map_batches with appropriate concurrency
+            # If num_partitions is specified, use it; otherwise use default concurrency behavior
+            if num_partitions is not None:
+                result = large_ds.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
+                    concurrency=num_partitions,
+                )
+            else:
+                # Let map_batches determine the concurrency based on the dataset structure
+                result = large_ds.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
+                )
+
+            return result
+        else:
+            op = Join(
+                left_input_op=self._logical_plan.dag,
+                right_input_op=ds._logical_plan.dag,
+                left_key_columns=on,
+                right_key_columns=right_on,
+                join_type=join_type,
+                num_partitions=num_partitions,
+                left_columns_suffix=left_suffix,
+                right_columns_suffix=right_suffix,
+                partition_size_hint=partition_size_hint,
+                aggregator_ray_remote_args=aggregator_ray_remote_args,
+            )
+
+            return Dataset(plan, LogicalPlan(op, self.context))
 
     @AllToAllAPI
     @PublicAPI(api_group=GGA_API_GROUP)
@@ -5762,9 +5887,10 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
+
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

@@ -1,3 +1,10 @@
+"""Execution operators for join operations in Ray Data.
+
+This module provides the physical execution operators for join operations, including
+the JoiningShuffleAggregation class which handles distributed joining using hash-based
+shuffling and PyArrow's native join functionality.
+"""
+
 import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
@@ -38,11 +45,16 @@ logger = logging.getLogger(__name__)
 
 
 class JoiningShuffleAggregation(StatefulShuffleAggregation):
-    """Aggregation performing distributed joining of the 2 sequences,
-    by utilising hash-based shuffling.
+    """Aggregation performing distributed joining of two sequences using hash-based
+    shuffling.
 
-    Hash-based shuffling applied to 2 input sequences and employing the same
-    partitioning scheme allows to
+    This class implements distributed join operations by utilizing hash-based shuffling
+    to ensure that identical keys from both sequences are accumulated into the same
+    partition. This allows join operations to be performed independently on each
+    partition.
+
+    Hash-based shuffling applied to two input sequences and employing the same
+    partitioning scheme allows:
 
         - Accumulate identical keys from both sequences into the same
         (numerical) partition. In other words, all keys such that
@@ -51,8 +63,21 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
         - Perform join on individual partitions independently (from other partitions)
 
-    For actual joining Pyarrow native joining functionality is utilised, providing
-    incredible performance while allowing keep the data from being deserialized.
+    For actual joining, PyArrow's native joining functionality is utilized, providing
+    incredible performance while allowing the data to remain deserialized.
+
+    Examples:
+        .. testcode::
+
+            # Create a joining shuffle aggregation
+            aggregation = JoiningShuffleAggregation(
+                aggregator_id=0,
+                join_type=JoinType.INNER,
+                left_key_col_names=("id",),
+                right_key_col_names=("id",),
+                target_partition_ids=[0, 1, 2],
+                data_context=DataContext.get_current()
+            )
     """
 
     def __init__(
@@ -60,13 +85,32 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         *,
         aggregator_id: int,
         join_type: JoinType,
-        left_key_col_names: Tuple[str],
-        right_key_col_names: Tuple[str],
+        left_key_col_names: Tuple[str, ...],
+        right_key_col_names: Tuple[str, ...],
         target_partition_ids: List[int],
         data_context: DataContext,
         left_columns_suffix: Optional[str] = None,
         right_columns_suffix: Optional[str] = None,
     ):
+        """Initialize the JoiningShuffleAggregation.
+
+        Args:
+            aggregator_id: Unique identifier for this aggregator instance.
+            join_type: Type of join to perform (inner, outer, semi, anti).
+            left_key_col_names: Column names to use as join keys from the left
+                dataset.
+            right_key_col_names: Column names to use as join keys from the right
+                dataset.
+            target_partition_ids: List of partition IDs to target for this aggregation.
+            data_context: Ray Data context for configuration and settings.
+            left_columns_suffix: Optional suffix for left dataset columns to avoid
+                conflicts.
+            right_columns_suffix: Optional suffix for right dataset columns to avoid
+                conflicts.
+
+        Raises:
+            AssertionError: If invalid parameters are provided.
+        """
         super().__init__(aggregator_id)
 
         assert (
@@ -74,15 +118,15 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         ), "At least 1 column to join on has to be provided"
         assert len(right_key_col_names) == len(
             left_key_col_names
-        ), "Number of column for both left and right join operands has to match"
+        ), "Number of columns for both left and right join operands has to match"
 
         assert join_type in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP, (
             f"Join type is not currently supported (got: {join_type}; "  # noqa: C416
             f"supported: {[jt for jt in JoinType]})"  # noqa: C416
         )
 
-        self._left_key_col_names: Tuple[str] = left_key_col_names
-        self._right_key_col_names: Tuple[str] = right_key_col_names
+        self._left_key_col_names: Tuple[str, ...] = left_key_col_names
+        self._right_key_col_names: Tuple[str, ...] = right_key_col_names
         self._join_type: JoinType = join_type
 
         self._left_columns_suffix: Optional[str] = left_columns_suffix
@@ -100,6 +144,16 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         self.data_context = data_context
 
     def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
+        """Accept a partition shard from one of the input sequences.
+
+        Args:
+            input_seq_id: Identifier for the input sequence (0 for left, 1 for right).
+            partition_id: Identifier for the target partition.
+            partition_shard: Block of data to be added to the partition.
+
+        Raises:
+            AssertionError: If input_seq_id is not 0 or 1.
+        """
         assert 0 <= input_seq_id < 2
 
         partition_builder = self._get_partition_builder(
@@ -110,6 +164,17 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         partition_builder.add_block(partition_shard)
 
     def finalize(self, partition_id: int) -> Block:
+        """Finalize the join operation for a specific partition.
+
+        This method builds the final joined result for the specified partition by
+        performing a PyArrow join between the accumulated left and right partition data.
+
+        Args:
+            partition_id: Identifier for the partition to finalize.
+
+        Returns:
+            Block containing the joined data for the specified partition.
+        """
         import pyarrow as pa
 
         left_seq_partition: pa.Table = self._get_partition_builder(
@@ -119,8 +184,9 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             input_seq_id=1, partition_id=partition_id
         ).build()
 
-        left_on, right_on = list(self._left_key_col_names), list(
-            self._right_key_col_names
+        left_on, right_on = (
+            list(self._left_key_col_names),
+            list(self._right_key_col_names),
         )
 
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
@@ -186,17 +252,38 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         return supported
 
     def clear(self, partition_id: int):
+        """Clear the partition builders for a specific partition.
+
+        This method removes the partition builders for the specified partition,
+        freeing up memory after the join operation is complete.
+
+        Args:
+            partition_id: Identifier for the partition to clear.
+        """
         self._left_input_seq_partition_builders.pop(partition_id)
         self._right_input_seq_partition_builders.pop(partition_id)
 
     def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
+        """Get the appropriate partition builder for the given input sequence and
+        partition.
+
+        Args:
+            input_seq_id: Identifier for the input sequence (0 for left, 1 for right).
+            partition_id: Identifier for the target partition.
+
+        Returns:
+            ArrowBlockBuilder for the specified input sequence and partition.
+
+        Raises:
+            ValueError: If input_seq_id is not 0 or 1.
+        """
         if input_seq_id == 0:
             partition_builder = self._left_input_seq_partition_builders[partition_id]
         elif input_seq_id == 1:
             partition_builder = self._right_input_seq_partition_builders[partition_id]
         else:
             raise ValueError(
-                f"Unexpected inpt sequence id of '{input_seq_id}' (expected 0 or 1)"
+                f"Unexpected input sequence id of '{input_seq_id}' (expected 0 or 1)"
             )
         return partition_builder
 
@@ -331,13 +418,51 @@ def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
 
 
 class JoinOperator(HashShufflingOperatorBase):
+    """Physical operator for executing join operations in Ray Data.
+
+    This operator handles the physical execution of join operations by coordinating
+    hash-based shuffling and aggregation to perform distributed joins between datasets.
+    It supports various join types including inner, outer, semi, and anti joins.
+
+    Examples:
+        .. testcode::
+
+            # Create sample datasets for demonstration
+            import ray
+            from ray.data import from_items
+            from ray.data._internal.logical.operators.join_operator import JoinType
+
+            # Create left dataset
+            left_data = [{"id": i, "value": f"left_{i}"} for i in range(5)]
+            left_ds = from_items(left_data)
+
+            # Create right dataset
+            right_data = [{"id": i, "value": f"right_{i}"} for i in range(3, 8)]
+            right_ds = from_items(right_data)
+
+            # Get physical operators from the datasets
+            left_physical_op = left_ds._physical_plan.dag
+            right_physical_op = right_ds._physical_plan.dag
+
+            # Create a join operator
+            join_op = JoinOperator(
+                data_context=DataContext.get_current(),
+                left_input_op=left_physical_op,
+                right_input_op=right_physical_op,
+                left_key_columns=("id",),
+                right_key_columns=("id",),
+                join_type=JoinType.INNER,
+                num_partitions=4
+            )
+    """
+
     def __init__(
         self,
         data_context: DataContext,
         left_input_op: PhysicalOperator,
         right_input_op: PhysicalOperator,
-        left_key_columns: Tuple[str],
-        right_key_columns: Tuple[str],
+        left_key_columns: Tuple[str, ...],
+        right_key_columns: Tuple[str, ...],
         join_type: JoinType,
         *,
         num_partitions: Optional[int] = None,
@@ -346,6 +471,23 @@ class JoinOperator(HashShufflingOperatorBase):
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
+        """Initialize the JoinOperator.
+
+        Args:
+            data_context: Ray Data context for configuration and settings.
+            left_input_op: Physical operator for the left input dataset.
+            right_input_op: Physical operator for the right input dataset.
+            left_key_columns: Column names to use as join keys from the left dataset.
+            right_key_columns: Column names to use as join keys from the right dataset.
+            join_type: Type of join to perform.
+            num_partitions: Number of output partitions to generate.
+            left_columns_suffix: Optional suffix for left dataset columns to avoid
+                conflicts.
+            right_columns_suffix: Optional suffix for right dataset columns to avoid
+                conflicts.
+            partition_size_hint: Hint about the estimated size of resulting partitions.
+            aggregator_ray_remote_args_override: Optional Ray remote arguments override.
+        """
         super().__init__(
             name_factory=(
                 lambda num_partitions: f"Join(num_partitions={num_partitions})"
@@ -383,6 +525,26 @@ class JoinOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
+        """Estimate memory allocation required for join aggregators.
+
+        This method calculates the estimated memory requirements for join aggregators
+        based on the number of partitions, partition sizes, and join operation
+        overhead.
+
+        Args:
+            num_aggregators: Number of aggregator actors to distribute the work.
+            num_partitions: Total number of partitions to process.
+            estimated_dataset_bytes: Estimated total size of the dataset in bytes.
+
+        Returns:
+            Estimated total memory requirement in bytes for a single aggregator.
+
+        Note:
+            The memory estimation includes:
+            - Shuffle memory for input partitions (2x due to left/right sequences)
+            - Join operation memory (2x partition size due to PyArrow overhead)
+            - Output memory for joined results
+        """
         partition_byte_size_estimate = math.ceil(
             estimated_dataset_bytes / num_partitions
         )
@@ -392,8 +554,9 @@ class JoinOperator(HashShufflingOperatorBase):
         aggregator_shuffle_object_store_memory_required: int = math.ceil(
             estimated_dataset_bytes / num_aggregators
         )
+
         # Estimate of memory required to perform actual (in-memory) join
-        # operation (inclusive of 50% overhead allocated for Pyarrow join
+        # operation (inclusive of 100% overhead allocated for PyArrow join
         # implementation)
         #
         # NOTE:
@@ -401,8 +564,6 @@ class JoinOperator(HashShufflingOperatorBase):
         join_memory_required: int = math.ceil(partition_byte_size_estimate * 2)
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
-        #
-        # NOTE: x2 due to 2 sequences involved in joins
         output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
