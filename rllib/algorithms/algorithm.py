@@ -1830,7 +1830,7 @@ class Algorithm(Checkpointable, Trainable):
                     self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
                         func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                         remote_worker_ids=selected_eval_worker_ids,
-                        tags="env_runner_sample_and_get_metrics",
+                        tag="env_runner_sample_and_get_metrics",
                     )
                 )
                 # Make sure we properly time out if we have not received any results
@@ -3445,19 +3445,17 @@ class Algorithm(Checkpointable, Trainable):
                     )
 
         if self.config.num_aggregator_actors_per_learner:
-            remote_aggregator_metrics = (
-                self._aggregator_actor_manager.foreach_env_runner_async_fetch_ready(
-                    func=lambda actor: actor.get_metrics(),
-                    tag="get_metrics",
-                )
-            )
-
-            FaultTolerantActorManager.handle_remote_call_result_errors(
-                remote_aggregator_metrics,
+            remote_aggregator_metrics = self._aggregator_actor_manager.foreach_actor_async_fetch_ready(
+                func=lambda actor: actor.get_metrics(),
+                tag="metrics",
+                timeout_seconds=0.0,
+                return_obj_refs=False,
+                # (Artur) TODO: In the future, we want to make aggregator actors fault tolerant and should make this configurable
                 ignore_ray_errors=False,
             )
+
             self.metrics.aggregate(
-                [res.get() for res in remote_aggregator_metrics.result_or_errors],
+                remote_aggregator_metrics,
                 key=AGGREGATOR_ACTOR_RESULTS,
             )
 
