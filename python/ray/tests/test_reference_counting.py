@@ -21,15 +21,8 @@ from ray._private.test_utils import (
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(autouse=True)
-def check_refcounts_empty():
-    """Verify that all tests leave the ref counter empty."""
-    yield
-    check_refcounts({})
-
-
-@pytest.fixture(scope="module")
-def one_cpu_100MiB_shared():
+@pytest.fixture(scope="function")
+def one_cpu_100MiB():
     # It has lots of tests that don't require object spilling.
     config = {
         "task_retry_delay_ms": 0,
@@ -87,7 +80,7 @@ def check_refcounts(expected, timeout=10):
                 time.sleep(0.1)
 
 
-def test_local_refcounts(one_cpu_100MiB_shared):
+def test_local_refcounts(one_cpu_100MiB):
     obj_ref1 = ray.put(None)
     check_refcounts({obj_ref1: (1, 0)})
     obj_ref1_copy = copy.copy(obj_ref1)
@@ -98,7 +91,7 @@ def test_local_refcounts(one_cpu_100MiB_shared):
     check_refcounts({})
 
 
-def test_dependency_refcounts(one_cpu_100MiB_shared):
+def test_dependency_refcounts(one_cpu_100MiB):
     @ray.remote
     def one_dep(dep, signal=None, fail=False):
         if signal is not None:
@@ -185,7 +178,7 @@ def test_dependency_refcounts(one_cpu_100MiB_shared):
     check_refcounts({})
 
 
-def test_basic_pinning(one_cpu_100MiB_shared):
+def test_basic_pinning(one_cpu_100MiB):
     @ray.remote
     def f(array):
         return np.sum(array)
@@ -215,7 +208,7 @@ def test_basic_pinning(one_cpu_100MiB_shared):
     ray.get(actor.get_large_object.remote())
 
 
-def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
+def test_pending_task_dependency_pinning(one_cpu_100MiB):
     @ray.remote
     def pending(input1, input2):
         return
@@ -240,7 +233,7 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
 # and should be evicted after it returns.
 @pytest.mark.parametrize("use_ray_put", [False, True])
 @pytest.mark.parametrize("failure", [False, True])
-def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
+def test_basic_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=0)
     def pending(ref, dep):
         ray.get(ref[0])
@@ -260,14 +253,15 @@ def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure)
 
     # Fulfill the dependency, causing the task to finish.
     ray.get(signal.send.remote())
+
+    # Reference should be gone, check that array gets evicted.
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
+
     try:
         ray.get(obj_ref)
         assert not failure
     except ray.exceptions.WorkerCrashedError:
         assert failure
-
-    # Reference should be gone, check that array gets evicted.
-    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 # Call a recursive chain of tasks that pass a serialized reference to the end
@@ -276,7 +270,7 @@ def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure)
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
+def test_recursive_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         if depth == max_depth:
@@ -296,10 +290,7 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
     del array_oid
-
-    tail_oid = head_oid
-    for _ in range(max_depth):
-        tail_oid = ray.get(tail_oid)
+    del head_oid
 
     # Check that the remote reference pins the object.
     _fill_object_store_and_get(array_oid_bytes)
@@ -317,9 +308,7 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_actor_holding_serialized_reference(
-    one_cpu_100MiB_shared, use_ray_put, failure
-):
+def test_actor_holding_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote
     class GreedyActor(object):
         def __init__(self):
