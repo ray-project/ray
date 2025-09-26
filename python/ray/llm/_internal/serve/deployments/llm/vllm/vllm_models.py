@@ -1,7 +1,7 @@
 import copy
 import dataclasses
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import ConfigDict, Field
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -32,6 +32,28 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
+class BundleSchema(BaseModelExtended):
+    """Schema for placement group bundle configuration.
+
+    Note: Counts are floats to align with Ray resource typing.
+    """
+
+    CPU: float = Field(default=1.0, ge=0.0, description="Number of CPUs per bundle")
+    GPU: float = Field(default=1.0, ge=0.0, description="Number of GPUs per bundle")
+
+    class Config:
+        extra = "allow"  # Allow arbitrary resource types
+
+
+class PlacementGroupSchema(BaseModelExtended):
+    """Schema for placement group configuration."""
+
+    bundles: List[BundleSchema] = Field(description="List of resource bundles")
+    strategy: Literal["PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"] = Field(
+        default="PACK", description="Placement group strategy"
+    )
+
+
 class VLLMEngineConfig(BaseModelExtended):
     model_config = ConfigDict(
         use_enum_values=True,
@@ -49,12 +71,21 @@ class VLLMEngineConfig(BaseModelExtended):
     )
     resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,
-        description="This overrides the vLLM engine worker's default resource configuration, "
-        "the number of resources returned by `placement_bundles`.",
+        deprecated=True,
+        description="DEPRECATED: Use placement_group_config instead. "
+        "This overrides the vLLM engine worker's default resource configuration.",
     )
     accelerator_type: Optional[GPUType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
+    )
+    placement_group_config: Optional[PlacementGroupSchema] = Field(
+        default=None,
+        description=(
+            "Ray placement group configuration for scheduling vLLM engine workers. "
+            "Defines resource bundles and placement strategy for multi-node deployments. "
+            "Defaults to PACK strategy with automatic bundle generation based on TP/PP sizes."
+        ),
     )
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
@@ -150,6 +181,14 @@ class VLLMEngineConfig(BaseModelExtended):
             else:
                 raise ValueError(f"Unknown engine argument: {key}")
 
+        # Convert placement_group_config from dict to schema if provided
+        placement_group_config = None
+        if llm_config.placement_group_config:
+            # Ensure strategy defaults to PACK if not specified
+            pg_config = llm_config.placement_group_config.copy()
+            pg_config.setdefault("strategy", "PACK")
+            placement_group_config = PlacementGroupSchema(**pg_config)
+
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
@@ -159,6 +198,7 @@ class VLLMEngineConfig(BaseModelExtended):
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
+            placement_group_config=placement_group_config,
         )
 
     def ray_accelerator_type(self) -> str:
@@ -179,18 +219,35 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_strategy(self) -> str:
-        # If pp <= 1, it's TP so we should make sure all replicas are on the same node.
-        if self.pipeline_parallel_degree > 1:
-            return "PACK"
-        return "STRICT_PACK"
+        # Default to PACK strategy for best-effort placement
+        # vLLM handles TP/PP optimal placement internally
+        return "PACK"
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
+        if self.placement_group_config:
+            # Convert schema to dict format
+            bundles = []
+            for bundle_schema in self.placement_group_config.bundles:
+                bundle = bundle_schema.dict()
+                if self.accelerator_type:
+                    bundle[self.ray_accelerator_type()] = 0.001
+                bundles.append(bundle)
+            return bundles
 
+        # Legacy support with deprecation warning
         if self.resources_per_bundle:
-            bundle = self.resources_per_bundle
+            import warnings
+
+            warnings.warn(
+                "resources_per_bundle is deprecated. Use placement_group_config instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            bundle = self.resources_per_bundle.copy()
         else:
-            bundle = {"GPU": 1}
+            bundle = {"GPU": 1, "CPU": 1}
+
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
         bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
@@ -248,11 +305,28 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            pg = placement_group(
-                bundles=self.placement_bundles,
-                strategy=self.placement_strategy,
-                name=name,
-            )
+            # Use custom placement group configuration if provided
+            if self.placement_group_config:
+                # Convert schema to placement group arguments
+                bundles = []
+                for bundle_schema in self.placement_group_config.bundles:
+                    bundle = bundle_schema.dict()
+                    if self.accelerator_type:
+                        bundle.setdefault(self.ray_accelerator_type(), 0.001)
+                    bundles.append(bundle)
+
+                pg = placement_group(
+                    bundles=bundles,
+                    strategy=self.placement_group_config.strategy,
+                    name=name,
+                )
+            else:
+                # Use default placement group configuration
+                pg = placement_group(
+                    bundles=self.placement_bundles,
+                    strategy=self.placement_strategy,
+                    name=name,
+                )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg

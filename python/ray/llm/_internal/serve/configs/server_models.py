@@ -178,6 +178,16 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
+    placement_group_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Ray placement group configuration for scheduling vLLM engine workers. "
+            "Defines resource bundles and placement strategy for multi-node deployments. "
+            "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
+            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+        ),
+    )
+
     lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
         default=None,
         description="Settings for LoRA adapter. Validated against LoraConfig.",
@@ -480,21 +490,57 @@ class LLMConfig(BaseModelExtended):
                 "Use scaling_config to configure replica placement group."
             )
 
-        try:
-            child_actor_bundles = engine_config.placement_bundles
-        except ValueError:
-            # May happen if all bundles are empty.
-            child_actor_bundles = []
+        # Handle custom placement group configuration
+        if self.placement_group_config:
+            if "bundles" not in self.placement_group_config:
+                raise ValueError("placement_group_config must contain 'bundles'")
 
-        pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
-            child_actor_bundles, replica_actor_resources
-        )
-        deployment_config.update(
-            {
-                "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
-            }
-        )
+            # Default strategy to PACK if not specified
+            strategy = self.placement_group_config.get("strategy", "PACK")
+
+            # Process bundles with defaults
+            pg_bundles = []
+            for bundle in self.placement_group_config["bundles"]:
+                bundle = bundle.copy()
+                bundle.setdefault("CPU", 1)
+                bundle.setdefault("GPU", 1)
+
+                if self.accelerator_type:
+                    bundle.setdefault(f"accelerator_type:{self.accelerator_type}", 0.001)
+                
+                pg_bundles.append(bundle)
+
+            # Merge replica actor resources with the first bundle
+            if pg_bundles:
+                first_bundle = pg_bundles[0]
+                merged_first_bundle = self._merge_replica_actor_and_child_actor_bundles(
+                    [first_bundle], replica_actor_resources
+                )[0]
+                pg_bundles[0] = merged_first_bundle
+
+            deployment_config.update(
+                {
+                    "placement_group_bundles": pg_bundles,
+                    "placement_group_strategy": strategy,
+                }
+            )
+        else:
+            # Use default placement group configuration
+            try:
+                child_actor_bundles = engine_config.placement_bundles
+            except ValueError:
+                # May happen if all bundles are empty.
+                child_actor_bundles = []
+
+            pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
+                child_actor_bundles, replica_actor_resources
+            )
+            deployment_config.update(
+                {
+                    "placement_group_bundles": pg_bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
 
         return deployment_config
 
