@@ -178,7 +178,8 @@ def test_dataset(
 
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
-    ray.init(num_cpus=2, object_store_memory=1e9)
+    # We need at least 3 CPUs to run a zip streaming
+    ray.init(num_cpus=4, object_store_memory=1e9)
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
