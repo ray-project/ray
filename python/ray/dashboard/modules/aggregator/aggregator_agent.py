@@ -109,7 +109,7 @@ class AggregatorAgent(
             )
             self._event_processing_enabled = True
             self._http_endpoint_publisher = RayEventPublisher(
-                name="http_svc",
+                name="http_service",
                 publish_client=AsyncHttpPublisherClient(
                     endpoint=self._events_export_addr,
                     executor=self._executor,
