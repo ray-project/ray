@@ -27,6 +27,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -76,7 +77,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   explicit MockWorkerClient(instrumented_io_context &io_service)
       : io_service_(io_service) {}
@@ -140,6 +141,7 @@ class GcsActorManagerTest : public ::testing::Test {
     mock_actor_scheduler_ = scheduler.get();
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
+    fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(scheduler),
         gcs_table_storage_.get(),
@@ -148,7 +150,9 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
-        *worker_client_pool_);
+        *worker_client_pool_,
+        *fake_ray_event_recorder_,
+        "test_session_name");
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -231,6 +235,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
