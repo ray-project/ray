@@ -255,7 +255,11 @@ def test_basic_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     ray.get(signal.send.remote())
 
     # Reference should be gone, check that array gets evicted.
-    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
+    def check_memory_usage():
+        print(get_cluster_memory_usage())
+        return get_cluster_memory_usage() == 0
+
+    wait_for_condition(check_memory_usage, timeout=30)
 
     try:
         ray.get(obj_ref)
@@ -299,7 +303,11 @@ def test_recursive_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     ray.get(signal.send.remote())
 
     # Reference should be gone, check that array gets evicted.
-    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
+    def check_memory_usage():
+        print(get_cluster_memory_usage())
+        return get_cluster_memory_usage() == 0
+
+    wait_for_condition(check_memory_usage, timeout=30)
 
 
 # Test that a passed reference held by an actor after the method finishes
