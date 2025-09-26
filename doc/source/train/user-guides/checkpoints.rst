@@ -241,7 +241,7 @@ Checkpoint Upload Modes
 By default, when you call :func:`~ray.train.report`, Ray Train synchronously pushes
 your checkpoint from ``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on
 your ``storage_path``. This is equivalent to calling :func:`~ray.train.report` with
-:class:`~ray.train.CheckpointUploadMode` set to :attr:`~ray.train.CheckpointUploadMode.SYNC`.
+:class:`~ray.train.CheckpointUploadMode` set to ``ray.train.CheckpointUploadMode.SYNC``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
@@ -253,8 +253,9 @@ Asynchronous Checkpoint Uploading
 
 You may want to upload your checkpoint asynchronously instead so that
 the next training step can start in parallel. If so, you should use
-:attr:`~ray.train.CheckpointUploadMode.ASYNC`. This is helpful for larger
-checkpoints that might take longer to upload.
+``ray.train.CheckpointUploadMode.ASYNC``. This is helpful for larger
+checkpoints that might take longer to upload, but might add unnecessary
+complexity if you want to immediately upload a small checkpoint.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
@@ -276,7 +277,7 @@ with pyarrow filesystem copying utilities before reporting the checkpoint to Ray
 If you would rather upload the checkpoint manually or with a third-party library
 such as Torch Distributed Checkpointing, you can first upload the checkpoint to
 the ``storage_path`` and then report a reference to the uploaded checkpoint with
-:attr:`~ray.train.CheckpointUploadMode.NO_UPLOAD`.
+``ray.train.CheckpointUploadMode.NO_UPLOAD``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
