@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.3-labs
 
+ARG BASE_IMAGE
 ARG RAY_CORE_IMAGE=scratch
-FROM "$RAY_CORE_IMAGE" AS ray_core
-
 ARG RAY_DASHBOARD_IMAGE=scratch
+
+FROM "$RAY_CORE_IMAGE" AS ray_core
 FROM "$RAY_DASHBOARD_IMAGE" AS ray_dashboard
 
-ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 ARG BUILD_TYPE
