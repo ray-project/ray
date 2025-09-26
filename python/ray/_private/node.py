@@ -459,9 +459,6 @@ class Node:
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        logger.info(
-            f"init_temp, head: {self.head}, temp_dir: {self._ray_params.temp_dir}"
-        )
         if self.head:
             self._ray_params.update_if_absent(
                 temp_dir=ray._common.utils.get_ray_temp_dir()
@@ -481,6 +478,7 @@ class Node:
                 self._temp_dir = self._ray_params.temp_dir
 
         try_to_create_directory(self._temp_dir)
+        logger.info(f"temp_dir: {self._temp_dir} created on node")
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
