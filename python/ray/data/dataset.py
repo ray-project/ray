@@ -6178,6 +6178,9 @@ class Dataset:
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
         for more information about the jupyter widget mimetype.
 
+        Args:
+            **kwargs: Additional arguments passed to the widget's _repr_mimebundle_ method.
+
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
@@ -6385,6 +6388,13 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
+        """
+        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+
+        Args:
+            base_schema: The underlying Arrow or Pandas schema.
+            data_context: The data context to use for this schema.
+        """
         self.base_schema = base_schema
 
         # Snapshot the current context, so that the config of Datasets is always
