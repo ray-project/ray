@@ -54,6 +54,10 @@
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
+#if !defined(_WIN32)
+#include <errno.h>
+#include <unistd.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -419,32 +423,6 @@ int main(int argc, char *argv[]) {
   absl::flat_hash_map<ray::LeaseID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
 
-  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
-  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
-  // so we have to put it here.
-  auto enable_subreaper = [&]() {
-#ifdef __linux__
-    if (ray::SetThisProcessAsSubreaper()) {
-      ray::KnownChildrenTracker::instance().Enable();
-      ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
-      auto runner = ray::PeriodicalRunner::Create(main_service);
-      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
-                                /*period_ms=*/10000,
-                                "Raylet.KillUnknownChildren");
-      RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
-                       "10 seconds.";
-    } else {
-      RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
-                          "unknown children.";
-      ray::SetSigchldIgnore();
-    }
-#else
-    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
-                        "kill unknown children.";
-    ray::SetSigchldIgnore();
-#endif
-  };
-
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
   auto shutdown_raylet_after_unregistration = [&main_service,
@@ -505,17 +483,23 @@ int main(int argc, char *argv[]) {
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
-    // Core worker tries to kill child processes when it exits. But they can't do
-    // it perfectly: if the core worker is killed by SIGKILL, the child processes
-    // leak. So in raylet we also kill child processes via Linux subreaper.
-    // Only works on Linux >= 3.4.
+    // Subreaper is deprecated and ignored; per-worker process groups handle cleanup.
     if (RayConfig::instance()
             .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
-      enable_subreaper();
-    } else {
-      RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
-      ray::SetSigchldIgnore();
+      RAY_LOG(WARNING)
+          << "Subreaper-based orphan cleanup is deprecated and ignored. "
+          << "Ray uses per-worker process groups for cleanup. "
+          << "If you rely on subreaper semantics, consider using per-worker PGs "
+          << "or intentionally detaching with setsid().";
     }
+
+#if !defined(_WIN32)
+    RAY_LOG(INFO) << "Per-worker process group cleanup is "
+                  << (RayConfig::instance().process_group_cleanup_enabled() ? "ENABLED"
+                                                                            : "DISABLED");
+#else
+    RAY_LOG(INFO) << "Per-worker process group cleanup is not supported on Windows.";
+#endif
 
     // Parse the worker port list.
     std::istringstream worker_port_list_string(worker_port_list);
@@ -1021,6 +1005,32 @@ int main(int argc, char *argv[]) {
     };
 
     raylet->Start();
+
+#if !defined(_WIN32)
+    // Optionally watch stdin (pipe from parent). If it closes (EOF), trigger shutdown.
+    const char *pipe_stdin_env = std::getenv("RAY_ENABLE_RAYLET_PIPE_STDIN");
+    if (pipe_stdin_env != nullptr && std::string(pipe_stdin_env) == "1") {
+      std::thread([shutdown_raylet_gracefully]() {
+        char buffer[1024];
+        for (;;) {
+          ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
+          if (n == 0) {
+            break;  // EOF => parent likely exited
+          }
+          if (n < 0) {
+            if (errno == EINTR) {
+              continue;
+            }
+            break;
+          }
+        }
+        ray::rpc::NodeDeathInfo node_death_info;
+        node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+        node_death_info.set_reason_message("stdin closed (parent exited)");
+        shutdown_raylet_gracefully(node_death_info);
+      }).detach();
+    }
+#endif
   });
 
   auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](

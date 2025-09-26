@@ -90,6 +90,62 @@ std::vector<ObjectID> FlatbufferToObjectIds(
   return ids;
 }
 
+#if !defined(_WIN32)
+// Shared helper to perform validated process group cleanup.
+static void ScheduleProcessGroupCleanup(instrumented_io_context &io_service,
+                                        pid_t worker_pid,
+                                        pid_t saved_pgid,
+                                        const WorkerID &wid,
+                                        const char *context) {
+  errno = 0;
+  pid_t current_pgid = getpgid(worker_pid);
+  if (current_pgid == -1 || current_pgid != saved_pgid) {
+    // PG changed or no longer valid; skip cleanup.
+    return;
+  }
+
+  // Guard against targeting the raylet's own process group if isolation failed.
+  pid_t raylet_pgid = getpgid(0);
+  if (raylet_pgid == saved_pgid) {
+    RAY_LOG(WARNING).WithField(wid)
+        << context
+        << ": skipping PG cleanup: worker pgid equals raylet pgid (isolation failed): "
+        << saved_pgid;
+    return;
+  }
+
+  RAY_LOG(INFO).WithField(wid) << context
+                               << ": attempting process-group cleanup for worker pid="
+                               << worker_pid << ", pgid=" << saved_pgid;
+  auto err_term = KillProcessGroup(saved_pgid, SIGTERM);
+  if (err_term && *err_term) {
+    RAY_LOG(WARNING).WithField(wid)
+        << context << ": failed to SIGTERM process group " << saved_pgid << ": "
+        << err_term->message() << ", errno=" << err_term->value();
+  }
+
+  // Schedule async SIGKILL after a grace period to avoid blocking the event loop.
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      io_service, boost::posix_time::milliseconds(1000));
+  timer->async_wait([timer, worker_pid, saved = saved_pgid, wid, context](
+                        const boost::system::error_code &ec) mutable {
+    if (ec) {
+      return;
+    }
+    errno = 0;
+    pid_t pgid_now = getpgid(worker_pid);
+    if (pgid_now != -1 && pgid_now == saved) {
+      auto err_kill = KillProcessGroup(saved, SIGKILL);
+      if (err_kill && *err_kill) {
+        RAY_LOG(WARNING).WithField(wid)
+            << context << ": failed to SIGKILL process group " << saved << ": "
+            << err_kill->message() << ", errno=" << err_kill->value();
+      }
+    }
+  });
+}
+#endif
+
 }  // namespace
 
 NodeManager::NodeManager(
@@ -1373,6 +1429,20 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
       }
     }
+
+    // Attempt per-worker process-group cleanup before removing the worker.
+#if !defined(_WIN32)
+    if (RayConfig::instance().process_group_cleanup_enabled()) {
+      auto saved = worker->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        ScheduleProcessGroupCleanup(io_service_,
+                                    worker->GetProcess().GetId(),
+                                    *saved,
+                                    worker->WorkerId(),
+                                    "DisconnectClient");
+      }
+    }
+#endif
 
     // Remove the dead client from the pool and stop listening for messages.
     worker_pool_.DisconnectWorker(worker, disconnect_type);
@@ -2726,6 +2796,20 @@ void NodeManager::TriggerGlobalGC() {
 void NodeManager::Stop() {
   // This never fails.
   RAY_CHECK_OK(store_client_.Disconnect());
+#if !defined(_WIN32)
+  // Best-effort process-group cleanup for any remaining workers before shutdown.
+  if (RayConfig::instance().process_group_cleanup_enabled()) {
+    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                        /* filter_io_workers */ false);
+    for (const auto &w : workers) {
+      auto saved = w->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        ScheduleProcessGroupCleanup(
+            io_service_, w->GetProcess().GetId(), *saved, w->WorkerId(), "Stop");
+      }
+    }
+  }
+#endif
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
