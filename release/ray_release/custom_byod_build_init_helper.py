@@ -20,7 +20,7 @@ def generate_custom_build_step_key(image: str) -> str:
 
 def get_images_from_tests(
     tests: List[Test], build_id: str
-) -> Tuple[List[Tuple[str, str, str, str]], Dict[str, List[Test]]]:
+) -> Tuple[List[Tuple[str, str, str, str]], Dict[str, List[str]]]:
     """Get a list of custom BYOD images to build from a list of tests."""
     custom_byod_images = set()
     custom_image_test_names_map = {}
