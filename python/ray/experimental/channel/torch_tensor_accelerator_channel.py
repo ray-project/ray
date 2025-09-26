@@ -352,17 +352,17 @@ class TorchTensorAcceleratorChannel(ChannelInterface):
             self._local_channel.close()
 
 
-def _torch_zeros_allocator(
+def _torch_tensor_allocator(
     shape: Union[int, Tuple[int]],
     dtype: "torch.dtype",
 ):
     """
-    Allocate a zeros tensor buffer matching the given metadata.
+    Allocate a tensor buffer matching the given metadata.
     """
     import torch
 
     ctx = ChannelContext.get_current()
-    return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
+    return torch.empty(shape, dtype=dtype, device=ctx.torch_device)
 
 
 class _TorchTensorAcceleratorChannel(ChannelInterface):
@@ -633,7 +633,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
             buf = self._accelerator_group.recv(
-                meta.shape, meta.dtype, self._writer_rank, _torch_zeros_allocator
+                meta.shape, meta.dtype, self._writer_rank, _torch_tensor_allocator
             )
             bufs.append(buf)
         # TODO: Sync CUDA stream after receiving all tensors, instead of after

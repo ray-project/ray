@@ -33,9 +33,6 @@ ray_cc_library(
         ":shutdown_coordinator",
         ":task_event_buffer",
         "//src/ray/common:protobuf_utils",
-        "//src/ray/common/cgroup:cgroup_context",
-        "//src/ray/common/cgroup:cgroup_manager",
-        "//src/ray/common/cgroup:constants",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker/task_submission:normal_task_submitter",
         "//src/ray/core_worker_rpc_client:core_worker_client",
@@ -231,7 +228,10 @@ ray_cc_library(
     name = "task_event_buffer",
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
-    copts = ["-Wno-error=deprecated-declarations"],
+    copts = select({
+        "//conditions:default": ["-Wno-error=deprecated-declarations"],
+        "@platforms//os:windows": [],
+    }),
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:asio",
