@@ -3,7 +3,7 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS_WITHOUT_LOG = select({
+COPTS_TESTS = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
@@ -25,7 +25,10 @@ COPTS_WITHOUT_LOG = select({
     "//conditions:default": [],
 })
 
-COPTS = COPTS_WITHOUT_LOG
+COPTS = COPTS_TESTS + select({
+    "@platforms//os:windows": [""],
+    "//conditions:default": ["-Wshadow"],
+})
 
 PYX_COPTS = select({
     "//:msvc-cl": [],
@@ -144,7 +147,7 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility =
 def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
     cc_test(
         name = name,
-        copts = COPTS + copts,
+        copts = COPTS_TESTS + copts,
         linkopts = linkopts + ["-pie"],
         **kwargs
     )

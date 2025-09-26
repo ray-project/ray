@@ -64,7 +64,7 @@ Ray to :ref:`automatically restart <fault-tolerance-actors>` the actor, make sur
 flag ``no_restart=False`` to ``ray.kill``.
 
 For :ref:`named and detached actors <actor-lifetimes>`, calling ``ray.kill`` on
-an actor handle destroys the actor and allow the name to be reused.
+an actor handle destroys the actor and allows the name to be reused.
 
 Use `ray list actors --detail` from :ref:`State API <state-api-overview-ref>` to see the death cause of dead actors:
 
@@ -133,7 +133,7 @@ This will kill the actor process and release resources associated/assigned to th
 
             Ray.exitActor();
 
-        Garbage collection for actors haven't been implemented yet, so this is currently the
+        Garbage collection for actors hasn't been implemented yet, so this is currently the
         only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
         can be waited on to wait for the actor to exit (calling ``ObjectRef::get`` on it will
         throw a ``RayActorException``).
@@ -144,7 +144,7 @@ This will kill the actor process and release resources associated/assigned to th
 
             ray::ExitActor();
 
-        Garbage collection for actors haven't been implemented yet, so this is currently the
+        Garbage collection for actors hasn't been implemented yet, so this is currently the
         only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
         can be waited on to wait for the actor to exit (calling ``ObjectRef::Get`` on it will
         throw a ``RayActorException``).
@@ -178,7 +178,7 @@ You could see the actor is dead as a result of the user's `exit_actor()` call:
           actor_died_error_context:
               error_message: 'The actor is dead because its worker process has died.
                   Worker exit type: INTENDED_USER_EXIT Worker exit detail: Worker exits
-                  by an user request. exit_actor() is called.'
+                  by a user request. exit_actor() is called.'
               owner_id: 02000000ffffffffffffffffffffffffffffffffffffffffffffffff
               owner_ip_address: 127.0.0.1
               node_ip_address: 127.0.0.1

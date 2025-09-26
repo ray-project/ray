@@ -11,11 +11,12 @@ cd /c/rayci
 {
   echo "build --announce_rc";
   echo "build --config=ci";
-  echo "startup --output_user_root=c:/raytmp";
+  # Set a shorter output_base to avoid long file paths that Windows can't handle.
+  echo "startup --output_base=c:/bzl";
   echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
 } >> ~/.bazelrc
 
-if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
+if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   # Do not upload cache results for premerge pipeline
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi

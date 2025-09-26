@@ -220,12 +220,8 @@ if __name__ == "__main__":
     # for asyncio
     try_install_uvloop()
 
-    raylet_ip_address = args.raylet_ip_address
-    if raylet_ip_address is None:
-        raylet_ip_address = args.node_ip_address
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
-        raylet_ip_address=raylet_ip_address,
         node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
         redis_username=args.redis_username,
@@ -275,7 +271,6 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,
-        enable_resource_isolation=args.enable_resource_isolation,
     )
 
     worker = ray._private.worker.global_worker

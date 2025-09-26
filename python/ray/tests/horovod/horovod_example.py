@@ -1,16 +1,15 @@
 # This file is duplicated in release/ml_user_tests/horovod
 import argparse
 import os
-from filelock import FileLock
 
+import horovod.torch as hvd
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
 import torch.utils.data.distributed
-
-import horovod.torch as hvd
+from filelock import FileLock
 from horovod.ray import RayExecutor
+from torchvision import datasets, transforms
 
 
 def metric_average(val, name):

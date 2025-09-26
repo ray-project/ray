@@ -7,18 +7,27 @@ shuffling and PyArrow's native join functionality.
 
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
-from ray.data import DataContext
-from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray._private.arrow_utils import get_pyarrow_version
+from ray.air.util.transform_pyarrow import _is_pa_extension_type
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
+    MIN_PYARROW_VERSION_VIEW_TYPES,
+)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
     StatefulShuffleAggregation,
 )
 from ray.data._internal.logical.operators.join_operator import JoinType
-from ray.data._internal.util import GiB
+from ray.data._internal.util import GiB, MiB
 from ray.data.block import Block
+from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
@@ -181,16 +190,66 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         )
 
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
-        joined = left_seq_partition.join(
-            right_seq_partition,
+
+        # Get supported columns
+        supported_l, unsupported_l = _split_unsupported_columns(left_seq_partition)
+        supported_r, unsupported_r = _split_unsupported_columns(right_seq_partition)
+
+        # Handle joins on unsupported columns
+        conflicting_columns: Set[str] = set(unsupported_l.column_names) & set(left_on)
+        if conflicting_columns:
+            raise ValueError(
+                f"Cannot join on columns with unjoinable types. "
+                f"Left join key columns {conflicting_columns} have unjoinable types "
+                f"(map, union, list, struct, etc.) which cannot be used for join operations."
+            )
+
+        conflicting_columns: Set[str] = set(unsupported_r.column_names) & set(right_on)
+        if conflicting_columns:
+            raise ValueError(
+                f"Cannot join on columns with unjoinable types. "
+                f"Right join key columns {conflicting_columns} have unjoinable types "
+                f"(map, union, list, struct, etc.) which cannot be used for join operations."
+            )
+
+        # Index if we have unsupported columns
+        should_index_l = self._should_index_side("left", supported_l, unsupported_l)
+        should_index_r = self._should_index_side("right", supported_r, unsupported_r)
+
+        # Add index columns for back-referencing if we have unsupported columns
+        # TODO: what are the chances of a collision with the index column?
+        index_name_l = "__ray_data_index_level_left__"
+        if should_index_l:
+            supported_l = _append_index_column(table=supported_l, col_name=index_name_l)
+        index_name_r = "__ray_data_index_level_right__"
+        if should_index_r:
+            supported_r = _append_index_column(table=supported_r, col_name=index_name_r)
+
+        # Perform the join on supported columns
+        supported = supported_l.join(
+            supported_r,
             join_type=arrow_join_type,
             keys=left_on,
             right_keys=right_on,
             left_suffix=self._left_columns_suffix,
             right_suffix=self._right_columns_suffix,
         )
+        # Add back unsupported columns (join type logic is in should_index_* variables)
+        if should_index_l:
+            supported = _add_back_unsupported_columns(
+                joined_table=supported,
+                unsupported_table=unsupported_l,
+                index_col_name=index_name_l,
+            )
 
-        return joined
+        if should_index_r:
+            supported = _add_back_unsupported_columns(
+                joined_table=supported,
+                unsupported_table=unsupported_r,
+                index_col_name=index_name_r,
+            )
+
+        return supported
 
     def clear(self, partition_id: int):
         """Clear the partition builders for a specific partition.
@@ -227,6 +286,135 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"Unexpected input sequence id of '{input_seq_id}' (expected 0 or 1)"
             )
         return partition_builder
+
+    def _get_index_col_name(self, index: int) -> str:
+        return f"__index_level_{index}__"
+
+    def _should_index_side(
+        self, side: str, supported_table: "pa.Table", unsupported_table: "pa.Table"
+    ) -> bool:
+        """
+        Determine whether to create an index column for a given side of the join.
+
+        A column is "supported" if it is "joinable", and "unsupported" otherwise.
+        A supported_table is a table with only "supported" columns. Index columns are
+        needed when we have both supported and unsupported columns in a table, and
+        that table's columns will appear in the final result.
+
+        Args:
+            side: "left" or "right" to indicate which side of the join
+            supported_table: Table containing ONLY joinable columns
+            unsupported_table: Table containing ONLY unjoinable columns
+
+        Returns:
+            True if an index column should be created for this side
+        """
+        # Must have both supported and unsupported columns to need indexing.
+        # We cannot rely on row_count because it can return a non-zero row count
+        # for an empty-schema.
+        if not supported_table.schema or not unsupported_table.schema:
+            return False
+
+        # For semi/anti joins, only index the side that appears in the result
+        if side == "left":
+            # Left side appears in result for all joins except right_semi/right_anti
+            return self._join_type not in [JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI]
+        else:  # side == "right"
+            # Right side appears in result for all joins except left_semi/left_anti
+            return self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
+
+
+def _split_unsupported_columns(table: "pa.Table") -> Tuple["pa.Table", "pa.Table"]:
+    """
+    Split a PyArrow table into two tables based on column joinability.
+
+    Separates columns into supported types and unsupported types that cannot be
+    directly joined on but should be preserved in results.
+
+    Args:
+        table: Input PyArrow table to split
+
+    Returns:
+        Tuple of (supported_table, unsupported_table) where:
+        - supported_table contains columns with primitive/joinable types
+        - unsupported_table contains columns with complex/unjoinable types
+    """
+    supported, unsupported = [], []
+    for idx in range(len(table.columns)):
+        column: "pa.ChunkedArray" = table.column(idx)
+
+        col_type = column.type
+        if _is_pa_extension_type(column.type):
+            col_type = column.type.storage_type
+
+        if _is_pa_join_not_supported(col_type):
+            unsupported.append(idx)
+        else:
+            supported.append(idx)
+
+    return (table.select(supported), table.select(unsupported))
+
+
+def _add_back_unsupported_columns(
+    joined_table: "pa.Table",
+    unsupported_table: "pa.Table",
+    index_col_name: str,
+) -> "pa.Table":
+    # Extract the index column array and drop the column from the joined table
+    i = joined_table.schema.get_field_index(index_col_name)
+    indices = joined_table.column(i)
+    joined_table = joined_table.remove_column(i)
+
+    # Project the unsupported columns using the indices and combine with joined table
+    projected = ArrowBlockAccessor(unsupported_table).take(indices)
+    return ArrowBlockAccessor(joined_table).hstack(projected)
+
+
+def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
+    import numpy as np
+    import pyarrow as pa
+
+    index_col = pa.array(np.arange(table.num_rows))
+    return table.append_column(col_name, index_col)
+
+
+def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
+    """
+    The latest pyarrow versions do not support joins where the
+    tables contain the following types below (lists,
+    structs, maps, unions, extension types, etc.)
+
+    Args:
+        type: The input type of column.
+
+    Returns:
+        True if the type cannot be present (non join-key) during joins.
+        False if the type can be present.
+    """
+    import pyarrow as pa
+
+    pyarrow_version = get_pyarrow_version()
+    is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
+    is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
+
+    return (
+        pa.types.is_map(type)
+        or pa.types.is_union(type)
+        or pa.types.is_list(type)
+        or pa.types.is_struct(type)
+        or pa.types.is_null(type)
+        or pa.types.is_large_list(type)
+        or pa.types.is_fixed_size_list(type)
+        or (is_v12 and pa.types.is_run_end_encoded(type))
+        or (
+            is_v16
+            and (
+                pa.types.is_binary_view(type)
+                or pa.types.is_string_view(type)
+                or pa.types.is_list_view(type)
+            )
+        )
+    )
 
 
 class JoinOperator(HashShufflingOperatorBase):
@@ -277,12 +465,11 @@ class JoinOperator(HashShufflingOperatorBase):
         right_key_columns: Tuple[str, ...],
         join_type: JoinType,
         *,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         left_columns_suffix: Optional[str] = None,
         right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
-        shuffle_aggregation_type: Optional[Type[StatefulShuffleAggregation]] = None,
     ):
         """Initialize the JoinOperator.
 
@@ -300,30 +487,18 @@ class JoinOperator(HashShufflingOperatorBase):
                 conflicts.
             partition_size_hint: Hint about the estimated size of resulting partitions.
             aggregator_ray_remote_args_override: Optional Ray remote arguments override.
-            shuffle_aggregation_type: Optional custom shuffle aggregation class.
-
-        Raises:
-            TypeError: If shuffle_aggregation_type is not a valid subclass.
         """
-        # Runtime validation (still recommended even with type hints)
-        if shuffle_aggregation_type is not None:
-            if not issubclass(shuffle_aggregation_type, StatefulShuffleAggregation):
-                raise TypeError(
-                    f"shuffle_aggregation_type must be a subclass of "
-                    f"StatefulShuffleAggregation, got {shuffle_aggregation_type}"
-                )
-
-        aggregation_class = shuffle_aggregation_type or JoiningShuffleAggregation
-
         super().__init__(
-            name=f"Join(num_partitions={num_partitions})",
+            name_factory=(
+                lambda num_partitions: f"Join(num_partitions={num_partitions})"
+            ),
             input_ops=[left_input_op, right_input_op],
             data_context=data_context,
             key_columns=[left_key_columns, right_key_columns],
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
             partition_aggregation_factory=(
-                lambda aggregator_id, target_partition_ids: aggregation_class(
+                lambda aggregator_id, target_partition_ids: JoiningShuffleAggregation(
                     aggregator_id=aggregator_id,
                     join_type=join_type,
                     left_key_col_names=left_key_columns,
@@ -339,32 +514,8 @@ class JoinOperator(HashShufflingOperatorBase):
             finalize_progress_bar_name="Join",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> float:
-        """Get the default number of CPUs to allocate per partition.
-
-        CPU allocation for aggregating actors of Join operator is calculated as:
-        num_cpus (per partition) = CPU budget / # partitions
-
-        Assuming:
-        - Default number of partitions: 16
-        - Total operator's CPU budget with default settings: 2 cores
-        - Number of CPUs per partition: 2 / 16 = 0.125
-
-        These CPU budgets are derived such that Ray Data pipeline could run on a
-        single node (using the default settings).
-
-        Returns:
-            Default number of CPUs per partition.
-        """
-        return 0.125
-
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
-        """Get the operator-specific CPU allocation override per partition.
-
-        Returns:
-            Number of CPUs per partition override from the data context.
-        """
-        return self.data_context.join_operator_actor_num_cpus_per_partition_override
+    def _get_operator_num_cpus_override(self) -> float:
+        return self.data_context.join_operator_actor_num_cpus_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -372,7 +523,7 @@ class JoinOperator(HashShufflingOperatorBase):
         *,
         num_aggregators: int,
         num_partitions: int,
-        partition_byte_size_estimate: int,
+        estimated_dataset_bytes: int,
     ) -> int:
         """Estimate memory allocation required for join aggregators.
 
@@ -383,7 +534,7 @@ class JoinOperator(HashShufflingOperatorBase):
         Args:
             num_aggregators: Number of aggregator actors to distribute the work.
             num_partitions: Total number of partitions to process.
-            partition_byte_size_estimate: Estimated size of each partition in bytes.
+            estimated_dataset_bytes: Estimated total size of the dataset in bytes.
 
         Returns:
             Estimated total memory requirement in bytes for a single aggregator.
@@ -391,33 +542,29 @@ class JoinOperator(HashShufflingOperatorBase):
         Note:
             The memory estimation includes:
             - Shuffle memory for input partitions (2x due to left/right sequences)
-            - Join operation memory (3x partition size due to PyArrow overhead)
-            - Output memory for joined results (2x due to left/right sequences)
+            - Join operation memory (2x partition size due to PyArrow overhead)
+            - Output memory for joined results
         """
-        dataset_size = num_partitions * partition_byte_size_estimate
+        partition_byte_size_estimate = math.ceil(
+            estimated_dataset_bytes / num_partitions
+        )
 
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
-        #
-        # NOTE: x2 due to 2 sequences involved in joins
         aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            2 * dataset_size / num_aggregators
+            estimated_dataset_bytes / num_aggregators
         )
 
         # Estimate of memory required to perform actual (in-memory) join
-        # operation (inclusive of 50% overhead allocated for PyArrow join
+        # operation (inclusive of 100% overhead allocated for PyArrow join
         # implementation)
         #
         # NOTE:
-        #   - x2 due to 2 partitions (from left/right sequences)
-        #   - x1.5 due to 50% overhead of in-memory join
-        join_memory_required: int = math.ceil(partition_byte_size_estimate * 3)
-
+        #   - 2x due to budgeted 100% overhead of Arrow's in-memory join
+        join_memory_required: int = math.ceil(partition_byte_size_estimate * 2)
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
-        #
-        # NOTE: x2 due to 2 sequences involved in joins
-        output_object_store_memory_required: int = 2 * partition_byte_size_estimate
+        output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
             # Inputs (object store)
@@ -430,13 +577,15 @@ class JoinOperator(HashShufflingOperatorBase):
             output_object_store_memory_required
         )
 
-        logger.debug(
+        logger.info(
             f"Estimated memory requirement for joining aggregator "
-            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
-            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
-            f"joining={join_memory_required / GiB:.2f}GiB, "
-            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
-            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+            f"(partitions={num_partitions}, "
+            f"aggregators={num_aggregators}, "
+            f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
+            f"joining={join_memory_required / MiB:.1f}MiB, "
+            f"output={output_object_store_memory_required / MiB:.1f}MiB, "
+            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
         )
 
         return aggregator_total_memory_required

@@ -118,12 +118,12 @@ const ActorDetailPage = () => {
           },
           {
             label: "Node ID",
-            content: actorDetail.address?.rayletId
+            content: actorDetail.address?.nodeId
               ? {
-                  value: actorDetail.address?.rayletId,
-                  copyableValue: actorDetail.address?.rayletId,
-                  link: actorDetail.address.rayletId
-                    ? generateNodeLink(actorDetail.address.rayletId)
+                  value: actorDetail.address?.nodeId,
+                  copyableValue: actorDetail.address?.nodeId,
+                  link: actorDetail.address.nodeId
+                    ? generateNodeLink(actorDetail.address.nodeId)
                     : undefined,
                 }
               : { value: "-" },
@@ -191,19 +191,19 @@ const ActorDetailPage = () => {
               <div>
                 <CpuStackTraceLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
                 <br />
                 <CpuProfilingLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
                 <br />
                 <MemoryProfilingButton
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
               </div>

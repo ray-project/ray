@@ -110,8 +110,11 @@ cdef class ObjectRef(BaseID):
         # it up.
         c_bool in_core_worker
         c_string call_site_data
+        int tensor_transport_val
 
     cdef CObjectID native(self)
+
+    cdef CTensorTransport c_tensor_transport(self)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -137,6 +140,7 @@ cdef class CoreWorker:
         object _task_id_to_future_lock
         dict _task_id_to_future
         object event_loop_executor
+        object _gc_thread
 
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(

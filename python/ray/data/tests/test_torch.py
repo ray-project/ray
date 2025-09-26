@@ -1,269 +1,12 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 import ray
-from ray.data.extensions.tensor_extension import TensorArray
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
-
-
-def test_to_torch_emits_deprecation_warning(ray_start_10_cpus_shared):
-    with pytest.warns(DeprecationWarning):
-        ray.data.range(1).to_torch()
-
-
-def test_to_torch(ray_start_10_cpus_shared):
-    import torch
-
-    df1 = pd.DataFrame(
-        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
-    )
-    df2 = pd.DataFrame(
-        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
-    )
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3])
-    ds = ray.data.from_pandas([df1, df2, df3])
-    torchd = ds.to_torch(label_column="label", batch_size=3)
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        iterations = []
-        for batch in iter(torchd):
-            iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
-        combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
-
-
-@pytest.mark.parametrize("input", ["single", "list", "dict"])
-@pytest.mark.parametrize("force_dtype", [False, True])
-@pytest.mark.parametrize("label_type", [None, "squeezed", "unsqueezed"])
-def test_to_torch_feature_columns(
-    ray_start_10_cpus_shared, input, force_dtype, label_type
-):
-    import torch
-
-    df1 = pd.DataFrame(
-        {
-            "one": [1, 2, 3],
-            "two": [1.0, 2.0, 3.0],
-            "three": [4.0, 5.0, 6.0],
-            "label": [1.0, 2.0, 3.0],
-        }
-    )
-    df2 = pd.DataFrame(
-        {
-            "one": [4, 5, 6],
-            "two": [4.0, 5.0, 6.0],
-            "three": [7.0, 8.0, 9.0],
-            "label": [4.0, 5.0, 6.0],
-        }
-    )
-    df3 = pd.DataFrame(
-        {"one": [7, 8], "two": [7.0, 8.0], "three": [10.0, 11.0], "label": [7.0, 8.0]}
-    )
-    df = pd.concat([df1, df2, df3]).drop("three", axis=1)
-    ds = ray.data.from_pandas([df1, df2, df3])
-
-    feature_column_dtypes = None
-    label_column_dtype = None
-    if force_dtype:
-        label_column_dtype = torch.long
-    if input == "single":
-        feature_columns = ["one", "two"]
-        if force_dtype:
-            feature_column_dtypes = torch.long
-    elif input == "list":
-        feature_columns = [["one"], ["two"]]
-        if force_dtype:
-            feature_column_dtypes = [torch.long, torch.long]
-    elif input == "dict":
-        feature_columns = {"X1": ["one"], "X2": ["two"]}
-        if force_dtype:
-            feature_column_dtypes = {"X1": torch.long, "X2": torch.long}
-
-    label_column = None if label_type is None else "label"
-    unsqueeze_label_tensor = label_type == "unsqueezed"
-
-    torchd = ds.to_torch(
-        label_column=label_column,
-        feature_columns=feature_columns,
-        feature_column_dtypes=feature_column_dtypes,
-        label_column_dtype=label_column_dtype,
-        unsqueeze_label_tensor=unsqueeze_label_tensor,
-        batch_size=3,
-    )
-    iterations = []
-
-    for batch in iter(torchd):
-        features, label = batch
-
-        if input == "single":
-            assert isinstance(features, torch.Tensor)
-            if force_dtype:
-                assert features.dtype == torch.long
-            data = features
-        elif input == "list":
-            assert isinstance(features, list)
-            assert all(isinstance(item, torch.Tensor) for item in features)
-            if force_dtype:
-                assert all(item.dtype == torch.long for item in features)
-            data = torch.cat(tuple(features), dim=1)
-        elif input == "dict":
-            assert isinstance(features, dict)
-            assert all(isinstance(item, torch.Tensor) for item in features.values())
-            if force_dtype:
-                assert all(item.dtype == torch.long for item in features.values())
-            data = torch.cat(tuple(features.values()), dim=1)
-
-        if not label_type:
-            assert label is None
-        else:
-            assert isinstance(label, torch.Tensor)
-            if force_dtype:
-                assert label.dtype == torch.long
-            if unsqueeze_label_tensor:
-                assert label.dim() == 2
-            else:
-                assert label.dim() == 1
-                label = label.view(-1, 1)
-            data = torch.cat((data, label), dim=1)
-        iterations.append(data.numpy())
-
-    combined_iterations = np.concatenate(iterations)
-    if not label_type:
-        df.drop("label", axis=1, inplace=True)
-    np.testing.assert_array_equal(df.values, combined_iterations)
-
-
-def test_tensors_in_tables_to_torch(ray_start_10_cpus_shared):
-    outer_dim = 3
-    inner_shape = (2, 2, 2)
-    shape = (outer_dim,) + inner_shape
-    num_items = np.prod(np.array(shape))
-    arr = np.arange(num_items).reshape(shape)
-    df1 = pd.DataFrame(
-        {"one": TensorArray(arr), "two": TensorArray(arr + 1), "label": [1.0, 2.0, 3.0]}
-    )
-    arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
-    df2 = pd.DataFrame(
-        {
-            "one": TensorArray(arr2),
-            "two": TensorArray(arr2 + 1),
-            "label": [4.0, 5.0, 6.0],
-        }
-    )
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-    torchd = ds.to_torch(
-        label_column="label", batch_size=2, unsqueeze_label_tensor=False
-    )
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        features, labels = [], []
-        for batch in iter(torchd):
-            features.append(batch[0].numpy())
-            labels.append(batch[1].numpy())
-        features, labels = np.concatenate(features), np.concatenate(labels)
-        values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
-        np.testing.assert_array_equal(values, features)
-        np.testing.assert_array_equal(df["label"].to_numpy(), labels)
-
-
-def test_tensors_in_tables_to_torch_mix(ray_start_10_cpus_shared):
-    outer_dim = 3
-    inner_shape = (2, 2, 2)
-    shape = (outer_dim,) + inner_shape
-    num_items = np.prod(np.array(shape))
-    arr = np.arange(num_items).reshape(shape)
-    df1 = pd.DataFrame(
-        {
-            "one": TensorArray(arr),
-            "two": [1, 2, 3],
-            "label": [1.0, 2.0, 3.0],
-        }
-    )
-    arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
-    df2 = pd.DataFrame(
-        {
-            "one": TensorArray(arr2),
-            "two": [4, 5, 6],
-            "label": [4.0, 5.0, 6.0],
-        }
-    )
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-    torchd = ds.to_torch(
-        label_column="label",
-        feature_columns=[["one"], ["two"]],
-        batch_size=2,
-        unsqueeze_label_tensor=False,
-        unsqueeze_feature_tensors=False,
-    )
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        col1, col2, labels = [], [], []
-        for batch in iter(torchd):
-            col1.append(batch[0][0].numpy())
-            col2.append(batch[0][1].numpy())
-            labels.append(batch[1].numpy())
-        col1, col2 = np.concatenate(col1), np.concatenate(col2)
-        labels = np.concatenate(labels)
-        np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))
-        np.testing.assert_array_equal(col2, np.sort(df["two"].to_numpy()))
-        np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
-
-
-@pytest.mark.skip(
-    reason=(
-        "Waiting for Torch to support unsqueezing and concatenating nested tensors."
-    )
-)
-def test_tensors_in_tables_to_torch_variable_shaped(ray_start_10_cpus_shared):
-    shapes = [(2, 2), (3, 3), (4, 4)]
-    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
-    arrs1 = [
-        np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes)
-    ]
-    df1 = pd.DataFrame(
-        {
-            "one": TensorArray(arrs1),
-            "two": TensorArray([a + 1 for a in arrs1]),
-            "label": [1.0, 2.0, 3.0],
-        }
-    )
-    base = cumsum_sizes[-1]
-    arrs2 = [
-        np.arange(base + offset, base + offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes)
-    ]
-    df2 = pd.DataFrame(
-        {
-            "one": TensorArray(arrs2),
-            "two": TensorArray([a + 1 for a in arrs2]),
-            "label": [4.0, 5.0, 6.0],
-        }
-    )
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-    torchd = ds.to_torch(
-        label_column="label", batch_size=2, unsqueeze_label_tensor=False
-    )
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        features, labels = [], []
-        for batch in iter(torchd):
-            features.append(batch[0].numpy())
-            labels.append(batch[1].numpy())
-        features, labels = np.concatenate(features), np.concatenate(labels)
-        values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
-        np.testing.assert_array_equal(values, features)
-        np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
 def test_iter_torch_batches(ray_start_10_cpus_shared):
@@ -334,6 +77,86 @@ def test_torch_trainer_crash(ray_start_10_cpus_shared):
         datasets={"train": train_ds},
     )
     my_trainer.fit()
+
+
+@pytest.mark.parametrize("local_read", [True, False])
+def test_from_torch_map_style_dataset(ray_start_10_cpus_shared, local_read):
+    class StubDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 1
+
+        def __getitem__(self, index):
+            return index
+
+    torch_dataset = StubDataset()
+
+    ray_dataset = ray.data.from_torch(torch_dataset, local_read=local_read)
+
+    actual_data = ray_dataset.take_all()
+    assert actual_data == [{"item": 0}]
+
+
+def test_from_torch_iterable_style_dataset(ray_start_10_cpus_shared):
+    class StubIterableDataset(torch.utils.data.IterableDataset):
+        def __len__(self):
+            return 1
+
+        def __iter__(self):
+            return iter([0])
+
+    iter_torch_dataset = StubIterableDataset()
+
+    ray_dataset = ray.data.from_torch(iter_torch_dataset)
+
+    actual_data = ray_dataset.take_all()
+    assert actual_data == [{"item": 0}]
+
+
+@pytest.mark.parametrize("local_read", [True, False])
+def test_from_torch_boundary_conditions(ray_start_10_cpus_shared, local_read):
+    """
+    Tests that from_torch respects __len__ for map-style datasets
+    """
+    from torch.utils.data import Dataset
+
+    class BoundaryTestMapDataset(Dataset):
+        """A map-style dataset where __len__ is less than the underlying data size."""
+
+        def __init__(self, data, length):
+            super().__init__()
+            self._data = data
+            self._length = length
+            assert self._length <= len(
+                self._data
+            ), "Length must be <= data size to properly test boundary conditions"
+
+        def __len__(self):
+            return self._length
+
+        def __getitem__(self, index):
+            if not (0 <= index < self._length):
+                # Note: don't use IndexError because we want to fail clearly if
+                # Ray Data tries to access beyond __len__ - 1
+                raise RuntimeError(
+                    f"Index {index} out of bounds for dataset with length {self._length}"
+                )
+            return self._data[index]
+
+    source_data = list(range(10))
+    dataset_len = 8  # Intentionally less than len(source_data)
+
+    # --- Test MapDataset ---
+    map_ds = BoundaryTestMapDataset(source_data, dataset_len)
+    # Expected data only includes elements up to dataset_len - 1
+    expected_items = source_data[:dataset_len]
+
+    ray_ds_map = ray.data.from_torch(map_ds, local_read=local_read)
+    actual_items_map = extract_values("item", list(ray_ds_map.take_all()))
+
+    # This assertion verifies that ray_ds_map didn't try to access index 8 or 9,
+    # which would have raised an IndexError in BoundaryTestMapDataset.__getitem__
+    assert actual_items_map == expected_items
+    assert len(actual_items_map) == dataset_len
 
 
 if __name__ == "__main__":

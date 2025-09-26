@@ -19,7 +19,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray._common.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import SampleBatchType
 from ray.util.debug import log_once

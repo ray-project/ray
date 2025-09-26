@@ -28,9 +28,12 @@ from ray.train.v2._internal.execution.worker_group import (
     Worker,
     WorkerGroup,
     WorkerGroupContext,
+    WorkerGroupState,
 )
 from ray.train.v2.api.config import RunConfig
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
+
+pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -495,7 +498,21 @@ def test_worker_group_callback():
     assert hooks.shutdown_hook_called
 
 
-def test_worker_group_abort():
+def test_worker_log_file_paths():
+    """Test that log file paths are correctly assigned to workers."""
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # Check that all workers have log file paths assigned
+    workers = wg.get_workers()
+    for worker in workers:
+        assert worker.log_file_path is not None
+        assert "ray-train-app-worker" in worker.log_file_path
+
+    wg.shutdown()
+
+
+def test_worker_group_abort(monkeypatch):
     class AssertCallback(WorkerGroupCallback):
         def __init__(self):
             self.abort_hook_called = False
@@ -507,21 +524,26 @@ def test_worker_group_abort():
     wg = _default_inactive_worker_group(callbacks=[hooks])
 
     wg._start()
+
+    # Track shutdown calls without preventing actual cleanup
+    shutdown_call_count = 0
+    original_shutdown = WorkerGroupState.shutdown
+
+    def track_shutdown_calls(self):
+        nonlocal shutdown_call_count
+        shutdown_call_count += 1
+        return original_shutdown(self)
+
+    monkeypatch.setattr(WorkerGroupState, "shutdown", track_shutdown_calls)
+
     wg.abort()
+    assert (
+        shutdown_call_count == 1
+    ), f"Expected shutdown to be called once, but was called {shutdown_call_count} times"
     assert hooks.abort_hook_called
-    wg.shutdown()
 
-
-def test_worker_log_file_paths():
-    """Test that log file paths are correctly assigned to workers."""
-    wg = _default_inactive_worker_group()
-    wg._start()
-
-    # Check that all workers have log file paths assigned
-    workers = wg.get_workers()
-    for worker in workers:
-        assert worker.log_file_path is not None
-        assert "ray-train-app-worker" in worker.log_file_path
+    # Bypass _assert_active method, allowing for shutdown
+    monkeypatch.setattr(wg, "_assert_active", lambda: None)
 
     wg.shutdown()
 

@@ -1,0 +1,106 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+import "google/protobuf/timestamp.proto";
+import "src/ray/protobuf/events_task_profile_events.proto";
+import "src/ray/protobuf/public/events_actor_task_definition_event.proto";
+import "src/ray/protobuf/public/events_task_definition_event.proto";
+import "src/ray/protobuf/public/events_task_execution_event.proto";
+import "src/ray/protobuf/public/events_driver_job_definition_event.proto";
+import "src/ray/protobuf/public/events_driver_job_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_actor_definition_event.proto";
+import "src/ray/protobuf/public/events_actor_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_node_definition_event.proto";
+import "src/ray/protobuf/public/events_node_lifecycle_event.proto";
+
+// This is the base message for all ray events.
+message RayEvent {
+  // The potential components that will generate events.
+  enum SourceType {
+    SOURCE_TYPE_UNSPECIFIED = 0;
+    CORE_WORKER = 1;
+    GCS = 2;
+    RAYLET = 3;
+    CLUSTER_LIFECYCLE = 4;
+    AUTOSCALER = 5;
+    JOBS = 6;
+  }
+
+  // The potential types of events that can be generated.
+  // NOTE: When adding a new event type below, if the event should be exposed to external services,
+  // also update the DEFAULT_EXPOSABLE_EVENT_TYPES list in
+  // python/ray/dashboard/modules/aggregator/aggregator_agent.py accordingly.
+  // This ensures the new event type can be published externally if intended.
+  enum EventType {
+    EVENT_TYPE_UNSPECIFIED = 0;
+    TASK_DEFINITION_EVENT = 1;
+    TASK_EXECUTION_EVENT = 2;
+    ACTOR_TASK_DEFINITION_EVENT = 3;
+    TASK_PROFILE_EVENT = 4;
+    DRIVER_JOB_DEFINITION_EVENT = 5;
+    DRIVER_JOB_LIFECYCLE_EVENT = 6;
+    NODE_DEFINITION_EVENT = 7;
+    NODE_LIFECYCLE_EVENT = 8;
+    ACTOR_DEFINITION_EVENT = 9;
+    ACTOR_LIFECYCLE_EVENT = 10;
+  }
+
+  // The severities of events that can be generated.
+  enum Severity {
+    EVENT_SEVERITY_UNSPECIFIED = 0;
+    // TRACE: messages that are useful for tracing (e.g. function entering/exit),
+    // more detailed than DEBUG info.
+    TRACE = 1;
+    // DEBUG: messages that are useful for debugging. These messages are not
+    // intended to be seen by end users.
+    DEBUG = 2;
+    INFO = 3;  // default
+    WARNING = 4;
+    ERROR = 5;
+    FATAL = 6;
+  }
+
+  // Unique identifier of the event
+  bytes event_id = 1;
+  // The component that generates the event.
+  SourceType source_type = 2;
+  // The type of the event. This is to understand the event without deserializing the
+  // nested message.
+  EventType event_type = 3;
+  // Epoch timestamp, captured when the event is created
+  google.protobuf.Timestamp timestamp = 4;
+  // The severity of the event.
+  Severity severity = 5;
+  // A string message associated with the event.
+  string message = 6;
+  // The current Ray session name.
+  string session_name = 7;
+
+  // Nested event messages containing the specific fields for each event type.
+  // One of the following fields is expected to be set for each RayEvent message.
+  TaskDefinitionEvent task_definition_event = 8;
+  TaskExecutionEvent task_execution_event = 9;
+  ActorTaskDefinitionEvent actor_task_definition_event = 10;
+  TaskProfileEvents task_profile_events = 11;
+  DriverJobDefinitionEvent driver_job_definition_event = 12;
+  DriverJobLifecycleEvent driver_job_lifecycle_event = 13;
+  NodeDefinitionEvent node_definition_event = 14;
+  NodeLifecycleEvent node_lifecycle_event = 15;
+  ActorDefinitionEvent actor_definition_event = 16;
+  ActorLifecycleEvent actor_lifecycle_event = 17;
+}

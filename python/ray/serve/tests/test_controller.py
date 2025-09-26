@@ -9,7 +9,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -79,9 +79,9 @@ def test_deploy_app_custom_exception(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "policy", [None, DEFAULT_AUTOSCALING_POLICY, default_autoscaling_policy]
+    "policy_name", [None, DEFAULT_AUTOSCALING_POLICY_NAME, default_autoscaling_policy]
 )
-def test_get_serve_instance_details_json_serializable(serve_instance, policy):
+def test_get_serve_instance_details_json_serializable(serve_instance, policy_name):
     """Test the result from get_serve_instance_details is json serializable."""
 
     controller = _get_global_client()._controller
@@ -89,9 +89,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "_policy": policy,
+        "_policy": {"name": policy_name},
     }
-    if policy is None:
+    if policy_name is None:
         autoscaling_config.pop("_policy")
 
     @serve.deployment(autoscaling_config=autoscaling_config)
@@ -176,7 +176,11 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "upscaling_factor": None,
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
+                                    "downscale_to_zero_delay_s": None,
                                     "upscale_delay_s": 30.0,
+                                    "policy": {
+                                        "name": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                    },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
@@ -221,6 +225,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "ip": node_ip,
                             "port": 8000,
                             "instance_id": node_instance_id,
+                            "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",
@@ -232,6 +237,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "ip": node_ip,
                             "port": 9000,
                             "instance_id": node_instance_id,
+                            "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",

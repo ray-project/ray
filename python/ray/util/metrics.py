@@ -1,15 +1,14 @@
 import logging
+import os
 import re
 import warnings
-import os
-
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray._raylet import (
     Count as CythonCount,
-    Sum as CythonSum,
-    Histogram as CythonHistogram,
     Gauge as CythonGauge,
+    Histogram as CythonHistogram,
+    Sum as CythonSum,
 )  # noqa: E402
 
 # Sum is used for CythonCount because it allows incrementing by positive
@@ -191,7 +190,7 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1":
+            if os.environ.get("RAY_enable_open_telemetry") == "1":
                 """
                 For the new opentelemetry implementation, we'll correctly use Counter
                 rather than Sum.

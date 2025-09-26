@@ -21,7 +21,9 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/stats/metric_defs.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 namespace core {
@@ -136,7 +138,7 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
     ReferenceCounter *counter,
-    std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
+    std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
@@ -595,9 +597,8 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
 
 void CoreWorkerMemoryStore::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  ray::stats::STATS_object_store_memory.Record(
-      num_local_objects_bytes_,
-      {{ray::stats::LocationKey, ray::stats::kObjectLocWorkerHeap}});
+  stats::STATS_object_store_memory.Record(num_local_objects_bytes_,
+                                          {{stats::LocationKey, "WORKER_HEAP"}});
 }
 
 }  // namespace core

@@ -98,4 +98,7 @@ StatusOr<IntType> StringToInt(const std::string &input) noexcept {
   return StatusOr<IntType>(value);
 }
 
+// Prepend the prefix to each line of str.
+std::string PrependToEachLine(const std::string &str, const std::string &prefix);
+
 }  // namespace ray

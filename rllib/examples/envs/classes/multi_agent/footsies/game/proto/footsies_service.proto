@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+
+service FootsiesGameService {
+  rpc StartGame(Empty) returns (Empty) {}
+  rpc ResetGame(Empty) returns (Empty) {}
+  rpc StepNFrames(StepInput) returns (GameState) {}
+  rpc GetState(Empty) returns (GameState) {}
+  rpc GetEncodedState(Empty) returns (EncodedGameState) {}
+  rpc IsReady(Empty) returns (BoolValue) {}
+}
+
+
+message StepInput {
+  int64 p1_action = 1;
+  int64 p2_action = 2;
+  int64 nFrames = 3;
+}
+
+message PlayerState {
+  float player_position_x = 1;
+  bool is_dead = 2;
+  int64 vital_health = 3;
+  int64 guard_health = 4;
+  int64 current_action_id = 5;
+  int64 current_action_frame = 6;
+  int64 current_action_frame_count = 7;
+  bool is_action_end = 8;
+  bool is_always_cancelable = 9;
+  int64 current_action_hit_count = 10;
+  int64 current_hit_stun_frame = 11;
+  bool is_in_hit_stun = 12;
+  int64 sprite_shake_position = 13;
+  int64 max_sprite_shake_frame = 14;
+  float velocity_x = 15;
+  bool is_face_right = 16;
+  repeated int64 input_buffer = 17;
+  int64 current_frame_advantage = 18;
+  bool would_next_forward_input_dash = 19;
+  bool would_next_backward_input_dash = 20;
+  float special_attack_progress = 21;
+}
+
+message GameState {
+  PlayerState player1 = 1;
+  PlayerState player2 = 2;
+  int64 round_state = 3;
+  int64 frame_count = 4;
+}
+
+message EncodedGameState {
+  repeated float player1_encoding = 1;
+  repeated float player2_encoding = 2;
+}
+
+message BoolValue {
+  bool value = 1;
+}
+
+
+
+
+message Empty {}

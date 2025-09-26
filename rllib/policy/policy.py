@@ -40,7 +40,7 @@ from ray.rllib.utils.checkpoints import (
     get_checkpoint_info,
     try_import_msgpack,
 )
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
