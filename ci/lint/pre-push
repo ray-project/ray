@@ -1,8 +1,28 @@
 #!/bin/sh
 
-echo "Pre-push hook: Skipping deprecated format.sh linting"
+echo "Linting changes as part of pre-push hook"
 echo ""
-echo "Note: ci/lint/format.sh is deprecated and has been disabled."
-echo "Please use the CI pipeline for code formatting checks."
-echo ""
+
+# Check if pre-commit is available and configured
+if command -v pre-commit >/dev/null 2>&1; then
+    echo "Running pre-commit hooks..."
+    pre-commit run --all-files
+    lint_exit_status=$?
+else
+    echo "pre-commit not found. Falling back to format.sh..."
+    echo "ci/lint/format.sh:"
+    ci/lint/format.sh
+    lint_exit_status=$?
+fi
+
+if [ $lint_exit_status -ne 0 ]; then
+    echo ""
+    echo "Linting changes failed."
+    echo "Please install pre-commit and run 'pre-commit run --all-files'"
+    echo "or ensure 'ci/lint/format.sh' runs with no errors before pushing."
+    echo "To install pre-commit: pip install pre-commit && pre-commit install"
+    echo "If you want to ignore this and push anyways,"
+    echo "re-run with '--no-verify'."
+    exit 1
+fi
 exit 0
