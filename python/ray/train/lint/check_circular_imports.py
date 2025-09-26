@@ -90,7 +90,9 @@ class ImportCollector(ast.NodeVisitor):
             return None
 
         # Base parts based on the level
-        base_module_parts = package_parts[: -((level - 1))]
+        base_module_parts = (
+            package_parts if level == 1 else package_parts[: -((level - 1))]
+        )
 
         # Construct absolute module string
         abs_module_parts = (
