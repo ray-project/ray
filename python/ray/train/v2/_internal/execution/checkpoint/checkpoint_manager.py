@@ -154,13 +154,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 continue
             checkpoint_result = self._pending_training_results[checkpoint]
             checkpoint_result.metrics.update(metrics)
-            try:
-                self._checkpoint_results.remove(checkpoint_result)
-            except ValueError:
-                logger.warning(
-                    f"Checkpoint {checkpoint} not found in checkpoint results. "
+            if checkpoint_result not in self._checkpoint_results:
+                raise ValueError(
+                    f"Checkpoint {checkpoint} was in pending training results but not "
+                    "checkpoint results. "
                 )
-                continue
+            self._checkpoint_results.remove(checkpoint_result)
             _insert_into_sorted_list(
                 self._checkpoint_results,
                 checkpoint_result,
@@ -172,7 +171,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     def _save_state_and_delete_old_checkpoints(self):
         """Delete the old checkpoints."""
         # Get checkpoints to delete
-        results_to_delete = {}
+        results_to_delete = set()
         if self._checkpoint_config.num_to_keep is not None:
             # Delete the bottom (N - K) checkpoints
             worst_results = set(

@@ -222,7 +222,7 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     )
     with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
-        assert isinstance(exc_info.value.worker_failures[0], ValueError)
+    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
 
 
 def test_report_validate_config_without_validate_fn():
@@ -235,7 +235,7 @@ def test_report_validate_config_without_validate_fn():
     )
     with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
-        assert isinstance(exc_info.value.worker_failures[0], ValueError)
+    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
 
 
 def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):

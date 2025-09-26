@@ -11,14 +11,12 @@ class _ValidationSpec:
         self,
         validate_fn: Callable[["Checkpoint", Optional[Dict]], Dict],
         validate_config: Dict,
-        checkpoint: "Checkpoint",
     ):
         self.validate_fn = validate_fn
         self.validate_config = validate_config
-        self.checkpoint = checkpoint
 
     def __repr__(self) -> str:
-        return f"ValidationSpec(validate_fn={self.validate_fn}, validate_config={self.validate_config}, checkpoint={self.checkpoint})"
+        return f"ValidationSpec(validate_fn={self.validate_fn}, validate_config={self.validate_config})"
 
 
 class _TrainingReport:

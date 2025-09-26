@@ -204,9 +204,7 @@ async def test_pending_checkpoint_management(tmp_path):
 
 def test_update_checkpoints_with_metrics(tmp_path):
     # This test verifies that update_checkpoints_with_metrics works regardless of
-    # CheckpointManager's internal state - even if the internal state can never
-    # be reached with proper use of the CheckpointManager API. For example, no
-    # checkpoint should exist in _pending_training_results but not _checkpoint_results.
+    # CheckpointManager's internal state.
     storage_context = StorageContext(
         storage_path=tmp_path,
         experiment_dir_name="pending_checkpoint_management_experiment",
@@ -220,7 +218,7 @@ def test_update_checkpoints_with_metrics(tmp_path):
         ),
     )
     training_results = create_dummy_training_results(
-        num_results=5, storage_context=storage_context
+        num_results=3, storage_context=storage_context
     )
     checkpoint_manager._pending_training_results[
         training_results[0].checkpoint
@@ -228,34 +226,50 @@ def test_update_checkpoints_with_metrics(tmp_path):
     checkpoint_manager._pending_training_results[
         training_results[1].checkpoint
     ] = training_results[1]
-    checkpoint_manager._pending_training_results[
-        training_results[2].checkpoint
-    ] = training_results[2]
     checkpoint_manager._checkpoint_results.append(training_results[0])
     checkpoint_manager._checkpoint_results.append(training_results[1])
-    checkpoint_manager._checkpoint_results.append(training_results[3])
+    checkpoint_manager._checkpoint_results.append(training_results[2])
 
     # Verify that update_checkpoints_with_metrics avoids exceptions while updating matches
     checkpoint_manager.update_checkpoints_with_metrics(
         {
-            training_results[0].checkpoint: {"score": 200},
-            training_results[1].checkpoint: {"score": 100},
-            # ignored because not in _checkpoint_results
-            training_results[2].checkpoint: {"score": 50},
+            training_results[0].checkpoint: {"score": 100},
             # ignored because not in _pending_training_results
-            training_results[4].checkpoint: {"score": 300},
+            training_results[2].checkpoint: {"score": 300},
         }
     )
     assert checkpoint_manager._pending_training_results == {
-        training_results[2].checkpoint: training_results[2]
+        training_results[1].checkpoint: training_results[1]
     }
     assert checkpoint_manager._checkpoint_results == [
-        # score not updated so remains low
-        training_results[3],
+        # score not updated at all so remains lowest
         training_results[1],
+        # score not updated because not in pending results
+        training_results[2],
         # highest score after update
         training_results[0],
     ]
+
+
+def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="update_checkpoints_with_metrics_error_experiment",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(),
+    )
+    training_results = create_dummy_training_results(
+        num_results=1, storage_context=storage_context
+    )
+    checkpoint_manager._pending_training_results[
+        training_results[0].checkpoint
+    ] = training_results[0]
+    with pytest.raises(ValueError):
+        checkpoint_manager.update_checkpoints_with_metrics(
+            {training_results[0].checkpoint: {"score": 100}}
+        )
 
 
 if __name__ == "__main__":

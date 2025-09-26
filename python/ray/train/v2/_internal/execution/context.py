@@ -340,7 +340,6 @@ class TrainContext:
                 validation_spec = _ValidationSpec(
                     validate_fn=validate_fn,
                     validate_config=validate_config,
-                    checkpoint=checkpoint,
                 )
             else:
                 validation_spec = None

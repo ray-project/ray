@@ -137,6 +137,7 @@ class ControllerCallback(RayTrainCallback):
         pass
 
 
+# TODO: consider consolidating all metrics into one dict, possibly with UDF
 @DeveloperAPI
 class ReportCallback(RayTrainCallback):
     def after_report(

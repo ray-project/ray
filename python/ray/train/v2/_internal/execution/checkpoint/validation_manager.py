@@ -24,10 +24,10 @@ VALIDATION_TASK_POLL_INTERVAL_S = 1
 
 
 @ray.remote
-def run_validate_fn(validation_spec: _ValidationSpec) -> Dict:
+def run_validate_fn(validation_spec: _ValidationSpec, checkpoint: Checkpoint) -> Dict:
     """Run the user-defined validation function."""
     metrics_dict = validation_spec.validate_fn(
-        validation_spec.checkpoint,
+        checkpoint,
         validation_spec.validate_config,
     )
     if not isinstance(metrics_dict, dict):
@@ -66,7 +66,9 @@ class ValidationManager(ControllerCallback, ReportCallback):
             # TODO: rate limit this by using a queue?
             # TODO: figure out where to place run_validate_fn task:
             # head node is faster but want to avoid putting too much there
-            validate_task = run_validate_fn.remote(training_report.validation_spec)
+            validate_task = run_validate_fn.remote(
+                training_report.validation_spec, training_report.checkpoint
+            )
             self._pending_validations[validate_task] = training_report.checkpoint
             logger.info(
                 f"Launched async validation task for checkpoint {training_report.checkpoint}"
@@ -109,7 +111,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         checkpoint_to_metrics = {}
         try:
             checkpoint_to_metrics[checkpoint] = ray.get(task)
-        except ray.exceptions.RayTaskError:
+        except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
             # TODO: retry validations and time out appropriately.
