@@ -15,7 +15,7 @@ from ray.train.examples.pytorch.torch_quick_start import (
 from ray.train.examples.tf.tensorflow_quick_start import (
     train_func as tf_quick_start_train_func,
 )
-from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train.torch import TorchTrainer
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])
@@ -26,7 +26,7 @@ def test_tensorflow_mnist(ray_start_4_cpus, num_workers):
     from ray.train.examples.tf.tensorflow_mnist_example import (
         train_func as tensorflow_mnist_train_func,
     )
-    from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+    from ray.train.tensorflow import TensorflowTrainer
 
     num_workers = num_workers
     epochs = 3
@@ -46,7 +46,7 @@ def test_tensorflow_mnist(ray_start_4_cpus, num_workers):
 def test_tf_non_distributed(ray_start_4_cpus):
     """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
 
-    from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+    from ray.train.tensorflow import TensorflowTrainer
 
     trainer = TensorflowTrainer(
         tf_quick_start_train_func, scaling_config=ScalingConfig(num_workers=1)

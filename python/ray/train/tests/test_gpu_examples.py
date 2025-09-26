@@ -7,7 +7,7 @@ from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func_per_worker as fashion_mnist_train_func,
 )
 from ray.train.tests.test_tune import torch_fashion_mnist
-from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train.torch import TorchTrainer
 
 
 @pytest.mark.skipif(
@@ -18,7 +18,7 @@ def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     from ray.train.examples.tf.tensorflow_mnist_example import (
         train_func as tensorflow_mnist_train_func,
     )
-    from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+    from ray.train.tensorflow import TensorflowTrainer
 
     num_workers = 2
     epochs = 3
