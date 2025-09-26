@@ -56,7 +56,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
     async def unified_health(self, req: Request) -> Response:
         # Check Raylet health.
         raylet_resp = await self.health_check(req)
-        if raylet_resp.status is not 200:
+        if raylet_resp.status != 200:
             return raylet_resp
 
         # Check GCS health.
