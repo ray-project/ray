@@ -222,6 +222,51 @@ def test_process_completed_tasks(sleep_task_ref):
     o2.mark_execution_finished.assert_called_once()
 
 
+def test_update_operator_states_drains_upstream():
+    """Test that update_operator_states drains upstream output queues when
+    execution_finished() is called on a downstream operator.
+    """
+    inputs = make_ref_bundles([[x] for x in range(10)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
+    )
+    topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+
+    # First, populate the upstream output queues by processing some tasks
+    process_completed_tasks(topo, [], 0)
+    update_operator_states(topo)
+
+    # Verify that o1 (upstream) has output in its queue
+    assert (
+        len(topo[o1].output_queue) > 0
+    ), "Upstream operator should have output in queue"
+
+    # Store initial queue size for verification
+    initial_o1_queue_size = len(topo[o1].output_queue)
+
+    # Manually mark o2 as execution finished (simulating limit operator behavior)
+    o2.mark_execution_finished()
+    assert o2.execution_finished(), "o2 should be execution finished"
+
+    # Call update_operator_states - this should drain o1's output queue
+    update_operator_states(topo)
+
+    # Verify that o1's output queue was drained due to o2 being execution finished
+    assert len(topo[o1].output_queue) == 0, (
+        f"Upstream operator o1 output queue should be drained when downstream o2 is execution finished. "
+        f"Expected 0, got {len(topo[o1].output_queue)}. "
+        f"Initial size was {initial_o1_queue_size}"
+    )
+
+
 def test_get_eligible_operators_to_run():
     opts = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(1)])
