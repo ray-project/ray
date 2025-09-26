@@ -23,6 +23,8 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor_manager.h"
 #include "ray/gcs/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_job_manager.h"
@@ -37,9 +39,7 @@
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/raylet/raylet_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -332,18 +332,18 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_node_manager_ =
-      std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
-                                       gcs_table_storage_.get(),
-                                       io_context_provider_.GetDefaultIOContext(),
-                                       &raylet_client_pool_,
-                                       rpc_server_.GetClusterId(),
-                                       *ray_event_recorder_,
-                                       config_.session_name);
+  gcs_node_manager_ = std::make_unique<GcsNodeManager>(
+      gcs_publisher_.get(),
+      gcs_table_storage_.get(),
+      io_context_provider_.GetIOContext<GcsNodeManager>(),
+      &raylet_client_pool_,
+      rpc_server_.GetClusterId(),
+      *ray_event_recorder_,
+      config_.session_name);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
+      io_context_provider_.GetIOContext<GcsNodeManager>(),
       *gcs_node_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
@@ -521,7 +521,9 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      worker_client_pool_);
+      worker_client_pool_,
+      *ray_event_recorder_,
+      config_.session_name);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
@@ -723,7 +725,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       /*overwrite=*/true,
       {[this, v2_enabled](bool new_value_put) {
          if (!new_value_put) {
-           // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g.
+           // NOTE(rickyx): We cannot know if an overwrite Put succeeds or fails (e.g.
            // when GCS re-started), so we just try to get the value to check if it's
            // correct.
            // TODO(rickyx): We could probably load some system configs from internal kv
@@ -777,7 +779,7 @@ void GcsServer::InitGcsTaskManager() {
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+      [this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
         // Because a new node has been added, we need to try to schedule the pending
         // placement groups and the pending actors.
         auto node_id = NodeID::FromBinary(node->node_id());
@@ -797,9 +799,10 @@ void GcsServer::InstallEventListeners() {
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
         cluster_lease_manager_->ScheduleAndGrantLeases();
-      });
+      },
+      io_context_provider_.GetDefaultIOContext());
   gcs_node_manager_->AddNodeRemovedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+      [this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
         auto node_id = NodeID::FromBinary(node->node_id());
         const auto node_ip_address = node->node_manager_address();
         // All of the related placement groups and actors should be reconstructed when a
@@ -813,7 +816,8 @@ void GcsServer::InstallEventListeners() {
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->AsyncRemoveSubscriberFrom(node_id.Binary());
         gcs_autoscaler_state_manager_->OnNodeDead(node_id);
-      });
+      },
+      io_context_provider_.GetDefaultIOContext());
 
   // Install worker event listener.
   gcs_worker_manager_->AddWorkerDeadListener(

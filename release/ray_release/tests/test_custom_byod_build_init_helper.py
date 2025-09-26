@@ -8,6 +8,7 @@ import yaml
 from ray_release.custom_byod_build_init_helper import (
     create_custom_build_yaml,
     get_prerequisite_step,
+    _get_step_name,
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
@@ -27,13 +28,26 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             "ray-project/ray-ml:abc123-custom",
             "ray-project/ray-ml:abc123-base",
             "custom_script.sh",
+            None,
         ),
-        ("ray-project/ray-ml:abc123-custom", "ray-project/ray-ml:abc123-base", ""),
+        (
+            "ray-project/ray-ml:abc123-custom",
+            "ray-project/ray-ml:abc123-base",
+            "",
+            None,
+        ),
         (
             "ray-project/ray-ml:nightly-py37-cpu-custom-abcdef123456789abc123456789",
             "ray-project/ray-ml:nightly-py37-cpu-base",
             "custom_script.sh",
+            None,
         ),  # longer than 40 chars
+        (
+            "ray-project/ray-ml:nightly-py37-cpu-custom-abcdef123456789abc123456789",
+            "ray-project/ray-ml:nightly-py37-cpu-base",
+            "custom_script.sh",
+            "python_depset.lock",
+        ),
     ]
     mock_get_images_from_tests.return_value = custom_byod_images
 
@@ -61,7 +75,7 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
         with open(os.path.join(tmpdir, "custom_byod_build.rayci.yml"), "r") as f:
             content = yaml.safe_load(f)
             assert content["group"] == "Custom images build"
-            assert len(content["steps"]) == 2
+            assert len(content["steps"]) == 3
             assert (
                 "export RAY_WANT_COMMIT_IN_IMAGE=abc123"
                 in content["steps"][0]["commands"][0]
@@ -94,6 +108,22 @@ def test_get_prerequisite_step():
     assert (
         get_prerequisite_step("ray-project/ray:abc123-custom")
         == config["release_image_step_ray"]
+    )
+
+
+def test_get_step_name():
+    tests = [
+        Test(name="test_1"),
+        Test(name="test_2"),
+        Test(name="test_3"),
+    ]
+    assert (
+        _get_step_name(
+            "ray-project/ray-ml:a1b2c3d4-py39-cpu-abcdef123456789abc123456789",
+            "abc123",
+            tests,
+        )
+        == ":tapioca: build custom: ray-ml:py39-cpu (abc123) test_1 test_2"
     )
 
 
