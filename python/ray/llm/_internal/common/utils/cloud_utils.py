@@ -186,84 +186,15 @@ class CloudFileSystem:
         return fs, path
 
     @staticmethod
-    def _create_abfss_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
-        """Create an ABFSS filesystem for Azure Blob File System Secure.
-
-        Args:
-            object_uri: ABFSS URI (abfss://container@account.dfs.core.windows.net/path)
-
-        Returns:
-            Tuple of (PyArrow FileSystem, path without abfss:// prefix)
-
-        Raises:
-            ImportError: If required dependencies are not installed.
-            ValueError: If the ABFSS URI format is invalid.
-        """
-        try:
-            import adlfs
-            from azure.identity import DefaultAzureCredential
-        except ImportError:
-            raise ImportError(
-                "You must `pip install adlfs azure-identity` "
-                "to use ABFSS URIs. "
-                "Note that these must be preinstalled on all nodes in the Ray cluster."
-            )
-
-        from urllib.parse import urlparse
-
-        # Parse and validate the ABFSS URI
-        parsed = urlparse(object_uri)
-
-        # Validate ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
-        if not parsed.netloc or "@" not in parsed.netloc:
-            raise ValueError(
-                f"Invalid ABFSS URI format - missing container@account: {object_uri}"
-            )
-
-        container_part, hostname_part = parsed.netloc.split("@", 1)
-
-        # Validate container name (must be non-empty)
-        if not container_part:
-            raise ValueError(
-                f"Invalid ABFSS URI format - empty container name: {object_uri}"
-            )
-
-        # Validate hostname format
-        if not hostname_part or not hostname_part.endswith(".dfs.core.windows.net"):
-            raise ValueError(
-                f"Invalid ABFSS URI format - invalid hostname (must end with .dfs.core.windows.net): {object_uri}"
-            )
-
-        # Extract and validate account name
-        azure_storage_account_name = hostname_part.split(".")[0]
-        if not azure_storage_account_name:
-            raise ValueError(
-                f"Invalid ABFSS URI format - empty account name: {object_uri}"
-            )
-
-        # Create the adlfs filesystem
-        adlfs_fs = adlfs.AzureBlobFileSystem(
-            account_name=azure_storage_account_name,
-            credential=DefaultAzureCredential(),
-        )
-
-        # Wrap with PyArrow's PyFileSystem for compatibility
-        fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
-
-        # Return the path without the abfss:// prefix
-        path = f"{container_part}{parsed.path}"
-
-        return fs, path
-
-    @staticmethod
     def _create_azure_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
-        """Create an Azure filesystem for Azure Blob Storage.
+        """Create an Azure filesystem for Azure Blob Storage or ABFSS.
 
         Args:
-            object_uri: Azure URI (azure://container@account.blob.core.windows.net/path)
+            object_uri: Azure URI (azure://container@account.blob.core.windows.net/path or
+                       abfss://container@account.dfs.core.windows.net/path)
 
         Returns:
-            Tuple of (PyArrow FileSystem, path without azure:// prefix)
+            Tuple of (PyArrow FileSystem, path without scheme prefix)
 
         Raises:
             ImportError: If required dependencies are not installed.
@@ -275,7 +206,7 @@ class CloudFileSystem:
         except ImportError:
             raise ImportError(
                 "You must `pip install adlfs azure-identity` "
-                "to use Azure URIs. "
+                "to use Azure/ABFSS URIs. "
                 "Note that these must be preinstalled on all nodes in the Ray cluster."
             )
 
@@ -283,11 +214,12 @@ class CloudFileSystem:
 
         # Parse and validate the Azure URI
         parsed = urlparse(object_uri)
+        scheme = parsed.scheme.lower()
 
-        # Validate Azure URI format: azure://container@account.blob.core.windows.net/path
+        # Validate URI format: scheme://container@account.domain/path
         if not parsed.netloc or "@" not in parsed.netloc:
             raise ValueError(
-                f"Invalid Azure URI format - missing container@account: {object_uri}"
+                f"Invalid {scheme.upper()} URI format - missing container@account: {object_uri}"
             )
 
         container_part, hostname_part = parsed.netloc.split("@", 1)
@@ -295,23 +227,31 @@ class CloudFileSystem:
         # Validate container name (must be non-empty)
         if not container_part:
             raise ValueError(
-                f"Invalid Azure URI format - empty container name: {object_uri}"
+                f"Invalid {scheme.upper()} URI format - empty container name: {object_uri}"
             )
 
-        # Validate hostname format (can be blob.core.windows.net or dfs.core.windows.net)
-        if not hostname_part or not (
-            hostname_part.endswith(".blob.core.windows.net")
-            or hostname_part.endswith(".dfs.core.windows.net")
-        ):
+        # Validate hostname format based on scheme
+        valid_hostname = False
+        if scheme == "abfss":
+            valid_hostname = hostname_part.endswith(".dfs.core.windows.net")
+            expected_domains = ".dfs.core.windows.net"
+        elif scheme == "azure":
+            valid_hostname = (
+                hostname_part.endswith(".blob.core.windows.net")
+                or hostname_part.endswith(".dfs.core.windows.net")
+            )
+            expected_domains = ".blob.core.windows.net or .dfs.core.windows.net"
+        
+        if not hostname_part or not valid_hostname:
             raise ValueError(
-                f"Invalid Azure URI format - invalid hostname (must end with .blob.core.windows.net or .dfs.core.windows.net): {object_uri}"
+                f"Invalid {scheme.upper()} URI format - invalid hostname (must end with {expected_domains}): {object_uri}"
             )
 
         # Extract and validate account name
         azure_storage_account_name = hostname_part.split(".")[0]
         if not azure_storage_account_name:
             raise ValueError(
-                f"Invalid Azure URI format - empty account name: {object_uri}"
+                f"Invalid {scheme.upper()} URI format - empty account name: {object_uri}"
             )
 
         # Create the adlfs filesystem
@@ -323,10 +263,24 @@ class CloudFileSystem:
         # Wrap with PyArrow's PyFileSystem for compatibility
         fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
 
-        # Return the path without the azure:// prefix
+        # Return the path without the scheme prefix
         path = f"{container_part}{parsed.path}"
 
         return fs, path
+
+    @staticmethod
+    def _create_abfss_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
+        """Create an ABFSS filesystem for Azure Data Lake Storage Gen2.
+        
+        This is a wrapper around _create_azure_filesystem for backward compatibility.
+
+        Args:
+            object_uri: ABFSS URI (abfss://container@account.dfs.core.windows.net/path)
+
+        Returns:
+            Tuple of (PyArrow FileSystem, path without abfss:// prefix)
+        """
+        return CloudFileSystem._create_azure_filesystem(object_uri)
 
     @staticmethod
     def get_file(
