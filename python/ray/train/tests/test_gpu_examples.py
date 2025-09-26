@@ -6,7 +6,6 @@ from ray.train import ScalingConfig
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func_per_worker as fashion_mnist_train_func,
 )
-from ray.train.tests.test_tune import torch_fashion_mnist
 from ray.train.torch import TorchTrainer
 
 
@@ -43,14 +42,6 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     trainer.fit()
-
-
-def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
-    torch_fashion_mnist(num_workers=2, use_gpu=True, num_samples=1)
-
-
-def test_concurrent_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
-    torch_fashion_mnist(num_workers=1, use_gpu=True, num_samples=2)
 
 
 @pytest.mark.skipif(
