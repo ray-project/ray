@@ -272,7 +272,7 @@ Ray Train defaults to uploading from disk to the remote ``storage_path`` with py
 filesystem copying utilities. If you handle checkpoint uploading manually or with a 
 third-party library such as Torch Distributed Checkpointing, you can set 
 ``checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD`` and just report a 
-reference of the uploaded checkpoint, as long as the checkpoint was reported to
+reference of the uploaded checkpoint, as long as the checkpoint was uploaded to
 the ``storage_path``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
