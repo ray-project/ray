@@ -2,12 +2,6 @@ from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
-cdef extern from "opencensus/tags/tag_key.h" nogil:
-    cdef cppclass CTagKey "opencensus::tags::TagKey":
-        @staticmethod
-        CTagKey Register(c_string &name)
-        const c_string &name() const
-
 cdef extern from "ray/stats/metric.h" nogil:
     cdef cppclass CMetric "ray::stats::Metric":
         CMetric(const c_string &name,
