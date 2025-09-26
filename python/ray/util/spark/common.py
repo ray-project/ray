@@ -50,7 +50,7 @@ class ResourceDetector:
         # Check for container CPU limits
         if config.environment.is_containerized:
             container_cpus = ResourceDetector._get_container_cpu_limit()
-            if container_cpus:
+            if container_cpus is not None and container_cpus > 0:
                 return min(container_cpus, multiprocessing.cpu_count())
 
         return multiprocessing.cpu_count()
@@ -83,7 +83,11 @@ class ResourceDetector:
         # Check for container memory limits
         if config.environment.is_containerized:
             container_memory = ResourceDetector._get_container_memory_limit()
-            if container_memory and container_memory < memory_info["total"]:
+            if (
+                container_memory is not None
+                and container_memory > 0
+                and container_memory < memory_info["total"]
+            ):
                 memory_info["container_limit"] = container_memory
                 memory_info["effective_total"] = container_memory
             else:

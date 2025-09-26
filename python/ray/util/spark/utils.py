@@ -89,7 +89,14 @@ def get_spark_session():
     try:
         from pyspark.sql import SparkSession
 
-        return SparkSession.getActiveSession()
+        spark_session = SparkSession.getActiveSession()
+        if spark_session is None:
+            raise RuntimeError(
+                "Spark session hasn't been initiated yet. Please use "
+                "`SparkSession.builder` to create a spark session and connect to a spark "
+                "cluster."
+            )
+        return spark_session
     except ImportError:
         raise RuntimeError("PySpark not available")
 

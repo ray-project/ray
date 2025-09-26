@@ -124,7 +124,7 @@ class EnvironmentInfo:
         self.is_containerized = (
             os.path.exists("/.dockerenv")
             or self.is_kubernetes
-            or os.path.exists("/proc/1/cgroup")
+            or self._detect_container_from_cgroup()
         )
 
         if self.is_databricks:
@@ -136,6 +136,26 @@ class EnvironmentInfo:
             self.yarn_container_id = os.environ.get(
                 EnvironmentVariables.YARN_CONTAINER_ID
             )
+
+    def _detect_container_from_cgroup(self) -> bool:
+        """Detect if running in container by checking cgroup information."""
+        try:
+            # Check if we're in a container by looking for container-specific cgroup entries
+            with open("/proc/1/cgroup", "r") as f:
+                cgroup_content = f.read()
+                # Look for container indicators (docker, containerd, crio, etc.)
+                container_indicators = [
+                    "docker",
+                    "containerd",
+                    "crio",
+                    "lxc",
+                    "systemd:/docker",
+                ]
+                return any(
+                    indicator in cgroup_content for indicator in container_indicators
+                )
+        except (OSError, FileNotFoundError):
+            return False
 
 
 @dataclass
