@@ -979,12 +979,7 @@ class EnvRunnerGroup:
             ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
 
-        # Add remote results
-        all_results.extend(
-            [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
-        )
-
-        return all_results
+        return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
     @OldAPIStack
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
