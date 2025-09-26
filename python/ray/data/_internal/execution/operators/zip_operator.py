@@ -50,9 +50,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         ]
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
         self._stats: StatsDict = {"Zip": []}
-        self._leftover_blocks: List[BlockPartition] = [
-            [] for _ in range(len(input_ops))
-        ]
+        self._leftover_blocks: List = [[] for _ in range(len(input_ops))]
         super().__init__(
             data_context,
             *input_ops,
@@ -214,7 +212,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 self._leftover_blocks[
                     idx
                 ] = blocks_with_metadata  # Add block partition to leftover blocks since we can't zip anything if the smallest row count is 0
-            return [], {}
+            return None, {}
 
         # 3. Split the blocks into smaller blocks based on the number of rows and bytes, and store the rest somewhere else (the row count from the Bundle might differ)
         indices = list(
@@ -288,7 +286,7 @@ def _zip_one_block(
     return result, BlockMetadataWithSchema.from_block(result, stats=stats.build())
 
 
-def _zip_blocks(blocks: List[Block]) -> Block:
+def _zip_blocks(blocks: List[Block]) -> Tuple[Block, "BlockMetadataWithSchema"]:
     """Zip the blocks together using _zip_one_block in a chain."""
     if len(blocks) == 0:
         raise ValueError("Cannot zip empty list of blocks")
