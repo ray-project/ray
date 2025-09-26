@@ -97,7 +97,16 @@ from ray.data._internal.util import (
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
-from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
+from ray.data.aggregate import (
+    AggregateFn,
+    Max,
+    Mean,
+    Min,
+    Std,
+    Sum,
+    Unique,
+    _make_aggregator_name,
+)
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -114,6 +123,7 @@ from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
+from ray.data.stats import DatasetSummary
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -5924,6 +5934,117 @@ class Dataset:
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
+
+    @AllToAllAPI
+    @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP, stability="alpha")
+    def summary(self, columns: Optional[List[str]] = None) -> "DatasetSummary":
+        """Generate a statistical summary of the dataset, organized by column type.
+
+        This method computes various statistics for different column types:
+
+        - For numerical columns: count, mean, min, max, std, missing%, zero%
+        - For categorical columns: count, missing%
+        - For vector/list columns: count, missing%
+
+        The resulting DatasetSummary object contains separate DataFrames for each
+        column type and provides a unified view when printed.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"age": 25, "salary": 50000, "name": "Alice", "city": "NYC", "scores": [1, 2, 3], "tags": ["a", "b"]},
+            ...     {"age": 30, "salary": 60000, "name": None, "city": "LA", "scores": [4, 5, 6], "tags": ["c"]},
+            ...     {"age": 0, "salary": None, "name": "Bob", "city": None, "scores": None, "tags": None},
+            ...     {"age": None, "salary": 45000, "name": "Charlie", "city": "Chicago", "scores": [7, 8, 9], "tags": ["d", "e"]},
+            ... ])
+            >>> summary = ds.summary()
+            >>> print(summary)  # doctest: +SKIP
+                agg         numerical               categorical       vector
+                column             age        salary        name  city scores  tags
+                count         4.000000      4.000000         4.0   4.0    4.0   4.0
+                mean         18.333333  51666.666667         NaN   NaN    NaN   NaN
+                min           0.000000  45000.000000         NaN   NaN    NaN   NaN
+                max          30.000000  60000.000000         NaN   NaN    NaN   NaN
+                std          13.123346   6236.095645         NaN   NaN    NaN   NaN
+                missing_pct  25.000000     25.000000        25.0  25.0   25.0  25.0
+                zero_pct     33.333333      0.000000         NaN   NaN    NaN   NaN
+
+        Args:
+            columns: Optional list of column names to include in the summary.
+                If None, all columns will be included.
+
+        Returns:
+            A DatasetSummary object containing separate DataFrames for each column
+            type (numerical, categorical, vector).
+        """
+        import pandas as pd
+
+        from ray.data.stats import (
+            STAT_ORDER,
+            ColumnType,
+            DatasetSummary,
+            feature_aggregators_for_dataset,
+            get_stat_names_for_column_type,
+        )
+
+        # Get aggregators and compute results
+        feature_aggs = feature_aggregators_for_dataset(self, columns=columns)
+        results = self.aggregate(*feature_aggs.aggregators)
+        if not results:
+            return DatasetSummary(
+                numerical=pd.DataFrame(),
+                categorical=pd.DataFrame(),
+                vector=pd.DataFrame(),
+            )
+
+        # Helper to extract stats for a column from aggregation results
+        def _extract_column_stats(column_name, stat_names):
+            """Extract statistics for a single column."""
+            column_stats = {}
+            for stat in stat_names:
+                # Aggregator names follow pattern: "stat_name(column_name)"
+                key = _make_aggregator_name(stat, column_name)
+                if key in results:
+                    column_stats[stat] = results[key]
+            return column_stats
+
+        # Build separate DataFrames for each column type
+        column_data_map = {
+            ColumnType.NUMERICAL: {},
+            ColumnType.CATEGORICAL: {},
+            ColumnType.VECTOR: {},
+        }
+
+        # Process all column types using enum iteration
+        for column_type in ColumnType:
+            stat_names = get_stat_names_for_column_type(column_type)
+            columns_for_type = feature_aggs.columns_by_type[column_type]
+
+            for col in columns_for_type:
+                column_data_map[column_type][col] = _extract_column_stats(
+                    col, stat_names
+                )
+
+        # Create DataFrames for each column type
+        dataframes = {}
+        for column_type in ColumnType:
+            data = column_data_map[column_type]
+            dataframes[column_type] = pd.DataFrame(data) if data else pd.DataFrame()
+            if not dataframes[column_type].empty:
+                dataframes[column_type] = dataframes[column_type].reindex(
+                    [
+                        stat
+                        for stat in STAT_ORDER
+                        if stat in dataframes[column_type].index
+                    ]
+                )
+
+        return DatasetSummary(
+            numerical=dataframes[ColumnType.NUMERICAL],
+            categorical=dataframes[ColumnType.CATEGORICAL],
+            vector=dataframes[ColumnType.VECTOR],
+        )
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI

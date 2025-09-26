@@ -13,6 +13,7 @@ from ray.data.aggregate import (
     ZeroPercentage,
 )
 from ray.data.stats import (
+    STAT_ORDER,
     FeatureAggregators,
     categorical_aggregators,
     feature_aggregators_for_dataset,
@@ -402,6 +403,282 @@ class TestIndividualAggregatorFunctions:
         agg_types = [type(agg) for agg in aggs]
         assert Count in agg_types
         assert MissingValuePercentage in agg_types
+
+
+class TestDatasetSummary:
+    """Test suite for Dataset.summary() method."""
+
+    def _assert_summary_equals(self, data, expected_data, columns=None):
+        """Helper method to assert summary results."""
+        import pandas as pd
+
+        ds = ray.data.from_items(data)
+        actual_df = ds.summary(columns=columns).to_pandas()
+
+        expected_df = pd.DataFrame(expected_data)
+        expected_df.columns = pd.MultiIndex.from_tuples(
+            expected_df.columns, names=["agg", "column"]
+        )
+        expected_df = expected_df.reindex(STAT_ORDER)
+
+        pd.testing.assert_frame_equal(
+            actual_df, expected_df, check_exact=False, rtol=1e-5
+        )
+
+    @pytest.mark.parametrize(
+        "test_case,data,expected_data,columns",
+        [
+            pytest.param(
+                "basic_mixed_types",
+                [
+                    {"age": 25, "name": "Alice", "scores": [1, 2, 3]},
+                    {"age": 30, "name": "Bob", "scores": [4, 5, 6]},
+                    {"age": 35, "name": None, "scores": None},
+                ],
+                {
+                    ("numerical", "age"): {
+                        "count": 3.0,
+                        "mean": 30.0,
+                        "min": 25.0,
+                        "max": 35.0,
+                        "std": 4.08248290463863,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    },
+                    ("categorical", "name"): {
+                        "count": 3.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 33.333333,
+                        "zero_pct": float("nan"),
+                    },
+                    ("vector", "scores"): {
+                        "count": 3.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 33.333333,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                None,
+                id="basic_mixed_types",
+            ),
+            pytest.param(
+                "numerical_only",
+                [{"x": 1, "y": 2.0}, {"x": 3, "y": 4.0}],
+                {
+                    ("numerical", "x"): {
+                        "count": 2.0,
+                        "mean": 2.0,
+                        "min": 1.0,
+                        "max": 3.0,
+                        "std": 1.0,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    },
+                    ("numerical", "y"): {
+                        "count": 2.0,
+                        "mean": 3.0,
+                        "min": 2.0,
+                        "max": 4.0,
+                        "std": 1.0,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    },
+                },
+                None,
+                id="numerical_only",
+            ),
+            pytest.param(
+                "categorical_only",
+                [{"city": "NYC", "country": "USA"}, {"city": "LA", "country": "USA"}],
+                {
+                    ("categorical", "city"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                    ("categorical", "country"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                None,
+                id="categorical_only",
+            ),
+            pytest.param(
+                "vector_only",
+                [{"tags": ["a"], "nums": [1.0]}, {"tags": ["b"], "nums": [2.0]}],
+                {
+                    ("vector", "tags"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                    ("vector", "nums"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                None,
+                id="vector_only",
+            ),
+            pytest.param(
+                "no_missing_values",
+                [{"value": 10}, {"value": 20}, {"value": 30}],
+                {
+                    ("numerical", "value"): {
+                        "count": 3.0,
+                        "mean": 20.0,
+                        "min": 10.0,
+                        "max": 30.0,
+                        "std": 8.16496580927726,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    }
+                },
+                None,
+                id="no_missing_values",
+            ),
+            pytest.param(
+                "some_missing_values",
+                [{"value": 10}, {"value": None}, {"value": 30}],
+                {
+                    ("numerical", "value"): {
+                        "count": 3.0,
+                        "mean": 20.0,
+                        "min": 10.0,
+                        "max": 30.0,
+                        "std": 10.0,
+                        "missing_pct": 33.333333,
+                        "zero_pct": 0.0,
+                    }
+                },
+                None,
+                id="some_missing_values",
+            ),
+            pytest.param(
+                "column_filtering",
+                [
+                    {"age": 25, "salary": 50000, "name": "Alice", "scores": [1, 2]},
+                    {"age": 30, "salary": 60000, "name": "Bob", "scores": [3, 4]},
+                ],
+                {
+                    ("numerical", "age"): {
+                        "count": 2.0,
+                        "mean": 27.5,
+                        "min": 25.0,
+                        "max": 30.0,
+                        "std": 2.5,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    },
+                    ("categorical", "name"): {
+                        "count": 2.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                ["age", "name"],
+                id="column_filtering",
+            ),
+            pytest.param(
+                "edge_cases_with_zeros",
+                [
+                    {"value": 0, "text": "test1"},
+                    {"value": 0, "text": "test2"},
+                    {"value": 100, "text": None},
+                ],
+                {
+                    ("numerical", "value"): {
+                        "count": 3.0,
+                        "mean": 33.333333,
+                        "min": 0.0,
+                        "max": 100.0,
+                        "std": 47.140452079103168,
+                        "missing_pct": 0.0,
+                        "zero_pct": 66.666667,
+                    },
+                    ("categorical", "text"): {
+                        "count": 3.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 33.333333,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                None,
+                id="edge_cases_with_zeros",
+            ),
+            pytest.param(
+                "single_row",
+                [{"value": 42, "text": "hello"}],
+                {
+                    ("numerical", "value"): {
+                        "count": 1.0,
+                        "mean": 42.0,
+                        "min": 42.0,
+                        "max": 42.0,
+                        "std": 0.0,
+                        "missing_pct": 0.0,
+                        "zero_pct": 0.0,
+                    },
+                    ("categorical", "text"): {
+                        "count": 1.0,
+                        "mean": float("nan"),
+                        "min": float("nan"),
+                        "max": float("nan"),
+                        "std": float("nan"),
+                        "missing_pct": 0.0,
+                        "zero_pct": float("nan"),
+                    },
+                },
+                None,
+                id="single_row",
+            ),
+        ],
+    )
+    def test_summary_functionality(self, test_case, data, expected_data, columns):
+        """Test summary functionality with various data scenarios."""
+        self._assert_summary_equals(data, expected_data, columns)
+
+    def test_summary_empty_dataset(self):
+        """Test summary on empty dataset raises ValueError."""
+        ds = ray.data.from_items([])
+
+        with pytest.raises(
+            ValueError,
+            match="Dataset must have a schema to determine numerical columns",
+        ):
+            ds.summary()
 
 
 if __name__ == "__main__":
