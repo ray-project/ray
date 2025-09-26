@@ -123,6 +123,7 @@ class ProcessFD {
                             bool decouple,
                             const ProcessEnvironment &env,
                             bool pipe_to_stdin,
+                            std::function<void(const std::string &)> add_to_cgroup,
                             bool new_process_group) {
     ec = std::error_code();
     intptr_t fd;
@@ -208,6 +209,12 @@ class ProcessFD {
     }
 
     pid = pipefds[1] != -1 ? fork() : -1;
+
+    // The process was forked successfully and we're executing in the child
+    // process.
+    if (pid == 0) {
+      add_to_cgroup(std::to_string(getpid()));
+    }
 
     // If we don't pipe to stdin close pipes that are not needed.
     if (pid <= 0 && pipefds[0] != -1) {
@@ -404,21 +411,22 @@ Process::Process(const char *argv[],
                  bool decouple,
                  const ProcessEnvironment &env,
                  bool pipe_to_stdin,
+                 std::function<void(const std::string &)> add_to_cgroup,
                  bool new_process_group) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
 #ifdef __linux__
   KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
-    ProcessFD procfd =
-        ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin, new_process_group);
+    ProcessFD procfd = ProcessFD::spawnvpe(
+        argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup), new_process_group);
     if (!ec) {
       this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
     }
     return this->GetId();
   });
 #else
-  ProcessFD procfd =
-      ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin, new_process_group);
+  ProcessFD procfd = ProcessFD::spawnvpe(
+      argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup), new_process_group);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
@@ -498,6 +506,7 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
                decouple,
                env,
                /*pipe_to_stdin=*/false,
+               /*add_to_cgroup*/ [](const std::string &) {},
                new_process_group);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
