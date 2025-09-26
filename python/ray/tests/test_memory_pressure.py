@@ -535,25 +535,31 @@ def test_one_actor_max_kill_previous_actor(shutdown_only):
         assert "first_actor" in actors
 
         second_actor = Leaker.options(name="second_actor").remote()
-        ray.get(
-            second_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
-        )
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(
+                second_actor.allocate.remote(
+                    bytes_to_alloc, memory_monitor_refresh_ms * 3
+                )
+            )
 
         actors = ray.util.list_named_actors()
         assert len(actors) == 1, actors
-        assert "first_actor" not in actors
-        assert "second_actor" in actors
+        assert "first_actor" in actors
+        assert "second_actor" not in actors
 
         third_actor = Leaker.options(name="third_actor").remote()
-        ray.get(
-            third_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
-        )
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(
+                third_actor.allocate.remote(
+                    bytes_to_alloc, memory_monitor_refresh_ms * 3
+                )
+            )
 
         actors = ray.util.list_named_actors()
         assert len(actors) == 1
-        assert "first_actor" not in actors
+        assert "first_actor" in actors
         assert "second_actor" not in actors
-        assert "third_actor" in actors
+        assert "third_actor" not in actors
 
 
 if __name__ == "__main__":
