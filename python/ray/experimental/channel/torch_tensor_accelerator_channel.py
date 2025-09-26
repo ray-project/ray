@@ -3,24 +3,24 @@ import logging
 import uuid
 from dataclasses import dataclass
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union, Type
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext, utils
+from ray.experimental.channel.accelerator_context import (
+    AcceleratorContext,
+    is_accelerator_context_registered,
+    register_accelerator_context,
+)
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI
-from ray.experimental.channel.accelerator_context import (
-    AcceleratorContext,
-    register_accelerator_context,
-    is_accelerator_context_registered,
-)
 
 if TYPE_CHECKING:
     import torch
@@ -352,17 +352,17 @@ class TorchTensorAcceleratorChannel(ChannelInterface):
             self._local_channel.close()
 
 
-def _torch_zeros_allocator(
+def _torch_tensor_allocator(
     shape: Union[int, Tuple[int]],
     dtype: "torch.dtype",
 ):
     """
-    Allocate a zeros tensor buffer matching the given metadata.
+    Allocate a tensor buffer matching the given metadata.
     """
     import torch
 
     ctx = ChannelContext.get_current()
-    return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
+    return torch.empty(shape, dtype=dtype, device=ctx.torch_device)
 
 
 class _TorchTensorAcceleratorChannel(ChannelInterface):
@@ -633,7 +633,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
             buf = self._accelerator_group.recv(
-                meta.shape, meta.dtype, self._writer_rank, _torch_zeros_allocator
+                meta.shape, meta.dtype, self._writer_rank, _torch_tensor_allocator
             )
             bufs.append(buf)
         # TODO: Sync CUDA stream after receiving all tensors, instead of after

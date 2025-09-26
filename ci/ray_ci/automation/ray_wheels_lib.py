@@ -1,6 +1,7 @@
-import boto3
-from typing import List
 import os
+from typing import List
+
+import boto3
 
 from ci.ray_ci.utils import logger
 

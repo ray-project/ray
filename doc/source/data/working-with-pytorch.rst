@@ -121,7 +121,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
 
             Column  Type
             ------  ----
-            tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: map_batches
 
@@ -152,7 +152,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
 
             Column  Type
             ------  ----
-            tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
 For more information on transforming data, see :ref:`Transforming data <transforming_data>`.
 
@@ -197,8 +197,8 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
 
             Column             Type
             ------             ----
-            image              numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
-            transformed_image  numpy.ndarray(shape=(3, 10, 10), dtype=float)
+            image              ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+            transformed_image  ArrowTensorTypeV2(shape=(3, 10, 10), dtype=float)
 
     .. tab-item:: torchtext
 
@@ -229,8 +229,8 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
 
             Column          Type
             ------          ----
-            text            <class 'object'>
-            tokenized_text  <class 'object'>
+            text            string
+            tokenized_text  list<item: string>
 
 .. _batch_inference_pytorch:
 
@@ -255,7 +255,7 @@ With Ray Datasets, you can do scalable offline batch inference with Torch models
 
     # Step 2: Define a Predictor class for inference.
     # Use a class to initialize the model just once in `__init__`
-    # and re-use it for inference across multiple batches.
+    # and reuse it for inference across multiple batches.
     class TorchPredictor:
         def __init__(self):
             # Load a dummy neural network.

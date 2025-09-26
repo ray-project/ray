@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Type, Union
+from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -20,7 +21,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
@@ -219,7 +220,7 @@ class MARWILConfig(AlgorithmConfig):
         vf_coeff: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         **kwargs,
-    ) -> "MARWILConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -289,7 +290,7 @@ class MARWILConfig(AlgorithmConfig):
     def evaluation(
         self,
         **kwargs,
-    ) -> "MARWILConfig":
+    ) -> Self:
         """Sets the evaluation related configuration.
         Returns:
             This updated AlgorithmConfig object.
@@ -304,7 +305,7 @@ class MARWILConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
-    def offline_data(self, **kwargs) -> "MARWILConfig":
+    def offline_data(self, **kwargs) -> Self:
 
         super().offline_data(**kwargs)
 
@@ -414,7 +415,7 @@ class MARWILConfig(AlgorithmConfig):
 class MARWIL(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> MARWILConfig:
         return MARWILConfig()
 
     @classmethod
@@ -457,11 +458,13 @@ class MARWIL(Algorithm):
         #  the user that sth. is not right, although it is as
         #  we do not step the env.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            # If we should use an iterator in the learner(s). Note, in case of
+            # multiple learners we must always return a list of iterators.
             return_iterator = (
-                self.config.dataset_num_iters_per_learner > 1
-                if self.config.dataset_num_iters_per_learner
-                else True
+                self.config.num_learners > 0
+                or self.config.dataset_num_iters_per_learner != 1
             )
+
             # Sampling from offline data.
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,

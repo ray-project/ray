@@ -8,6 +8,8 @@ import numpy as np
 import tensorflow as tf
 from typing import List, Tuple
 
+from ray._common.network_utils import build_address
+
 CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
 
@@ -185,7 +187,7 @@ def train_tf_vanilla(
     run_fn_on_actors(actors=actors, fn=lambda: os.environ.pop("OMP_NUM_THREADS", None))
 
     ips_ports = get_ip_port_actors(actors=actors)
-    ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]
+    ip_port_list = [build_address(ip, port) for ip, port in ips_ports]
     ip_port_str = ",".join(ip_port_list)
 
     cmds = [

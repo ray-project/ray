@@ -1,10 +1,9 @@
 """Test the collective reducescatter API on a distributed Ray cluster."""
-import pytest
-import ray
-
 import cupy as cp
+import pytest
 import torch
 
+import ray
 from ray.util.collective.tests.util import (
     create_collective_multigpu_workers,
     init_tensors_for_gather_scatter_multigpu,
@@ -84,7 +83,8 @@ def test_reducescatter_torch_cupy(ray_start_distributed_multigpu_2_nodes_4_gpus)
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

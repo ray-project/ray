@@ -120,12 +120,10 @@ class PlasmaClientInterface {
   /// \param timeout_ms The amount of time in milliseconds to wait before this
   ///        request times out. If this value is -1, then no timeout is set.
   /// \param[out] object_buffers The object results.
-  /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
   virtual Status Get(const std::vector<ObjectID> &object_ids,
                      int64_t timeout_ms,
-                     std::vector<ObjectBuffer> *object_buffers,
-                     bool is_from_worker) = 0;
+                     std::vector<ObjectBuffer> *object_buffers) = 0;
 
   /// Get an experimental mutable object.
   ///
@@ -231,6 +229,11 @@ class PlasmaClientInterface {
   /// \param object_ids The list of IDs of the objects to delete.
   /// \return The return status. If all the objects are non-existent, return OK.
   virtual Status Delete(const std::vector<ObjectID> &object_ids) = 0;
+
+  /// Get the current debug string from the plasma store server.
+  ///
+  /// \return the debug string if successful, otherwise return an error status.
+  virtual StatusOr<std::string> GetMemoryUsage() = 0;
 };
 
 class PlasmaClient : public PlasmaClientInterface {
@@ -264,8 +267,7 @@ class PlasmaClient : public PlasmaClientInterface {
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers,
-             bool is_from_worker) override;
+             std::vector<ObjectBuffer> *object_buffers) override;
 
   Status GetExperimentalMutableObject(
       const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) override;
@@ -285,7 +287,7 @@ class PlasmaClient : public PlasmaClientInterface {
   /// Get the current debug string from the plasma store server.
   ///
   /// \return the debug string if successful, otherwise return an error status.
-  StatusOr<std::string> GetMemoryUsage();
+  StatusOr<std::string> GetMemoryUsage() override;
 
   /// Get the memory capacity of the store.
   ///

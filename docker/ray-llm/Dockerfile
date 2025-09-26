@@ -3,7 +3,7 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-COPY python/requirements_*.txt ./
+COPY python/deplocks/llm/rayllm_*.lock ./
 
 ARG KVER="5.15.0-139-generic"
 ARG ROOT_DIR="/usr/local"
@@ -26,7 +26,9 @@ if [[ "${PYTHON_CODE}" != "py311" ]]; then
     exit 1
 fi
 
-pip install --no-deps -r "requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt"
+uv pip install --system --no-cache-dir --no-deps \
+    --index-strategy unsafe-best-match \
+    -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
@@ -43,7 +45,7 @@ mkdir -p "${TEMP_DIR}"
 
 sudo apt-get update
 # kmod needed by nvidia-installer, pkg-config needed by GDRCopy, librdmacm-dev needed by UCX
-sudo apt-get install -y kmod pkg-config librdmacm-dev
+sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
 (
     echo "Installing GDRCopy"
@@ -74,7 +76,7 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
         --no-questions
 )
 
-UCX_VERSION="1.18.1"
+UCX_VERSION="1.19.0"
 (
     echo "Installing UCX ${UCX_VERSION}"
     cd "${TEMP_DIR}"
@@ -106,7 +108,8 @@ UCX_VERSION="1.18.1"
     sudo ldconfig
 )
 
-NIXL_VERSION="0.3.1"
+# Keep in sync with llm-requirements.txt
+NIXL_VERSION="0.4.1"
 (
     echo "Installing NIXL ${NIXL_VERSION}"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
@@ -118,7 +121,6 @@ NIXL_VERSION="0.3.1"
     cd build
     ninja
     sudo env "PATH=$PATH" ninja install
-    pip install --no-cache-dir "nixl==${NIXL_VERSION}"
 )
 sudo rm -rf "${TEMP_DIR}"
 
@@ -128,9 +130,6 @@ mkdir -p "${EP_TEMP_DIR}"
 NVSHMEM_VERSION="3.2.5-1"
 (
     echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
-
-    # install dependencies if not installed
-    pip3 install cmake
 
     cd "${EP_TEMP_DIR}"
     mkdir -p nvshmem_src
@@ -186,8 +185,11 @@ NVSHMEM_VERSION="3.2.5-1"
 
 rm -rf "${EP_TEMP_DIR}"
 
+sudo rm -rf /var/lib/apt/lists/*
+sudo apt-get clean
+
 EOF
 
-ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"
-ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"

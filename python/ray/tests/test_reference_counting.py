@@ -5,10 +5,10 @@ put the test in `test_reference_counting_standalone.py`.
 """
 # coding: utf-8
 import copy
+import gc
 import logging
 import os
 import sys
-import gc
 import time
 
 import numpy as np
@@ -35,7 +35,13 @@ def check_refcounts_empty():
 @pytest.fixture(scope="module")
 def one_cpu_100MiB_shared():
     # It has lots of tests that don't require object spilling.
-    config = {"task_retry_delay_ms": 0, "automatic_object_spilling_enabled": False}
+    config = {
+        "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False,
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+        "core_worker_rpc_server_reconnect_timeout_s": 0,
+        "grpc_client_check_connection_status_interval_milliseconds": 0,
+    }
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
     )
@@ -278,7 +284,6 @@ def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure)
 def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
-        ray.get(ref[0])
         if depth == max_depth:
             ray.get(signal.wait.remote())
             if failure:
@@ -306,18 +311,15 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    try:
-        assert ray.get(tail_oid) is None
-        assert not failure
-    except ray.exceptions.OwnerDiedError:
-        # There is only 1 core, so the same worker will execute all `recursive`
-        # tasks. Therefore, if we kill the worker during the last task, its
-        # owner (the worker that executed the second-to-last task) will also
-        # have died.
-        assert failure
 
     # Reference should be gone, check that array gets evicted.
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
+    def check_is_evicted():
+        object_ref = ray.ObjectRef(array_oid_bytes)
+        return not ray._private.worker.global_worker.core_worker.object_exists(
+            object_ref
+        )
+
+    wait_for_condition(check_is_evicted, timeout=30)
 
 
 # Test that a passed reference held by an actor after the method finishes

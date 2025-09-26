@@ -23,6 +23,7 @@ from ray.rllib.algorithms.dreamerv3 import dreamerv3
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.env.wrappers.dm_control_wrapper import ActionClip, DMCEnv
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
@@ -67,6 +68,7 @@ class TestDreamerV3(unittest.TestCase):
         num_iterations = 3
 
         for env in [
+            # "DMC/cartpole/swingup",  # causes strange MuJoCo error(s) on CI
             "FrozenLake-v1",
             "CartPole-v1",
             "ale_py:ALE/MsPacman-v5",
@@ -94,6 +96,26 @@ class TestDreamerV3(unittest.TestCase):
                         # GRU, so partial observability is ok.
                         framestack=None,
                         grayscale=False,
+                    )
+
+                tune.register_env("env", env_creator)
+                env = "env"
+
+            elif env.startswith("DMC"):
+                parts = env.split("/")
+                assert len(parts) == 3, (
+                    "ERROR: DMC env must be formatted as 'DMC/[task]/[domain]', e.g. "
+                    f"'DMC/cartpole/swingup'! You provided '{env}'."
+                )
+
+                def env_creator(cfg):
+                    return ActionClip(
+                        DMCEnv(
+                            parts[1],
+                            parts[2],
+                            from_pixels=True,
+                            channels_first=False,
+                        )
                     )
 
                 tune.register_env("env", env_creator)

@@ -1,11 +1,9 @@
 import abc
 import os
+import re
 import subprocess
 import sys
-import re
-
-from typing import List, Tuple, Optional
-
+from typing import List, Optional, Tuple
 
 # Regex pattern to match CUDA copyright header with any version
 _CUDA_COPYRIGHT_PATTERN = r"""==========
@@ -38,11 +36,12 @@ _DOCKER_ENV = [
     "BUILDKITE_COMMIT",
     "BUILDKITE_JOB_ID",
     "BUILDKITE_LABEL",
-    "BUILDKITE_BAZEL_CACHE_URL",
     "BUILDKITE_PIPELINE_ID",
     "BUILDKITE_PULL_REQUEST",
+    "BUILDKITE_BAZEL_CACHE_URL",
+    "BUILDKITE_CACHE_READONLY",
 ]
-_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
+_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
 
 
 class Container(abc.ABC):
@@ -84,6 +83,8 @@ class Container(abc.ABC):
         """
         Get docker image for a particular commit
         """
+        if not _RAYCI_BUILD_ID:
+            return f"{_DOCKER_ECR_REPO}:{self.docker_tag}"
         return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
 
     @abc.abstractmethod

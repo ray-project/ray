@@ -1,31 +1,5 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
-# TODO(eoakes): break up this dependency.
-ray_cc_library(
-    name = "grpc_common_lib",
-    # TODO(core): Both two header files are not needed, keep them there because of circular dependency between raylet and node rpc.
-    hdrs = [
-        "//src/ray/raylet_client:raylet_client.h",
-        "//src/ray/raylet_client:raylet_connection.h",
-    ],
-    visibility = ["//visibility:public"],
-    # TODO(core): These three dependencies come from raylet client, should be able to remove after we split node rpc and raylet client into smaller targets.
-    deps = [
-        "//src/ray/common:network",
-        "//src/ray/common:ray_object",
-        "//src/ray/common:task_common",
-    ] + [
-        ":common",
-        ":event_aggregator_client",
-        ":grpc_client",
-        ":grpc_server",
-        ":metrics_agent_client",
-        ":retryable_grpc_client",
-        ":rpc_chaos",
-        ":server_call",
-    ],
-)
-
 ray_cc_library(
     name = "common",
     srcs = ["common.cc"],
@@ -36,8 +10,12 @@ ray_cc_library(
 ray_cc_library(
     name = "client_call",
     hdrs = ["client_call.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        ":__pkg__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
+        ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -57,6 +35,7 @@ ray_cc_library(
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/util:network_util",
     ],
 )
 
@@ -66,7 +45,6 @@ ray_cc_library(
     hdrs = ["retryable_grpc_client.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":client_call",
         ":grpc_client",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings:str_format",
@@ -76,6 +54,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "metrics_agent_client",
+    srcs = ["metrics_agent_client.cc"],
     hdrs = ["metrics_agent_client.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -83,6 +62,7 @@ ray_cc_library(
         "//src/ray/protobuf:reporter_cc_grpc",
         "//src/ray/protobuf:reporter_cc_proto",
         "//src/ray/util:logging",
+        "//src/ray/util:network_util",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -115,8 +95,9 @@ ray_cc_library(
     name = "server_call",
     srcs = ["server_call.cc"],
     hdrs = ["server_call.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
+        ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -138,6 +119,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/util:network_util",
         "//src/ray/util:thread_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
@@ -145,84 +127,50 @@ ray_cc_library(
     ],
 )
 
-# TODO(edoakes): split client and server targets for each of the below.
-
 ray_cc_library(
-    name = "node_manager_rpc",
-    srcs = ["node_manager/raylet_client_pool.cc"],
+    name = "node_manager_server",
     hdrs = [
-        "node_manager/node_manager_client.h",
         "node_manager/node_manager_server.h",
-        "node_manager/raylet_client_pool.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":grpc_common_lib",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:status",
+        ":grpc_server",
         "//src/ray/protobuf:node_manager_cc_grpc",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
 ray_cc_library(
-    name = "gcs_service_rpc",
+    name = "object_manager_server",
     hdrs = [
-        "gcs_server/gcs_rpc_client.h",
-        "gcs_server/gcs_rpc_server.h",
+        "object_manager_server.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":grpc_common_lib",
         "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/protobuf:autoscaler_cc_grpc",
-        "//src/ray/protobuf:gcs_service_cc_grpc",
-        "//src/ray/pubsub:pubsub_lib",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:btree",
-    ],
-)
-
-ray_cc_library(
-    name = "object_manager_rpc",
-    hdrs = [
-        "object_manager/object_manager_client.h",
-        "object_manager/object_manager_server.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":grpc_common_lib",
-        "//src/ray/common:asio",
-        "//src/ray/common:status",
         "//src/ray/object_manager:object_manager_grpc_client_manager",
         "//src/ray/protobuf:object_manager_cc_grpc",
+        "//src/ray/rpc:grpc_server",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
 ray_cc_library(
-    name = "core_worker_rpc",
-    srcs = [
-        "worker/core_worker_client.cc",
-        "worker/core_worker_client_pool.cc",
-    ],
-    hdrs = [
-        "worker/core_worker_client.h",
-        "worker/core_worker_client_pool.h",
-        "worker/core_worker_server.h",
-    ],
+    name = "utils",
+    hdrs = ["utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
-        ":grpc_common_lib",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/protobuf:core_worker_cc_grpc",
-        "//src/ray/pubsub:pubsub_lib",
-        "//src/ray/raylet_client:raylet_client_lib",
-        "@com_github_grpc_grpc//:grpc++",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "rpc_callback_types",
+    hdrs = ["rpc_callback_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
     ],
 )

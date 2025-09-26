@@ -12,7 +12,7 @@ There are two main concepts in Ray Data:
 * Datasets
 * Blocks
 
-`Dataset` is the main user-facing Python API. It represents a distributed data collection and define data loading and processing operations. Users typically use the API by:
+`Dataset` is the main user-facing Python API. It represents a distributed data collection and defines data loading and processing operations. Users typically use the API by:
 
 1. Create a :class:`Dataset <ray.data.Dataset>` from external storage or in-memory data.
 2. Apply transformations to the data.
@@ -22,7 +22,7 @@ The Dataset API is lazy, meaning that operations aren't executed until you mater
 like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
 and execute operations in a pipelined, streaming fashion.
 
-*Block* is a set of rows representing single partition of the dataset. Blocks, as collection of rows represented by columnar formats (like Arrow)
+*Block* is a set of rows representing single partition of the dataset. Blocks, as a collection of rows represented by columnar formats (like Arrow)
  are the basic unit of data processing in Ray Data:
 
  1. Every dataset is partitioned into a number of blocks, then
@@ -75,7 +75,7 @@ You can inspect the resulting logical plan by printing the dataset:
     +- MapBatches(add_column)
        +- Dataset(schema={...})
 
-When execution begins, Ray Data optimizes the logical plan, then translate it into a physical plan - a series of operators that implement the actual data transformations. During this translation:
+When execution begins, Ray Data optimizes the logical plan, then translates it into a physical plan - a series of operators that implement the actual data transformations. During this translation:
 
 1. A single logical operator may become multiple physical operators. For example, ``ReadOp`` becomes both ``InputDataBuffer`` and ``TaskPoolMapOperator``.
 2. Both logical and physical plans go through optimization passes. For example, ``OperatorFusionRule`` combines map operators to reduce serialization overhead.

@@ -10,10 +10,6 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step_for_test_group
-from ray_release.byod.build import (
-    build_anyscale_base_byod_images,
-    build_anyscale_custom_byod_image,
-)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
@@ -21,7 +17,6 @@ from ray_release.config import (
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.wheels import get_buildkite_repo_branch
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
@@ -79,14 +74,14 @@ def main(
     env = {}
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
-    test_attr_regex_filters = settings["test_attr_regex_filters"]
+    test_filters = settings["test_filters"]
     priority = settings["priority"]
 
     logger.info(
         f"Found the following buildkite pipeline settings:\n\n"
         f"  frequency =               {settings['frequency']}\n"
         f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
-        f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
+        f"  test_filters =            {settings['test_filters']}\n"
         f"  ray_test_repo =           {settings['ray_test_repo']}\n"
         f"  ray_test_branch =         {settings['ray_test_branch']}\n"
         f"  priority =                {settings['priority']}\n"
@@ -111,7 +106,7 @@ def main(
     filtered_tests = filter_tests(
         test_collection,
         frequency=frequency,
-        test_attr_regex_filters=test_attr_regex_filters,
+        test_filters=test_filters,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
         run_unstable_tests=run_unstable_tests,
@@ -123,11 +118,6 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    logger.info("Build anyscale base BYOD images")
-    build_anyscale_base_byod_images(tests)
-    logger.info("Build anyscale custom BYOD images")
-    for test in tests:
-        build_anyscale_custom_byod_image(test)
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
@@ -145,9 +135,15 @@ def main(
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    _, buildkite_branch = get_buildkite_repo_branch()
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
+
+    # Pipe through RAYCI_BUILD_ID from the forge step.
+    # TODO(khluu): convert the steps to rayci steps and stop passing through
+    # RAYCI_BUILD_ID.
+    build_id = os.environ.get("RAYCI_BUILD_ID")
+    if build_id:
+        env["RAYCI_BUILD_ID"] = build_id
 
     steps = get_step_for_test_group(
         grouped_tests,

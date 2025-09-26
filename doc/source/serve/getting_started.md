@@ -6,7 +6,7 @@ This tutorial will walk you through the process of writing and testing a Ray Ser
 
 * convert a machine learning model to a Ray Serve deployment
 * test a Ray Serve application locally over HTTP
-* compose multiple-model machine learning models together into a single application
+* compose multi-model machine learning models together into a single application
 
 We'll use two models in this tutorial:
 
@@ -101,7 +101,7 @@ parameters in the `@serve.deployment` decorator. The example configures a few co
 * `ray_actor_options`: a dictionary containing configuration options for each replica.
     * `num_cpus`: a float representing the logical number of CPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer CPUs than replicas.
     * `num_gpus`: a float representing the logical number of GPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer GPUs than replicas.
-    * `resources`: a dictionary containing other resource requirements for the replicate, such as non-GPU accelerators like HPUs or TPUs.
+    * `resources`: a dictionary containing other resource requirements for the replica, such as non-GPU accelerators like HPUs or TPUs.
 
 All these parameters are optional, so feel free to omit them:
 
@@ -193,12 +193,12 @@ For example, let's deploy a machine learning pipeline with two steps:
 :language: python
 ```
 
-You can copy-paste this script and run it locally. It summarizes the snippet from _A Tale of Two Cities_ to `it was the best of times, it was worst of times .`
+You can copy-paste this script and run it locally. It summarizes the snippet from _A Tale of Two Cities_ to `it was the best of times, it was the worst of times .`
 
 ```console
 $ python summary_model.py
 
-it was the best of times, it was worst of times .
+it was the best of times, it was the worst of times .
 ```
 
 Here's an application that chains the two models together. The graph takes English text, summarizes it, and then translates it:

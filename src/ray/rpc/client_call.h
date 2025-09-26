@@ -30,6 +30,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/thread_utils.h"
 
@@ -57,12 +58,6 @@ class ClientCall {
 };
 
 class ClientCallManager;
-
-/// Represents the client callback function of a particular rpc method.
-///
-/// \tparam Reply Type of the reply message.
-template <class Reply>
-using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
@@ -206,6 +201,10 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
+  /// \param record_stats Whether to record stats for calls made with this client
+  /// \param cluster_id UUID of the destination cluster
+  /// \param num_threads The number of threads used for polling for completion events
+  /// \param call_timeout_ms Set's the default call timeout for requests on this client
   ///
   explicit ClientCallManager(instrumented_io_context &main_service,
                              bool record_stats,
