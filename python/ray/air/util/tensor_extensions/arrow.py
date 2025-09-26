@@ -538,6 +538,10 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             and other.scalar_type == self.scalar_type
         )
 
+    def __ne__(self, other):
+        # NOTE: We override ``__ne__`` to override base class' method
+        return not self.__eq__(other)
+
     def __hash__(self) -> int:
         return hash((self.extension_name, self.scalar_type, self._shape))
 
@@ -1116,6 +1120,10 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
             and other.scalar_type == self.scalar_type
             and other.ndim == self.ndim
         )
+
+    def __ne__(self, other):
+        # NOTE: We override ``__ne__`` to override base class' method
+        return not self.__eq__(other)
 
     def __hash__(self) -> int:
         return hash((self.extension_name, self.scalar_type, self._ndim))
