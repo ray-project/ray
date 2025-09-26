@@ -236,12 +236,11 @@ class CloudFileSystem:
             valid_hostname = hostname_part.endswith(".dfs.core.windows.net")
             expected_domains = ".dfs.core.windows.net"
         elif scheme == "azure":
-            valid_hostname = (
-                hostname_part.endswith(".blob.core.windows.net")
-                or hostname_part.endswith(".dfs.core.windows.net")
-            )
+            valid_hostname = hostname_part.endswith(
+                ".blob.core.windows.net"
+            ) or hostname_part.endswith(".dfs.core.windows.net")
             expected_domains = ".blob.core.windows.net or .dfs.core.windows.net"
-        
+
         if not hostname_part or not valid_hostname:
             raise ValueError(
                 f"Invalid {scheme.upper()} URI format - invalid hostname (must end with {expected_domains}): {object_uri}"
@@ -271,7 +270,7 @@ class CloudFileSystem:
     @staticmethod
     def _create_abfss_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
         """Create an ABFSS filesystem for Azure Data Lake Storage Gen2.
-        
+
         This is a wrapper around _create_azure_filesystem for backward compatibility.
 
         Args:
