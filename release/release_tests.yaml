@@ -96,27 +96,6 @@
   variations:
     - __suffix__: aws
 
-- name: hello_world_custom_byod
-  team: reef
-  group: hello_world_custom_byod
-  frequency: nightly
-  working_dir: hello_world_tests
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_hello_world.sh
-      python_depset: emoji.lock
-    cluster_compute: hello_world_compute_config.yaml
-
-  run:
-    timeout: 1800
-    script: python hello_world_emoji.py
-
-  variations:
-    - __suffix__: aws
-
-
 #######################
 # Cluster scaling tests
 #######################
@@ -174,7 +153,7 @@
 
   run:
     timeout: 4800
-    script: RAY_TRAIN_V2_ENABLED=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -214,14 +193,14 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_cpu_4_aws.yaml
+    cluster_compute: compute_cpu_8_aws.yaml
 
   run:
     timeout: 3600
-    script: RAY_TRAIN_V2_ENABLED=1 python workloads/tune_torch_benchmark.py --num-runs 1 --num-trials 2 --num-workers 2
+    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
 
     wait_for_nodes:
-      num_nodes: 4
+      num_nodes: 8
 
   variations:
     - __suffix__: aws
@@ -229,7 +208,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_cpu_4_gce.yaml
+        cluster_compute: compute_cpu_8_gce.yaml
 
   alert: default
 
@@ -2219,7 +2198,9 @@
 
   team: core
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2292,7 +2273,9 @@
 
   team: core
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2458,7 +2441,9 @@
   stable: false
 
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2483,7 +2468,9 @@
   team: data
 
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -2808,7 +2795,9 @@
   team: core
 
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -3790,6 +3779,28 @@
     timeout: 3600
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+
+# Multi-node TP/PP correctness (Serve): ensure cross-node works (no perf assertions)
+- name: llm_serve_multi_node_tp_pp_correctness
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    # Reuse existing correctness test which parametrizes TP/PP (1,1),(2,1),(1,2),(2,2)
+    script: pytest -vs test_llm_serve_correctness.py
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly

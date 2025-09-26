@@ -506,8 +506,10 @@ class LLMConfig(BaseModelExtended):
                 bundle.setdefault("GPU", 1)
 
                 if self.accelerator_type:
-                    bundle.setdefault(f"accelerator_type:{self.accelerator_type}", 0.001)
-                
+                    bundle.setdefault(
+                        f"accelerator_type:{self.accelerator_type}", 0.001
+                    )
+
                 pg_bundles.append(bundle)
 
             # Merge replica actor resources with the first bundle

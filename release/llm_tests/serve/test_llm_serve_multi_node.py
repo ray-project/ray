@@ -1,10 +1,9 @@
 import pytest
-import time
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 import ray
 from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app, ModelLoadingConfig
+from ray.serve.llm import LLMConfig, ModelLoadingConfig
 
 
 @pytest.fixture(autouse=True)
@@ -45,33 +44,33 @@ def get_llm_config_with_placement_group(
 @pytest.mark.parametrize(
     "tp_size,pp_size,placement_strategy",
     [
-        (2, 4, "PACK"),      # Multi-node PP+TP with PACK
-        (4, 2, "PACK"),      # Multi-node PP+TP with PACK  
-        (8, 1, "SPREAD"),    # Multi-node TP with SPREAD
-        (1, 8, "SPREAD"),    # Multi-node PP with SPREAD
+        (2, 4, "PACK"),  # Multi-node PP+TP with PACK
+        (4, 2, "PACK"),  # Multi-node PP+TP with PACK
+        (8, 1, "SPREAD"),  # Multi-node TP with SPREAD
+        (1, 8, "SPREAD"),  # Multi-node PP with SPREAD
     ],
 )
 def test_llm_serve_custom_placement_group(tp_size, pp_size, placement_strategy):
     """Test Ray Serve LLM with custom placement group configurations."""
     total_gpus = tp_size * pp_size
-    
+
     # Create custom placement group configuration
     placement_group_config = {
         "bundles": [{"GPU": 1, "CPU": 2}] * total_gpus,
         "strategy": placement_strategy,
     }
-    
+
     llm_config = get_llm_config_with_placement_group(
         tensor_parallel_size=tp_size,
         pipeline_parallel_size=pp_size,
         placement_group_config=placement_group_config,
     )
-    
+
     # Verify the configuration is properly set
     assert llm_config.placement_group_config == placement_group_config
     assert llm_config.engine_kwargs["tensor_parallel_size"] == tp_size
     assert llm_config.engine_kwargs["pipeline_parallel_size"] == pp_size
-    
+
     # Test that serve options are generated correctly
     serve_options = llm_config.get_serve_options()
     assert "placement_group_bundles" in serve_options
@@ -95,7 +94,7 @@ def test_llm_serve_default_placement_strategy(tp_size, pp_size):
         pipeline_parallel_size=pp_size,
         placement_group_config=None,  # Use defaults
     )
-    
+
     serve_options = llm_config.get_serve_options()
     # All configurations should default to PACK strategy
     assert serve_options["placement_group_strategy"] == "PACK"
@@ -104,27 +103,26 @@ def test_llm_serve_default_placement_strategy(tp_size, pp_size):
 
 def test_llm_serve_placement_group_validation():
     """Test validation of placement group configurations."""
-    
+
     # Test missing bundles
-    with pytest.raises(ValueError, match="placement_group_config must contain 'bundles'"):
+    with pytest.raises(
+        ValueError, match="placement_group_config must contain 'bundles'"
+    ):
         llm_config = get_llm_config_with_placement_group(
             placement_group_config={"strategy": "PACK"}
         )
         llm_config.get_serve_options()
-    
+
     # Test missing strategy (should default to PACK, not fail)
     llm_config = get_llm_config_with_placement_group(
         placement_group_config={"bundles": [{"GPU": 1}]}
     )
     serve_options = llm_config.get_serve_options()
     assert serve_options["placement_group_strategy"] == "PACK"
-    
+
     # Test multiple GPUs per bundle (should now be allowed)
     llm_config = get_llm_config_with_placement_group(
-        placement_group_config={
-            "bundles": [{"GPU": 2, "CPU": 1}],
-            "strategy": "PACK"
-        }
+        placement_group_config={"bundles": [{"GPU": 2, "CPU": 1}], "strategy": "PACK"}
     )
     serve_options = llm_config.get_serve_options()
     assert serve_options["placement_group_bundles"][0]["GPU"] == 2
@@ -136,7 +134,7 @@ def test_llm_serve_accelerator_type_integration():
         "bundles": [{"GPU": 1, "CPU": 1}] * 4,
         "strategy": "PACK",
     }
-    
+
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="test_model",
@@ -153,9 +151,9 @@ def test_llm_serve_accelerator_type_integration():
         accelerator_type="L4",
         placement_group_config=placement_group_config,
     )
-    
+
     serve_options = llm_config.get_serve_options()
-    
+
     # Check that accelerator type is added to bundles
     for bundle in serve_options["placement_group_bundles"]:
         assert "accelerator_type:L4" in bundle
@@ -179,7 +177,7 @@ def test_llm_serve_bundle_count(tp_size, pp_size, expected_bundles):
         tensor_parallel_size=tp_size,
         pipeline_parallel_size=pp_size,
     )
-    
+
     serve_options = llm_config.get_serve_options()
     assert len(serve_options["placement_group_bundles"]) == expected_bundles
 
@@ -190,7 +188,7 @@ def test_llm_serve_resource_merging():
         "bundles": [{"GPU": 1, "CPU": 1}] * 2,
         "strategy": "PACK",
     }
-    
+
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="test_model",
@@ -211,15 +209,15 @@ def test_llm_serve_resource_merging():
         ),
         placement_group_config=placement_group_config,
     )
-    
+
     serve_options = llm_config.get_serve_options()
-    
+
     # First bundle should have merged resources (replica + child)
     first_bundle = serve_options["placement_group_bundles"][0]
     assert first_bundle["CPU"] >= 2  # At least the replica actor resources
     assert first_bundle["GPU"] >= 1
     assert "memory" in first_bundle
-    
+
     # Other bundles should have the original configuration
     for bundle in serve_options["placement_group_bundles"][1:]:
         assert bundle["CPU"] == 1
@@ -232,7 +230,7 @@ def test_llm_serve_data_parallel_placement_override():
         "bundles": [{"GPU": 1, "CPU": 1}] * 2,
         "strategy": "SPREAD",  # This should be overridden
     }
-    
+
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="test_model",
@@ -249,9 +247,9 @@ def test_llm_serve_data_parallel_placement_override():
         ),
         placement_group_config=placement_group_config,
     )
-    
+
     serve_options = llm_config.get_serve_options()
-    
+
     # Data parallel should override to STRICT_PACK
     assert serve_options["placement_group_strategy"] == "STRICT_PACK"
     assert serve_options["num_replicas"] == 2
