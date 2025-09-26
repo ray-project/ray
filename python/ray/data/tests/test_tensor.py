@@ -1085,7 +1085,6 @@ def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     np.testing.assert_array_equal(concatenated_v2.to_numpy(), expected)
 
 
-
 def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     """Test that ArrowVariableShapedTensorType __eq__ method works correctly
     when concatenating Arrow arrays with variable shaped tensors."""
