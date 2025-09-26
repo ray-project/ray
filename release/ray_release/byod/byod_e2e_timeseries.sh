@@ -6,6 +6,4 @@
 # -o pipefail: Fail if any command in a pipeline fails (not just the last one)
 set -exo pipefail
 
-ls -l
-
-uv pip install -r requirements.txt -c python_depset.lock --system --no-deps --index-strategy unsafe-best-match
+uv pip install -r python_depset.lock --system --no-deps --index-strategy unsafe-best-match
