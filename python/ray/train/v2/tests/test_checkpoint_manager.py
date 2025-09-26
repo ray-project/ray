@@ -202,9 +202,45 @@ async def test_pending_checkpoint_management(tmp_path):
     ]
 
 
-def test_update_checkpoints_with_metrics(tmp_path):
-    # This test verifies that update_checkpoints_with_metrics works regardless of
-    # CheckpointManager's internal state.
+async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path):
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="pending_checkpoint_management_break_ties_by_report_index_experiment",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(),
+    )
+    training_results = create_dummy_training_results(
+        num_results=2, storage_context=storage_context, include_metrics=False
+    )
+    checkpoint_manager.register_checkpoint(training_results[0], True)
+    checkpoint_manager.register_checkpoint(training_results[1], True)
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[0],
+        training_results[1],
+    ]
+    checkpoint_manager.update_checkpoints_with_metrics(
+        {
+            training_results[1].checkpoint: {},
+        }
+    )
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[0],
+        training_results[1],
+    ]
+    checkpoint_manager.update_checkpoints_with_metrics(
+        {
+            training_results[0].checkpoint: {},
+        }
+    )
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[0],
+        training_results[1],
+    ]
+
+
+async def test_pending_checkpoint_management_finalized_checkpoint(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
         experiment_dir_name="pending_checkpoint_management_experiment",
@@ -212,42 +248,27 @@ def test_update_checkpoints_with_metrics(tmp_path):
     checkpoint_manager = CheckpointManager(
         storage_context=storage_context,
         checkpoint_config=CheckpointConfig(
-            num_to_keep=5,
             checkpoint_score_attribute="score",
             checkpoint_score_order="max",
         ),
     )
     training_results = create_dummy_training_results(
-        num_results=3, storage_context=storage_context
+        num_results=2, storage_context=storage_context
     )
-    checkpoint_manager._pending_training_results[
-        training_results[0].checkpoint
-    ] = training_results[0]
-    checkpoint_manager._pending_training_results[
-        training_results[1].checkpoint
-    ] = training_results[1]
-    checkpoint_manager._checkpoint_results.append(training_results[0])
-    checkpoint_manager._checkpoint_results.append(training_results[1])
-    checkpoint_manager._checkpoint_results.append(training_results[2])
-
-    # Verify that update_checkpoints_with_metrics avoids exceptions while updating matches
+    checkpoint_manager.register_checkpoint(training_results[0], False)
+    checkpoint_manager.register_checkpoint(training_results[1], False)
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[0],
+        training_results[1],
+    ]
     checkpoint_manager.update_checkpoints_with_metrics(
         {
             training_results[0].checkpoint: {"score": 100},
-            # ignored because not in _pending_training_results
-            training_results[2].checkpoint: {"score": 300},
         }
     )
-    assert checkpoint_manager._pending_training_results == {
-        training_results[1].checkpoint: training_results[1]
-    }
     assert checkpoint_manager._checkpoint_results == [
-        # score not updated at all so remains lowest
-        training_results[1],
-        # score not updated because not in pending results
-        training_results[2],
-        # highest score after update
         training_results[0],
+        training_results[1],
     ]
 
 

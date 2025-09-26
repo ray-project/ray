@@ -92,6 +92,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # Map from checkpoint to training result
         self._pending_training_results = {}
 
+        # Map from checkpoint to report index. Used to order checkpoints.
+        self._checkpoint_to_report_index = {}
+
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
@@ -114,6 +117,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             is_result_pending: Whether the result is pending or fully ready.
         """
         self._latest_checkpoint_result = checkpoint_result
+        self._checkpoint_to_report_index[
+            checkpoint_result.checkpoint
+        ] = self._current_report_index
 
         if self._checkpoint_config.checkpoint_score_attribute is not None:
             # If we're ordering by a score, insert the checkpoint
@@ -122,6 +128,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 self._checkpoint_results,
                 checkpoint_result,
                 key=self._get_checkpoint_score,
+                checkpoint_to_report_index=self._checkpoint_to_report_index,
             )
         else:
             # If no metric is provided, just append (ordering by time of registration).
@@ -164,6 +171,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 self._checkpoint_results,
                 checkpoint_result,
                 key=self._get_checkpoint_score,
+                checkpoint_to_report_index=self._checkpoint_to_report_index,
             )
             self._pending_training_results.pop(checkpoint)
         self._save_state_and_delete_old_checkpoints()
