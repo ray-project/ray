@@ -156,7 +156,7 @@ bool LeaseSpecification::IsRetriable() const {
   return true;
 }
 
-int32_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
+uint64_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
