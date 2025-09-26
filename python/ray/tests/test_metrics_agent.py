@@ -622,7 +622,7 @@ def test_metrics_export_event_aggregator_agent(
     }
     wait_for_condition(
         lambda: test_case_publisher_specific_metrics_value_correct(
-            "http_svc", expected_http_publisher_metrics_values
+            "http_service", expected_http_publisher_metrics_values
         ),
         timeout=30,
         retry_interval_ms=1000,

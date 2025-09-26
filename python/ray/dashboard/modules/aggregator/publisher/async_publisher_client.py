@@ -40,7 +40,7 @@ class PublishBatch:
 
     # The list of events to publish
     events: list[events_base_event_pb2.RayEvent]
-    # Metadata about the events
+    # dropped task events metadata
     task_events_metadata: Optional[
         events_event_aggregator_service_pb2.TaskEventsMetadata
     ] = None
@@ -56,7 +56,7 @@ class PublisherClientInterface(ABC):
     def __init__(self):
         self._exposable_event_types = None
 
-    def count_num_events_in_batch(self, batch: PublishBatch) -> int:
+    def _count_num_events_in_batch(self, batch: PublishBatch) -> int:
         """Count the number of events in a given batch."""
         return len(batch.events)
 
