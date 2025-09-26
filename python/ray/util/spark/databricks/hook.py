@@ -30,7 +30,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        db_api_entry = get_db_entry_point()
+        db_api_entry = get_databricks_entry_point()
 
         if self.is_global:
             # Disable auto shutdown if
@@ -73,16 +73,16 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             )
             return
 
-            config = get_databricks_auto_shutdown_config()
-            _logger.info(
-                "The Ray cluster will be shut down automatically if you don't run "
-                "commands on the Databricks notebook for "
-                f"{auto_shutdown_minutes} minutes. You can change the "
-                "auto-shutdown minutes by setting "
-                f"'{config['env_var']}' environment variable, setting it to 0 means "
-                "that the Ray cluster keeps running until you manually call "
-                "`ray.util.spark.shutdown_ray_cluster()` or detach Databricks notebook."
-            )
+        config = get_databricks_auto_shutdown_config()
+        _logger.info(
+            "The Ray cluster will be shut down automatically if you don't run "
+            "commands on the Databricks notebook for "
+            f"{auto_shutdown_minutes} minutes. You can change the "
+            "auto-shutdown minutes by setting "
+            f"'{config['env_var']}' environment variable, setting it to 0 means "
+            "that the Ray cluster keeps running until you manually call "
+            "`ray.util.spark.shutdown_ray_cluster()` or detach Databricks notebook."
+        )
 
         def auto_shutdown_watcher():
             auto_shutdown_millis = auto_shutdown_minutes * 60 * 1000

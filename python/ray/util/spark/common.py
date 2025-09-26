@@ -161,9 +161,9 @@ class ResourceDetector:
 
     @staticmethod
     def _get_container_cpu_limit() -> Optional[int]:
-        """Get container CPU limit from cgroup."""
+        """Get container CPU limit from cgroup v1 or v2."""
         try:
-            # Try cgroup v1
+            # Try cgroup v1 first
             quota_file = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
             period_file = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
 
@@ -175,6 +175,18 @@ class ResourceDetector:
 
                 if quota > 0 and period > 0:
                     return int(quota / period)
+
+            # Try cgroup v2
+            cpu_max_file = "/sys/fs/cgroup/cpu.max"
+            if os.path.exists(cpu_max_file):
+                with open(cpu_max_file, "r") as f:
+                    content = f.read().strip()
+                    if content != "max" and " " in content:
+                        quota, period = content.split()
+                        quota, period = int(quota), int(period)
+                        if quota > 0 and period > 0:
+                            return int(quota / period)
+
         except (OSError, ValueError):
             pass
 
@@ -182,9 +194,9 @@ class ResourceDetector:
 
     @staticmethod
     def _get_container_memory_limit() -> Optional[int]:
-        """Get container memory limit from cgroup."""
+        """Get container memory limit from cgroup v1 or v2."""
         try:
-            # Try cgroup v1
+            # Try cgroup v1 first
             limit_file = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
             if os.path.exists(limit_file):
                 with open(limit_file, "r") as f:
@@ -192,6 +204,15 @@ class ResourceDetector:
                     # Check if it's a real limit (not the cgroup max)
                     if limit < (1 << 62):
                         return limit
+
+            # Try cgroup v2
+            memory_max_file = "/sys/fs/cgroup/memory.max"
+            if os.path.exists(memory_max_file):
+                with open(memory_max_file, "r") as f:
+                    content = f.read().strip()
+                    if content != "max":
+                        return int(content)
+
         except (OSError, ValueError):
             pass
 

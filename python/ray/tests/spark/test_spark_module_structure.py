@@ -143,13 +143,12 @@ class TestSparkModuleStructure:
         assert len(temp_dir) > 0
 
         # Should be able to ensure directory exists
-        test_dir = "/tmp/test_ray_spark"
-        result = spark_common.PathUtils.ensure_directory_exists(test_dir)
-        assert isinstance(result, bool)
+        import tempfile
 
-        # Clean up
-        if os.path.exists(test_dir):
-            os.rmdir(test_dir)
+        with tempfile.TemporaryDirectory() as test_dir:
+            result = spark_common.PathUtils.ensure_directory_exists(test_dir)
+            assert result is True
+            assert os.path.isdir(test_dir)
 
 
 if __name__ == "__main__":

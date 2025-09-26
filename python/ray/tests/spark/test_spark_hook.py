@@ -70,7 +70,11 @@ class TestSparkHook:
 
     def test_yarn_environment_detection(self, monkeypatch):
         """Test YARN environment-specific optimizations."""
+        from ray.util.spark import config
+
         monkeypatch.setenv("YARN_CONTAINER_ID", "container_123")
+        config.reset_config()
+        monkeypatch.addfinalizer(config.reset_config)
 
         hook = SparkStartHook(is_global=False)
         env_vars = hook.custom_environment_variables()
@@ -81,23 +85,19 @@ class TestSparkHook:
 
     def test_kubernetes_environment_detection(self, monkeypatch):
         """Test Kubernetes environment-specific optimizations."""
-        # Mock Kubernetes serviceaccount directory
-        k8s_dir = "/tmp/test_k8s_serviceaccount"
-        os.makedirs(k8s_dir, exist_ok=True)
+        from ray.util.spark import config
 
-        try:
-            monkeypatch.setattr("os.path.exists", lambda path: path == k8s_dir)
+        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc")
+        config.reset_config()
+        monkeypatch.addfinalizer(config.reset_config)
 
-            hook = SparkStartHook(is_global=False)
-            env_vars = hook.custom_environment_variables()
+        hook = SparkStartHook(is_global=False)
+        env_vars = hook.custom_environment_variables()
 
-            # Should include Kubernetes-specific optimizations
-            assert "RAY_ENABLE_KUBERNETES" in env_vars
-            assert "RAY_USAGE_STATS_ENABLED" in env_vars
-            assert env_vars["RAY_USAGE_STATS_ENABLED"] == "0"
-        finally:
-            if os.path.exists(k8s_dir):
-                os.rmdir(k8s_dir)
+        # Should include Kubernetes-specific optimizations
+        assert "RAY_ENABLE_KUBERNETES" in env_vars
+        assert "RAY_USAGE_STATS_ENABLED" in env_vars
+        assert env_vars["RAY_USAGE_STATS_ENABLED"] == "0"
 
     def test_dashboard_creation_notification(self, capsys):
         """Test enhanced dashboard creation notification."""

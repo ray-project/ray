@@ -87,13 +87,17 @@ def get_spark_application_driver_host(spark=None):
     return spark.sparkContext.getConf().get("spark.driver.host", "localhost")
 
 
-def get_random_unused_port(host="localhost", min_port=1024, max_port=65535):
+def get_random_unused_port(
+    host="localhost", min_port=1024, max_port=65535, exclude_list=None
+):
     """Get a random unused port."""
-    import socket
     import random
 
+    exclude_list = exclude_list or []
     for _ in range(100):  # Try up to 100 times
         port = random.randint(min_port, max_port)
+        if port in exclude_list:
+            continue
         if not is_port_in_use(host, port):
             return port
 
@@ -112,13 +116,10 @@ def is_port_in_use(host, port):
             return True
 
 
-def _wait_service_up(address, timeout=30):
+def _wait_service_up(host, port, timeout):
     """Wait for service to be available."""
     import socket
     import time
-
-    host, port = address.split(":")
-    port = int(port)
 
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -284,9 +285,25 @@ def _get_local_ray_node_slots(num_cpus, num_gpus, num_cpus_per_node, num_gpus_pe
     return num_ray_node_slots
 
 
-def get_max_num_concurrent_tasks(spark_context):
+def get_max_num_concurrent_tasks(spark_context, resource_profile=None):
     """Get maximum number of concurrent tasks in Spark."""
-    return spark_context.defaultParallelism
+    # pylint: disable=protected-access
+    ssc = spark_context._jsc.sc()
+    if resource_profile is not None:
+
+        def dummy_mapper(_):
+            pass
+
+        # Run a dummy spark job to register the resource profile
+        spark_context.parallelize([1], 1).withResources(resource_profile).map(
+            dummy_mapper
+        ).collect()
+
+        return ssc.maxNumConcurrentTasks(resource_profile._java_resource_profile)
+    else:
+        return ssc.maxNumConcurrentTasks(
+            ssc.resourceProfileManager().defaultResourceProfile()
+        )
 
 
 def get_configured_spark_executor_memory_bytes(spark_context):
