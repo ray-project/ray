@@ -70,7 +70,7 @@ class RandomizeBlocks(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class RandomShuffle(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
+class RandomShuffle(AbstractAllToAll):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -90,10 +90,6 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
-
-    def get_partition_keys(self) -> Optional[List[str]]:
-        """RandomShuffle has no partition keys since it shuffles randomly."""
-        return None
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)

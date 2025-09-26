@@ -4,12 +4,10 @@ import logging
 from ray.data import DataContext
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorContainsPartitionKeys,
     LogicalPlan,
     Operator,
     Rule,
-)
-from ray.data._internal.logical.interfaces.logical_operator import (
-    LogicalOperatorContainsPartitionKeys,
 )
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Aggregate,
@@ -93,7 +91,7 @@ class ShuffleFusion(Rule):
                 )
                 if parent_op._num_outputs == child_op._num_outputs and join_keys_match:
                     _disconnect_op(parent_op)
-                    return cp.copy(child_op)
+                    return child_op
 
             # Key-based fusion cases - Repartition with Aggregate
             elif isinstance(parent_op, Repartition) and isinstance(child_op, Aggregate):
