@@ -445,6 +445,9 @@ class DataContext:
             later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
+        concurrency_cap_on_preserve_order_multiplier: Multiplier for concurrency caps when
+            preserve_order is enabled. A lower value reduces concurrency more aggressively
+            to prevent out-of-order task completion. Default is 0.6 (40% reduction).
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -578,6 +581,11 @@ class DataContext:
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
     )
+
+    # Multiplier for concurrency caps when preserve_order is enabled.
+    # A lower value reduces concurrency more aggressively to prevent out-of-order task completion.
+    # Default is 0.6 (40% reduction).
+    concurrency_cap_on_preserve_order_multiplier: float = 0.6
 
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
