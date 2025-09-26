@@ -35,39 +35,53 @@ def exec_cmd(
     cmd,
     *,
     extra_env=None,
-    capture_stdout=True,
+    synchronous=True,
     **kwargs,
 ):
-    """Execute command with proper error handling."""
+    """
+    Execute command with proper error handling.
+
+    Args:
+        cmd: Command to execute
+        extra_env: Additional environment variables
+        synchronous: If True, wait for completion and raise on failure.
+                    If False, return (process, tail_output_deque) for async handling.
+        **kwargs: Additional arguments passed to subprocess.Popen
+
+    Returns:
+        None if synchronous=True and successful
+        (process, tail_output_deque) if synchronous=False
+    """
+    # Prepare environment
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
 
-    if capture_stdout:
-        kwargs.setdefault("stdout", subprocess.PIPE)
-        kwargs.setdefault("stderr", subprocess.STDOUT)
-        kwargs.setdefault("text", True)
+    # Set up subprocess with proper output capture
+    kwargs.setdefault("stdout", subprocess.PIPE)
+    kwargs.setdefault("stderr", subprocess.STDOUT)
+    kwargs.setdefault("text", True)
 
-        tail_output_deque = collections.deque(maxlen=100)
-        popen = subprocess.Popen(cmd, env=env, **kwargs)
+    process = subprocess.Popen(cmd, env=env, **kwargs)
+    tail_output_deque = collections.deque(maxlen=100)
 
-        for line in iter(popen.stdout.readline, ""):
+    def redirect_log_thread_fn():
+        for line in process.stdout:
+            # Collect tail logs
             tail_output_deque.append(line)
+            # Redirect to stdout
+            sys.stdout.write(line)
 
-        return_code = popen.wait()
+    threading.Thread(target=redirect_log_thread_fn, args=()).start()
 
-        if return_code != 0:
-            raise RuntimeError(
-                gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque)
-            )
-    else:
-        popen = subprocess.Popen(cmd, env=env, **kwargs)
-        return_code = popen.wait()
+    if not synchronous:
+        return process, tail_output_deque
 
-        if return_code != 0:
-            raise RuntimeError(
-                f"Command failed with return code {return_code}: {' '.join(cmd)}"
-            )
+    return_code = process.wait()
+    if return_code != 0:
+        raise RuntimeError(
+            gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque)
+        )
 
 
 def get_spark_session():
@@ -306,18 +320,32 @@ def get_max_num_concurrent_tasks(spark_context, resource_profile=None):
         )
 
 
-def get_configured_spark_executor_memory_bytes(spark_context):
+def get_configured_spark_executor_memory_bytes(spark):
     """Get configured Spark executor memory in bytes."""
-    executor_memory = spark_context.getConf().get("spark.executor.memory", "1g")
-
-    # Parse memory string (e.g., "2g", "1024m")
-    if executor_memory.endswith("g"):
-        return int(executor_memory[:-1]) * 1024**3
-    elif executor_memory.endswith("m"):
-        return int(executor_memory[:-1]) * 1024**2
-    elif executor_memory.endswith("k"):
-        return int(executor_memory[:-1]) * 1024
+    # Handle both SparkSession and SparkContext for backward compatibility
+    if hasattr(spark, "conf"):
+        # SparkSession
+        executor_memory = spark.conf.get("spark.executor.memory", "1g").lower()
     else:
+        # SparkContext
+        executor_memory = spark.getConf().get("spark.executor.memory", "1g").lower()
+
+    # Parse memory string (e.g., "2g", "1024m", "2G", "1024M")
+    value_str = executor_memory.lower()
+    value_num = int(value_str[:-1])
+    value_unit = value_str[-1]
+
+    unit_map = {
+        "k": 1024,
+        "m": 1024 * 1024,
+        "g": 1024 * 1024 * 1024,
+        "t": 1024 * 1024 * 1024 * 1024,
+    }
+
+    if value_unit in unit_map:
+        return value_num * unit_map[value_unit]
+    else:
+        # No unit specified, assume bytes
         return int(executor_memory)
 
 
