@@ -937,11 +937,14 @@ def start(
                     " flag of `ray start` command."
                 )
 
-        # In block mode, explicitly couple raylet lifetime to this CLI process.
-        if block:
-            os.environ["RAY_ENABLE_RAYLET_PIPE_STDIN"] = "1"
+        # In block mode, explicitly couple raylet lifetime to this CLI process by
+        # passing a stdin pipe; avoid mutating process env (env remains the default).
         node = ray._private.node.Node(
-            ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=True,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            pipe_stdin_for_raylet=block,
         )
 
         bootstrap_address = node.address
@@ -1096,11 +1099,13 @@ def start(
         )
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-
-        if block:
-            os.environ["RAY_ENABLE_RAYLET_PIPE_STDIN"] = "1"
+        # For non-head local start in block mode, couple raylet lifetime similarly.
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            pipe_stdin_for_raylet=block,
         )
         temp_dir = node.get_temp_dir_path()
 

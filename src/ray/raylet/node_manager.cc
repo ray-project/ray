@@ -1435,9 +1435,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if (RayConfig::instance().process_group_cleanup_enabled()) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        ScheduleProcessGroupCleanup(
-            io_service_, worker->GetProcess().GetId(), *saved, worker->WorkerId(),
-            "DisconnectClient");
+        ScheduleProcessGroupCleanup(io_service_,
+                                    worker->GetProcess().GetId(),
+                                    *saved,
+                                    worker->WorkerId(),
+                                    "DisconnectClient");
       }
     }
 #endif

@@ -1579,6 +1579,8 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    *,
+    pipe_stdin: Optional[bool] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1655,6 +1657,11 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
+        pipe_stdin: If True, pass a pipe to raylet's stdin so it can detect
+            parent-death via EOF. If None, defaults to the environment variable
+            RAY_ENABLE_RAYLET_PIPE_STDIN == "1". Prefer passing this explicitly in
+            safe contexts (e.g., `ray start --block`, local `ray.init()`), and leave it
+            unset elsewhere to avoid premature shutdowns when the launcher exits.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1956,7 +1963,11 @@ def start_raylet(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
-        pipe_stdin=(os.environ.get("RAY_ENABLE_RAYLET_PIPE_STDIN") == "1"),
+        pipe_stdin=(
+            pipe_stdin
+            if pipe_stdin is not None
+            else (os.environ.get("RAY_ENABLE_RAYLET_PIPE_STDIN") == "1")
+        ),
         env_updates=env_updates,
     )
     return process_info

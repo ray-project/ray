@@ -285,9 +285,7 @@ class ProcessFD {
                     err,
                     buf);
           } else {
-            dprintf(STDERR_FILENO,
-                    "ray: setpgrp() failed in child: errno=%d\n",
-                    err);
+            dprintf(STDERR_FILENO, "ray: setpgrp() failed in child: errno=%d\n", err);
           }
 #endif
         }
@@ -434,16 +432,26 @@ Process::Process(const char *argv[],
   (void)io_service;
 #ifdef __linux__
   KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
-    ProcessFD procfd = ProcessFD::spawnvpe(
-        argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup), new_process_group);
+    ProcessFD procfd = ProcessFD::spawnvpe(argv,
+                                           ec,
+                                           decouple,
+                                           env,
+                                           pipe_to_stdin,
+                                           std::move(add_to_cgroup),
+                                           new_process_group);
     if (!ec) {
       this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
     }
     return this->GetId();
   });
 #else
-  ProcessFD procfd = ProcessFD::spawnvpe(
-      argv, ec, decouple, env, pipe_to_stdin, std::move(add_to_cgroup), new_process_group);
+  ProcessFD procfd = ProcessFD::spawnvpe(argv,
+                                         ec,
+                                         decouple,
+                                         env,
+                                         pipe_to_stdin,
+                                         std::move(add_to_cgroup),
+                                         new_process_group);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
@@ -517,14 +525,15 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(),
-               NULL,
-               error,
-               decouple,
-               env,
-               /*pipe_to_stdin=*/false,
-               /*add_to_cgroup*/ [](const std::string &) {},
-               new_process_group);
+  Process proc(
+      &*argv.begin(),
+      NULL,
+      error,
+      decouple,
+      env,
+      /*pipe_to_stdin=*/false,
+      /*add_to_cgroup*/ [](const std::string &) {},
+      new_process_group);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
     file << proc.GetId() << std::endl;

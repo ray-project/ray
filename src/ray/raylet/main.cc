@@ -496,7 +496,7 @@ int main(int argc, char *argv[]) {
 #if !defined(_WIN32)
     RAY_LOG(INFO) << "Per-worker process group cleanup is "
                   << (RayConfig::instance().process_group_cleanup_enabled() ? "ENABLED"
-                                                                             : "DISABLED");
+                                                                            : "DISABLED");
 #else
     RAY_LOG(INFO) << "Per-worker process group cleanup is not supported on Windows.";
 #endif
