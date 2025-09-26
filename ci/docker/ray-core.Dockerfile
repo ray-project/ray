@@ -35,5 +35,4 @@ EOF
 
 FROM scratch
 
-COPY --from=builder /home/forge/ray_pkg.zip /ray_pkg.zip
-COPY --from=builder /home/forge/ray_py_proto.zip /ray_py_proto.zip
+COPY --from=builder /home/forge/ray_pkg.zip /home/forge/ray_py_proto.zip /
