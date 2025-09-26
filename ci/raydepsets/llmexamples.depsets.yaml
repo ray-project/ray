@@ -1,0 +1,19 @@
+build_arg_sets:
+  py311_cu124:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+    CUDA_VERSION: "cu124"
+
+
+depsets:
+  - name: e2e_timeseries_compiled_depset_py${PYTHON_SHORT}_${CUDA_VERSION}
+    requirements:
+      - doc/source/ray-overview/examples/e2e-timeseries/requirements.txt
+      - python/requirements.txt
+    output: release/ray_release/byod/e2e_timeseries_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
+    operation: compile
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
+    build_arg_sets:
+      - py311_cu124
