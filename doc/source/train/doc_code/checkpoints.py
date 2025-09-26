@@ -440,9 +440,7 @@ with checkpoint.as_directory() as checkpoint_dir:
 def train_fn(config):
     ...
     metrics = {...}
-    checkpoint = ...
-    # These report calls are equivalent:
-    train.report(metrics, checkpoint=checkpoint)
+    checkpoint = Checkpoint.from_directory(local_dir)
     train.report(
         metrics,
         checkpoint=checkpoint,
@@ -456,7 +454,7 @@ def train_fn(config):
 def train_fn(config):
     ...
     metrics = {...}
-    checkpoint = ...
+    checkpoint = Checkpoint.from_directory(local_dir)
     train.report(
         metrics,
         checkpoint=checkpoint,
@@ -467,15 +465,31 @@ def train_fn(config):
 # __checkpoint_upload_mode_async_end__
 
 # __checkpoint_upload_mode_no_upload_start__
+from s3torchconnector.dcp import S3StorageWriter
+from torch.distributed.checkpoint.state_dict_saver import save
+from torch.distributed.checkpoint.state_dict import get_state_dict
+
 def train_fn(config):
     ...
-    metrics = {...}
-    checkpoint = ...
-    train.report(
-        metrics,
-        checkpoint=checkpoint,
-        checkpoint_upload_mode=train.CheckpointUploadMode.NO_UPLOAD,
-    )
-
+    for epoch in range(config["num_epochs"]):
+        # Directly upload checkpoint to s3 with Torch
+        model, optimizer = ...
+        storage_context = ray.train.get_context().get_storage()
+        checkpoint_path = f"s3://{storage_context.build_checkpoint_path_from_name(str(epoch))}"
+        storage_writer = S3StorageWriter(region='us-west-2', path=checkpoint_path)
+        model_dict, opt_dict = get_state_dict(model=model, optimizers=optimizer)
+        save(
+            {"model": model_dict, "opt": opt_dict},
+            storage_writer=storage_writer,
+        )
+        
+        # Report that checkpoint to Ray Train
+        metrics = {...}
+        checkpoint = Checkpoint(checkpoint_path)
+        train.report(
+            metrics,
+            checkpoint=checkpoint,
+            checkpoint_upload_mode=train.CheckpointUploadMode.NO_UPLOAD,
+        )
 
 # __checkpoint_upload_mode_no_upload_end__
