@@ -611,6 +611,36 @@ EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     stack=False,
 )
 
+EXTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
+    id=57,
+    title="Operator External OutQueue Size (Blocks)",
+    description="Number of blocks in operator's external output queue",
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_num_external_outqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Number of Blocks: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+EXTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
+    id=58,
+    title="Operator External OutQueue Size (bytes)",
+    description="Byte size of blocks in operator's external output queue",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_num_external_outqueue_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Number of Bytes: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 # Combined Inqueue and Outqueue Blocks Panel
 COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL = Panel(
     id=56,
@@ -620,6 +650,21 @@ COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL = Panel(
     targets=[
         Target(
             expr='sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}, operator=~"$Operator"}} + ray_data_num_external_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Combined Blocks: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+COMBINED_OUTQUEUE_BLOCKS_PANEL = Panel(
+    id=59,
+    title="Operator Combined Internal + External Outqueue Size (Blocks)",
+    description="Total number of blocks in operator's internal + external output queue.",
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters}, operator=~"$Operator"}} + ray_data_num_external_outqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
             legend="Combined Blocks: {{dataset}}, {{operator}}",
         )
     ],
@@ -845,6 +890,7 @@ DATA_GRAFANA_ROWS = [
             OBJECT_STORE_MEMORY_PANEL,
             RUNNING_TASKS_PANEL,
             COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL,
+            COMBINED_OUTQUEUE_BLOCKS_PANEL,
         ],
         collapsed=False,
     ),
@@ -881,6 +927,8 @@ DATA_GRAFANA_ROWS = [
         panels=[
             INTERNAL_OUTQUEUE_BLOCKS_PANEL,
             INTERNAL_OUTQUEUE_BYTES_PANEL,
+            EXTERNAL_OUTQUEUE_BLOCKS_PANEL,
+            EXTERNAL_OUTQUEUE_BYTES_PANEL,
             MAX_BYTES_TO_READ_PANEL,
         ],
         collapsed=True,

@@ -105,6 +105,8 @@ def gen_expected_metrics(
             "'rows_outputs_of_finished_tasks': N",
             "'num_external_inqueue_blocks': Z",
             "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -168,6 +170,8 @@ def gen_expected_metrics(
             "'rows_outputs_of_finished_tasks': Z",
             "'num_external_inqueue_blocks': Z",
             "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -712,6 +716,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      rows_outputs_of_finished_tasks: N,\n"
         "      num_external_inqueue_blocks: Z,\n"
         "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -844,6 +850,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      rows_outputs_of_finished_tasks: N,\n"
         "      num_external_inqueue_blocks: Z,\n"
         "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -931,6 +939,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            rows_outputs_of_finished_tasks: N,\n"
         "            num_external_inqueue_blocks: Z,\n"
         "            num_external_inqueue_bytes: Z,\n"
+        "            num_external_outqueue_blocks: Z,\n"
+        "            num_external_outqueue_bytes: Z,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"

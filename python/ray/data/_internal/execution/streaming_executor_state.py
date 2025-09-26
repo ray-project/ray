@@ -309,6 +309,8 @@ class OpState:
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
+        self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
+        self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -355,6 +357,9 @@ class OpState:
                 self.op.add_input(ref, input_index=i)
                 self.op.metrics.num_external_inqueue_bytes -= ref.size_bytes()
                 self.op.metrics.num_external_inqueue_blocks -= len(ref.blocks)
+                input_op = self.op.input_dependencies[i]
+                input_op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                input_op.metrics.num_external_inqueue_bytes -= ref.size_bytes()
                 return
 
         assert False, "Nothing to dispatch"
@@ -377,6 +382,9 @@ class OpState:
                 raise StopIteration()
             ref = self.output_queue.pop(output_split_idx)
             if ref is not None:
+                # Update outqueue metrics when blocks are removed from this operator's outqueue
+                self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
                 return ref
             time.sleep(0.01)
 
