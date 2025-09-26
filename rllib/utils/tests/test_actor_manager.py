@@ -423,6 +423,17 @@ class TestActorManager(unittest.TestCase):
             else:
                 raise ValueError("result is not str or int")
 
+    def test_foreach_actor_async_fetch_ready(self):
+        """Test foreach_actor_async_fetch_ready works."""
+        actors = [Actor.remote(i, maybe_crash=False) for i in range(2)]
+        manager = FaultTolerantActorManager(actors=actors)
+        manager.foreach_actor_async_fetch_ready(lambda w: w.ping(), tag="ping")
+        time.sleep(5)
+        results = manager.foreach_actor_async_fetch_ready(
+            lambda w: w.ping(), tag="ping"
+        )
+        self.assertEqual(len(results), 2)
+
 
 if __name__ == "__main__":
     import pytest
