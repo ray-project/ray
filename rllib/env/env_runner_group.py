@@ -594,7 +594,6 @@ class EnvRunnerGroup:
             func,
             kwargs=kwargs,
             tag=tag,
-            local_env_runner=local_env_runner,
             healthy_only=healthy_only,
             remote_worker_ids=remote_worker_ids,
         )
@@ -901,7 +900,6 @@ class EnvRunnerGroup:
         tag: Optional[str] = None,
         *,
         kwargs=None,
-        local_env_runner: bool = False,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
     ) -> int:
@@ -929,25 +927,6 @@ class EnvRunnerGroup:
              made b/c a remote EnvRunner already had its
              `max_remote_requests_in_flight_per_actor` counter reached for this tag.
         """
-        # Handle local EnvRunner if requested
-        if local_env_runner and self.local_env_runner is not None:
-            # For local runner, we need to execute synchronously and store the result
-            # This is a limitation of the async pattern - local calls can't be truly async
-            if isinstance(func, str):
-                if kwargs is None:
-                    local_result = getattr(self.local_env_runner, func)()
-                else:
-                    local_result = getattr(self.local_env_runner, func)(**kwargs)
-            else:
-                local_result = func(self.local_env_runner)
-
-            # Store the local result with a special local tag for retrieval
-            local_tag = f"{tag}_local" if tag else "local"
-            if not hasattr(self, "_local_async_results"):
-                self._local_async_results = {}
-            self._local_async_results[local_tag] = [
-                (0, local_result)
-            ]  # Use worker ID 0 for local
 
         return self._worker_manager.foreach_actor_async(
             func,
@@ -987,18 +966,6 @@ class EnvRunnerGroup:
             A list of results successfully returned from outstanding remote calls,
             paired with the indices of the callee workers.
         """
-        # Collect results from both remote and local calls
-        all_results = []
-
-        # Handle local results if the tag matches
-        if hasattr(self, "_local_async_results"):
-            local_tag = f"{tags}_local" if tags else "local"
-            if local_tag in self._local_async_results:
-                local_results = self._local_async_results[local_tag]
-                all_results.extend(local_results)
-                # Remove processed local results
-                del self._local_async_results[local_tag]
-
         # Get remote results
         remote_results = self._worker_manager.fetch_ready_async_reqs(
             tags=tags,
@@ -1012,12 +979,7 @@ class EnvRunnerGroup:
             ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
 
-        # Add remote results
-        all_results.extend(
-            [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
-        )
-
-        return all_results
+        return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
     @OldAPIStack
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:

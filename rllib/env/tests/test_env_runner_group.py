@@ -93,7 +93,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
         ws.stop()
 
     def test_foreach_env_runner_async_fetch_ready(self):
-        """Test to make sure basic asychronous calls to remote workers work."""
+        """Test to make sure that test_foreach_env_runner_async_fetch_ready works."""
         ws = EnvRunnerGroup(
             config=(
                 PPOConfig()
