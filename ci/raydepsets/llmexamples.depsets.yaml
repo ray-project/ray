@@ -1,0 +1,20 @@
+build_arg_sets:
+  cu124_py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+    CUDA_VERSION: "cu124"
+
+depsets:
+########## LLM EXAMPLES ##########
+# Subset (compile) from RayLLM dependencies. (to get rid of vllm constraint)
+  - name: e2e_multimodal_ai_workloads_${PYTHON_SHORT}_${CUDA_VERSION}
+    operation: compile
+    requirements:
+      - python/requirements.txt
+      - doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/requirements.txt
+    output: release/ray_release/byod/e2e_multimodal_ai_workloads_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - cu124_py312
