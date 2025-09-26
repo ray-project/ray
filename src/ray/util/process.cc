@@ -267,12 +267,29 @@ class ProcessFD {
         if (setpgrp() == -1) {
           // If this fails, the process remains in the parent's process group.
           // Parent-side cleanup logic revalidates PGIDs to avoid mis-signaling.
+          int err = errno;
+#if defined(__GLIBC__)
+          // GNU-specific strerror_r returns char*.
           char buf[128];
-          const char *msg = strerror_r(errno, buf, sizeof(buf)) ? "setpgrp failed" : buf;
+          char *msg = strerror_r(err, buf, sizeof(buf));
           dprintf(STDERR_FILENO,
                   "ray: setpgrp() failed in child: errno=%d (%s)\n",
-                  errno,
-                  msg);
+                  err,
+                  msg ? msg : "unknown error");
+#else
+          // POSIX strerror_r returns int and fills buffer.
+          char buf[128];
+          if (strerror_r(err, buf, sizeof(buf)) == 0) {
+            dprintf(STDERR_FILENO,
+                    "ray: setpgrp() failed in child: errno=%d (%s)\n",
+                    err,
+                    buf);
+          } else {
+            dprintf(STDERR_FILENO,
+                    "ray: setpgrp() failed in child: errno=%d\n",
+                    err);
+          }
+#endif
         }
       }
 #endif

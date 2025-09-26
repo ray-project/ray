@@ -147,8 +147,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options.debug_source;
 
   RAY_LOG(DEBUG).WithField(worker_id) << "Constructing CoreWorker";
-  // Subreaper is deprecated; per-worker process groups are used instead. Intentionally
-  // do nothing here even if the subreaper flag is set.
 
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options),

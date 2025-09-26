@@ -483,10 +483,7 @@ int main(int argc, char *argv[]) {
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
-    // Core worker tries to kill child processes when it exits. But they can't do
-    // it perfectly: if the core worker is killed by SIGKILL, the child processes
-    // leak. So in raylet we also kill child processes via Linux subreaper.
-    // Only works on Linux >= 3.4.
+    // Subreaper is deprecated and ignored; per-worker process groups handle cleanup.
     if (RayConfig::instance()
             .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
       RAY_LOG(WARNING)
@@ -494,9 +491,15 @@ int main(int argc, char *argv[]) {
           << "Ray uses per-worker process groups for cleanup. "
           << "If you rely on subreaper semantics, consider using per-worker PGs "
           << "or intentionally detaching with setsid().";
-    } else {
-      RAY_LOG(INFO) << "Using per-worker process group cleanup.";
     }
+
+#if !defined(_WIN32)
+    RAY_LOG(INFO) << "Per-worker process group cleanup is "
+                  << (RayConfig::instance().process_group_cleanup_enabled() ? "ENABLED"
+                                                                             : "DISABLED");
+#else
+    RAY_LOG(INFO) << "Per-worker process group cleanup is not supported on Windows.";
+#endif
 
     // Parse the worker port list.
     std::istringstream worker_port_list_string(worker_port_list);
