@@ -1059,13 +1059,16 @@ def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     assert len(concatenated) == 5
     assert concatenated.type == tensor_type_v1
 
+    expected = np.vstack([first.to_numpy(), second.to_numpy()])
+    np.testing.assert_array_equal(concatenated.to_numpy(), expected)
+
     # Test ArrowTensorTypeV2
     tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
 
     DataContext.get_current().use_arrow_tensor_v2 = True
 
-    first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64) * 3)
-    second = ArrowTensorArray.from_numpy(np.ones((3, 2, 3), dtype=np.int64) * 4)
+    first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
+    second = ArrowTensorArray.from_numpy(np.ones((3, 2, 3), dtype=np.int64))
 
     assert first.type == second.type
     # Assert commutation
@@ -1076,6 +1079,11 @@ def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     concatenated_v2 = pa.concat_arrays([first, second])
     assert len(concatenated_v2) == 5
     assert concatenated_v2.type == tensor_type_v2
+
+    # Assert on the full concatenated array
+    expected = np.vstack([first.to_numpy(), second.to_numpy()])
+    np.testing.assert_array_equal(concatenated_v2.to_numpy(), expected)
+
 
 
 def test_arrow_variable_shaped_tensor_type_eq_with_concat():
@@ -1106,7 +1114,6 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     assert len(concatenated) == 4
     assert concatenated.type == var_tensor_type
 
-    # Verify the concatenated data is correct
     result = concatenated.to_numpy()
     expected_shapes = [(2, 2), (2, 3), (1, 4), (3, 1)]
     for i, expected_shape in enumerate(expected_shapes):
