@@ -142,7 +142,7 @@ mkdir -p /tmp/supervisord
 
 EOF
 
-ENV PATH="/home/ray/anaconda3/bin:$PATH"
+ENV PATH="/home/ray/.local/bin:/home/ray/anaconda3/bin:$PATH"
 
 # --- HAProxy Build Stage ---
 FROM $BASE_IMAGE AS haproxy-builder

@@ -101,6 +101,7 @@ def main(
     init_global_config(global_config_file)
     settings = get_pipeline_settings()
     env = {}
+
     frequency = get_frequency(frequency) if frequency else settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_filters = get_test_filters(test_filters) or settings["test_filters"]
