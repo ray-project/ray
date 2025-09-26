@@ -597,9 +597,8 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
 
 void CoreWorkerMemoryStore::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  ray::stats::STATS_object_store_memory.Record(
-      num_local_objects_bytes_,
-      {{ray::stats::LocationKey, ray::stats::kObjectLocWorkerHeap}});
+  stats::STATS_object_store_memory.Record(num_local_objects_bytes_,
+                                          {{stats::LocationKey, "WORKER_HEAP"}});
 }
 
 }  // namespace core

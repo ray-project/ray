@@ -135,7 +135,7 @@ struct RedisRequestContext {
       "The latency of a GCS (by default Redis) operation.",
       "us",
       {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-      {stats::kCustomKey}};
+      {"CustomKey"}};
 };
 
 class RedisContext {

@@ -44,6 +44,7 @@
 #include "ray/raylet/raylet.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
