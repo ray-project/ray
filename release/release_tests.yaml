@@ -2341,8 +2341,6 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  stable: false
-
   cluster:
     byod: {}
     cluster_compute: tpl_64.yaml
@@ -2356,8 +2354,6 @@
   team: core
   frequency: nightly
   working_dir: microbenchmark
-
-  stable: false
 
   cluster:
     byod:
@@ -2374,8 +2370,6 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  stable: false
-
   cluster:
     byod:
       type: gpu
@@ -2390,8 +2384,6 @@
   team: core
   frequency: nightly
   working_dir: microbenchmark
-
-  stable: false
 
   cluster:
     byod:
@@ -2408,8 +2400,6 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  stable: false
-
   cluster:
     byod:
       type: gpu
@@ -2424,8 +2414,6 @@
   team: core
   frequency: nightly
   working_dir: benchmark-worker-startup
-  stable: false
-
 
   cluster:
     byod:
@@ -2454,8 +2442,6 @@
 
   frequency: manual # was nightly
   team: core
-  # https://github.com/ray-project/ray/issues/39165
-  stable: false
 
   cluster:
     byod: {}
@@ -2511,8 +2497,6 @@
 - name: stress_test_state_api_scale
   group: core-daily-test
   working_dir: nightly_tests
-
-  stable: false
 
   frequency: nightly
   team: core
@@ -3726,8 +3710,6 @@
 - name: autoscaler_aws
   group: autoscaler-test
   working_dir: autoscaling_tests
-
-  stable: False
 
   frequency: nightly
   team: core
