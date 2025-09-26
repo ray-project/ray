@@ -77,17 +77,7 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     """
     from ray.data._internal.planner import create_planner
 
-    print_dag(logical_plan.dag)
     optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
-    print_dag(optimized_logical_plan.dag)
     logical_plan._dag = optimized_logical_plan.dag
     physical_plan = create_planner().plan(optimized_logical_plan)
     return PhysicalOptimizer().optimize(physical_plan)
-
-
-def print_dag(dag, indents=0):
-
-    for inp in dag.input_dependencies:
-        print_dag(inp, indents=indents + 1)
-
-    print(indents * " ", dag)

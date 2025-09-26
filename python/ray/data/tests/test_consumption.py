@@ -541,6 +541,7 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
 
     ds.explain()
     captured = capsys.readouterr()
+    import pdb; pdb.set_trace()
     assert captured.out.rstrip() == (
         "-------- Logical Plan --------\n"
         "Map(<lambda>)\n"
