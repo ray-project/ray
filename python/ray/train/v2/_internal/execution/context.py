@@ -8,9 +8,11 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
+from ray._common.retry import retry
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train._internal import session
+from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
@@ -218,6 +220,8 @@ class TrainContext:
             )
         )
 
+    # TODO: make retry configurable
+    @retry(description="upload checkpoint", max_attempts=3, match=AWS_RETRYABLE_TOKENS)
     def _upload_checkpoint(
         self,
         checkpoint_dir_name: str,
@@ -388,8 +392,11 @@ class TrainContext:
                         )
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
+                        # TODO: env var to disable eager raising
                         logger.exception(
-                            "Async checkpoint upload failed - shutting down workers"
+                            "Checkpoint upload failed in the background thread. Raising eagerly "
+                            "to avoid training in a corrupted state with more potential progress "
+                            "lost due to checkpointing failures."
                         )
                         self.execution_context.training_thread_runner.get_exception_queue().put(
                             construct_user_exception_with_traceback(e)
