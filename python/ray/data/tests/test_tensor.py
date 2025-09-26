@@ -1035,12 +1035,12 @@ def test_tensor_type_equality_checks():
 def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     """Test that ArrowTensorType and ArrowTensorTypeV2 __eq__ methods work correctly
     when concatenating Arrow arrays with the same tensor type."""
+    from ray.data.context import DataContext
     from ray.data.extensions.tensor_extension import (
         ArrowTensorArray,
         ArrowTensorType,
         ArrowTensorTypeV2,
     )
-    from ray.data.context import DataContext
 
     # Test ArrowTensorType V1
     tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
