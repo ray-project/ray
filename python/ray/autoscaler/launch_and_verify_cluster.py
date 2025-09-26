@@ -66,6 +66,12 @@ def check_arguments():
         help="Override the wheel used for the head node and worker nodes",
     )
     parser.add_argument(
+        "--python-version",
+        type=str,
+        default="3.9",
+        help="The Python version to use for the cluster",
+    )
+    parser.add_argument(
         "cluster_config", type=str, help="Path to the cluster configuration file"
     )
     args = parser.parse_args()
@@ -84,24 +90,25 @@ def check_arguments():
     )
 
 
-def get_docker_image(docker_override):
+def get_docker_image(docker_override, python_version):
     """
     Get the docker image to use for the head node and worker nodes.
 
     Args:
         docker_override: The value of the --docker-override flag.
+        python_version: The Python version to use.
 
     Returns:
         The docker image to use for the head node and worker nodes, or None if not
         applicable.
     """
     if docker_override == "latest":
-        return "rayproject/ray:latest-py39"
+        return f"rayproject/ray:latest-py{python_version}"
     elif docker_override == "nightly":
-        return "rayproject/ray:nightly-py39"
+        return f"rayproject/ray:nightly-py{python_version}"
     elif docker_override == "commit":
         if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
-            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py39"
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py{python_version}"
         else:
             print(
                 "Error: docker image is only available for "
