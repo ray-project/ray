@@ -90,6 +90,7 @@ else
   if [[ -e /opt/ray-core/ray_pkg.zip && "$BUILD_TYPE" == "optimized" && "$RAY_DISABLE_EXTRA_CPP" == "1" ]]; then
     echo "--- Extract built ray core bits"
     unzip -o -q /opt/ray-core/ray_pkg.zip -d python
+    unzip -o -q /opt/ray-core/ray_py_proto.zip -d python
     echo "--- Install Ray with -e"
     RAY_BUILD_CORE=0 pip install -v -e python/
   else
