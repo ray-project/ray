@@ -3,7 +3,6 @@ import time
 
 import pytest
 
-from ray._private.test_utils import convert_actor_state
 from ray.exceptions import (
     GetTimeoutError,
     ObjectLostError,
@@ -20,19 +19,6 @@ def valid_exceptions(use_force):
         return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
         return (RayTaskError, TaskCancelledError)
-
-
-def _all_actors_dead(ray):
-    import ray as real_ray
-    import ray._private.gcs_utils as gcs_utils
-
-    def _all_actors_dead_internal():
-        return all(
-            actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-            for actor in list(real_ray._private.state.actors().values())
-        )
-
-    return _all_actors_dead_internal
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
