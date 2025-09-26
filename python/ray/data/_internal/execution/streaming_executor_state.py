@@ -571,8 +571,17 @@ def update_operator_states(topology: Topology) -> None:
     """Update operator states accordingly for newly completed tasks.
     Should be called after `process_completed_tasks()`."""
 
-    # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
+        # Drain upstream output queue if current operator is execution finished.
+        # This is needed when the limit is reached, and `mark_execution_finished`
+        # is called manually.
+        if op.execution_finished():
+            for idx, dep in enumerate(op.input_dependencies):
+                upstream_state = topology[dep]
+                # Drain upstream output queue
+                upstream_state.output_queue.clear()
+
+        # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
             continue
         all_inputs_done = True

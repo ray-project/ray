@@ -77,8 +77,8 @@ def plan_from_op(
 
 
 def plan_zip_op(_, physical_children, data_context):
-    assert len(physical_children) == 2
-    return ZipOperator(physical_children[0], physical_children[1], data_context)
+    assert len(physical_children) >= 2
+    return ZipOperator(data_context, *physical_children)
 
 
 def plan_union_op(_, physical_children, data_context):

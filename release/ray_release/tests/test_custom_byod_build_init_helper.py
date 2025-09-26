@@ -28,13 +28,26 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             "ray-project/ray-ml:abc123-custom",
             "ray-project/ray-ml:abc123-base",
             "custom_script.sh",
+            None,
         ),
-        ("ray-project/ray-ml:abc123-custom", "ray-project/ray-ml:abc123-base", ""),
+        (
+            "ray-project/ray-ml:abc123-custom",
+            "ray-project/ray-ml:abc123-base",
+            "",
+            None,
+        ),
         (
             "ray-project/ray-ml:nightly-py37-cpu-custom-abcdef123456789abc123456789",
             "ray-project/ray-ml:nightly-py37-cpu-base",
             "custom_script.sh",
+            None,
         ),  # longer than 40 chars
+        (
+            "ray-project/ray-ml:nightly-py37-cpu-custom-abcdef123456789abc123456789",
+            "ray-project/ray-ml:nightly-py37-cpu-base",
+            "custom_script.sh",
+            "python_depset.lock",
+        ),
     ]
     mock_get_images_from_tests.return_value = custom_byod_images
 
@@ -62,7 +75,7 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
         with open(os.path.join(tmpdir, "custom_byod_build.rayci.yml"), "r") as f:
             content = yaml.safe_load(f)
             assert content["group"] == "Custom images build"
-            assert len(content["steps"]) == 2
+            assert len(content["steps"]) == 3
             assert (
                 "export RAY_WANT_COMMIT_IN_IMAGE=abc123"
                 in content["steps"][0]["commands"][0]

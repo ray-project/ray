@@ -188,6 +188,87 @@ class ServeHead(SubprocessModule):
         else:
             return Response()
 
+    def _create_json_response(self, data, status: int) -> Response:
+        """Create a JSON response with the given data and status."""
+        return Response(
+            status=status,
+            text=json.dumps(data),
+            content_type="application/json",
+        )
+
+    @routes.post(
+        "/api/v1/applications/{application_name}/deployments/{deployment_name}/scale"
+    )
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    @validate_endpoint()
+    async def scale_deployment(self, req: Request) -> Response:
+        from ray.serve._private.common import DeploymentID
+        from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+        from ray.serve.schema import ScaleDeploymentRequest
+
+        # Extract path parameters
+        application_name = req.match_info.get("application_name")
+        deployment_name = req.match_info.get("deployment_name")
+
+        if not application_name or not deployment_name:
+            return self._create_json_response(
+                {"error": "Missing application_name or deployment_name in path"}, 400
+            )
+
+        try:
+            request_data = await req.json()
+            scale_request = ScaleDeploymentRequest(**request_data)
+        except Exception as e:
+            return self._create_json_response(
+                {"error": f"Invalid request body: {str(e)}"}, 400
+            )
+
+        controller = await self.get_serve_controller()
+
+        if controller is None:
+            return self._create_json_response(
+                {"error": "Serve controller is not available"}, 503
+            )
+
+        try:
+            deployment_id = DeploymentID(
+                name=deployment_name, app_name=application_name
+            )
+
+            # Update the target number of replicas
+            logger.info(
+                f"Scaling deployment {deployment_name}, application {application_name} to {scale_request.target_num_replicas} replicas"
+            )
+            await controller.update_deployment_replicas.remote(
+                deployment_id, scale_request.target_num_replicas
+            )
+
+            return self._create_json_response(
+                {
+                    "message": "Scaling request received. Deployment will get scaled asynchronously."
+                },
+                200,
+            )
+        except Exception as e:
+            if isinstance(e.cause, DeploymentIsBeingDeletedError):
+                return self._create_json_response(
+                    # From customer's viewpoint, the deployment is deleted instead of being deleted
+                    # as they must have already executed the delete command
+                    {"error": "Deployment is deleted"},
+                    412,
+                )
+            if isinstance(e, ValueError) and "not found" in str(e):
+                return self._create_json_response(
+                    {"error": "Application or Deployment not found"}, 400
+                )
+            else:
+                logger.error(
+                    f"Got an Internal Server Error while scaling deployment, error: {e}"
+                )
+                return self._create_json_response(
+                    {"error": "Internal Server Error"}, 503
+                )
+
     def validate_http_options(self, client, http_options):
         divergent_http_options = []
 

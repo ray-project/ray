@@ -1698,7 +1698,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     psutil.Process(pid).kill()
     a_actor_id = a._actor_id.hex()
 
-    wait_for_condition(lambda: ray.state.actors(a_actor_id)["State"] == "DEAD")
+    wait_for_condition(lambda: ray.util.state.get_actor(id=a_actor_id).state == "DEAD")
 
     # When a reference is held, the name cannot be reused.
     with pytest.raises(ValueError):
@@ -1721,7 +1721,9 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
 
     # ray.kill can proactively release the name.
     ray.kill(b)
-    wait_for_condition(lambda: ray.state.actors(b._actor_id.hex())["State"] == "DEAD")
+    wait_for_condition(
+        lambda: ray.util.state.get_actor(id=b._actor_id.hex()).state == "DEAD"
+    )
 
     c = Actor.options(name=ACTOR_NAME, lifetime="detached").remote()
     ray.get(c.__ray_ready__.remote())
@@ -1730,7 +1732,9 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     pid = ray.get(c.get_pid.remote())
     psutil.Process(pid).kill()
 
-    wait_for_condition(lambda: ray.state.actors(c._actor_id.hex())["State"] == "DEAD")
+    wait_for_condition(
+        lambda: ray.util.state.get_actor(id=c._actor_id.hex()).state == "DEAD"
+    )
 
     # Detached actors do not subscribe to reference counting, so
     # they release the actor name when the actor is dead, without waiting for the reference count
