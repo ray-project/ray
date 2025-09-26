@@ -191,6 +191,10 @@ def request_resources(
     """Remotely request some CPU or GPU resources from the autoscaler. Optionally
     specify label selectors for nodes with the requested resources.
 
+    If `bundle_label_selectors` is provided, `bundles` must also be provided.
+    Both must be lists of the same length, and `bundle_label_selectors` expects a list
+    of string dictionaries.
+
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
