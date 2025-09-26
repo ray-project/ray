@@ -131,6 +131,14 @@ from ray.util.state.state_manager import StateDataSourceClient
 Unit tests
 """
 
+# Run every test in this module twice: default and aggregator-enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
+
 
 @pytest.fixture
 def state_api_manager():
