@@ -329,6 +329,7 @@ html_theme_options = {
         "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
+        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
