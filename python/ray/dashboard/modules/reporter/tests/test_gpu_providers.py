@@ -1,7 +1,6 @@
 """Unit tests for GPU providers."""
 
 import hashlib
-
 import unittest
 from unittest.mock import Mock, patch
 
