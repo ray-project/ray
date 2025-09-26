@@ -501,13 +501,11 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         """
         return ArrowTensorArray
 
-    if _arrow_extension_scalars_are_subclassable():
-        # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
-        def __arrow_ext_scalar_class__(self):
-            """
-            ExtensionScalar subclass with custom logic for this array of tensors type.
-            """
-            return ArrowTensorScalar
+    def __arrow_ext_scalar_class__(self):
+        """
+        ExtensionScalar subclass with custom logic for this array of tensors type.
+        """
+        return ArrowTensorScalar
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
@@ -640,63 +638,20 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
         return cls(shape, storage_type.value_type)
 
 
-if _arrow_extension_scalars_are_subclassable():
-    # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
-    @PublicAPI(stability="beta")
-    class ArrowTensorScalar(pa.ExtensionScalar):
-        def as_py(self, **kwargs) -> np.ndarray:
-            return self.type._extension_scalar_to_ndarray(self)
+@PublicAPI(stability="beta")
+class ArrowTensorScalar(pa.ExtensionScalar):
+    def as_py(self, **kwargs) -> np.ndarray:
+        return self.type._extension_scalar_to_ndarray(self)
 
-        def __array__(self) -> np.ndarray:
-            return self.as_py()
-
-
-# TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
-class _ArrowTensorScalarIndexingMixin:
-    """
-    A mixin providing support for scalar indexing in tensor extension arrays for
-    Arrow < 9.0.0, before full ExtensionScalar support was added. This mixin overrides
-    __getitem__, __iter__, and to_pylist.
-    """
-
-    # This mixin will be a no-op (no methods added) for Arrow 9.0.0+.
-    if not _arrow_extension_scalars_are_subclassable():
-        # NOTE: These __iter__ and to_pylist definitions are shared for both
-        # Arrow < 8.0.0 and Arrow 8.*.
-        def __iter__(self):
-            # Override pa.Array.__iter__() in order to return an iterator of
-            # properly shaped tensors instead of an iterator of flattened tensors.
-            # See comment in above __getitem__ method.
-            for i in range(len(self)):
-                # Use overridden __getitem__ method.
-                yield self.__getitem__(i)
-
-        def to_pylist(self):
-            # Override pa.Array.to_pylist() due to a lack of ExtensionScalar
-            # support (see comment in __getitem__).
-            return list(self)
-
-        def __getitem__(self, key):
-            # This __getitem__ hook allows us to support proper indexing when
-            # accessing a single tensor (a "scalar" item of the array). Without this
-            # hook for integer keys, the indexing will fail on pyarrow < 9.0.0 due
-            # to a lack of ExtensionScalar subclassing support.
-
-            # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
-            # instead, which would obviate the need for overriding __iter__(), but
-            # unfortunately overriding Cython cdef methods with normal Python
-            # methods isn't allowed.
-            item = super().__getitem__(key)
-            if not isinstance(key, slice):
-                item = item.type._extension_scalar_to_ndarray(item)
-            return item
+    def __array__(self) -> np.ndarray:
+        return self.as_py()
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
 # mixin's overriding methods appear first in the MRO.
 # TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
 @PublicAPI(stability="beta")
-class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
+class ArrowTensorArray(pa.ExtensionArray):
     """
     An array of fixed-shape, homogeneous-typed tensors.
 
@@ -1098,13 +1053,11 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         """
         return ArrowVariableShapedTensorArray
 
-    if _arrow_extension_scalars_are_subclassable():
-        # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
-        def __arrow_ext_scalar_class__(self):
-            """
-            ExtensionScalar subclass with custom logic for this array of tensors type.
-            """
-            return ArrowTensorScalar
+    def __arrow_ext_scalar_class__(self):
+        """
+        ExtensionScalar subclass with custom logic for this array of tensors type.
+        """
+        return ArrowTensorScalar
 
     def __str__(self) -> str:
         dtype = self.storage_type["data"].type.value_type
@@ -1147,13 +1100,8 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
 
-# NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
-# mixin's overriding methods appear first in the MRO.
-# TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
 @PublicAPI(stability="alpha")
-class ArrowVariableShapedTensorArray(
-    _ArrowTensorScalarIndexingMixin, pa.ExtensionArray
-):
+class ArrowVariableShapedTensorArray(pa.ExtensionArray):
     """
     An array of heterogeneous-shaped, homogeneous-typed tensors.
 
