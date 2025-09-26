@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import yaml
 import os
 from ray_release.configs.global_config import get_global_config
@@ -20,9 +20,10 @@ def generate_custom_build_step_key(image: str) -> str:
 
 def get_images_from_tests(
     tests: List[Test], build_id: str
-) -> List[Tuple[str, str, str, str]]:
+) -> Tuple[List[Tuple[str, str, str, str]], Dict[str, List[str]]]:
     """Get a list of custom BYOD images to build from a list of tests."""
     custom_byod_images = set()
+    custom_image_test_names_map = {}
     for test in tests:
         if not test.require_custom_byod_image():
             continue
@@ -32,9 +33,13 @@ def get_images_from_tests(
             test.get_byod_post_build_script(),
             test.get_byod_python_depset(),
         )
-        logger.info(f"To be built: {custom_byod_image_build[0]}")
         custom_byod_images.add(custom_byod_image_build)
-    return list(custom_byod_images)
+        image_tag = custom_byod_image_build[0]
+        logger.info(f"To be built: {image_tag}")
+        if image_tag not in custom_image_test_names_map:
+            custom_image_test_names_map[image_tag] = []
+        custom_image_test_names_map[image_tag].append(test.get_name())
+    return list(custom_byod_images), custom_image_test_names_map
 
 
 def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
@@ -42,7 +47,9 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     config = get_global_config()
     if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
         raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
-    custom_byod_images = get_images_from_tests(tests, "$$RAYCI_BUILD_ID")
+    custom_byod_images, custom_image_test_names_map = get_images_from_tests(
+        tests, "$$RAYCI_BUILD_ID"
+    )
     if not custom_byod_images:
         return
     build_config = {"group": "Custom images build", "steps": []}
@@ -54,7 +61,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         if not post_build_script:
             continue
         step_key = generate_custom_build_step_key(image)
-        step_name = _get_step_name(image, step_key, tests)
+        step_name = _get_step_name(image, step_key, custom_image_test_names_map[image])
         step = {
             "label": step_name,
             "key": step_key,
@@ -89,11 +96,11 @@ def get_prerequisite_step(image: str) -> str:
         return config["release_image_step_ray"]
 
 
-def _get_step_name(image: str, step_key: str, tests: List[Test]) -> str:
+def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:
     ecr, tag = image.split(":")
     ecr_repo = ecr.split("/")[-1]
     tag_without_build_id_and_custom_hash = tag.split("-")[1:-1]
     step_name = f":tapioca: build custom: {ecr_repo}:{'-'.join(tag_without_build_id_and_custom_hash)} ({step_key})"
-    for test in tests[:2]:
-        step_name += f" {test.get_name()}"
+    for test_name in test_names[:2]:
+        step_name += f" {test_name}"
     return step_name
