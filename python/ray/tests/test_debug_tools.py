@@ -105,7 +105,9 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
         m.delenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV)
         m.delenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV)
         m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard")
-        m.setenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV, "--output,/custom/path.bin,-q")
+        m.setenv(
+            services.RAY_MEMRAY_PROFILE_OPTIONS_ENV, "--output,/custom/path.bin,-q"
+        )
         command = services._build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
         )
