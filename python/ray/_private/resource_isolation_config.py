@@ -43,10 +43,10 @@ class ResourceIsolationConfig:
         system_reserved_cpu: Optional[float] = None,
         system_reserved_memory: Optional[int] = None,
     ):
-
         self._resource_isolation_enabled = enable_resource_isolation
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
+        self.system_pids = ""
         # cgroupv2 cpu.weight calculated from system_reserved_cpu
         # assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
@@ -114,6 +114,10 @@ class ResourceIsolationConfig:
                 "or system_reserved_memory."
             )
         self._constructed = True
+
+    def add_system_pids(self, system_pids: str):
+        """A comma-separated list of pids to move into the system cgroup."""
+        self.system_pids = system_pids
 
     @staticmethod
     def _validate_and_get_cgroup_path(cgroup_path: Optional[str]) -> str:

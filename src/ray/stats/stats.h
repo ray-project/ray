@@ -130,9 +130,10 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-      /*timeout=*/
+      /*timeout=, set the timeout to be half of the interval to avoid potential request
+         queueing.*/
       std::chrono::milliseconds(
-          absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
+          absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
 }
 
 /// Shutdown the initialized stats library.

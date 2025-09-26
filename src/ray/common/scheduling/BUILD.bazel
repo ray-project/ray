@@ -21,6 +21,7 @@ ray_cc_library(
     srcs = ["label_selector.cc"],
     hdrs = ["label_selector.h"],
     deps = [
+        "//src/ray/common:constants",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

@@ -20,7 +20,6 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
-#include "ray/rpc/client_call.h"
 #include "ray/rpc/grpc_client.h"
 
 namespace ray::rpc {
@@ -28,6 +27,8 @@ namespace ray::rpc {
 // Managers multiple gRPC clients. It's reponsible for initializing
 // gRPC clients with arguments, distributing requests between clients,
 // and destroying the clients.
+class ClientCallManager;
+
 template <typename ServiceType>
 class GrpcClientManager {
  public:

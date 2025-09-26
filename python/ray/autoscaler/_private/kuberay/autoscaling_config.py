@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ray._private.label_utils import parse_node_labels_string
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -201,6 +202,7 @@ def _node_type_from_group_spec(
         max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
+    labels = _get_labels_from_group_spec(group_spec)
 
     node_type = {
         "min_workers": min_workers,
@@ -209,6 +211,7 @@ def _node_type_from_group_spec(
         # Pod config data is required by the operator but not by the autoscaler.
         "node_config": {},
         "resources": resources,
+        "labels": labels,
     }
 
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
@@ -295,6 +298,28 @@ def _get_ray_resources_from_group_spec(
     resources.update(custom_resource_dict)
 
     return resources
+
+
+def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Parses Ray node labels from rayStartParams for autoscaling config.
+    Labels are a comma-separated string of key-value pairs.
+    """
+    ray_start_params = group_spec.get("rayStartParams", {})
+    labels_str = ray_start_params.get("labels")
+
+    if not labels_str:
+        return {}
+
+    try:
+        return parse_node_labels_string(labels_str)
+    except ValueError as e:
+        group_name = group_spec.get("groupName", _HEAD_GROUP_NAME)
+        logger.error(
+            f"Error parsing `labels`: {labels_str} in rayStartParams for group {group_name}: {e}"
+        )
+        # Return an empty dict when failed to parse labels.
+        return {}
 
 
 def _get_num_cpus(

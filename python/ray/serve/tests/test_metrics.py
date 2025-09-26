@@ -15,7 +15,6 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import SignalActor, wait_for_condition
@@ -30,6 +29,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.util.state import list_actors
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -1081,7 +1081,7 @@ def test_actor_summary(serve_instance):
         pass
 
     serve.run(f.bind(), name="app")
-    actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
+    actors = list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
         {"ServeController", "ProxyActor", "ServeReplica:app:f"}

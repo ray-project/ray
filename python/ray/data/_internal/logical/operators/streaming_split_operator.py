@@ -1,7 +1,9 @@
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
-from ray.data import NodeIdStr
 from ray.data._internal.logical.interfaces import LogicalOperator
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import NodeIdStr
 
 
 class StreamingSplit(LogicalOperator):
@@ -12,7 +14,7 @@ class StreamingSplit(LogicalOperator):
         input_op: LogicalOperator,
         num_splits: int,
         equal: bool,
-        locality_hints: Optional[List[NodeIdStr]] = None,
+        locality_hints: Optional[List["NodeIdStr"]] = None,
     ):
         super().__init__("StreamingSplit", [input_op])
         self._num_splits = num_splits

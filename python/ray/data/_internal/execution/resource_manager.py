@@ -587,7 +587,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
                     logger.warning(
-                        f"Cluster resources are not engough to run any task from {op}."
+                        f"Cluster resources are not enough to run any task from {op}."
                         " The job may hang forever unless the cluster scales up."
                     )
 

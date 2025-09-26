@@ -23,22 +23,18 @@ class Zip(NAry):
 
     def __init__(
         self,
-        left_input_op: LogicalOperator,
-        right_input_op: LogicalOperator,
+        *input_ops: LogicalOperator,
     ):
-        """
-        Args:
-            left_input_op: The input operator at left hand side.
-            right_input_op: The input operator at right hand side.
-        """
-        super().__init__(left_input_op, right_input_op)
+        super().__init__(*input_ops)
 
     def estimated_num_outputs(self):
-        left_num_outputs = self._input_dependencies[0].estimated_num_outputs()
-        right_num_outputs = self._input_dependencies[1].estimated_num_outputs()
-        if left_num_outputs is None or right_num_outputs is None:
-            return None
-        return max(left_num_outputs, right_num_outputs)
+        total_num_outputs = 0
+        for input in self._input_dependencies:
+            num_outputs = input.estimated_num_outputs()
+            if num_outputs is None:
+                return None
+            total_num_outputs = max(total_num_outputs, num_outputs)
+        return total_num_outputs
 
 
 class Union(NAry):

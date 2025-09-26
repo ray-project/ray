@@ -39,3 +39,20 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+# TODO(#54703): This target builds the noop implementations.
+# There's a corressponding test that runs on Linux and Non-Linux
+# CI so breakages are caught in premerge before these targets are
+# cleaned up at the end of the resource isolation milestone 1
+# project.
+ray_cc_test(
+    name = "noop_cgroup_test",
+    srcs = ["noop_cgroup_test.cc"],
+    tags = [
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common/cgroup2:noop_cgroup_targets",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

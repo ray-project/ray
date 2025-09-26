@@ -15,6 +15,7 @@ from typing import Callable, Optional
 import ray
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
+from ray._common.serialization import pickle_dumps
 from ray._private import ray_constants
 from ray._private.inspect_util import (
     is_class_method,
@@ -22,7 +23,6 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-from ray._private.serialization import pickle_dumps
 from ray._private.utils import (
     check_oversized_function,
     ensure_str,

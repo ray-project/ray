@@ -39,11 +39,12 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/ipc/client_connection.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
@@ -113,7 +114,8 @@ NodeManager::NodeManager(
     plasma::PlasmaClientInterface &store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+    AddProcessToCgroupHook add_process_to_system_cgroup_hook)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -158,14 +160,14 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      worker_killing_policy_(
-          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
+      worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
-          CreateMemoryUsageRefreshCallback())) {
+          CreateMemoryUsageRefreshCallback())),
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -224,8 +226,8 @@ void NodeManager::RegisterGcs() {
     }
   };
 
-  // If the node resource message is received first and then the node message is received,
-  // ForwardTask will throw exception, because it can't get node info.
+  // If the node resource message is received first and then the node message is
+  // received, ForwardTask will throw exception, because it can't get node info.
   auto on_node_change_subscribe_done = [this](Status status) {
     RAY_CHECK_OK(status);
 
@@ -488,8 +490,8 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
     in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
                            bundle_id.bundle_index());
-    // Add -1 one to the in_use_bundles. It's ok to add it more than one times since it's
-    // a set.
+    // Add -1 one to the in_use_bundles. It's ok to add it more than one times since
+    // it's a set.
     in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
                            -1);
   }
@@ -510,8 +512,8 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
       "registered to GCS. It can happen upon GCS restart.");
 
   // Kill all workers that are currently associated with the unused bundles.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
-  // delete the element of `leased_workers_`. So we need to filter out
+  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
+  // will delete the element of `leased_workers_`. So we need to filter out
   // `workers_associated_with_unused_bundles` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_bundles;
   for (const auto &worker_it : leased_workers_) {
@@ -643,8 +645,8 @@ void NodeManager::QueryAllWorkerStates(
   // Sort workers for the consistent ordering.
   auto sort_func = [](std::shared_ptr<WorkerInterface> worker_a,
                       std::shared_ptr<WorkerInterface> worker_b) {
-    // Prioritize drivers over workers. It is because drivers usually have data users care
-    // more. Note the enum values Driver == 1, Worker == 0.
+    // Prioritize drivers over workers. It is because drivers usually have data users
+    // care more. Note the enum values Driver == 1, Worker == 0.
     return (worker_a->GetWorkerType() > worker_b->GetWorkerType())
            // If the worker type is the same, order it based on pid (just for consistent
            // ordering).
@@ -751,8 +753,8 @@ void NodeManager::WarnResourceDeadlock() {
         << pending_actor_creations << " pending actors on this node.";
     RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_lease_manager_.DebugStr();
   }
-  // Try scheduling leases. Without this, if there's no more leases coming in, deadlocked
-  // leases are never be scheduled.
+  // Try scheduling leases. Without this, if there's no more leases coming in,
+  // deadlocked leases are never be scheduled.
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
@@ -784,7 +786,8 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     if (!is_shutting_down_) {
       std::ostringstream error_message;
       error_message
-          << "[Timeout] Exiting because this node manager has mistakenly been marked as "
+          << "[Timeout] Exiting because this node manager has mistakenly been marked "
+             "as "
              "dead by the "
           << "GCS: GCS failed to check the health of this node for "
           << RayConfig::instance().health_check_failure_threshold() << " times."
@@ -1662,7 +1665,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 
   const bool is_actor_creation_task = lease.GetLeaseSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
-  metrics_num_task_scheduled_ += 1;
 
   if (is_actor_creation_task) {
     actor_id = lease.GetLeaseSpecification().ActorId();
@@ -1798,8 +1800,8 @@ void NodeManager::HandleCancelResourceReserve(
                    " is removed."));
 
   // Kill all workers that are currently associated with the placement group.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
-  // delete the element of `leased_workers_`. So we need to filter out
+  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
+  // will delete the element of `leased_workers_`. So we need to filter out
   // `workers_associated_with_pg` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
@@ -1810,13 +1812,13 @@ void NodeManager::HandleCancelResourceReserve(
   }
   for (const auto &worker : workers_associated_with_pg) {
     std::ostringstream stream;
-    stream
-        << "Destroying worker since its placement group was removed. Placement group id: "
-        << worker->GetBundleId().first
-        << ", bundle index: " << bundle_spec.BundleId().second
-        << ", lease id: " << worker->GetGrantedLeaseId()
-        << ", actor id: " << worker->GetActorId()
-        << ", worker id: " << worker->WorkerId();
+    stream << "Destroying worker since its placement group was removed. Placement "
+              "group id: "
+           << worker->GetBundleId().first
+           << ", bundle index: " << bundle_spec.BundleId().second
+           << ", lease id: " << worker->GetGrantedLeaseId()
+           << ", actor id: " << worker->GetActorId()
+           << ", worker id: " << worker->WorkerId();
     const auto &message = stream.str();
     RAY_LOG(DEBUG) << message;
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
@@ -2020,9 +2022,9 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   }
   auto shutdown_after_reply = [&]() {
     rpc::DrainServerCallExecutor();
-    // Note that the callback is posted to the io service after the shutdown GRPC request
-    // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
-    // itself.
+    // Note that the callback is posted to the io service after the shutdown GRPC
+    // request is replied. Otherwise, the RPC might not be replied to GCS before it
+    // shutsdown itself.
     rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
     node_death_info.set_reason_message("Terminated by autoscaler.");
@@ -2150,6 +2152,8 @@ void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
+  } else if (worker->GetGrantedLeaseId().IsNil()) {
+    return;  // The worker may have died or is no longer processing the task.
   }
   RAY_CHECK(worker);
 
@@ -2825,7 +2829,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
         auto workers = worker_pool_.GetAllRegisteredWorkers();
         if (workers.empty()) {
           RAY_LOG_EVERY_MS(WARNING, 5000)
-              << "Memory usage above threshold but no workers are available for killing."
+              << "Memory usage above threshold but no workers are available for "
+                 "killing."
               << "This could be due to worker memory leak and"
               << "idle worker are occupying most of the memory.";
           return;
@@ -3060,7 +3065,9 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       [this](const rpc::NodeDeathInfo &death_info) {
         this->is_shutting_down_ = true;
         this->shutdown_raylet_gracefully_(death_info);
-      });
+      },
+      true,
+      add_process_to_system_cgroup_hook_);
 }
 
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
@@ -3095,7 +3102,9 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       [this](const rpc::NodeDeathInfo &death_info) {
         this->is_shutting_down_ = true;
         this->shutdown_raylet_gracefully_(death_info);
-      });
+      },
+      true,
+      add_process_to_system_cgroup_hook_);
 }
 
 }  // namespace ray::raylet

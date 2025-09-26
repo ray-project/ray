@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -30,13 +31,17 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
-#include "ray/rpc/object_manager/object_manager_client_interface.h"
-#include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/object_manager_rpc_client/object_manager_client_interface.h"
+#include "ray/rpc/object_manager_server.h"
 #include "ray/stats/metric.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+
+namespace rpc {
+class ClientCallManager;
+}
 
 struct ObjectManagerConfig {
   /// The IP address this object manager is running on.
@@ -280,7 +285,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_ids the The list of ObjectIDs to be deleted.
   void SpreadFreeObjectsRequest(
       const std::vector<ObjectID> &object_ids,
-      const std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> &rpc_clients);
+      const std::vector<
+          std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
+          &rpc_clients);
 
   /// Pushing a known local object to a remote object manager.
   ///
@@ -400,6 +407,15 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_id Object id
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
+
+  /// Retry free objects request
+  ///
+  /// \param node_id Remote node id
+  /// \param attempt_number Attempt number
+  /// \param free_objects_request Free objects request
+  void RetryFreeObjects(const NodeID &node_id,
+                        uint32_t attempt_number,
+                        const rpc::FreeObjectsRequest &free_objects_request);
 
   /// Get the rpc client according to the node ID
   ///

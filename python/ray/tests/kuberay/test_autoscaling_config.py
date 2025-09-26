@@ -74,6 +74,7 @@ def _get_basic_autoscaling_config() -> dict:
         },
         "available_node_types": {
             "headgroup": {
+                "labels": {},
                 "max_workers": 0,
                 "min_workers": 0,
                 "node_config": {},
@@ -85,6 +86,7 @@ def _get_basic_autoscaling_config() -> dict:
                 },
             },
             "small-group": {
+                "labels": {},
                 "max_workers": 300,
                 "min_workers": 0,
                 "node_config": {},
@@ -98,6 +100,7 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a GPU resource entry added
             # and modified max_workers.
             "gpu-group": {
+                "labels": {},
                 "max_workers": 200,
                 "min_workers": 0,
                 "node_config": {},
@@ -112,6 +115,7 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
+                "labels": {},
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -238,6 +242,45 @@ def _get_ray_cr_with_only_requests() -> dict:
     return cr
 
 
+def _get_ray_cr_with_labels() -> dict:
+    """CR with labels in rayStartParams of head and worker groups."""
+    cr = get_basic_ray_cr()
+
+    # Pass invalid labels to the head group to test error handling.
+    cr["spec"]["headGroupSpec"]["rayStartParams"]["labels"] = "!!ray.io/node-group=,"
+    # Pass valid labels to each of the worker groups.
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"][
+        "labels"
+    ] = "ray.io/availability-region=us-central2, ray.io/market-type=spot"
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"][
+        "labels"
+    ] = "ray.io/accelerator-type=A100"
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"][
+        "labels"
+    ] = "ray.io/accelerator-type=TPU-V4"
+    return cr
+
+
+def _get_autoscaling_config_with_labels() -> dict:
+    """Autoscaling config with parsed labels for each group."""
+    config = _get_basic_autoscaling_config()
+
+    # Since we passed invalid labels to the head group `rayStartParams`,
+    # we expect an empty dictionary in the autoscaling config.
+    config["available_node_types"]["headgroup"]["labels"] = {}
+    config["available_node_types"]["small-group"]["labels"] = {
+        "ray.io/availability-region": "us-central2",
+        "ray.io/market-type": "spot",
+    }
+    config["available_node_types"]["gpu-group"]["labels"] = {
+        "ray.io/accelerator-type": "A100"
+    }
+    config["available_node_types"]["tpu-group"]["labels"] = {
+        "ray.io/accelerator-type": "TPU-V4"
+    }
+    return config
+
+
 def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
     config["upscaling_speed"] = 1
@@ -358,6 +401,14 @@ TEST_DATA = (
             None,
             None,
             id="tpu-k8s-resource-limit-and-custom-resource",
+        ),
+        pytest.param(
+            _get_ray_cr_with_labels(),
+            _get_autoscaling_config_with_labels(),
+            None,
+            None,
+            None,
+            id="groups-with-labels",
         ),
     ]
 )

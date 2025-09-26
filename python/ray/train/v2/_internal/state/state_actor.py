@@ -97,12 +97,18 @@ class TrainStateActor:
                 last_poll_run_id = run.id
                 if run.status.is_terminal():
                     continue
-                if not is_actor_alive(
-                    run.controller_actor_id, self._get_actor_timeout_s
-                ):
-                    update_train_run_aborted(run, False)
-                    self.create_or_update_train_run(run)
-                    aborted_run_ids.append(run.id)
+                try:
+                    if not is_actor_alive(
+                        run.controller_actor_id, self._get_actor_timeout_s
+                    ):
+                        update_train_run_aborted(run, False)
+                        self.create_or_update_train_run(run)
+                        aborted_run_ids.append(run.id)
+                except ray.util.state.exception.RayStateApiException:
+                    logger.exception(
+                        "State API unavailable when checking if actor is alive. "
+                        "Will check again on next poll."
+                    )
                 num_polled_runs += 1
 
         # Abort run attempts.

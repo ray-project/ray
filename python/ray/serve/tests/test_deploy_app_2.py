@@ -588,6 +588,7 @@ def test_num_replicas_auto_api(serve_instance):
         "metrics_interval_s": 10.0,
         "upscale_delay_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
@@ -641,6 +642,7 @@ def test_num_replicas_auto_basic(serve_instance):
         "upscale_delay_s": 1.0,
         # Untouched defaults
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,

@@ -334,6 +334,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             url,
             json.dumps(payload),
             headers={**headers, "Content-type": "application/json-patch+json"},
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
         )
         if not result.status_code == 200:

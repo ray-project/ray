@@ -53,6 +53,8 @@ def test_object_unpin(ray_start_cluster):
             "health_check_initial_delay_ms": 0,
             "health_check_period_ms": 1000,
             "health_check_failure_threshold": 5,
+            # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+            "core_worker_rpc_server_reconnect_timeout_s": 0,
         },
     )
     ray.init(address=cluster.address)

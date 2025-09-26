@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
@@ -366,6 +366,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 @PublicAPI(stability="alpha")
 def build_llm_processor(
     config: ProcessorConfig,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
 ) -> Processor:
@@ -373,6 +374,7 @@ def build_llm_processor(
 
     Args:
         config: The processor config.
+        chat_template_kwargs: The optional kwargs to pass apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -382,6 +384,7 @@ def build_llm_processor(
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
             you can use the `**row` syntax to return all the original columns.
+
 
     Returns:
         The built processor.
@@ -432,6 +435,7 @@ def build_llm_processor(
 
     return ProcessorBuilder.build(
         config,
+        chat_template_kwargs=chat_template_kwargs,
         preprocess=preprocess,
         postprocess=postprocess,
     )

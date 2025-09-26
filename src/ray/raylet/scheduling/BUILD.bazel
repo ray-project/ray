@@ -102,7 +102,7 @@ ray_cc_library(
     hdrs = ["cluster_lease_manager_interface.h"],
     deps = [
         "//src/ray/protobuf:node_manager_cc_proto",
-        "//src/ray/rpc:server_call",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 

@@ -30,7 +30,7 @@
 #include "ray/core_worker/task_execution/normal_scheduling_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {

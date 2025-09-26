@@ -3,7 +3,7 @@ from enum import Enum
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stablity="alpha")
+@PublicAPI(stability="alpha")
 class SaveMode(str, Enum):
     APPEND = "append"
     OVERWRITE = "overwrite"

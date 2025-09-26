@@ -1,0 +1,5 @@
+name: ray-dashboard
+froms: ["cr.ray.io/rayproject/manylinux"]
+dockerfile: ci/docker/ray-dashboard.Dockerfile
+srcs:
+  - python/ray/dashboard/client/

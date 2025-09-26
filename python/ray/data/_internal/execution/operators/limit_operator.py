@@ -54,7 +54,9 @@ class LimitOperator(OneToOneOperator):
             else:
                 # Slice the last block.
                 def slice_fn(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
-                    block = BlockAccessor.for_block(block).slice(0, num_rows, copy=True)
+                    block = BlockAccessor.for_block(block).slice(
+                        0, num_rows, copy=False
+                    )
                     metadata = copy.deepcopy(metadata)
                     metadata.num_rows = num_rows
                     metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()

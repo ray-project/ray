@@ -82,7 +82,7 @@ sys.path.insert(0, current_dir)
 
 import lib
 
-ray.init(address="{}")
+ray.init(address="{}", include_dashboard=True)
 assert ray.get(lib.task.remote()) == {}
 """
 
@@ -128,7 +128,7 @@ def test_job_observability(ray_start_regular):
 import ray
 from time import sleep
 
-ray.init(address="{}")
+ray.init(address="{}", include_dashboard=True)
 open("{}", "w+").close()
 
 print("My job id: ", str(ray.get_runtime_context().get_job_id()))
@@ -208,7 +208,7 @@ def test_config_metadata(shutdown_only):
     job_config = JobConfig(metadata={"abc": "xyz"})
     job_config.set_metadata("xyz", "abc")
 
-    ray.init(job_config=job_config)
+    ray.init(job_config=job_config, include_dashboard=True)
 
     from_worker = ray._private.worker.global_worker.core_worker.get_job_config()
 
@@ -257,7 +257,7 @@ print("result:", get_entrypoint_name())
 
 
 def test_removed_internal_flags(shutdown_only):
-    ray.init()
+    ray.init(include_dashboard=True)
     address = ray._private.worker._global_node.webui_url
     address = format_web_url(address)
     client = JobSubmissionClient(address)
@@ -284,7 +284,7 @@ def test_entrypoint_field(shutdown_only, tmp_path):
     """Make sure the entrypoint field is correctly set for jobs."""
     driver = """
 import ray
-ray.init("auto")
+ray.init("auto", include_dashboard=True)
 
 @ray.remote
 def f():
@@ -292,7 +292,7 @@ def f():
 
 ray.get(f.remote())
 """
-    ray.init()
+    ray.init(include_dashboard=True)
     address = ray._private.worker._global_node.webui_url
     address = format_web_url(address)
     client = JobSubmissionClient(address)
@@ -359,7 +359,7 @@ def test_task_spec_root_detached_actor_id(shutdown_only):
     for task spec of submitted task or actor.
     """
 
-    ray.init()
+    ray.init(include_dashboard=True)
 
     @ray.remote
     def get_task_root_detached_actor_id():
@@ -407,7 +407,7 @@ def test_no_process_leak_after_job_finishes(ray_start_cluster):
     """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8)
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, include_dashboard=True)
 
     @ray.remote(num_cpus=0)
     class PidActor:
