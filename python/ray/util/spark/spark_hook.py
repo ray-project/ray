@@ -1,7 +1,5 @@
 import logging
-import multiprocessing
 import os
-import tempfile
 from typing import Dict, Optional
 
 from .common import NetworkDetector, PathUtils, ProcessUtils, ResourceDetector
