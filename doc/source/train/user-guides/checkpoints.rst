@@ -238,42 +238,45 @@ Here is an example of distributed checkpointing with PyTorch:
 Checkpoint Upload Modes
 -----------------------
 
-By default, when you ``ray.train.report``, Ray Train synchronously pushes your checkpoint
-from ``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on your ``storage_path``.
-This is equivalent to calling ``ray.train.report`` with ``checkpoint_upload_mode=CheckpointUploadMode.SYNC``.
+By default, when you call :func:`~ray.train.report`, Ray Train synchronously pushes
+your checkpoint from ``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on
+your ``storage_path``. This is equivalent to calling :func:`~ray.train.report` with
+:class:`~ray.train.CheckpointUploadMode` set to :attr:`~ray.train.CheckpointUploadMode.SYNC`.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
     :start-after: __checkpoint_upload_mode_sync_start__
     :end-before: __checkpoint_upload_mode_sync_end__
 
-Asynchronous Checkpointing
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Asynchronous Checkpoint Uploading
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You may want to upload your checkpoint asynchronously instead so you can
-start the next training step in parallel. If so, you should use
-``checkpoint_upload_mode=CheckpointUploadMode.ASYNC``.
+You may want to upload your checkpoint asynchronously instead so that
+the next training step can start in parallel. If so, you should use
+:attr:`~ray.train.CheckpointUploadMode.ASYNC`. This is helpful for larger
+checkpoints that might take longer to upload.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
     :start-after: __checkpoint_upload_mode_async_start__
     :end-before: __checkpoint_upload_mode_async_end__
 
-.. note::
+.. figure:: ../images/sync_vs_async_checkpointing.png
 
-    Right now, ``report`` caps the number of concurrent upload threads to 1, so you don't
-    need to worry about OOM's. If the previous checkpoint upload is still happening
-    during the current ``report``, ``report`` will block until that upload completes.
+    Synchronous vs asynchronous checkpoint uploading. Right now, each ``report`` blocks
+    until the previous ``report``\'s checkpoint upload completes before starting a new
+    checkpoint upload thread. We do this to avoid accumulating too many upload threads
+    and potentially running out of memory.
 
 Custom Checkpoint Uploading
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Train defaults to uploading from disk to the remote ``storage_path`` with pyarrow 
-filesystem copying utilities. If you handle checkpoint uploading manually or with a 
-third-party library such as Torch Distributed Checkpointing, you can set 
-``checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD`` and just report a 
-reference of the uploaded checkpoint, as long as the checkpoint was uploaded to
-the ``storage_path``.
+:func:`~ray.train.report` defaults to uploading from disk to the remote ``storage_path``
+with pyarrow filesystem copying utilities before reporting the checkpoint to Ray Train.
+If you would rather upload the checkpoint manually or with a third-party library
+such as Torch Distributed Checkpointing, you can first upload the checkpoint to
+the ``storage_path`` and then report a reference to the uploaded checkpoint with
+:attr:`~ray.train.CheckpointUploadMode.NO_UPLOAD`.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
