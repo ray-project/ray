@@ -36,6 +36,13 @@
 #include "absl/strings/str_join.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
+#include "ray/util/logging.h"
+
+// Used to identify if a filesystem is mounted using cgroupv2.
+// See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
+#ifndef CGROUP2_SUPER_MAGIC
+#define CGROUP2_SUPER_MAGIC 0x63677270
+#endif
 
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
@@ -280,7 +287,7 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
   out_file.flush();
   if (out_file.fail()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", enabled_ctrls_file));
+        "Could not write to cgroup controllers file %s", enabled_ctrls_file));
   }
   return Status::OK();
 }
@@ -319,7 +326,7 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   out_file.flush();
   if (!out_file.good()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", controller_file_path));
+        "Could not write to cgroup controllers file %s", controller_file_path));
   }
   return Status::OK();
 }
@@ -414,6 +421,37 @@ StatusOr<std::unordered_set<std::string>> SysFsCgroupDriver::ReadControllerFile(
   }
 
   return StatusOr<std::unordered_set<std::string>>(controllers);
+}
+
+Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
+                                             const std::string &process) {
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup));
+  std::filesystem::path cgroup_procs_file_path =
+      cgroup / std::filesystem::path(kCgroupProcsFilename);
+
+  int fd = open(cgroup_procs_file_path.c_str(), O_RDWR);
+
+  if (fd == -1) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Failed to write pid %s to cgroup.procs for cgroup %s with error %s",
+        process,
+        cgroup,
+        strerror(errno)));
+  }
+
+  ssize_t bytes_written = write(fd, process.c_str(), process.size());
+
+  if (bytes_written != static_cast<ssize_t>(process.size())) {
+    close(fd);
+    return Status::InvalidArgument(absl::StrFormat(
+        "Failed to write pid %s to cgroup.procs for cgroup %s with error %s",
+        process,
+        cgroup,
+        strerror(errno)));
+  }
+
+  close(fd);
+  return Status::OK();
 }
 
 }  // namespace ray

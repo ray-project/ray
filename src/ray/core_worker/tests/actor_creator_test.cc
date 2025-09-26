@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
+#include "ray/core_worker/actor_creator.h"
+
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/core_worker/actor_creator.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
-// clang-format on
 
 namespace ray {
 namespace core {
