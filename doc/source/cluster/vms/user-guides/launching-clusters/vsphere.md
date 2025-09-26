@@ -10,7 +10,7 @@ If you don't already have a vSphere deployment, you can learn more about it by r
 
 * [A vSphere cluster with Workload Control Plane (WCP) enabled ](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere-supervisor/7-0/vsphere-with-tanzu-configuration-and-management-7-0/configuring-and-managing-a-supervisor-cluster/deploy-a-supervisor-with-nsx-networking.html)
 
-## Installing supervisor serrvice for Ray on vSphere
+## Installing supervisor service for Ray on vSphere
 
 Please refer [build and installation guide](https://github-vcf.devops.broadcom.net/vcf/vmray/blob/ivelumani/AIHUB-4311/README.md#generate-carvel-package-for-RayOnVCF-cluster-operator) to install Ray control plane as a superviosr servise on vSphere. The vSphere Ray cluster launcher requires the vSphere environment to have a cotrol plane installed a s a supervisor service for deploying a Ray cluster. This service installs all the k8s CRDs used to rapidly create head and worker nodes. The details of the Ray cluster provisioning process using supervisor service can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md).
 
