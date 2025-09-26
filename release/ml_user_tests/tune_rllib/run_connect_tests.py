@@ -11,9 +11,9 @@ import time
 
 import ray
 
-from ray import air, tune
+from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.tune import CLIReporter
+from ray.tune import CLIReporter, RunConfig
 
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("tune_framework")
@@ -55,7 +55,7 @@ def run(smoke_test=False, storage_path: str = None):
     return tune.Tuner(
         "APPO",
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=RunConfig(
             stop=stop,
             verbose=1,
             progress_reporter=CLIReporter(
