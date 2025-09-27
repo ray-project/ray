@@ -181,7 +181,8 @@ class TestModelConfig:
         assert serve_options["placement_group_bundles"] == [
             {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
         ]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
         assert serve_options["name"] == "Test:test_model"
 
         # Check that our custom env vars are present
@@ -215,7 +216,8 @@ class TestModelConfig:
             "max_replicas": 10,
         }
         assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
         assert serve_options["name"] == "Test:test_model"
 
         # Check that our custom env vars are present
