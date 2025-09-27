@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 def _insert_into_sorted_list(
-    list: List[Any],
-    item: Any,
-    key: Callable[[Any], Any],
+    list: List[_TrainingResult],
+    item: _TrainingResult,
+    key: Callable[[_TrainingResult], Any],
     checkpoint_to_report_index: Optional[Dict[Checkpoint, int]] = None,
 ):
     """Insert an item into a sorted list with a custom key function.
