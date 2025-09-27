@@ -1,26 +1,28 @@
 import abc
-from collections import defaultdict
 import copy
 import logging
-import numpy
 import platform
-import tree
+from collections import defaultdict
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
     Dict,
-    List,
     Hashable,
     Iterable,
+    List,
     Optional,
     Sequence,
     Tuple,
-    TYPE_CHECKING,
     Union,
 )
 
+import numpy
+import tree
+
 import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -31,8 +33,8 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.learner.training_data import TrainingData
-from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -41,30 +43,29 @@ from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
-    MODULE_TRAIN_BATCH_SIZE_MEAN,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
-    MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
+    MiniBatchDummyIterator,
     MiniBatchRayDataIterator,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -74,8 +75,8 @@ from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
     Param,
-    ParamRef,
     ParamDict,
+    ParamRef,
     ResultDict,
     ShouldModuleBeUpdatedFn,
     StateDict,
