@@ -686,7 +686,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.publish_ref_removed) {
     RAY_LOG(DEBUG) << "Calling PublishRefRemoved for object " << id;
-    PublishRefRemovedInternal(id);
+    PublishRefRemovedInternal(id, it->second.subscriber_worker_id);
     it->second.publish_ref_removed = false;
   }
 
@@ -1151,12 +1151,19 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   // If the message is published, this callback will be invoked.
   const auto message_published_callback = [this, addr, object_id](
                                               const rpc::PubMessage &msg) {
-    RAY_CHECK(msg.has_worker_ref_removed_message());
+    // Verify that the message was intended for this owner worker (if specified)
+    RAY_CHECK(msg.worker_ref_removed_message().intended_owner_worker_id() ==
+              rpc_address_.worker_id())
+        << "Message intended owner worker ID mismatch. Expected: "
+        << WorkerID::FromBinary(rpc_address_.worker_id()).Hex() << ", but got: "
+        << WorkerID::FromBinary(
+               msg.worker_ref_removed_message().intended_owner_worker_id())
+               .Hex();
+
     const ReferenceTable new_borrower_refs =
         ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
     RAY_LOG(DEBUG).WithField(object_id).WithField(WorkerID::FromBinary(addr.worker_id()))
         << "WaitForRefRemoved returned for object, dest worker";
-
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
     // Unsubscribe the object once the message is published.
     RAY_CHECK(object_info_subscriber_->Unsubscribe(
@@ -1254,12 +1261,14 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::PublishRefRemoved(const ObjectID &object_id) {
+void ReferenceCounter::PublishRefRemoved(const ObjectID &object_id,
+                                         const WorkerID &subscriber_worker_id) {
   absl::MutexLock lock(&mutex_);
-  PublishRefRemovedInternal(object_id);
+  PublishRefRemovedInternal(object_id, subscriber_worker_id);
 }
 
-void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
+void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id,
+                                                 const WorkerID &subscriber_worker_id) {
   RAY_LOG(DEBUG).WithField(object_id) << "PublishRefRemoved ";
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
@@ -1283,6 +1292,8 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
   auto *worker_ref_removed_message = pub_message.mutable_worker_ref_removed_message();
   ReferenceTableToProto(borrowed_refs,
                         worker_ref_removed_message->mutable_borrowed_refs());
+  RAY_CHECK(!subscriber_worker_id.IsNil()) << "subscriber_worker_id should not be Nil";
+  worker_ref_removed_message->set_intended_owner_worker_id(subscriber_worker_id.Binary());
 
   RAY_LOG(DEBUG).WithField(object_id)
       << "Publishing WaitForRefRemoved message for object, message has "
@@ -1292,7 +1303,8 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
 
 void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
                                            const ObjectID &contained_in_id,
-                                           const rpc::Address &owner_address) {
+                                           const rpc::Address &owner_address,
+                                           const WorkerID &subscriber_worker_id) {
   absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG).WithField(object_id)
       << "Received WaitForRefRemoved object contained in " << contained_in_id;
@@ -1316,7 +1328,7 @@ void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
         << "Ref count for borrowed object is already 0, responding to WaitForRefRemoved";
     // We already stopped borrowing the object ID. Respond to the owner
     // immediately.
-    PublishRefRemovedInternal(object_id);
+    PublishRefRemovedInternal(object_id, subscriber_worker_id);
     DeleteReferenceInternal(it, nullptr);
   } else {
     // We are still borrowing the object ID. Respond to the owner once we have
@@ -1328,11 +1340,15 @@ void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
       // callback here, it's possible we will drop the request that was sent by
       // the more recent owner. We should fix this by setting multiple
       // callbacks or by versioning the owner requests.
-      RAY_LOG(WARNING).WithField(object_id)
+      RAY_CHECK(it->second.subscriber_worker_id == subscriber_worker_id);
+      RAY_CHECK(false)
           << "publish_ref_removed already set for object. The owner task must have "
-             "died and been re-executed.";
+             "died and been re-executed."
+          << " subscriber_worker_id: " << subscriber_worker_id
+          << " it->second.subscriber_worker_id: " << it->second.subscriber_worker_id;
     }
     reference.publish_ref_removed = true;
+    reference.subscriber_worker_id = subscriber_worker_id;
   }
 }
 

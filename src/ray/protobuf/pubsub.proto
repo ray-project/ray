@@ -83,6 +83,8 @@ message WorkerRefRemovedMessage {
   // ID by the time it replies, but may have accumulated other borrowers or may
   // still be borrowing an object ID that was nested inside.
   repeated ObjectReferenceCount borrowed_refs = 1;
+  // The ID of the owner worker that this message is intended for (for verification).
+  bytes intended_owner_worker_id = 2;
 }
 
 message WorkerObjectLocationsPubMessage {

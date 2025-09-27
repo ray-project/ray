@@ -16,9 +16,9 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-
 namespace ray {
 
 namespace pubsub {
@@ -61,6 +61,9 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
   // Find subscription info.
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
+    if (channel_type_ == rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL) {
+      RAY_CHECK(false) << "subscription_it == subscription_map_.end()";
+    }
     return false;
   }
   auto &subscription_index = subscription_it->second;
@@ -71,6 +74,9 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
     const bool unsubscribed = subscription_index.all_entities_subscription != nullptr;
     subscription_index.all_entities_subscription.reset();
     subscription_map_.erase(subscription_it);
+    if (!unsubscribed && channel_type_ == rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL) {
+      RAY_CHECK(false) << "!unsubscribed && !key_id";
+    }
     return unsubscribed;
   }
 
@@ -80,6 +86,9 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
 
   auto subscription_callback_it = per_entity_subscription.find(*key_id);
   if (subscription_callback_it == per_entity_subscription.end()) {
+    if (channel_type_ == rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL) {
+      RAY_CHECK(false) << "subscription_callback_it == per_entity_subscription.end()";
+    }
     return false;
   }
   per_entity_subscription.erase(subscription_callback_it);
@@ -349,6 +358,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       processed_sequences_[publisher_id] = {reply_publisher_id, 0};
     }
 
+    std::unordered_map<std::string, uint32_t> ref_removed_count;
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
@@ -375,7 +385,13 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
         Channel(channel_type)->HandlePublisherFailure(publisher_address, key_id);
         continue;
       }
-
+      if (msg.has_worker_ref_removed_message()) {
+        ref_removed_count[key_id]++;
+        if (ref_removed_count[key_id] > 1) {
+          RAY_CHECK(false)
+              << "Ref removed message should only be published once for each key_id";
+        }
+      }
       // Otherwise, invoke the subscription callback, consuming the pub message.
       Channel(channel_type)
           ->HandlePublishedMessage(publisher_address,
