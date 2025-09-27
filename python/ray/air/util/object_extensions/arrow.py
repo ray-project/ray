@@ -108,7 +108,7 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
             )
             all_dumped_bytes.append(dumped_bytes)
         arr = pa.array(all_dumped_bytes, type=type_.storage_type)
-        return ArrowPythonObjectArray.from_storage(type_, arr)
+        return type_.wrap_array(arr)
 
     def to_numpy(
         self, zero_copy_only: bool = False, writable: bool = False

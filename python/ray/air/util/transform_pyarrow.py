@@ -45,4 +45,4 @@ def _concatenate_extension_column(
     else:
         storage = pyarrow.concat_arrays([c.storage for c in ca.chunks])
 
-    return ca.type.__arrow_ext_class__().from_storage(ca.type, storage)
+    return ca.type.wrap_array(storage)
