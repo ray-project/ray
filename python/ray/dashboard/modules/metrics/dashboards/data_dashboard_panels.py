@@ -484,7 +484,6 @@ TASK_COMPLETION_TIME_PANEL = Panel(
     id=38,
     title="Task Completion Time Histogram (s)",
     description="Time (in seconds) spent (including backpressure) running tasks to completion. Larger bars means more tasks finished within that duration range.",
-    unit="s",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
@@ -492,6 +491,7 @@ TASK_COMPLETION_TIME_PANEL = Panel(
             template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
+    unit="short",
     fill=0,
     stack=False,
     template=PanelTemplate.BAR_CHART,
@@ -501,7 +501,6 @@ BLOCK_COMPLETION_TIME_PANEL = Panel(
     id=58,
     title="Block Completion Time Histogram (s)",
     description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Larger bars means more blocks finished within that duration range.",
-    unit="s",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
@@ -509,6 +508,7 @@ BLOCK_COMPLETION_TIME_PANEL = Panel(
             template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
+    unit="short",
     fill=0,
     stack=False,
     template=PanelTemplate.BAR_CHART,
@@ -518,14 +518,14 @@ BLOCK_SIZE_BYTES_PANEL = Panel(
     id=59,
     title="Block Size (Bytes) Histogram",
     description="Size (in bytes) per block. Larger bars means more blocks are within that size range.",
-    unit="bytes",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
-            legend="{{le}}",
+            legend="{{le}} byt",
             template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
+    unit="short",
     fill=0,
     stack=False,
     template=PanelTemplate.BAR_CHART,
@@ -535,14 +535,14 @@ BLOCK_SIZE_ROWS_PANEL = Panel(
     id=60,
     title="Block Size (Rows) Histogram",
     description="Number of rows per block. Larger bars means more blocks are within that number of rows range.",
-    unit="rows",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
-            legend="{{le}}",
+            legend="{{le}} rows",
             template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
+    unit="short",
     fill=0,
     stack=False,
     template=PanelTemplate.BAR_CHART,
