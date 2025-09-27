@@ -22,29 +22,31 @@
 namespace ray {
 namespace stats {
 
-inline const TagKeyType ComponentKey = TagKeyType::Register("Component");
+extern const TagKeyType ComponentKey;
 
-inline const TagKeyType NodeAddressKey = TagKeyType::Register("NodeAddress");
+extern const TagKeyType JobNameKey;
 
-inline const TagKeyType VersionKey = TagKeyType::Register("Version");
+extern const TagKeyType NodeAddressKey;
 
-inline const TagKeyType LanguageKey = TagKeyType::Register("Language");
+extern const TagKeyType VersionKey;
 
-// Keep in sync with the WORKER_ID_TAG_KEY in
-// python/ray/_private/telemetry/metric_cardinality.py
-inline const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
+extern const TagKeyType LanguageKey;
 
-inline const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
+extern const TagKeyType WorkerIdKey;
 
-inline const TagKeyType NameKey = TagKeyType::Register("Name");
+extern const TagKeyType JobIdKey;
+
+extern const TagKeyType SessionNameKey;
+
+extern const TagKeyType NameKey;
+
+extern const TagKeyType SourceKey;
 
 // Object store memory location tag constants
-inline const TagKeyType LocationKey = TagKeyType::Register("Location");
+extern const TagKeyType LocationKey;
 
 // Object store memory sealed/unsealed tag
-inline const TagKeyType ObjectStateKey = TagKeyType::Register("ObjectState");
-
-inline const TagKeyType SourceKey = TagKeyType::Register("Source");
+extern const TagKeyType ObjectStateKey;
 
 }  // namespace stats
 }  // namespace ray
