@@ -1257,7 +1257,7 @@ def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtT
     # Only tensors with homogenous scalar types and shape dimensions
     # are currently supported
     if len(scalar_types) > 1:
-        raise ValueError(
+        raise pa.lib.ArrowTypeError(
             f"Can't unify tensor types with divergent scalar types: {types}"
         )
 
@@ -1281,11 +1281,7 @@ def unify_tensor_arrays(
     # Derive number of distinct tensor types
     distinct_types_ = set()
 
-    print(f">>> [DBG] unify_tensor_arrays(arrs): {arrs=}")
-
     for arr in arrs:
-        print(f">>> [DBG] unify_tensor_arrays(arrs): {arr=}")
-
         if isinstance(arr.type, supported_tensor_types):
             distinct_types_.add(arr.type)
         else:
