@@ -13,7 +13,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
-    ArrowVariableShapedTensorType, concat_tensor_arrays,
+    ArrowVariableShapedTensorType, concat_tensor_arrays, unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -732,8 +732,8 @@ def test_variable_shaped_tensor_array_chunked_concat(
     a2 = np.arange(np.prod(shape2)).reshape(shape2)
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
-    chunked_ta = ArrowTensorArray._chunk_tensor_arrays([ta1, ta2])
-    ta = concat_tensor_arrays(chunked_ta.chunks)
+    unified_arrs = unify_tensor_arrays([ta1, ta2])
+    ta = concat_tensor_arrays(unified_arrs)
     assert len(ta) == shape1[0] + shape2[0]
     assert isinstance(ta.type, ArrowVariableShapedTensorType)
     assert pa.types.is_struct(ta.type.storage_type)
