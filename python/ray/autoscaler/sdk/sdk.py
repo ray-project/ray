@@ -6,6 +6,7 @@ import tempfile
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
+from ray._private.label_utils import validate_label_selector
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.event_system import (
@@ -21,7 +22,7 @@ def create_or_update_cluster(
     *,
     no_restart: bool = False,
     restart_only: bool = False,
-    no_config_cache: bool = False
+    no_config_cache: bool = False,
 ) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
@@ -87,7 +88,7 @@ def run_on_cluster(
     stop: bool = False,
     no_config_cache: bool = False,
     port_forward: Optional[commands.Port_forward] = None,
-    with_output: bool = False
+    with_output: bool = False,
 ) -> Optional[str]:
     """Runs a command on the specified cluster.
 
@@ -133,7 +134,7 @@ def rsync(
     ip_address: Optional[str] = None,
     use_internal_ip: bool = False,
     no_config_cache: bool = False,
-    should_bootstrap: bool = True
+    should_bootstrap: bool = True,
 ):
     """Rsyncs files to or from the cluster.
 
@@ -206,7 +207,9 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 
 @DeveloperAPI
 def request_resources(
-    num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
+    num_cpus: Optional[int] = None,
+    bundles: Optional[List[dict]] = None,
+    bundle_label_selectors: Optional[List[dict]] = None,
 ) -> None:
     """Command the autoscaler to scale to accommodate the specified requests.
 
@@ -230,6 +233,11 @@ def request_resources(
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made to override.
+        bundle_label_selectors: A list of label selectors, applied per-bundle to the same
+            index in the `bundles` list. For bundles without a label requirement, the
+            corresponding item in the list is an empty dictionary. For each bundle.
+            Label selectors consist of zero or more key-value pairs where the key is
+            a label and the value is a operator (in, !in, etc.) and label value.
 
     Examples:
         >>> from ray.autoscaler.sdk import request_resources
@@ -241,6 +249,13 @@ def request_resources(
         >>> # Same as requesting num_cpus=3.
         >>> request_resources( # doctest: +SKIP
         ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
+        >>> # Requests 2 num_cpus=1 bundles, the first with
+        >>> # label_selector={"accelerator-type": "in(A100)"} and second with
+        >>> # label_selector={"market-type": "spot"}.
+        >>> request_resources( # doctest: +SKIP
+        ...     bundles=[{"CPU": 1}, {"CPU": 1}]),
+        ...     bundle_label_selectors=[{"accelerator-type": "in(A100)"},
+        ...                            {"market-type": "spot"}])
     """
     if num_cpus is not None and not isinstance(num_cpus, int):
         raise TypeError("num_cpus should be of type int.")
@@ -257,8 +272,34 @@ def request_resources(
                     raise TypeError("each bundle should be a Dict.")
         else:
             raise TypeError("bundles should be of type List")
+    if bundle_label_selectors is not None:
+        if bundles is None:
+            raise ValueError(
+                "`bundles` must be provided when `bundle_label_selectors` is specified."
+            )
+        if len(bundle_label_selectors) != len(bundles):
+            raise ValueError(
+                "`bundle_label_selector` must be a list with length equal to the number of bundles."
+            )
+        for label_selector in bundle_label_selectors:
+            if (
+                not isinstance(label_selector, dict)
+                or not all(isinstance(k, str) for k in label_selector.keys())
+                or not all(isinstance(v, str) for v in label_selector.values())
+            ):
+                raise ValueError(
+                    "Bundle label selector must be a list of string dictionary"
+                    " label selectors. For example: "
+                    '`[{ray.io/market_type": "spot"}, {"ray.io/accelerator-type": "A100"}]`.'
+                )
+            error_message = validate_label_selector(label_selector)
+            if error_message:
+                raise ValueError(
+                    f"Invalid label selector provided in bundle_label_selectors list."
+                    f" Detailed error: '{error_message}'"
+                )
 
-    return commands.request_resources(num_cpus, bundles)
+    return commands.request_resources(num_cpus, bundles, bundle_label_selectors)
 
 
 @DeveloperAPI
