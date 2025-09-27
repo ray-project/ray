@@ -1192,13 +1192,14 @@ def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtT
         return types[0]
 
     shapes = {t.shape for t in types}
-    dims = {len(s) for s in shapes}
     scalar_types = {t.scalar_type for t in types}
 
     # Only tensors with homogenous scalar types and shape dimensions
     # are currently supported
-    if len(scalar_types) > 1 or len(dims) > 1:
-        raise ValueError(f"Can't unify diverging tensor types: {types}")
+    if len(scalar_types) > 1:
+        raise ValueError(
+            f"Can't unify tensor types with divergent scalar types: {types}"
+        )
 
     # If all shapes are identical, it's a single tensor type
     if len(shapes) == 1:
@@ -1206,7 +1207,9 @@ def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtT
 
     return ArrowVariableShapedTensorType(
         dtype=scalar_types.pop(),
-        ndim=dims.pop(),
+        # NOTE: Cardinality of variable-shaped tensor type's (``ndims``) is
+        #       derived as the max length of the shapes that are making it up
+        ndim=max(len(s) for s in shapes),
     )
 
 
@@ -1228,14 +1231,19 @@ def unify_tensor_arrays(
         return arrs
 
     # Verify provided tensor arrays could be unified
-    _ = unify_tensor_types(distinct_types_)
+    #
+    # NOTE: If there's more than 1 distinct tensor types, then unified
+    #       type will be variable-shaped
+    unified_tensor_type = unify_tensor_types(distinct_types_)
+
+    assert isinstance(unified_tensor_type, ArrowVariableShapedTensorType)
 
     unified_arrs = []
-    # NOTE: If there's more than 1 distinct tensor types unified
-    #       type will be variable shape
     for arr in arrs:
         unified_arrs.append(
-            arr.to_variable_shaped_tensor_array()
+            arr.to_var_shaped_tensor_array(
+                ndim=unified_tensor_type.ndim
+            )
         )
 
     return unified_arrs
