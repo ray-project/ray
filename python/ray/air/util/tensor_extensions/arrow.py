@@ -5,7 +5,8 @@ import logging
 import sys
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union, \
+    Collection
 
 import numpy as np
 import pyarrow as pa
@@ -36,6 +37,9 @@ MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
+
+
+AnyArrowExtTensorType = Union[ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType]
 
 
 class _SerializationFormat(Enum):
@@ -1006,7 +1010,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         from ray.air.util.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype(
-            (None,) * self.ndim,
+            self.shape,
             self.storage_type["data"].type.value_type.to_pandas_dtype(),
         )
 
@@ -1014,6 +1018,10 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     def ndim(self) -> int:
         """Return the number of dimensions in the tensor elements."""
         return self._ndim
+
+    @property
+    def shape(self) -> Tuple[None, ...]:
+        return (None,) * self.ndim
 
     @property
     def scalar_type(self) -> pa.DataType:
@@ -1264,6 +1272,67 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             A single ndarray representing the entire array of tensors.
         """
         return self._to_numpy(zero_copy_only=zero_copy_only)
+
+
+def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtTensorType:
+    """Unifies provided tensor types if compatible.
+
+    Otherwise raises a ``ValueError``.
+    """
+
+    assert types, "List of tensor types may not be empty"
+
+    if len(types) == 1:
+        return types[0]
+
+    shapes = {t.shape for t in types}
+    dims = {len(s) for s in shapes}
+    scalar_types = {t.scalar_type for t in types}
+
+    # Only tensors with homogenous scalar types and shape dimensions
+    # are currently supported
+    if len(scalar_types) > 1 or len(dims) > 1:
+        raise ValueError(f"Can't unify diverging tensor types: {types}")
+
+    # If all shapes are identical, it's a single tensor type
+    if len(shapes) == 1:
+        return next(iter(types))
+
+    return ArrowVariableShapedTensorType(
+        dtype=scalar_types.pop(),
+        dims=dims.pop(),
+    )
+
+
+def unify_tensor_arrays(
+    arrs: Iterable[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]
+) -> Iterable[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
+    supported_tensor_types = get_arrow_extension_tensor_types()
+
+    # Derive number of distinct tensor types
+    distinct_types_ = set()
+
+    for arr in arrs:
+        if isinstance(arr.type, supported_tensor_types):
+            distinct_types_.add(arr.type)
+        else:
+            raise ValueError(f"Trying to unify unsupported tensor type: {arr.type} (supported types: {supported_tensor_types})")
+
+    if len(distinct_types_) == 1:
+        return arrs
+
+    # Verify provided tensor arrays could be unified
+    _ = unify_tensor_types(distinct_types_)
+
+    unified_arrs = []
+    # NOTE: If there's more than 1 distinct tensor types unified
+    #       type will be variable shape
+    for arr in arrs:
+        unified_arrs.append(
+            arr.to_variable_shaped_tensor_array()
+        )
+
+    return unified_arrs
 
 
 def _is_contiguous_view(curr: np.ndarray, prev: Optional[np.ndarray]) -> bool:
