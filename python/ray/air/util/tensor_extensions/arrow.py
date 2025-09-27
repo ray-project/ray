@@ -790,7 +790,7 @@ class ArrowTensorArray(pa.ExtensionArray):
             children=[data_array],
         )
 
-        return pa.ExtensionArray.from_storage(pa_type_, storage)
+        return pa_type_.wrap_array(storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
