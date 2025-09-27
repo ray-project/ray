@@ -616,7 +616,13 @@ def concat(
     try:
         schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
     except Exception as e:
-        raise ArrowConversionError(str(blocks)) from e
+        raise ArrowConversionError(
+            f"Failed to unify schemas: {str(e)}\n"
+            f"{'-' * 16}\n" 
+            f"Schemas:\n"
+            f"{'-' * 16}\n"
+            f"{schemas_to_unify}"
+        ) from e
 
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
