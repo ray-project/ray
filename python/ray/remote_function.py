@@ -58,6 +58,8 @@ class RemoteFunction:
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         _label_selector: The label requirements on a node for scheduling of the task or actor.
+        _fallback_strategy: A list of label selectors to support soft constraints for scheduling
+            on a node.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -206,6 +208,8 @@ class RemoteFunction:
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+            fallback_strategy: (List[Dict[str, str]]) If specified, expresses soft constraints
+                through a list of label selectors to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -472,6 +476,7 @@ class RemoteFunction:
         enable_task_events = task_options.get("enable_task_events")
         labels = task_options.get("_labels")
         label_selector = task_options.get("label_selector")
+        fallback_strategy = task_options.get("fallback_strategy")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -504,6 +509,7 @@ class RemoteFunction:
                 enable_task_events,
                 labels,
                 label_selector,
+                fallback_strategy,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
