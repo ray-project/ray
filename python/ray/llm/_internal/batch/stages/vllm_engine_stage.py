@@ -24,6 +24,7 @@ from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
+    EXCLUDE_SAFETENSORS_MODES
 )
 from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -471,13 +472,12 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
-        exclude_safetensors = self.engine_kwargs.get("load_format") in [
-            "runai_streamer",
-            "tensorizer",
-        ]
+        exclude_safetensors = self.engine_kwargs.get("load_format") in EXCLUDE_SAFETENSORS_MODES
         if exclude_safetensors:
+            logger.info("Excluding safetensors files when downloading the model.")
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
+            logger.info("Downloading model and tokenizer.")
             download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Download the model if needed.
@@ -488,10 +488,12 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             download_extra_files=False,
         )
 
-        # Create an LLM engine.
+        # need to still go to the model passed in if we need to exclude safetensors
+        # because the model could be a cloud storage that contains the safetensors files that we skipped.
+        source = model_source if not exclude_safetensors else self.model
         self.llm = vLLMEngineWrapper(
             model=self.model,
-            model_source=model_source,
+            model_source=source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
