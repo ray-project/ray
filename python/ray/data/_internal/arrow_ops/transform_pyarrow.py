@@ -11,7 +11,8 @@ from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
-    get_arrow_extension_tensor_types,
+    get_arrow_extension_tensor_types, unify_tensor_types,
+    get_arrow_extension_fixed_shape_tensor_types,
 )
 
 try:
@@ -238,26 +239,14 @@ def _reconcile_field(
     if not non_null_types:
         return None
 
-    tensor_types = get_arrow_extension_tensor_types()
-
     # Handle special cases in priority order
 
     # 1. Tensor fields
+    tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
-    if tensor_field_types:
-        needs_variable_shape = ArrowTensorType._need_variable_shaped_tensor_array(
-            tensor_field_types
-        )
 
-        if needs_variable_shape:
-            first_tensor = tensor_field_types[0]
-            if isinstance(first_tensor, ArrowVariableShapedTensorType):
-                return first_tensor
-            else:
-                # Convert fixed-shape to variable-shape
-                return ArrowVariableShapedTensorType(
-                    dtype=first_tensor.scalar_type, ndim=len(first_tensor.shape)
-                )
+    if tensor_field_types:
+        return unify_tensor_types(tensor_field_types)
 
     # 2. Object fields
     if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
@@ -467,8 +456,6 @@ def _backfill_missing_fields(
     if column.type == unified_struct_type:
         return column
 
-    tensor_types = get_arrow_extension_tensor_types()
-
     aligned_fields = []
 
     # Iterate over the fields in the unified struct type schema
@@ -488,15 +475,11 @@ def _backfill_missing_fields(
                 )
 
             # Handle tensor extension type mismatches
-            elif isinstance(field_type, tensor_types) and isinstance(
-                current_array.type, tensor_types
+            elif isinstance(field_type, ArrowVariableShapedTensorType) and isinstance(
+                current_array.type, get_arrow_extension_fixed_shape_tensor_types()
             ):
                 # Convert to variable-shaped if needed
-                if ArrowTensorType._need_variable_shaped_tensor_array(
-                    [current_array.type, field_type]
-                ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
-                    # Only convert if it's not already a variable-shaped tensor array
-                    current_array = current_array.to_variable_shaped_tensor_array()
+                current_array = current_array.to_variable_shaped_tensor_array()
 
             # The schema should already be unified by unify_schemas, so types
             # should be compatible. If not, let the error propagate up.
