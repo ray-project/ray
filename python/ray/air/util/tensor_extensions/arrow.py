@@ -39,9 +39,6 @@ MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
-AnyArrowExtTensorType = Union[ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType]
-
-
 class _SerializationFormat(Enum):
     # JSON format is legacy and inefficient, only kept for backward compatibility
     JSON = 0
@@ -547,50 +544,6 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
     def __hash__(self) -> int:
         return hash((self.extension_name, self.scalar_type, self._shape))
 
-    @classmethod
-    def _need_variable_shaped_tensor_array(
-        cls,
-        array_types: Sequence[
-            Union[
-                "ArrowTensorType", "ArrowTensorTypeV2", "ArrowVariableShapedTensorType"
-            ]
-        ],
-    ) -> bool:
-        """
-        Whether the provided list of tensor types needs a variable-shaped
-        representation (i.e. `ArrowVariableShapedTensorType`) when concatenating
-        or chunking. If one or more of the tensor types in `array_types` are
-        variable-shaped and/or any of the tensor arrays have a different shape
-        than the others, a variable-shaped tensor array representation will be
-        required and this method will return True.
-
-        Args:
-            array_types: List of tensor types to check if a variable-shaped
-                representation is required for concatenation
-
-        Returns:
-            True if concatenating arrays with types `array_types` requires
-            a variable-shaped representation
-        """
-        shape = None
-        for arr_type in array_types:
-            # If at least one of the arrays is variable-shaped, we can immediately
-            # short-circuit since we require a variable-shaped representation.
-            if isinstance(arr_type, ArrowVariableShapedTensorType):
-                return True
-            if not isinstance(arr_type, get_arrow_extension_fixed_shape_tensor_types()):
-                raise ValueError(
-                    "All provided array types must be an instance of either "
-                    "ArrowTensorType or ArrowVariableShapedTensorType, but "
-                    f"got {arr_type}"
-                )
-            # We need variable-shaped representation if any of the tensor arrays have
-            # different shapes.
-            if shape is not None and arr_type.shape != shape:
-                return True
-            shape = arr_type.shape
-        return False
-
 
 @PublicAPI(stability="beta")
 class ArrowTensorType(_BaseFixedShapeArrowTensorType):
@@ -651,9 +604,6 @@ class ArrowTensorScalar(pa.ExtensionScalar):
         return self.as_py()
 
 
-# NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
-# mixin's overriding methods appear first in the MRO.
-# TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
 @PublicAPI(stability="beta")
 class ArrowTensorArray(pa.ExtensionArray):
     """
@@ -901,58 +851,41 @@ class ArrowTensorArray(pa.ExtensionArray):
     @classmethod
     def _concat_same_type(
         cls,
-        to_concat: Sequence[
+        arrs: Sequence[
             Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
         ],
         ensure_copy: bool = False,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
-        Concatenate multiple tensor arrays.
+        Concatenates multiple tensor arrays.
 
-        If one or more of the tensor arrays in to_concat are variable-shaped and/or any
+        NOTE: If one or more of the tensor arrays are variable-shaped and/or any
         of the tensor arrays have a different shape than the others, a variable-shaped
         tensor array will be returned.
 
         Args:
-            to_concat: Tensor arrays to concat
+            arrs: Tensor arrays to concat
             ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
         """
-        to_concat_types = [arr.type for arr in to_concat]
-        if ArrowTensorType._need_variable_shaped_tensor_array(to_concat_types):
-            # Need variable-shaped tensor array.
-            # TODO(Clark): Eliminate this NumPy roundtrip by directly constructing the
-            # underlying storage array buffers (NumPy roundtrip will not be zero-copy
-            # for e.g. boolean arrays).
-            # NOTE(Clark): Iterating over a tensor extension array converts each element
-            # to an ndarray view.
-            return ArrowVariableShapedTensorArray.from_numpy(
-                [e for a in to_concat for e in a]
-            )
-        elif not ensure_copy and len(to_concat) == 1:
-            # Skip copying
-            return to_concat[0]
-        else:
-            storage = pa.concat_arrays([c.storage for c in to_concat])
 
-        return ArrowTensorArray.from_storage(to_concat[0].type, storage)
+        # Verify provided tensor arrays could be concatenated
+        unified_tensor_type = unify_tensor_types([arr.type for arr in arrs])
+
+        if len(arrs) == 1 and not ensure_copy:
+            # Short-circuit
+            return arrs[0]
+
+        storage = pa.concat_arrays([c.storage for c in arrs])
+        return unified_tensor_type.wrap_array(storage)
 
     @classmethod
     def _chunk_tensor_arrays(
-        cls, arrs: Sequence[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]]
+        cls, arrs: Iterable[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]]
     ) -> pa.ChunkedArray:
         """
         Create a ChunkedArray from multiple tensor arrays.
         """
-        arrs_types = [arr.type for arr in arrs]
-        if ArrowTensorType._need_variable_shaped_tensor_array(arrs_types):
-            new_arrs = []
-            for a in arrs:
-                if isinstance(a.type, get_arrow_extension_fixed_shape_tensor_types()):
-                    a = a.to_variable_shaped_tensor_array()
-                assert isinstance(a.type, ArrowVariableShapedTensorType)
-                new_arrs.append(a)
-            arrs = new_arrs
-        return pa.chunked_array(arrs)
+        return pa.chunked_array(unify_tensor_arrays(arrs))
 
     def to_variable_shaped_tensor_array(self) -> "ArrowVariableShapedTensorArray":
         """
@@ -1274,6 +1207,9 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         return self._to_numpy(zero_copy_only=zero_copy_only)
 
 
+AnyArrowExtTensorType = Union[ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType]
+
+
 def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtTensorType:
     """Unifies provided tensor types if compatible.
 
@@ -1302,6 +1238,9 @@ def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtT
         dtype=scalar_types.pop(),
         dims=dims.pop(),
     )
+
+
+AnyArrowExtTensorType = Union[ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType]
 
 
 def unify_tensor_arrays(
