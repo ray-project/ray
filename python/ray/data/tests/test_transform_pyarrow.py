@@ -1,4 +1,5 @@
 import os
+import re
 import types
 from typing import Iterable
 
@@ -587,10 +588,6 @@ def test_unify_schemas_object_types(unify_schemas_object_types_schemas):
     assert result == schemas["expected"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_unify_schemas_incompatible_tensor_dtypes(
     unify_schemas_incompatible_tensor_schemas,
 ):
@@ -599,7 +596,7 @@ def test_unify_schemas_incompatible_tensor_dtypes(
 
     with pytest.raises(
         pa.lib.ArrowTypeError,
-        match="Unable to merge: Field tensor has incompatible types",
+        match=re.escape("Can't unify tensor types with divergent scalar types: [ArrowTensorType(shape=(2, 2), dtype=int32), ArrowTensorType(shape=(2, 2), dtype=float)]"),
     ):
         unify_schemas(unify_schemas_incompatible_tensor_schemas)
 
