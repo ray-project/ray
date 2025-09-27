@@ -849,36 +849,6 @@ class ArrowTensorArray(pa.ExtensionArray):
         return self._to_numpy(zero_copy_only=zero_copy_only)
 
     @classmethod
-    def _concat_same_type(
-        cls,
-        arrs: Sequence[
-            Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
-        ],
-        ensure_copy: bool = False,
-    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
-        """
-        Concatenates multiple tensor arrays.
-
-        NOTE: If one or more of the tensor arrays are variable-shaped and/or any
-        of the tensor arrays have a different shape than the others, a variable-shaped
-        tensor array will be returned.
-
-        Args:
-            arrs: Tensor arrays to concat
-            ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
-        """
-
-        # Verify provided tensor arrays could be concatenated
-        unified_tensor_type = unify_tensor_types([arr.type for arr in arrs])
-
-        if len(arrs) == 1 and not ensure_copy:
-            # Short-circuit
-            return arrs[0]
-
-        storage = pa.concat_arrays([c.storage for c in arrs])
-        return unified_tensor_type.wrap_array(storage)
-
-    @classmethod
     def _chunk_tensor_arrays(
         cls, arrs: Iterable[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]]
     ) -> pa.ChunkedArray:
@@ -1269,6 +1239,36 @@ def unify_tensor_arrays(
         )
 
     return unified_arrs
+
+
+def concat_tensor_arrays(
+    arrays: Sequence[
+        Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
+    ],
+    ensure_copy: bool = False,
+) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
+    """
+    Concatenates multiple tensor arrays.
+
+    NOTE: If one or more of the tensor arrays are variable-shaped and/or any
+    of the tensor arrays have a different shape than the others, a variable-shaped
+    tensor array will be returned.
+
+    Args:
+        arrays: Tensor arrays to concat
+        ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
+    """
+
+    # Verify provided tensor arrays could be concatenated
+    unified_tensor_type = unify_tensor_types([arr.type for arr in arrays])
+
+    if len(arrays) == 1 and not ensure_copy:
+        # Short-circuit
+        return arrays[0]
+
+    storage = pa.concat_arrays([c.storage for c in arrays])
+
+    return unified_tensor_type.wrap_array(storage)
 
 
 def _is_contiguous_view(curr: np.ndarray, prev: Optional[np.ndarray]) -> bool:
