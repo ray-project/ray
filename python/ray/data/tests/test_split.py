@@ -258,10 +258,13 @@ def test_split_at_indices_simple(ray_start_regular_shared_2_cpus):
     ],
 )
 def test_split_at_indices_coverage(
-    ray_start_regular_shared_2_cpus, num_blocks, indices
+    ray_start_regular_shared_2_cpus, num_blocks, indices, restore_data_context
 ):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
+
+    DataContext.get_current().execution_options.preserve_order = True
+
     ds = ray.data.range(20, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.sort("id").take_all()) for s in splits]
