@@ -2,7 +2,6 @@ import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-
 # Map representation: Always six rooms (as the name suggests) with doors in between.
 MAPS = {
     "small": [
