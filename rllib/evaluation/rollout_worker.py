@@ -4,6 +4,8 @@ import logging
 import os
 import platform
 import threading
+
+# Trigger rllib GPU CI tests for learning_tests_cartpole_appo_multi_gpu
 from collections import defaultdict
 from types import FunctionType
 from typing import (
