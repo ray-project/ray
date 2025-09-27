@@ -1101,15 +1101,28 @@ def test_multiple_tensor_fields_in_struct(
             assert field in row
 
 
-def test_struct_with_incompatible_tensor_dtypes_fails(
-    incompatible_tensor_dtypes_blocks,
-):
+def test_struct_with_incompatible_tensor_dtypes_fails():
     """Test that concatenating structs with incompatible tensor dtypes fails gracefully."""
 
-    t1, t2 = incompatible_tensor_dtypes_blocks
+    # Block 1: Struct with float32 fixed-shape tensor
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+
+    # Block 2: Struct with int64 variable-shaped tensor (different dtype)
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.int64),
+            np.zeros((1, 4), dtype=np.int64),
+        ],
+        dtype=object,
+    )
+
+    t1, t2 = _create_struct_tensor_blocks(tensor_data1, tensor_data2, "fixed", "variable")
 
     # This should fail because of incompatible tensor dtypes
-    with pytest.raises(pa.ArrowInvalid):
+    with pytest.raises(
+        ArrowConversionError,
+        match=re.escape("Can't unify tensor types with divergent scalar types: [ArrowTensorTypeV2(shape=(2,), dtype=float), ArrowVariableShapedTensorType(ndim=2, dtype=int64)]")
+    ):
         concat([t1, t2])
 
 
@@ -1812,9 +1825,12 @@ def mixed_tensor_types_same_dtype_expected():
     """Fixture for expected results from mixed tensor types with same dtype."""
     expected_schema = _create_tensor_schema(struct_name="tensor")
     expected_tensors = [
-        np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
-        np.ones((2,), dtype=np.float32),
-        np.ones((3, 3), dtype=np.float32),  # Last 2 variable-shaped
+        # First 2 were converted to var-shaped with their shape expanded
+        # with singleton axis: from (2,) to (1, 2)
+        np.ones((1, 2), dtype=np.float32),
+        np.ones((1, 2), dtype=np.float32),
+        # Last 2 were left intact
+        np.ones((3, 3), dtype=np.float32),
         np.zeros((1, 4), dtype=np.float32),
     ]
 
@@ -1838,7 +1854,7 @@ def mixed_tensor_types_fixed_shape_blocks():
 @pytest.fixture
 def mixed_tensor_types_fixed_shape_expected():
     """Fixture for expected results from mixed tensor types with different fixed shapes."""
-    expected_schema = _create_tensor_schema(struct_name="tensor")
+    expected_schema = _create_tensor_schema(struct_name="tensor", ndim=1)
     expected_tensors = [
         np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
         np.ones((2,), dtype=np.float32),
@@ -2072,24 +2088,6 @@ def multiple_tensor_fields_struct_expected():
     expected_fields = ["tensor1", "tensor2", "value"]
 
     return _create_expected_result(expected_schema, 4, expected_fields=expected_fields)
-
-
-@pytest.fixture
-def incompatible_tensor_dtypes_blocks():
-    """Fixture for struct blocks with incompatible tensor dtypes."""
-    # Block 1: Struct with float32 fixed-shape tensor
-    tensor_data1 = np.ones((2, 2), dtype=np.float32)
-
-    # Block 2: Struct with int64 variable-shaped tensor (different dtype)
-    tensor_data2 = np.array(
-        [
-            np.ones((3, 3), dtype=np.int64),
-            np.zeros((1, 4), dtype=np.int64),
-        ],
-        dtype=object,
-    )
-
-    return _create_struct_tensor_blocks(tensor_data1, tensor_data2, "fixed", "variable")
 
 
 @pytest.fixture
