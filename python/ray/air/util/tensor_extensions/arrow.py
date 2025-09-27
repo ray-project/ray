@@ -1001,17 +1001,12 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return str(self)
 
     def __eq__(self, other):
-        res = (
+        return (
             isinstance(other, ArrowVariableShapedTensorType)
             and other.extension_name == self.extension_name
             and other.scalar_type == self.scalar_type
             and other.ndim == self.ndim
         )
-
-        print(f">>> [DBG] __eq__ = {res}: {self.extension_name == other.extension_name=}, {self.scalar_type == other.scalar_type=}, {self.shape == other.shape=}")
-        print(f">>> [DBG] __eq__ = {res}: {self.extension_name, other.extension_name=}, {self.scalar_type, other.scalar_type=}, {self.shape, other.shape=}")
-
-        return res
 
     def __ne__(self, other):
         # NOTE: We override ``__ne__`` to override base class' method
