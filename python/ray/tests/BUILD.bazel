@@ -149,6 +149,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "ray_client",
+        "special",
         "team:core",
     ],
     deps = [
@@ -169,6 +170,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "ray_client",
+        "special",
         "team:core",
     ],
     deps = [
@@ -186,6 +188,7 @@ py_test_module_list(
         "exclusive",
         "no_windows",
         "ray_client",
+        "special",
         "team:core",
     ],
     deps = [
@@ -227,6 +230,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "ray_client",
+        "special",
         "team:core",
     ],
     deps = [
@@ -253,6 +257,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "ray_client",
+        "special",
         "team:core",
     ],
     deps = [
@@ -279,6 +284,7 @@ py_test_module_list(
         "exclusive",
         "post_wheel_build",
         "ray_client",
+        "special",
         "team:core",
     ],
     deps = [
@@ -638,6 +644,7 @@ py_test_module_list(
         "gpu_objects",
         "multi_gpu",
         "no_windows",
+        "special",
         "team:core",
     ],
     deps = [
@@ -672,6 +679,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "ha_integration",
+        "special",
         "team:core",
     ],
     deps = [
@@ -689,6 +697,7 @@ py_test_module_list(
         "exclusive",
         "ha_integration",
         "no_windows",
+        "special",
         "team:core",
     ],
     deps = [
@@ -703,6 +712,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "mem_pressure",
+        "special",
         "team:core",
     ],
     deps = [
@@ -950,6 +960,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
+        "special",
         "team:core",
         "tmpfs",
     ],
@@ -1083,6 +1094,7 @@ py_test(
     tags = [
         "exclusive",
         "runtime_env_container",
+        "special",
         "team:core",
     ],
     deps = [
@@ -1293,6 +1305,7 @@ py_test_module_list(
     tags = [
         "debug_tests",
         "exclusive",
+        "special",
         "team:core",
     ],
     deps = [
@@ -1314,6 +1327,7 @@ py_test_module_list(
     tags = [
         "asan_tests",
         "exclusive",
+        "special",
         "team:core",
     ],
     deps = [
@@ -1338,6 +1352,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "spark_on_ray",
+        "special",
         "team:core",
     ],
     deps = [
