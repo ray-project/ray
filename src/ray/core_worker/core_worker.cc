@@ -3795,7 +3795,7 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   ObjectID contained_in_id = ObjectID::FromBinary(message.contained_in_id());
   // So it will call PublishRefRemovedInternal to publish a message when the requested
   // object ID's ref count goes to 0.
-  RAY_CHECK(WorkerID::FromBinary(message.subscriber_worker_id()).IsNil())
+  RAY_CHECK(!WorkerID::FromBinary(message.subscriber_worker_id()).IsNil())
       << "subscriber_worker_id should not be Nil";
   reference_counter_->SubscribeRefRemoved(
       object_id,
