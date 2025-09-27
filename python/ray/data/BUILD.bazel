@@ -538,6 +538,7 @@ py_test(
     tags = [
         "dask",
         "exclusive",
+        "special",
         "team:data",
     ],
     deps = [

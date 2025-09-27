@@ -268,6 +268,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "post_wheel_build",
+        "special",
         "team:serve",
     ],
     deps = [
@@ -306,6 +307,7 @@ py_test(
     tags = [
         "exclusive",
         "ha_integration",
+        "special",
         "team:serve",
     ],
     deps = [
