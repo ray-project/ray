@@ -167,9 +167,14 @@ def test_report_get_all_reported_checkpoints():
 
 
 def test_report_checkpoint_upload_function(tmp_path):
-    def checkpoint_upload_function(checkpoint, full_checkpoint_dir):
-        shutil.copytree(checkpoint.path, full_checkpoint_dir)
-        return Checkpoint.from_directory(full_checkpoint_dir)
+    def checkpoint_upload_function(checkpoint, checkpoint_dir_name):
+        full_checkpoint_path = (
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name(checkpoint_dir_name)
+        )
+        shutil.copytree(checkpoint.path, full_checkpoint_path)
+        return Checkpoint.from_directory(full_checkpoint_path)
 
     def train_fn():
         if ray.train.get_context().get_world_rank() == 0:

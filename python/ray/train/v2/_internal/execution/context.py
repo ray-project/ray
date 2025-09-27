@@ -246,10 +246,7 @@ class TrainContext:
         try:
             if checkpoint_upload_function:
                 persisted_checkpoint = checkpoint_upload_function(
-                    checkpoint,
-                    self.storage_context.build_checkpoint_path_from_name(
-                        checkpoint_dir_name
-                    ),
+                    checkpoint, checkpoint_dir_name
                 )
             else:
                 persisted_checkpoint = self.storage_context.persist_current_checkpoint(
