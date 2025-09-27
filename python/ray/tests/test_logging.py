@@ -57,9 +57,9 @@ def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
 
 
-def test_reopen_changed_inode(tmp_path):
+def test_reopen_changed_inode_seeks_on_non_empty_file(tmp_path):
     """Make sure that when we reopen a file because the inode has changed, we
-    open to the right location."""
+    open to the right location when the file has content."""
 
     path1 = tmp_path / "file"
     path2 = tmp_path / "changed_file"
@@ -98,6 +98,52 @@ def test_reopen_changed_inode(tmp_path):
 
     assert file_info.file_position == orig_file_pos
     assert file_info.file_handle.tell() == orig_file_pos
+
+
+def test_reopen_changed_inode_reads_from_beginning_on_empty_file(tmp_path):
+    """Test that after log rotation,
+    we start reading from the beginning of the new file."""
+
+    original_log = tmp_path / "worker.log"
+
+    # Create original log file with content
+    with open(original_log, "w") as f:
+        for i in range(100):
+            print(f"Log line {i}", file=f)
+
+    file_info = LogFileInfo(
+        filename=original_log,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    # Start monitoring and read some lines
+    file_info.reopen_if_necessary()
+    for _ in range(50):
+        file_info.file_handle.readline()
+
+    # Save position
+    file_info.file_position = file_info.file_handle.tell()
+    file_info.file_handle.close()
+
+    # Simulate log rotation: move old file and create new one
+    os.rename(original_log, original_log.with_suffix(".log.1"))
+    with open(original_log, "w") as f:
+        print("New log line 0", file=f)
+
+    # Reopen after rotation
+    file_info.reopen_if_necessary()
+
+    # Should start from beginning of new file
+    line = file_info.file_handle.readline().decode("utf-8", "replace").strip()
+    assert line == "New log line 0", f"Expected to read from beginning, got: '{line}'"
+    assert (
+        file_info.file_position == 0
+    ), f"Expected position 0, got: {file_info.file_position}"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
