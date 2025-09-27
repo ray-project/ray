@@ -1,3 +1,33 @@
+````{note}
+**Quickstart Checklist (AWS)**
+
+Follow these steps to launch a basic Ray cluster on AWS.
+
+**1) Configure AWS credentials locally** (so Ray can use `boto3`):
+
+```bash
+aws configure
+```
+
+**2) Bring up a cluster** using the example configuration:
+
+```bash
+ray up cluster.yaml
+```
+
+See the Cluster Configuration section for details.
+
+**3) Access the Ray Dashboard** at `http://<head-node-ip>:8265`.
+Ensure inbound TCP **8265** is allowed in your AWS Security Group.
+
+**4) Check cluster status:**
+
+```bash
+ray status
+```
+
+Optional: enable autoscaling by adjusting node settings in `cluster.yaml`.
+````
 
 # Launching Ray Clusters on AWS
 
@@ -383,4 +413,4 @@ You can find Ray Prometheus metrics in the ``{cluster_name}-ray-prometheus`` met
 
 You can apply changes to the CloudWatch Logs, Metrics, Dashboard, and Alarms for your cluster by simply modifying the CloudWatch config files referenced by your Ray cluster config YAML and re-running ``ray up example-cloudwatch.yaml``.
 The Unified CloudWatch Agent will be automatically restarted on all cluster nodes, and your config changes will be applied.
-```
+````
