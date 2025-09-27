@@ -848,15 +848,6 @@ class ArrowTensorArray(pa.ExtensionArray):
         """
         return self._to_numpy(zero_copy_only=zero_copy_only)
 
-    @classmethod
-    def _chunk_tensor_arrays(
-        cls, arrs: Iterable[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]]
-    ) -> pa.ChunkedArray:
-        """
-        Create a ChunkedArray from multiple tensor arrays.
-        """
-        return pa.chunked_array(unify_tensor_arrays(arrs))
-
     def to_var_shaped_tensor_array(
         self,
         ndim: int,
@@ -896,7 +887,12 @@ class ArrowTensorArray(pa.ExtensionArray):
             ["data", "shape"],
         )
 
-        return ArrowVariableShapedTensorType.wrap_array(storage)
+        target_type = ArrowVariableShapedTensorType(
+            self.type.scalar_type,
+            ndim=ndim,
+        )
+
+        return target_type.wrap_array(storage)
 
 
 @PublicAPI(stability="alpha")
@@ -1005,12 +1001,17 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return str(self)
 
     def __eq__(self, other):
-        return (
+        res = (
             isinstance(other, ArrowVariableShapedTensorType)
             and other.extension_name == self.extension_name
             and other.scalar_type == self.scalar_type
             and other.ndim == self.ndim
         )
+
+        print(f">>> [DBG] __eq__ = {res}: {self.extension_name == other.extension_name=}, {self.scalar_type == other.scalar_type=}, {self.shape == other.shape=}")
+        print(f">>> [DBG] __eq__ = {res}: {self.extension_name, other.extension_name=}, {self.scalar_type, other.scalar_type=}, {self.shape, other.shape=}")
+
+        return res
 
     def __ne__(self, other):
         # NOTE: We override ``__ne__`` to override base class' method
@@ -1153,7 +1154,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             ["data", "shape"],
         )
         type_ = ArrowVariableShapedTensorType(pa_dtype, ndim)
-        return pa.ExtensionArray.from_storage(type_, storage)
+        return type_.wrap_array(storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
@@ -1243,14 +1244,18 @@ def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtT
 
 
 def unify_tensor_arrays(
-    arrs: Iterable[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]
-) -> Iterable[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
+    arrs: List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]
+) -> List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
     supported_tensor_types = get_arrow_extension_tensor_types()
 
     # Derive number of distinct tensor types
     distinct_types_ = set()
 
+    print(f">>> [DBG] unify_tensor_arrays(arrs): {arrs=}")
+
     for arr in arrs:
+        print(f">>> [DBG] unify_tensor_arrays(arrs): {arr=}")
+
         if isinstance(arr.type, supported_tensor_types):
             distinct_types_.add(arr.type)
         else:
