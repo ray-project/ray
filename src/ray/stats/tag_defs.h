@@ -32,12 +32,6 @@ extern const TagKeyType VersionKey;
 
 extern const TagKeyType LanguageKey;
 
-extern const TagKeyType WorkerPidKey;
-
-extern const TagKeyType DriverPidKey;
-
-extern const TagKeyType ActorIdKey;
-
 extern const TagKeyType WorkerIdKey;
 
 extern const TagKeyType JobIdKey;
@@ -51,23 +45,8 @@ extern const TagKeyType SourceKey;
 // Object store memory location tag constants
 extern const TagKeyType LocationKey;
 
-constexpr char kResourceNameKey[] = "ResourceName";
-
-constexpr char kCustomKey[] = "CustomKey";
-
-constexpr char kObjectLocMmapShm[] = "MMAP_SHM";
-constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
-constexpr char kObjectLocSpilled[] = "SPILLED";
-constexpr char kObjectLocWorkerHeap[] = "WORKER_HEAP";
-
 // Object store memory sealed/unsealed tag
 extern const TagKeyType ObjectStateKey;
-constexpr char kObjectSealed[] = "SEALED";
-constexpr char kObjectUnsealed[] = "UNSEALED";
-
-// GCS task manager tags
-constexpr char kGcsTaskStatusEventDropped[] = "STATUS_EVENT";
-constexpr char kGcsProfileEventDropped[] = "PROFILE_EVENT";
 
 }  // namespace stats
 }  // namespace ray

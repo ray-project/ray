@@ -18,19 +18,11 @@ namespace ray {
 namespace stats {
 const TagKeyType ComponentKey = TagKeyType::Register("Component");
 
-const TagKeyType JobNameKey = TagKeyType::Register("JobName");
-
 const TagKeyType NodeAddressKey = TagKeyType::Register("NodeAddress");
 
 const TagKeyType VersionKey = TagKeyType::Register("Version");
 
 const TagKeyType LanguageKey = TagKeyType::Register("Language");
-
-const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
-
-const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
-
-const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
 
 // Keep in sync with the WORKER_ID_TAG_KEY in
 // python/ray/_private/telemetry/metric_cardinality.py
