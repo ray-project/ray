@@ -45,6 +45,8 @@ message ActorLifecycleEvent {
     bytes worker_id = 4;
     // Contains metadata about why the actor is dead. available when state is DEAD.
     ActorDeathCause death_cause = 6;
+    // worker pid, only available when state is ALIVE.
+    uint32 worker_pid = 7;
   }
 
   // The ID of the actor that was created.
