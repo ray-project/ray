@@ -13,6 +13,7 @@ from ray.serve._private.application_state import (
     StatusOverview,
     override_deployment_info,
 )
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -162,7 +163,11 @@ def mocked_application_state_manager() -> (
 
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     application_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
     )
     yield application_state_manager, deployment_state_manager, kv_store
 
@@ -195,6 +200,7 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
     application_state = ApplicationState(
         name="test_app",
         deployment_state_manager=deployment_state_manager,
+        autoscaling_state_manager=AutoscalingStateManager(),
         endpoint_state=MockEndpointState(),
         logging_config=LoggingConfig(),
     )
@@ -686,6 +692,7 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
         deployment_state_manager,
+        AutoscalingStateManager(),
         MockEndpointState(),
         kv_store,
         LoggingConfig(),
@@ -734,7 +741,11 @@ def test_apply_app_configs_fail(check_obj_ref_ready_nowait):
     kv_store = MockKVStore()
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
     )
 
     # Deploy config
@@ -776,7 +787,11 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     kv_store = MockKVStore()
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
     )
 
     # Deploy an app via `deploy_app` - should not be affected.
@@ -956,7 +971,11 @@ def test_application_state_recovery(mocked_application_state_manager):
 
     # Create new application state manager, and it should call _recover_from_checkpoint
     new_app_state_manager = ApplicationStateManager(
-        new_deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
+        new_deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
     )
     app_state = new_app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -1015,7 +1034,11 @@ def test_recover_during_update(mocked_application_state_manager):
 
     # Create new application state manager, and it should call _recover_from_checkpoint
     new_app_state_manager = ApplicationStateManager(
-        new_deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
+        new_deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
     )
     app_state = new_app_state_manager._application_states[app_name]
     ar_version = app_state._target_state.deployment_infos["d1"].version
