@@ -1082,7 +1082,7 @@ def test_actor_summary(serve_instance):
 
     serve.run(f.bind(), name="app")
     actors = list_actors(filters=[("state", "=", "ALIVE")])
-    class_names = {actor["class_name"] for actor in actors}
+    class_names = {actor.class_name for actor in actors}
     assert class_names.issuperset(
         {"ServeController", "ProxyActor", "ServeReplica:app:f"}
     )
