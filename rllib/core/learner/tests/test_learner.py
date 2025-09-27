@@ -13,6 +13,13 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
 
+from ray.rllib.utils.metrics import (
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED,
+)
+
 torch, _ = try_import_torch()
 
 
@@ -45,6 +52,21 @@ class TestLearner(unittest.TestCase):
         min_loss = min(loss, min_loss)
         print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
         self.assertLess(min_loss, 0.58)
+
+        # Test that the metrics are correctly aggregated to the ALL_MODULES key.
+        sum_env_steps = 0
+        sum_env_steps_lifetime = 0
+        sum_env_steps += results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED].peek()
+        sum_env_steps_lifetime += results[DEFAULT_MODULE_ID][
+            NUM_MODULE_STEPS_TRAINED_LIFETIME
+        ].peek()
+        self.assertEqual(
+            sum_env_steps, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
+        )
+        self.assertEqual(
+            sum_env_steps_lifetime,
+            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME].peek(),
+        )
 
     def test_compute_gradients(self):
         """Tests the compute_gradients correctness.
