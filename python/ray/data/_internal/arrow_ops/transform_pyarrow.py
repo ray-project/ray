@@ -12,8 +12,10 @@ from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
-    get_arrow_extension_tensor_types, unify_tensor_types,
-    get_arrow_extension_fixed_shape_tensor_types, unify_tensor_arrays,
+    get_arrow_extension_fixed_shape_tensor_types,
+    get_arrow_extension_tensor_types,
+    unify_tensor_arrays,
+    unify_tensor_types,
 )
 
 try:
@@ -232,8 +234,6 @@ def _reconcile_field(
     """
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
         get_arrow_extension_tensor_types,
     )
 
@@ -433,9 +433,7 @@ def _backfill_missing_fields(
     import pyarrow as pa
 
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
         ArrowVariableShapedTensorType,
-        get_arrow_extension_tensor_types,
     )
 
     # Flatten chunked arrays into a single array if necessary
@@ -598,7 +596,6 @@ def concat(
     from ray.data.extensions import (
         ArrowPythonObjectArray,
         ArrowPythonObjectType,
-        ArrowTensorArray,
         get_arrow_extension_tensor_types,
     )
 
@@ -618,7 +615,7 @@ def concat(
     except Exception as e:
         raise ArrowConversionError(
             f"Failed to unify schemas: {str(e)}\n"
-            f"{'-' * 16}\n" 
+            f"{'-' * 16}\n"
             f"Schemas:\n"
             f"{'-' * 16}\n"
             f"{schemas_to_unify}"
