@@ -2,7 +2,6 @@ from ray.includes.metric cimport (
     CCount,
     CGauge,
     CHistogram,
-    CTagKey,
     CSum,
     CMetric,
 )
@@ -11,18 +10,6 @@ from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
-
-cdef class TagKey:
-    """Cython wrapper class of C++ `opencensus::stats::TagKey`."""
-    cdef c_string name
-
-    def __init__(self, name):
-        self.name = name.encode("ascii")
-        CTagKey.Register(self.name)
-
-    def name(self):
-        return self.name
-
 
 cdef class Metric:
     """Cython wrapper class of C++ `ray::stats::Metric`.

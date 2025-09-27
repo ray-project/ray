@@ -6,7 +6,6 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray.util.state
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import Semaphore, wait_for_condition
 from ray._private.test_utils import (

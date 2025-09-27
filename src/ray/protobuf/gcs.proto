@@ -103,7 +103,7 @@ message ActorTableData {
   // Number of restarts that has been tried on this actor.
   // This will be greater by 1 than what's published before in ALIVE.
   // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
-  int64 num_restarts = 8;
+  uint64 num_restarts = 8;
   // The address of the actor.
   Address address = 9;
   // The address of the actor's owner (parent).
