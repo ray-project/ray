@@ -10,7 +10,10 @@ from pytest import raises
 
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
+    CloudMirrorConfig,
     CloudObjectCache,
+    LoraMirrorConfig,
+    is_remote_path,
     remote_object_cache,
 )
 
@@ -502,6 +505,430 @@ class TestCloudFileSystem:
                 ],
                 any_order=True,
             )
+
+
+class TestIsRemotePath:
+    """Tests for the is_remote_path utility function."""
+
+    def test_s3_paths(self):
+        """Test S3 path detection."""
+        assert is_remote_path("s3://bucket/path") is True
+        assert is_remote_path("s3://bucket") is True
+        assert is_remote_path("s3://anonymous@bucket/path") is True
+
+    def test_gcs_paths(self):
+        """Test GCS path detection."""
+        assert is_remote_path("gs://bucket/path") is True
+        assert is_remote_path("gs://bucket") is True
+        assert is_remote_path("gs://anonymous@bucket/path") is True
+
+    def test_abfss_paths(self):
+        """Test ABFSS path detection."""
+        assert (
+            is_remote_path("abfss://container@account.dfs.core.windows.net/path")
+            is True
+        )
+        assert is_remote_path("abfss://container@account.dfs.core.windows.net") is True
+
+    def test_azure_paths(self):
+        """Test Azure path detection."""
+        assert (
+            is_remote_path("azure://container@account.blob.core.windows.net/path")
+            is True
+        )
+        assert (
+            is_remote_path("azure://container@account.dfs.core.windows.net/path")
+            is True
+        )
+
+    def test_local_paths(self):
+        """Test local path detection."""
+        assert is_remote_path("/local/path") is False
+        assert is_remote_path("./relative/path") is False
+        assert is_remote_path("file:///local/path") is False
+        assert is_remote_path("http://example.com") is False
+
+
+class TestCloudMirrorConfig:
+    """Tests for the CloudMirrorConfig class."""
+
+    def test_valid_s3_uri(self):
+        """Test valid S3 URI."""
+        config = CloudMirrorConfig(bucket_uri="s3://my-bucket/path")
+        assert config.bucket_uri == "s3://my-bucket/path"
+        assert config.storage_type == "s3"
+
+    def test_valid_gcs_uri(self):
+        """Test valid GCS URI."""
+        config = CloudMirrorConfig(bucket_uri="gs://my-bucket/path")
+        assert config.bucket_uri == "gs://my-bucket/path"
+        assert config.storage_type == "gcs"
+
+    def test_valid_abfss_uri(self):
+        """Test valid ABFSS URI."""
+        config = CloudMirrorConfig(
+            bucket_uri="abfss://container@account.dfs.core.windows.net/path"
+        )
+        assert (
+            config.bucket_uri == "abfss://container@account.dfs.core.windows.net/path"
+        )
+        assert config.storage_type == "abfss"
+
+    def test_valid_azure_uri(self):
+        """Test valid Azure URI."""
+        config = CloudMirrorConfig(
+            bucket_uri="azure://container@account.blob.core.windows.net/path"
+        )
+        assert (
+            config.bucket_uri == "azure://container@account.blob.core.windows.net/path"
+        )
+        assert config.storage_type == "azure"
+
+    def test_none_uri(self):
+        """Test None URI."""
+        config = CloudMirrorConfig(bucket_uri=None)
+        assert config.bucket_uri is None
+        assert config.storage_type is None
+
+    def test_invalid_uri(self):
+        """Test invalid URI."""
+        with pytest.raises(
+            ValueError, match='Got invalid value "file:///tmp" for bucket_uri'
+        ):
+            CloudMirrorConfig(bucket_uri="file:///tmp")
+
+    def test_extra_files(self):
+        """Test extra files configuration."""
+        config = CloudMirrorConfig(
+            bucket_uri="s3://bucket/path",
+            extra_files=[
+                {"bucket_uri": "s3://bucket/file1", "destination_path": "/dest1"},
+                {"bucket_uri": "s3://bucket/file2", "destination_path": "/dest2"},
+            ],
+        )
+        assert len(config.extra_files) == 2
+        assert config.extra_files[0].bucket_uri == "s3://bucket/file1"
+        assert config.extra_files[0].destination_path == "/dest1"
+
+
+class TestLoraMirrorConfig:
+    """Tests for the LoraMirrorConfig class."""
+
+    def test_valid_s3_config(self):
+        """Test valid S3 LoRA config."""
+        config = LoraMirrorConfig(
+            lora_model_id="test-model",
+            bucket_uri="s3://my-bucket/lora-models",
+            max_total_tokens=1000,
+        )
+        assert config.lora_model_id == "test-model"
+        assert config.bucket_uri == "s3://my-bucket/lora-models"
+        assert config.bucket_name == "my-bucket"
+        assert config.bucket_path == "lora-models"
+
+    def test_valid_abfss_config(self):
+        """Test valid ABFSS LoRA config."""
+        config = LoraMirrorConfig(
+            lora_model_id="test-model",
+            bucket_uri="abfss://container@account.dfs.core.windows.net/lora/models",
+            max_total_tokens=1000,
+        )
+        assert config.lora_model_id == "test-model"
+        assert (
+            config.bucket_uri
+            == "abfss://container@account.dfs.core.windows.net/lora/models"
+        )
+        assert config.bucket_name == "container"
+        assert config.bucket_path == "lora/models"
+
+    def test_valid_azure_config(self):
+        """Test valid Azure LoRA config."""
+        config = LoraMirrorConfig(
+            lora_model_id="test-model",
+            bucket_uri="azure://container@account.blob.core.windows.net/lora/models",
+            max_total_tokens=1000,
+        )
+        assert config.lora_model_id == "test-model"
+        assert (
+            config.bucket_uri
+            == "azure://container@account.blob.core.windows.net/lora/models"
+        )
+        assert config.bucket_name == "container"
+        assert config.bucket_path == "lora/models"
+
+    def test_bucket_path_parsing(self):
+        """Test bucket path parsing for different URI formats."""
+        # S3 with multiple path segments
+        config = LoraMirrorConfig(
+            lora_model_id="test",
+            bucket_uri="s3://bucket/path/to/model",
+            max_total_tokens=1000,
+        )
+        assert config.bucket_name == "bucket"
+        assert config.bucket_path == "path/to/model"
+
+        # ABFSS with multiple path segments
+        config = LoraMirrorConfig(
+            lora_model_id="test",
+            bucket_uri="abfss://container@account.dfs.core.windows.net/deep/nested/path",
+            max_total_tokens=1000,
+        )
+        assert config.bucket_name == "container"
+        assert config.bucket_path == "deep/nested/path"
+
+    def test_invalid_uri(self):
+        """Test invalid URI in LoRA config."""
+        with pytest.raises(
+            ValueError, match='Got invalid value "file:///tmp" for bucket_uri'
+        ):
+            LoraMirrorConfig(
+                lora_model_id="test-model",
+                bucket_uri="file:///tmp",
+                max_total_tokens=1000,
+            )
+
+    def test_optional_fields(self):
+        """Test optional fields in LoRA config."""
+        config = LoraMirrorConfig(
+            lora_model_id="test-model",
+            bucket_uri="s3://bucket/path",
+            max_total_tokens=1000,
+            sync_args=["--exclude", "*.tmp"],
+        )
+        assert config.max_total_tokens == 1000
+        assert config.sync_args == ["--exclude", "*.tmp"]
+
+
+class TestCloudFileSystemAzureSupport:
+    """Tests for Azure/ABFSS support in CloudFileSystem."""
+
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_get_fs_and_path_abfss(
+        self, mock_handler, mock_pyfs, mock_cred, mock_adlfs
+    ):
+        """Test getting ABFSS filesystem and path."""
+        mock_adlfs_instance = MagicMock()
+        mock_adlfs.return_value = mock_adlfs_instance
+        mock_pyfs_instance = MagicMock()
+        mock_pyfs.return_value = mock_pyfs_instance
+
+        fs, path = CloudFileSystem.get_fs_and_path(
+            "abfss://container@account.dfs.core.windows.net/path/to/file"
+        )
+
+        assert fs == mock_pyfs_instance
+        assert path == "container/path/to/file"
+
+        # Verify the adlfs filesystem was created with correct parameters
+        mock_adlfs.assert_called_once_with(
+            account_name="account", credential=mock_cred.return_value
+        )
+        mock_handler.assert_called_once_with(mock_adlfs_instance)
+        mock_pyfs.assert_called_once_with(mock_handler.return_value)
+
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_get_fs_and_path_azure(
+        self, mock_handler, mock_pyfs, mock_cred, mock_adlfs
+    ):
+        """Test getting Azure filesystem and path."""
+        mock_adlfs_instance = MagicMock()
+        mock_adlfs.return_value = mock_adlfs_instance
+        mock_pyfs_instance = MagicMock()
+        mock_pyfs.return_value = mock_pyfs_instance
+
+        fs, path = CloudFileSystem.get_fs_and_path(
+            "azure://container@account.blob.core.windows.net/path/to/file"
+        )
+
+        assert fs == mock_pyfs_instance
+        assert path == "container/path/to/file"
+
+        # Verify the adlfs filesystem was created with correct parameters
+        mock_adlfs.assert_called_once_with(
+            account_name="account", credential=mock_cred.return_value
+        )
+
+    def test_abfss_uri_validation(self):
+        """Test ABFSS URI validation."""
+        # Test valid URIs
+        valid_uris = [
+            "abfss://container@account.dfs.core.windows.net/path",
+            "abfss://my-container@myaccount.dfs.core.windows.net/deep/nested/path",
+        ]
+
+        for uri in valid_uris:
+            with patch("adlfs.AzureBlobFileSystem"), patch(
+                "azure.identity.DefaultAzureCredential"
+            ), patch("pyarrow.fs.PyFileSystem"), patch("pyarrow.fs.FSSpecHandler"):
+                # Should not raise an exception
+                CloudFileSystem._create_abfss_filesystem(uri)
+
+        # Test invalid URIs
+        invalid_uris = [
+            "abfss://container",  # Missing @account
+            "abfss://@account.dfs.core.windows.net/path",  # Empty container
+            "abfss://container@account.wrong.domain/path",  # Wrong domain
+            "abfss://container@.dfs.core.windows.net/path",  # Empty account
+            "abfss://container@account.dfs.core.windows.net",  # No path (but this is actually valid)
+        ]
+
+        for uri in invalid_uris[:-1]:  # Skip the last one as it's actually valid
+            with pytest.raises(ValueError):
+                CloudFileSystem._create_abfss_filesystem(uri)
+
+    def test_azure_uri_validation(self):
+        """Test Azure URI validation."""
+        # Test valid URIs
+        valid_uris = [
+            "azure://container@account.blob.core.windows.net/path",
+            "azure://container@account.dfs.core.windows.net/path",
+            "azure://my-container@myaccount.blob.core.windows.net/deep/nested/path",
+        ]
+
+        for uri in valid_uris:
+            with patch("adlfs.AzureBlobFileSystem"), patch(
+                "azure.identity.DefaultAzureCredential"
+            ), patch("pyarrow.fs.PyFileSystem"), patch("pyarrow.fs.FSSpecHandler"):
+                # Should not raise an exception
+                CloudFileSystem._create_azure_filesystem(uri)
+
+        # Test invalid URIs
+        invalid_uris = [
+            "azure://container",  # Missing @account
+            "azure://@account.blob.core.windows.net/path",  # Empty container
+            "azure://container@account.wrong.domain/path",  # Wrong domain
+            "azure://container@.blob.core.windows.net/path",  # Empty account
+        ]
+
+        for uri in invalid_uris:
+            with pytest.raises(ValueError):
+                CloudFileSystem._create_azure_filesystem(uri)
+
+    def test_abfss_import_error(self):
+        """Test ImportError when adlfs is not available."""
+        with patch(
+            "builtins.__import__", side_effect=ImportError("No module named 'adlfs'")
+        ):
+            with pytest.raises(
+                ImportError, match="You must `pip install adlfs azure-identity`"
+            ):
+                CloudFileSystem._create_abfss_filesystem(
+                    "abfss://container@account.dfs.core.windows.net/path"
+                )
+
+    def test_azure_import_error(self):
+        """Test ImportError when adlfs is not available for Azure."""
+        with patch(
+            "builtins.__import__", side_effect=ImportError("No module named 'adlfs'")
+        ):
+            with pytest.raises(
+                ImportError, match="You must `pip install adlfs azure-identity`"
+            ):
+                CloudFileSystem._create_azure_filesystem(
+                    "azure://container@account.blob.core.windows.net/path"
+                )
+
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_abfss_anonymous_access_ignored(
+        self, mock_handler, mock_pyfs, mock_cred, mock_adlfs
+    ):
+        """Test that anonymous access pattern is ignored for ABFSS URIs."""
+        mock_adlfs_instance = MagicMock()
+        mock_adlfs.return_value = mock_adlfs_instance
+        mock_pyfs_instance = MagicMock()
+        mock_pyfs.return_value = mock_pyfs_instance
+
+        # ABFSS URI with @ symbol should not trigger anonymous access logic
+        fs, path = CloudFileSystem.get_fs_and_path(
+            "abfss://container@account.dfs.core.windows.net/path"
+        )
+
+        assert fs == mock_pyfs_instance
+        assert path == "container/path"
+
+        # Verify that DefaultAzureCredential was used, not anonymous access
+        mock_cred.assert_called_once()
+        mock_adlfs.assert_called_once_with(
+            account_name="account", credential=mock_cred.return_value
+        )
+
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_get_file_abfss(self, mock_handler, mock_pyfs, mock_cred, mock_adlfs):
+        """Test getting a file from ABFSS storage."""
+        # Setup mock filesystem and file
+        mock_adlfs_instance = MagicMock()
+        mock_adlfs.return_value = mock_adlfs_instance
+        mock_fs = MagicMock()
+        mock_pyfs.return_value = mock_fs
+
+        # Mock file content and info
+        mock_file = MagicMock()
+        mock_file.read.return_value = b"test abfss content"
+        mock_fs.open_input_file.return_value.__enter__.return_value = mock_file
+        mock_fs.get_file_info.return_value.type = pa_fs.FileType.File
+
+        # Test getting file as string (default)
+        content = CloudFileSystem.get_file(
+            "abfss://container@account.dfs.core.windows.net/test.txt"
+        )
+        assert content == "test abfss content"
+
+        # Verify the correct path was used
+        mock_fs.get_file_info.assert_called_with("container/test.txt")
+        mock_fs.open_input_file.assert_called_with("container/test.txt")
+
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_list_subfolders_abfss(
+        self, mock_handler, mock_pyfs, mock_cred, mock_adlfs
+    ):
+        """Test listing subfolders in ABFSS storage."""
+        # Setup mock filesystem
+        mock_adlfs_instance = MagicMock()
+        mock_adlfs.return_value = mock_adlfs_instance
+        mock_fs = MagicMock()
+        mock_pyfs.return_value = mock_fs
+
+        # Create mock file infos for directory listing
+        dir1 = MagicMock()
+        dir1.type = pa_fs.FileType.Directory
+        dir1.path = "container/parent/subdir1"
+
+        dir2 = MagicMock()
+        dir2.type = pa_fs.FileType.Directory
+        dir2.path = "container/parent/subdir2"
+
+        file1 = MagicMock()
+        file1.type = pa_fs.FileType.File
+        file1.path = "container/parent/file.txt"
+
+        mock_fs.get_file_info.return_value = [dir1, dir2, file1]
+
+        # Test listing subfolders
+        folders = CloudFileSystem.list_subfolders(
+            "abfss://container@account.dfs.core.windows.net/parent"
+        )
+        assert sorted(folders) == ["subdir1", "subdir2"]
+
+        # Verify the correct path was used
+        mock_fs.get_file_info.assert_called_once()
+        call_args = mock_fs.get_file_info.call_args[0][0]
+        assert call_args.base_dir == "container/parent/"
+        assert call_args.recursive is False
 
 
 if __name__ == "__main__":
