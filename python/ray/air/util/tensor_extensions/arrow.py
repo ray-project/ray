@@ -872,7 +872,7 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         # Pad target shape with singleton axis to match target number of
         # dimensions
-        target_shape = (1,) * (ndim - len(shape)) + shape
+        target_shape = _pad_shape_with_singleton_axes(shape, ndim)
         # Construct shapes array
         shape_array = (
             pa.nulls(
@@ -1205,6 +1205,41 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             A single ndarray representing the entire array of tensors.
         """
         return self._to_numpy(zero_copy_only=zero_copy_only)
+
+    def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
+        if ndim == self.type.ndim:
+            return self
+        elif ndim < self.type.ndim:
+            raise ValueError(
+                f"Can't convert {self.type} to var-shaped tensor type with {ndim=}"
+            )
+
+        target_type = ArrowVariableShapedTensorType(self.type.scalar_type, ndim)
+
+        # Unpack source tensor array into internal data storage and shapes
+        # array
+        data_array = self.storage.field("data")
+        shapes_array = self.storage.field("shape")
+        # Pad individual shapes with singleton axes to match target number of
+        # dimensions
+        #
+        # TODO avoid python loop
+        expanded_shapes_array = pa.array([
+            _pad_shape_with_singleton_axes(s, ndim)
+            for s in shapes_array.to_pylist()
+        ])
+
+        storage = pa.StructArray.from_arrays(
+            [data_array, expanded_shapes_array]
+        )
+
+        return target_type.wrap_array(storage)
+
+
+def _pad_shape_with_singleton_axes(shape: Tuple[int, ...], ndim: int) -> Tuple[int, ...]:
+    assert ndim >= len(shape)
+
+    return (1,) * (ndim - len(shape)) + shape
 
 
 AnyArrowExtTensorType = Union[ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType]
