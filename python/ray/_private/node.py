@@ -478,6 +478,7 @@ class Node:
                 self._temp_dir = self._ray_params.temp_dir
 
         try_to_create_directory(self._temp_dir)
+        logger.info(f"temp_dir: {self._temp_dir} created on node")
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
