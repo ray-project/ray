@@ -3791,6 +3791,50 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
 
+# Multi-node placement group config validation (unit tests)
+- name: llm_serve_multi_node_placement_groups
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    # Test custom placement group configuration and PACK default strategy
+    script: pytest -vs test_llm_serve_multi_node.py
+
+# Multi-node TP/PP integration tests (actual deployments)
+- name: llm_serve_multi_node_integration
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    # Test actual multi-node deployments with custom placement groups
+    script: pytest -vs test_llm_serve_multi_node_integration.py
+
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
   python: "3.11"
