@@ -479,7 +479,9 @@ def _backfill_missing_fields(
                 current_array.type, get_arrow_extension_fixed_shape_tensor_types()
             ):
                 # Convert to variable-shaped if needed
-                current_array = current_array.to_variable_shaped_tensor_array()
+                current_array = current_array.to_var_shaped_tensor_array(
+                    ndim=field.ndim
+                )
 
             # The schema should already be unified by unify_schemas, so types
             # should be compatible. If not, let the error propagate up.
