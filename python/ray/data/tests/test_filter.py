@@ -5,9 +5,9 @@ import pytest
 from pkg_resources import parse_version
 
 import ray
-from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col
 from ray.data.tests.conftest import get_pyarrow_version
+from ray.tests.conftest import *  # noqa
 
 
 def test_filter_mutex(
@@ -121,7 +121,7 @@ def test_filter_with_invalid_expression(
         parquet_ds.filter(expr="fake_news super fake")
 
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    with pytest.raises(UserCodeException):
+    with pytest.raises(KeyError):
         fake_column_ds.to_pandas()
 
 

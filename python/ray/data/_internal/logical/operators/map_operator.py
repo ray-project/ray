@@ -1,8 +1,7 @@
 import functools
 import inspect
 import logging
-import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -10,10 +9,6 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr
 from ray.data.preprocessor import Preprocessor
-
-if TYPE_CHECKING:
-    import pyarrow as pa
-
 
 logger = logging.getLogger(__name__)
 
@@ -242,30 +237,17 @@ class Filter(AbstractUDFMap):
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        filter_expr: Optional["pa.dataset.Expression"] = None,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        # Deprecation warning for filter_expr
-        if filter_expr is not None:
-            warnings.warn(
-                "The 'filter_expr' parameter is deprecated and will be removed in a future version. "
-                "Use 'predicate_expr' instead.",
-                FutureWarning,
-                stacklevel=2,
-            )
-
-        # Ensure exactly one of fn, filter_expr, or predicate_expr is provided
-        provided_params = sum(
-            [fn is not None, filter_expr is not None, predicate_expr is not None]
-        )
+        # Ensure exactly one of fn, or predicate_expr is provided
+        provided_params = sum([fn is not None, predicate_expr is not None])
         if provided_params != 1:
             raise ValueError(
-                "Exactly one of 'fn', 'filter_expr', or 'predicate_expr' must be provided"
+                "Exactly one of 'fn', or 'predicate_expr' must be provided"
             )
 
-        self._filter_expr = filter_expr
         self._predicate_expr = predicate_expr
 
         super().__init__(

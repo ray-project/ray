@@ -1544,13 +1544,13 @@ class Dataset:
                 # TODO: (srinathk) bind the expression to the actual schema.
                 # If expr is a string, convert it to a pyarrow.dataset.Expression
                 # Initialize ExpressionEvaluator with valid columns, if available
-                # TODO: Rewrite the converter in Ray Data's Expression system.
-                resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
+                # str -> Ray Data's Expression
+                resolved_expr = ExpressionEvaluator.get_ray_data_expression(expr)
 
                 compute = TaskPoolStrategy(size=concurrency)
                 filter_kwargs.update(
                     {
-                        "filter_expr": resolved_expr,
+                        "predicate_expr": resolved_expr,
                         "compute": compute,
                     }
                 )

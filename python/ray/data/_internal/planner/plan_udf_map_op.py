@@ -217,36 +217,9 @@ def plan_filter_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    expression = op._filter_expr
     predicate_expr = op._predicate_expr
     compute = get_compute(op._compute)
-    if expression is not None:
-
-        def filter_block_fn(
-            blocks: Iterable[Block], ctx: TaskContext
-        ) -> Iterable[Block]:
-            for block in blocks:
-                try:
-                    # Convert block to Arrow table and apply expression filter
-                    if isinstance(block, pa.Table):
-                        filtered_block = block.filter(expression)
-                    else:
-                        # Convert to Arrow first if needed
-                        block_accessor = BlockAccessor.for_block(block)
-                        arrow_block = block_accessor.to_arrow()
-                        filtered_block = arrow_block.filter(expression)
-                    yield filtered_block
-                except Exception as e:
-                    _try_wrap_udf_exception(e)
-
-        init_fn = None
-        transform_fn = BlockMapTransformFn(
-            filter_block_fn,
-            is_udf=True,
-            output_block_size_option=output_block_size_option,
-        )
-
-    elif predicate_expr is not None:
+    if predicate_expr is not None:
 
         def filter_block_fn(
             blocks: Iterable[Block], ctx: TaskContext
