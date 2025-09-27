@@ -103,7 +103,7 @@ else
     curl -sSL "${REDIS_BINARY_URL}" -o - | tar -xzf - -C python/ray/core/src/ray/thirdparty/redis/src
 
     echo "--- Install Ray with -e"
-    SKIP_BAZEL_BUILD=1 pip install -v -e python/
+    RAY_INSTALL_JAVA=0 SKIP_BAZEL_BUILD=1 pip install -v -e python/
   else
     # Fall back to normal path.
     echo "--- Install Ray with -e"
