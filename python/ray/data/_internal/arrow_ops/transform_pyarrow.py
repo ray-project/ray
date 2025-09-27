@@ -645,9 +645,13 @@ def concat(
                 # homogeneous-shaped block columns having different shapes across
                 # blocks: if tensor element shapes differ across blocks, a
                 # variable-shaped tensor array will be returned.
-                col = ArrowTensorArray._chunk_tensor_arrays(
-                    [chunk for ca in col_chunked_arrays for chunk in ca.chunks]
+                combined_chunks = list(
+                    itertools.chain(
+                        *[chunked.iterchunks() for chunked in col_chunked_arrays]
+                    )
                 )
+
+                col = pa.chunked_array(unify_tensor_arrays(combined_chunks))
             elif isinstance(schema.field(col_name).type, ArrowPythonObjectType):
                 chunks_to_concat = []
                 # Cast everything to objects if concatenated with an object column
