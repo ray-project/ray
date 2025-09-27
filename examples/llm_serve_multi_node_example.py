@@ -6,8 +6,11 @@ This example demonstrates how to deploy an LLM using Ray Serve with custom
 placement group configurations for multi-node tensor and pipeline parallelism.
 """
 
+import time
+
 import ray
 from ray import serve
+from ray.llm._internal.serve.configs.server_models import LLMServingArgs
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 
 
@@ -17,14 +20,20 @@ def example_multi_node_deployment():
     # Initialize Ray
     ray.init()
 
+    # Clean up any existing deployments to avoid conflicts
+    try:
+        serve.shutdown()
+    except Exception:
+        pass  # Ignore if no serve instance is running
+
     # Example 1: Multi-node deployment with PACK strategy
     print("Example 1: Multi-node deployment with PACK strategy")
     print("=" * 60)
 
     llm_config_pack = LLMConfig(
         model_loading_config=ModelLoadingConfig(
-            model_id="llama-7b-pack",
-            model_source="facebook/opt-1.3b",  # Using smaller model for demo
+            model_id="facebook/opt-125m",
+            model_source="facebook/opt-125m",
         ),
         deployment_config=dict(
             autoscaling_config=dict(
@@ -54,19 +63,29 @@ def example_multi_node_deployment():
     )
 
     # Build and deploy the application
-    app_pack = build_openai_app(llm_config_pack)
-    serve.run(app_pack, name="llm_pack_example")
-
-    print("Deployment with PACK strategy is running!")
-    print("You can test it with:")
-    print("curl -X POST http://localhost:8000/v1/completions \\")
-    print('  -H "Content-Type: application/json" \\')
-    print(
-        '  -d \'{"model": "llama-7b-pack", "prompt": "The future of AI is", "max_tokens": 50}\''
+    app_pack = build_openai_app(
+        llm_serving_args=LLMServingArgs(llm_configs=[llm_config_pack])
     )
 
-    # Clean up
-    serve.delete("llm_pack_example")
+    try:
+        serve.run(app_pack, name="llm_pack_example", route_prefix="/pack")
+
+        print("Deployment with PACK strategy is running!")
+        print("You can test it with:")
+        print("curl -X POST http://localhost:8000/pack/v1/completions \\")
+        print('  -H "Content-Type: application/json" \\')
+        print(
+            '  -d \'{"model": "facebook/opt-125m", "prompt": "The future of AI is", "max_tokens": 50}\''
+        )
+
+        time.sleep(2)
+
+    finally:
+        # Clean up
+        try:
+            serve.delete("llm_pack_example")
+        except Exception as e:
+            print(f"Warning: Failed to clean up llm_pack_example: {e}")
 
     # Example 2: Multi-node deployment with SPREAD strategy for fault tolerance
     print("\n\nExample 2: Multi-node deployment with SPREAD strategy")
@@ -74,8 +93,8 @@ def example_multi_node_deployment():
 
     llm_config_spread = LLMConfig(
         model_loading_config=ModelLoadingConfig(
-            model_id="llama-7b-spread",
-            model_source="facebook/opt-1.3b",
+            model_id="facebook/opt-125m",
+            model_source="facebook/opt-125m",
         ),
         deployment_config=dict(
             autoscaling_config=dict(
@@ -92,87 +111,42 @@ def example_multi_node_deployment():
         # SPREAD strategy for maximum fault tolerance
         placement_group_config={
             "bundles": [
-                {"GPU": 1, "CPU": 3, "memory": 8000000000},  # 8GB memory per bundle
-                {"GPU": 1, "CPU": 3, "memory": 8000000000},
-                {"GPU": 1, "CPU": 3, "memory": 8000000000},
-                {"GPU": 1, "CPU": 3, "memory": 8000000000},
+                {"GPU": 1, "CPU": 3},  # Bundle for each TP worker
+                {"GPU": 1, "CPU": 3},
+                {"GPU": 1, "CPU": 3},
+                {"GPU": 1, "CPU": 3},
             ],
             "strategy": "SPREAD",  # Spread across different nodes for fault tolerance
         },
-        accelerator_type="A100-80G",
+        accelerator_type="L4",
     )
 
-    app_spread = build_openai_app(llm_config_spread)
-    serve.run(app_spread, name="llm_spread_example")
-
-    print("Deployment with SPREAD strategy is running!")
-    print(
-        "This deployment prioritizes fault tolerance by spreading workers across nodes."
+    app_spread = build_openai_app(
+        llm_serving_args=LLMServingArgs(llm_configs=[llm_config_spread])
     )
 
-    # Clean up
-    serve.delete("llm_spread_example")
+    try:
+        serve.run(app_spread, name="llm_spread_example", route_prefix="/spread")
 
-    # Example 3: Custom resource requirements
-    print("\n\nExample 3: Custom resource requirements")
-    print("=" * 60)
+        print("Deployment with SPREAD strategy is running!")
+        print(
+            "This deployment prioritizes fault tolerance by spreading workers across nodes."
+        )
+        print("You can test it with:")
+        print("curl -X POST http://localhost:8000/spread/v1/completions \\")
+        print('  -H "Content-Type: application/json" \\')
+        print(
+            '  -d \'{"model": "facebook/opt-125m", "prompt": "The future of AI is", "max_tokens": 50}\''
+        )
 
-    llm_config_custom = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            model_id="llama-7b-custom",
-            model_source="facebook/opt-1.3b",
-        ),
-        deployment_config=dict(
-            autoscaling_config=dict(
-                min_replicas=1,
-                max_replicas=1,
-            ),
-        ),
-        engine_kwargs=dict(
-            tensor_parallel_size=2,
-            pipeline_parallel_size=2,
-            distributed_executor_backend="ray",
-        ),
-        # Custom placement group with special resources
-        placement_group_config={
-            "bundles": [
-                {
-                    "GPU": 1,
-                    "CPU": 4,
-                    "memory": 16000000000,  # 16GB memory
-                    "special_resource": 1,  # Custom resource type
-                },
-                {
-                    "GPU": 1,
-                    "CPU": 4,
-                    "memory": 16000000000,
-                    "special_resource": 1,
-                },
-                {
-                    "GPU": 1,
-                    "CPU": 4,
-                    "memory": 16000000000,
-                    "special_resource": 1,
-                },
-                {
-                    "GPU": 1,
-                    "CPU": 4,
-                    "memory": 16000000000,
-                    "special_resource": 1,
-                },
-            ],
-            "strategy": "PACK",
-        },
-    )
+        time.sleep(2)
 
-    app_custom = build_openai_app(llm_config_custom)
-    serve.run(app_custom, name="llm_custom_example")
-
-    print("Deployment with custom resources is running!")
-    print("This example shows how to specify custom resource requirements.")
-
-    # Clean up
-    serve.delete("llm_custom_example")
+    finally:
+        # Clean up
+        try:
+            serve.delete("llm_spread_example")
+        except Exception as e:
+            print(f"Warning: Failed to clean up llm_spread_example: {e}")
 
     # Shutdown Ray
     ray.shutdown()
@@ -190,8 +164,8 @@ def example_comparison_with_defaults():
     # Default behavior (no custom placement group)
     default_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
-            model_id="default-model",
-            model_source="facebook/opt-1.3b",
+            model_id="facebook/opt-125m",
+            model_source="facebook/opt-125m",
         ),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
@@ -216,8 +190,8 @@ def example_comparison_with_defaults():
     # Custom configuration
     custom_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
-            model_id="custom-model",
-            model_source="facebook/opt-1.3b",
+            model_id="facebook/opt-125m",
+            model_source="facebook/opt-125m",
         ),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
@@ -228,7 +202,7 @@ def example_comparison_with_defaults():
             distributed_executor_backend="ray",
         ),
         placement_group_config={
-            "bundles": [{"GPU": 1, "CPU": 4, "memory": 12000000000}] * 4,
+            "bundles": [{"GPU": 1, "CPU": 4}] * 4,
             "strategy": "SPREAD",
         },
     )
@@ -256,4 +230,4 @@ if __name__ == "__main__":
 
     print("\nFor more advanced usage, see:")
     print("- release/llm_tests/serve/test_llm_serve_multi_node.py")
-    print("- release/llm_tests/serve/benchmark/benchmark_multi_node_serve.py")
+    print("- release/llm_tests/serve/test_llm_serve_multi_node_integration.py")
