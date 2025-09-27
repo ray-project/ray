@@ -493,17 +493,55 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op for op in self._resource_manager._topology if self._is_op_eligible(op)
         ]
 
+    def _get_ineligible_ops_with_usage(self) -> List[PhysicalOperator]:
+        """
+        Resource reservation is based on the number of eligible operators.
+        However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
+        And we also need to exclude the downstream ineligible operators.
+
+        E.g., for the following pipeline:
+        ```
+        map1 (completed, but still has blocks in its output queue) -> limit1 (ineligible, not completed) -> map2 (not completed) -> limit2 -> map3
+        ```
+
+        The reservation is based on the number of eligible operators (map2 and map3), but we need to exclude map1 and limit1 from the reservation.
+        """
+        last_completed_ops = []
+        ops_to_exclude_from_reservation = []
+        # Traverse operator tree collecting all operators that have already finished
+        for op in self._resource_manager._topology:
+            if not op.execution_finished():
+                for dep in op.input_dependencies:
+                    if dep.execution_finished():
+                        last_completed_ops.append(dep)
+
+        # In addition to completed operators,
+        # filter out downstream ineligible operators since they are omitted from reservation calculations.
+        for op in last_completed_ops:
+            ops_to_exclude_from_reservation.extend(
+                list(self._get_downstream_ineligible_ops(op))
+            )
+            ops_to_exclude_from_reservation.append(op)
+        return list(set(ops_to_exclude_from_reservation))
+
     def _update_reservation(self):
-        global_limits = self._resource_manager.get_global_limits()
+        global_limits = self._resource_manager.get_global_limits().copy()
         eligible_ops = self._get_eligible_ops()
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
-        remaining = global_limits.copy()
 
         if len(eligible_ops) == 0:
             return
+
+        op_to_exclude_from_reservation = self._get_ineligible_ops_with_usage()
+        for completed_op in op_to_exclude_from_reservation:
+            global_limits = global_limits.subtract(
+                self._resource_manager.get_op_usage(completed_op)
+            )
+            global_limits = global_limits.max(ExecutionResources.zero())
+        remaining = global_limits.copy()
 
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
         # operator.
@@ -549,7 +587,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
                     logger.warning(
-                        f"Cluster resources are not engough to run any task from {op}."
+                        f"Cluster resources are not enough to run any task from {op}."
                         " The job may hang forever unless the cluster scales up."
                     )
 

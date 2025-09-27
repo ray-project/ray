@@ -95,6 +95,7 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _validate_rows_per_file_args,
     get_compute_strategy,
+    merge_resources_to_ray_remote_args,
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
@@ -274,7 +275,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
+        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -284,7 +285,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -331,7 +332,7 @@ class Dataset:
 
                 Column    Type
                 ------    ----
-                image     numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+                image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
                 path      string
                 filename  string
 
@@ -371,6 +372,9 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -400,14 +404,12 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        if num_cpus is not None:
-            ray_remote_args["num_cpus"] = num_cpus
-
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
-
-        if memory is not None:
-            ray_remote_args["memory"] = memory
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
 
         plan = self._plan.copy()
         map_op = MapRows(
@@ -467,7 +469,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -592,7 +594,8 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``.
+                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
+                block format will be used. Note that
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -632,6 +635,9 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -655,7 +661,7 @@ class Dataset:
             task, until their total size is equal to or greater than the given
             ``batch_size``.
             If ``batch_size`` is not set, the bundling will not be performed. Each task
-            will receive only one input block.
+            will receive entire input block as a batch.
 
         .. seealso::
 
@@ -722,7 +728,7 @@ class Dataset:
         num_cpus: Optional[float],
         num_gpus: Optional[float],
         memory: Optional[float],
-        concurrency: Optional[Union[int, Tuple[int, int]]],
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -1087,9 +1093,6 @@ class Dataset:
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
 
-        if not cols:
-            raise ValueError("select_columns requires at least one column to select.")
-
         if len(cols) != len(set(cols)):
             raise ValueError(
                 "select_columns expected unique column names, "
@@ -1117,7 +1120,7 @@ class Dataset:
         self,
         names: Union[List[str], Dict[str, str]],
         *,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         **ray_remote_args,
     ):
         """Rename columns in the dataset.
@@ -1251,7 +1254,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1332,6 +1335,9 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -1359,14 +1365,12 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        if num_cpus is not None:
-            ray_remote_args["num_cpus"] = num_cpus
-
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
-
-        if memory is not None:
-            ray_remote_args["memory"] = memory
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
 
         plan = self._plan.copy()
         op = FlatMap(
@@ -1394,7 +1398,10 @@ class Dataset:
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1435,6 +1442,11 @@ class Dataset:
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             compute: This argument is deprecated. Use ``concurrency`` argument.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The semantics of this argument depend on the type of ``fn``:
 
                 * If ``fn`` is a function and ``concurrency`` isn't set (default), the
@@ -1449,6 +1461,9 @@ class Dataset:
 
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
@@ -1506,6 +1521,12 @@ class Dataset:
                     f"{type(fn).__name__} instead."
                 )
 
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
         plan = self._plan.copy()
         op = Filter(
             input_op=self._logical_plan.dag,
@@ -1799,6 +1820,7 @@ class Dataset:
             random_sample,
             fn_args=[seed],
             batch_format=None,
+            batch_size=None,
         )
 
     @ConsumptionAPI
@@ -2735,7 +2757,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
-            >>> ds.unique("item")
+            >>> sorted(ds.unique("item"))
             [1, 2, 3]
 
             This function is very useful for computing labels
@@ -3010,11 +3032,12 @@ class Dataset:
             >>> import ray
             >>> round(ray.data.range(100).std("id", ddof=0), 5)
             28.86607
-            >>> ray.data.from_items([
+            >>> result = ray.data.from_items([
             ...     {"A": i, "B": i**2}
             ...     for i in range(100)
             ... ]).std(["A", "B"])
-            {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
+            >>> [(key, round(value, 10)) for key, value in result.items()]
+            [('std(A)', 29.0114919759), ('std(B)', 2968.1748039269)]
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -3117,7 +3140,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, other: "Dataset") -> "Dataset":
+    def zip(self, *other: List["Dataset"]) -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3136,19 +3159,25 @@ class Dataset:
             >>> import ray
             >>> ds1 = ray.data.range(5)
             >>> ds2 = ray.data.range(5)
-            >>> ds1.zip(ds2).take_batch()
-            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])}
+            >>> ds3 = ray.data.range(5)
+            >>> ds1.zip(ds2, ds3).take_batch()
+            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4]), 'id_2': array([0, 1, 2, 3, 4])}
 
         Args:
-            other: The dataset to zip with on the right hand side.
+            *other: List of datasets to combine with this one. The datasets
+                must have the same row count as this dataset, otherwise the
+                ValueError is raised.
 
         Returns:
             A :class:`Dataset` containing the columns of the second dataset
             concatenated horizontally with the columns of the first dataset,
             with duplicate column names disambiguated with suffixes like ``"_1"``.
+
+        Raises:
+            ValueError: If the datasets have different row counts.
         """
         plan = self._plan.copy()
-        op = Zip(self._logical_plan.dag, other._logical_plan.dag)
+        op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
@@ -3394,7 +3423,7 @@ class Dataset:
 
         plan = self._plan.copy()
 
-        # NOTE: Project the dataset to avoid the need to carrying actual
+        # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
         count_op = Count(Project(self._logical_plan.dag, cols=[]))
         logical_plan = LogicalPlan(count_op, self.context)
@@ -5733,12 +5762,12 @@ class Dataset:
         """
         import pyarrow as pa
 
-        ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
+        ref_bundle: RefBundle = self._plan.execute()
         block_refs: List[
             ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
         # Schema is safe to call since we have already triggered execution with
-        # iter_internal_ref_bundles.
+        # self._plan.execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
             schema = schema.base_schema
@@ -6149,6 +6178,9 @@ class Dataset:
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
         for more information about the jupyter widget mimetype.
 
+        Args:
+            **kwargs: Additional arguments passed to the widget's _repr_mimebundle_ method.
+
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
@@ -6356,6 +6388,13 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
+        """
+        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+
+        Args:
+            base_schema: The underlying Arrow or Pandas schema.
+            data_context: The data context to use for this schema.
+        """
         self.base_schema = base_schema
 
         # Snapshot the current context, so that the config of Datasets is always

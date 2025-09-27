@@ -12,7 +12,6 @@ import httpx
 import pytest
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.autoscaling_state import AutoscalingContext
@@ -378,7 +377,7 @@ class TestAutoscalingMetrics:
 
         # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, timeout=20)
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Kill CallerActor
@@ -990,13 +989,13 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
     assert len(pids) == 2
 
     def check_num_replicas(live: int, dead: int):
-        live_actors = state_api.list_actors(
+        live_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )
-        dead_actors = state_api.list_actors(
+        dead_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "DEAD"),
@@ -1551,6 +1550,7 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
             "upscale_delay_s": 0,
             "policy": policy,
             "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -1572,11 +1572,13 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
     wait_for_condition(check_num_replicas_eq, name="A", target=2)
     print("Scaled up to 2 replicas.")
 
-    ray.get(signal.send.remote(clear=True))
+    ray.get(signal.send.remote())
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+    ray.get(signal.send.remote(clear=True))
     [handle.remote() for _ in range(70)]
     wait_for_condition(check_num_replicas_eq, name="A", target=3)
-    ray.get(signal.send.remote(clear=True))
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
 if __name__ == "__main__":

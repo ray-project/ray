@@ -25,11 +25,10 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {

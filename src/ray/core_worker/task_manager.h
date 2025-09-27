@@ -30,7 +30,8 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
@@ -183,8 +184,8 @@ class TaskManager : public TaskManagerInterface {
       PushErrorCallback push_error_callback,
       int64_t max_lineage_bytes,
       worker::TaskEventBuffer &task_event_buffer,
-      std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(const ActorID &)>
-          client_factory,
+      std::function<std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>>(
+          const ActorID &)> get_actor_rpc_client_callback,
       std::shared_ptr<gcs::GcsClient> gcs_client,
       ray::observability::MetricInterface &task_by_state_counter)
       : in_memory_store_(in_memory_store),
@@ -195,7 +196,7 @@ class TaskManager : public TaskManagerInterface {
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer),
-        get_actor_rpc_client_callback_(std::move(client_factory)),
+        get_actor_rpc_client_callback_(std::move(get_actor_rpc_client_callback)),
         gcs_client_(std::move(gcs_client)),
         task_by_state_counter_(task_by_state_counter) {
     task_counter_.SetOnChangeCallback(
@@ -796,7 +797,7 @@ class TaskManager : public TaskManagerInterface {
   worker::TaskEventBuffer &task_event_buffer_;
 
   /// Callback to get the actor RPC client.
-  std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(
+  std::function<std::optional<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>>(
       const ActorID &actor_id)>
       get_actor_rpc_client_callback_;
 
