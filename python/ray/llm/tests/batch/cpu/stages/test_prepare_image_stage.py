@@ -250,6 +250,24 @@ async def test_prepare_image_udf_invalid_image_type(mock_image_processor):
             ["https://example.com/image.jpg"],
             "image_url_format_no_system_prompt",
         ),
+        # Test OpenAI nested format without system prompt
+        # https://github.com/openai/openai-openapi/blob/manual_spec/openapi.yaml#L1937-L1940
+        (
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.com/image.jpg"},
+                        },
+                        {"type": "text", "text": "Describe this image"},
+                    ],
+                }
+            ],
+            ["https://example.com/image.jpg"],
+            "openai_image_url_format_no_system_prompt",
+        ),
     ],
     ids=lambda x: x if isinstance(x, str) else None,
 )
