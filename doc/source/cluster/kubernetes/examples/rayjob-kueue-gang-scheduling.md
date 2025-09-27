@@ -69,7 +69,7 @@ The KubeRay operator Pod must be on the CPU node if you set up the taint for the
 
 Install the latest released version of Kueue.
 ```
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/v0.8.2/manifests.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/v0.13.4/manifests.yaml
 ```
 
 See [Kueue Installation](https://kueue.sigs.k8s.io/docs/installation/#install-a-released-version) for more details on installing Kueue.

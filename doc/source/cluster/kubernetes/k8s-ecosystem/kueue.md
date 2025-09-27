@@ -1,5 +1,5 @@
 (kuberay-kueue)=
-# KubeRay Integration with Kueue for Gang scheduling and Priority Scheduling
+# Gang scheduling and Priority scheduling for KubeRay CRDs with Kueue
 
 This guide demonstrates how to integrate KubeRay with [Kueue](https://kueue.sigs.k8s.io/) to enable advanced scheduling capabilities including gang scheduling and priority scheduling for Ray applications on Kubernetes.
 
@@ -11,7 +11,7 @@ For real-world use cases with RayJob, see [Priority Scheduling with RayJob and K
 * To admit a job to start, which triggers Kubernetes to create pods.
 * To preempt a job, which triggers Kubernetes to delete active pods.
 
-## Supported KubeRay APIs
+## Supported KubeRay CRDs
 Kueue has native support for the following KubeRay APIs:
 - **RayJob**: Ideal for batch processing and model training workloads (covered in this guide)
 - **RayCluster**: Perfect for managing long-running Ray clusters
@@ -239,4 +239,4 @@ For gang scheduling with RayCluster resources, Kueue ensures that all cluster co
 **For detailed RayCluster integration**: See the [Kueue documentation for RayCluster](https://kueue.sigs.k8s.io/docs/tasks/run/rayclusters/).
 ### RayService with Kueue
 RayService integration with Kueue enables gang scheduling for model serving workloads, ensuring consistent resource allocation for serving infrastructure.
-**For detailed RayService integration**: See the [Kueue documentation for RayService](https://kueue.sigs.k8s.io/docs/tasks/run/rayservice/).
+**For detailed RayService integration**: See the [Kueue documentation for RayService](https://kueue.sigs.k8s.io/docs/tasks/run/rayservices/).
