@@ -6,12 +6,12 @@ from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.builder_container import (
     ARCHITECTURE,
     BUILD_TYPES,
-    DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
     BuilderContainer,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import PLATFORMS_RAY, RayType
+from ci.ray_ci.linux_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.utils import ci_init, ecr_docker_login, logger
 from ci.ray_ci.windows_builder_container import WindowsBuilderContainer

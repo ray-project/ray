@@ -9,11 +9,11 @@ from ray_release.test import Test, TestState
 from ci.ray_ci.builder_container import (
     DEFAULT_ARCHITECTURE,
     DEFAULT_BUILD_TYPE,
-    DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
     BuilderContainer,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
+from ci.ray_ci.linux_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import ci_init, ecr_docker_login

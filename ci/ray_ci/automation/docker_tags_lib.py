@@ -11,7 +11,7 @@ import runfiles
 from dateutil import parser
 
 import docker
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,
@@ -22,6 +22,7 @@ from ci.ray_ci.docker_container import (
     PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
+from ci.ray_ci.linux_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
