@@ -232,7 +232,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def _build_tensor_row(
         row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
     ) -> np.ndarray:
-        from packaging.version import parse as parse_version
 
         element = row[col_name][0]
         arr = element.as_py()

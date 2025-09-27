@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
@@ -584,7 +583,9 @@ def test_unify_schemas_incompatible_tensor_dtypes(
 
     with pytest.raises(
         pa.lib.ArrowTypeError,
-        match=re.escape("Can't unify tensor types with divergent scalar types: [ArrowTensorType(shape=(2, 2), dtype=int32), ArrowTensorType(shape=(2, 2), dtype=float)]"),
+        match=re.escape(
+            "Can't unify tensor types with divergent scalar types: [ArrowTensorType(shape=(2, 2), dtype=int32), ArrowTensorType(shape=(2, 2), dtype=float)]"
+        ),
     ):
         unify_schemas(unify_schemas_incompatible_tensor_schemas)
 
@@ -1116,12 +1117,16 @@ def test_struct_with_incompatible_tensor_dtypes_fails():
         dtype=object,
     )
 
-    t1, t2 = _create_struct_tensor_blocks(tensor_data1, tensor_data2, "fixed", "variable")
+    t1, t2 = _create_struct_tensor_blocks(
+        tensor_data1, tensor_data2, "fixed", "variable"
+    )
 
     # This should fail because of incompatible tensor dtypes
     with pytest.raises(
         ArrowConversionError,
-        match=re.escape("Can't unify tensor types with divergent scalar types: [ArrowTensorTypeV2(shape=(2,), dtype=float), ArrowVariableShapedTensorType(ndim=2, dtype=int64)]")
+        match=re.escape(
+            "Can't unify tensor types with divergent scalar types: [ArrowTensorTypeV2(shape=(2,), dtype=float), ArrowVariableShapedTensorType(ndim=2, dtype=int64)]"
+        ),
     ):
         concat([t1, t2])
 

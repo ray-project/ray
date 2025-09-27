@@ -5,8 +5,7 @@ import logging
 import sys
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union, \
-    Collection
+from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -874,13 +873,10 @@ class ArrowTensorArray(pa.ExtensionArray):
         # dimensions
         target_shape = _pad_shape_with_singleton_axes(shape, ndim)
         # Construct shapes array
-        shape_array = (
-            pa.nulls(
-                len(self.storage),
-                type=ArrowVariableShapedTensorArray.SHAPES_ARRAY_TYPE,
-            )
-            .fill_null(target_shape)
-        )
+        shape_array = pa.nulls(
+            len(self.storage),
+            type=ArrowVariableShapedTensorArray.SHAPES_ARRAY_TYPE,
+        ).fill_null(target_shape)
 
         storage = pa.StructArray.from_arrays(
             [self.storage, shape_array],
@@ -1219,28 +1215,31 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         # dimensions
         #
         # TODO avoid python loop
-        expanded_shapes_array = pa.array([
-            _pad_shape_with_singleton_axes(s, ndim)
-            for s in shapes_array.to_pylist()
-        ])
-
-        storage = pa.StructArray.from_arrays(
-            [data_array, expanded_shapes_array]
+        expanded_shapes_array = pa.array(
+            [_pad_shape_with_singleton_axes(s, ndim) for s in shapes_array.to_pylist()]
         )
+
+        storage = pa.StructArray.from_arrays([data_array, expanded_shapes_array])
 
         return target_type.wrap_array(storage)
 
 
-def _pad_shape_with_singleton_axes(shape: Tuple[int, ...], ndim: int) -> Tuple[int, ...]:
+def _pad_shape_with_singleton_axes(
+    shape: Tuple[int, ...], ndim: int
+) -> Tuple[int, ...]:
     assert ndim >= len(shape)
 
     return (1,) * (ndim - len(shape)) + shape
 
 
-AnyArrowExtTensorType = Union[ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType]
+AnyArrowExtTensorType = Union[
+    ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType
+]
 
 
-def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtTensorType:
+def unify_tensor_types(
+    types: Collection[AnyArrowExtTensorType],
+) -> AnyArrowExtTensorType:
     """Unifies provided tensor types if compatible.
 
     Otherwise raises a ``ValueError``.
@@ -1285,7 +1284,9 @@ def unify_tensor_arrays(
         if isinstance(arr.type, supported_tensor_types):
             distinct_types_.add(arr.type)
         else:
-            raise ValueError(f"Trying to unify unsupported tensor type: {arr.type} (supported types: {supported_tensor_types})")
+            raise ValueError(
+                f"Trying to unify unsupported tensor type: {arr.type} (supported types: {supported_tensor_types})"
+            )
 
     if len(distinct_types_) == 1:
         return arrs
@@ -1301,18 +1302,14 @@ def unify_tensor_arrays(
     unified_arrs = []
     for arr in arrs:
         unified_arrs.append(
-            arr.to_var_shaped_tensor_array(
-                ndim=unified_tensor_type.ndim
-            )
+            arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
         )
 
     return unified_arrs
 
 
 def concat_tensor_arrays(
-    arrays: List[
-        Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
-    ],
+    arrays: List[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]],
     ensure_copy: bool = False,
 ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
     """

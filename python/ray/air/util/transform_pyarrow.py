@@ -27,7 +27,6 @@ def _concatenate_extension_column(
         ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
     """
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorArray,
         get_arrow_extension_tensor_types,
     )
 

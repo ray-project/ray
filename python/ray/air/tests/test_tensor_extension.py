@@ -13,7 +13,9 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
-    ArrowVariableShapedTensorType, concat_tensor_arrays, unify_tensor_arrays,
+    ArrowVariableShapedTensorType,
+    concat_tensor_arrays,
+    unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -915,7 +917,6 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     expected_shapes = [(2, 2), (2, 3), (1, 4), (3, 1)]
     for i, expected_shape in enumerate(expected_shapes):
         assert result[i].shape == expected_shape
-
 
 
 if __name__ == "__main__":
