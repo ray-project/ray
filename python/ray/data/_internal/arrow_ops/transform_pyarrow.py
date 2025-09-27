@@ -1,3 +1,4 @@
+import itertools
 import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -12,7 +13,7 @@ from ray.air.util.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
     get_arrow_extension_tensor_types, unify_tensor_types,
-    get_arrow_extension_fixed_shape_tensor_types,
+    get_arrow_extension_fixed_shape_tensor_types, unify_tensor_arrays,
 )
 
 try:
@@ -480,7 +481,7 @@ def _backfill_missing_fields(
             ):
                 # Convert to variable-shaped if needed
                 current_array = current_array.to_var_shaped_tensor_array(
-                    ndim=field.ndim
+                    ndim=field_type.ndim
                 )
 
             # The schema should already be unified by unify_schemas, so types
