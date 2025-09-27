@@ -10,15 +10,6 @@ from typing import Any, Dict, List, Optional, Union
 from datasets import load_dataset, load_from_disk
 
 
-@dataclass
-class SampleRequest:
-    """
-    Represents a single batch inference request for benchmarking.
-    """
-
-    prompt: Union[str, Any]
-
-
 class BenchmarkDataset(ABC):
     DEFAULT_RANDOM_SEED = 0
 

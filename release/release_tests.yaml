@@ -4102,7 +4102,7 @@
   cluster:
     byod:
       type: llm-cu128
-    cluster_compute: llm_8xl4.yaml
+    cluster_compute: llm_2x_4xl4.yaml
 
   run:
     timeout: 3600

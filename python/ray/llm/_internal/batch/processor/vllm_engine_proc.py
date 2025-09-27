@@ -1,9 +1,9 @@
 """The vLLM engine processor."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, List, Optional
 
 import transformers
-from pydantic import Field, root_validator
+from pydantic import ConfigDict, Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -26,6 +26,7 @@ from ray.llm._internal.batch.stages import (
     vLLMEngineStage,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
@@ -33,6 +34,21 @@ from ray.llm._internal.common.utils.download_utils import (
 )
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
+
+
+class BundleSchema(BaseModelExtended):
+    model_config = ConfigDict(extra="allow")
+    CPU: Optional[int] = Field(default=1, description="The number of CPUs per bundle.")
+    GPU: Optional[int] = Field(default=1, description="The number of GPUs per bundle.")
+
+
+class PlacementGroupSchema(BaseModelExtended):
+    bundles: List[BundleSchema] = Field(
+        default_factory=list, description="The bundles for the placement group."
+    )
+    strategy: Literal["PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"] = Field(
+        default="PACK", description="The strategy for the placement group."
+    )
 
 
 class vLLMEngineProcessorConfig(OfflineProcessorConfig):
@@ -58,15 +74,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "specified and LoRA is enabled, then the 'model' in LoRA "
         "requests will be interpreted as model ID used by HF transformers.",
     )
-    # Placement group config for TP/PP.
+    # Custom placement group config for TP/PP.
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
-        description=(
-            "Custom Ray placement group configuration for scheduling vLLM engine workers. "
-            "Each bundle should define its resource requirements, such as 'CPU' and 'GPU'. "
-            "Note: When using vLLM's Ray distributed executor backend, each bundle must be restricted "
-            "to a single GPU. This configuration is only applicable when the Ray distributed executor backend is enabled."
-        ),
+        description="Ray placement group configuration for scheduling vLLM engine workers. "
+        "Should be a dictionary with 'bundles' (list of resource dicts, e.g., {'CPU': 1, 'GPU': 1}) "
+        "and an optional 'strategy' key ('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
+        "For ray distributed executor backend, each bundle must specify at most one GPU. "
+        "For mp backend, the 'strategy' field is ignored.",
     )
 
     @root_validator(pre=True)
@@ -156,7 +171,8 @@ def build_vllm_engine_processor(
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
-                placement_group_config=config.placement_group_config,
+                placement_group_config=config.placement_group_config
+                and PlacementGroupSchema(**config.placement_group_config).model_dump(),
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
@@ -175,7 +191,6 @@ def build_vllm_engine_processor(
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
-                resources=config.resources_per_bundle,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),

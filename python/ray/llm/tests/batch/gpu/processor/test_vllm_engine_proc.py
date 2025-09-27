@@ -5,9 +5,7 @@ import pytest
 
 import ray
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.vllm_engine_proc import (
-    vLLMEngineProcessorConfig,
-)
+from ray.llm._internal.batch.processor.vllm_engine_proc import vLLMEngineProcessorConfig
 
 
 def test_vllm_engine_processor(gpu_type, model_opt_125m):
@@ -29,10 +27,6 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         tokenize=True,
         detokenize=True,
         has_image=True,
-        placement_group_config=dict(
-            bundles=[{"CPU": 1, "GPU": 1}],
-            strategy="PACK",
-        ),
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
@@ -67,6 +61,33 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "max_concurrency": 8,
         "accelerator_type": gpu_type,
         "num_gpus": 1,
+    }
+
+
+def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
+    config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            max_model_len=8192,
+        ),
+        accelerator_type=gpu_type,
+        concurrency=4,
+        batch_size=64,
+        apply_chat_template=True,
+        tokenize=True,
+        placement_group_config=dict(bundles=[{"CPU": 1, "GPU": 1}]),
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+
+    stage.map_batches_kwargs.pop("runtime_env")
+    stage.map_batches_kwargs.pop("compute")
+
+    assert stage.map_batches_kwargs == {
+        "zero_copy_batch": True,
+        "max_concurrency": 8,
+        "accelerator_type": gpu_type,
+        "resources": {"CPU": 1, "GPU": 1},
     }
 
 

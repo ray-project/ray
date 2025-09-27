@@ -1,6 +1,7 @@
 """The stage that runs vLLM engine."""
 
 import asyncio
+from collections import Counter
 import dataclasses
 import logging
 import math
@@ -597,7 +598,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 def _ray_scheduling_strategy_fn(
     num_bundles_per_replica: int,
     accelerator_type: Optional[str] = None,
-    resources_per_bundle: Optional[Dict[str, float]] = None,
     placement_group_config: Optional[Dict[str, Any]] = None,
 ):
     """Create a Ray scheduling strategy for the engine.
@@ -607,8 +607,6 @@ def _ray_scheduling_strategy_fn(
             engine replica.
         accelerator_type: The accelerator type. If None, the
             accelerator_type label will not be set.
-        resources_per_bundle: The custom resources per bundle.
-            If None, we default to 1xGPU + 1xCPU bundle.
         placement_group_config: The custom placement group configuration.
             If None, we use the default placement group configuration.
 
@@ -617,13 +615,8 @@ def _ray_scheduling_strategy_fn(
     """
 
     def _get_bundle() -> Dict[str, float]:
-        bundle = {}
-        # Custom resources
-        if resources_per_bundle:
-            bundle = resources_per_bundle
-        else:
-            # GPU bundles
-            bundle = {"GPU": 1, "CPU": 1}
+        # GPU bundles
+        bundle = {"GPU": 1, "CPU": 1}
 
         # Accelerator type
         if accelerator_type:
@@ -631,23 +624,9 @@ def _ray_scheduling_strategy_fn(
         return bundle
 
     if placement_group_config:
-        if (
-            "bundles" not in placement_group_config
-            or "strategy" not in placement_group_config
-        ):
-            raise ValueError("placement_group_config must contain bundles and strategy")
-
-        for bundle in placement_group_config["bundles"]:
-            bundle.setdefault("CPU", 1)
-            bundle.setdefault("GPU", 1)
-
-            if accelerator_type:
-                bundle.setdefault(f"accelerator_type:{accelerator_type}", 0.001)
-
-            # TODO (kourosh): Lift this restriction once vLLM's Ray distributed executor
-            # backend allows multiple GPUs per bundle.
-            if bundle["GPU"] > 1:
-                raise ValueError("Each bundle must be restricted to a single GPU.")
+        if accelerator_type:
+            for bundle in placement_group_config["bundles"]:
+                bundle[f"accelerator_type:{accelerator_type}"] = 0.001
 
         pg = ray.util.placement_group(**placement_group_config)
     else:
@@ -702,7 +681,6 @@ class vLLMEngineStage(StatefulStage):
         # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
         # strategy in .map_batches() arguments and let vLLM Ray executor to
         # create placement groups for each TP/PP worker.
-        resources_per_bundle = map_batches_kwargs.pop("resources", None)
         placement_group_config = fn_constructor_kwargs.pop(
             "placement_group_config", None
         )
@@ -713,19 +691,27 @@ class vLLMEngineStage(StatefulStage):
                 _ray_scheduling_strategy_fn,
                 num_bundles_per_replica,
                 accelerator_type,
-                resources_per_bundle,
                 placement_group_config,
             )
             ray_remote_args["num_gpus"] = 0
         else:
-            if not resources_per_bundle:
-                # Default to GPUs per bundle if custom resources are not specified.
+            if not placement_group_config:
+                # Default to GPUs per bundle if placement group is not specified.
                 ray_remote_args["num_gpus"] = num_bundles_per_replica
             else:
-                ray_remote_args["resources"] = {
-                    resource_key: resource_count * num_bundles_per_replica
-                    for resource_key, resource_count in resources_per_bundle.items()
-                }
+                bundles = placement_group_config["bundles"]
+                resource_counter = Counter()
+                for bundle in placement_group_config["bundles"]:
+                    resource_counter.update(bundle)
+
+                total_cpus = resource_counter.pop("CPU", 0)
+                total_gpus = resource_counter.pop("GPU", 0)
+
+                # CPU and GPU must not present in ray_remote_args["resources"]
+                ray_remote_args["num_cpus"] = total_cpus
+                ray_remote_args["num_gpus"] = total_gpus
+                if resource_counter:
+                    ray_remote_args["resources"] = dict(resource_counter)
 
         map_batches_kwargs.update(ray_remote_args)
         return values

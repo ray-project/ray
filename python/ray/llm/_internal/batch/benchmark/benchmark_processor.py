@@ -3,13 +3,13 @@
 Benchmark Ray Data LLM offline batch inference throughput.
 
 Sample usage:
-python3 benchmark_processor.py --mode vllm_engine --batch-size 64 --concurrency 1 --num-prompts 10000 --model facebook/opt-1.3b
+python ray.llm._internal.batch.benchmark.benchmark_processor --mode vllm_engine --batch-size 64 --concurrency 1 --num-prompts 10000 --model facebook/opt-1.3b
     --tensor-parallel-size 2 --pipeline-parallel-size 2 --distributed-executor-backend ray
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from time import perf_counter, sleep
-from typing import Literal
 
 import argparse
 import sys
@@ -31,12 +31,14 @@ from ray.serve.llm.openai_api_models import CompletionRequest
 from dataset import ShareGPTDataset
 
 
-Mode = Literal[
-    "vllm_engine",
-    "shared_vllm_engine",
-    "serve_deployment",
-    "shared_serve_deployment",
-]
+class Mode(Enum):
+    """Processor to benchmark."""
+
+    VLLM_ENGINE = "vllm_engine"
+    SHARED_VLLM_ENGINE = "shared_vllm_engine"
+    SERVE_DEPLOYMENT = "serve_deployment"
+    SHARED_SERVE_DEPLOYMENT = "shared_serve_deployment"
+
 
 # Default sampling parameters -- ensure a fair comparison by omitting sampling-induced variance
 VLLM_SAMPLING_PARAMS = {
@@ -59,6 +61,48 @@ def build_vllm_engine_kwargs(**kwargs) -> dict:
     engine_kwargs = VLLM_ENGINE_KWARGS.copy()
     engine_kwargs.update({k: v for k, v in kwargs.items() if v is not None})
     return engine_kwargs
+
+
+def _build_vllm_engine_config(
+    model: str,
+    batch_size: int,
+    concurrency: int,
+    pipeline_parallel_size: int = None,
+    tensor_parallel_size: int = None,
+    distributed_executor_backend: str = None,
+) -> vLLMEngineProcessorConfig:
+    """Helper to create vLLMEngineProcessorConfig."""
+    return vLLMEngineProcessorConfig(
+        model_source=model,
+        batch_size=batch_size,
+        concurrency=concurrency,
+        apply_chat_template=False,
+        tokenize=False,
+        detokenize=False,
+        engine_kwargs=build_vllm_engine_kwargs(
+            pipeline_parallel_size=pipeline_parallel_size,
+            tensor_parallel_size=tensor_parallel_size,
+            distributed_executor_backend=distributed_executor_backend,
+        ),
+    )
+
+
+def _build_serve_deployment_config(
+    batch_size: int,
+    concurrency: int,
+    deployment_name: str = None,
+    app_name: str = None,
+) -> ServeDeploymentProcessorConfig:
+    """Helper to create ServeDeploymentProcessorConfig."""
+    return ServeDeploymentProcessorConfig(
+        deployment_name=deployment_name,
+        app_name=app_name,
+        dtype_mapping={
+            "CompletionRequest": CompletionRequest,
+        },
+        batch_size=batch_size,
+        concurrency=concurrency,
+    )
 
 
 @dataclass(slots=True)
@@ -95,20 +139,16 @@ def build_single_vllm_engine_processor(
     distributed_executor_backend: str = None,
 ):
     """Build vLLM engine processor for single-turn benchmark."""
+    config = _build_vllm_engine_config(
+        model,
+        batch_size,
+        concurrency,
+        pipeline_parallel_size,
+        tensor_parallel_size,
+        distributed_executor_backend,
+    )
     return build_llm_processor(
-        vLLMEngineProcessorConfig(
-            model_source=model,
-            batch_size=batch_size,
-            concurrency=concurrency,
-            apply_chat_template=False,
-            tokenize=False,
-            detokenize=False,
-            engine_kwargs=build_vllm_engine_kwargs(
-                pipeline_parallel_size=pipeline_parallel_size,
-                tensor_parallel_size=tensor_parallel_size,
-                distributed_executor_backend=distributed_executor_backend,
-            ),
-        ),
+        config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
             sampling_params=sampling_params,
@@ -127,20 +167,17 @@ def build_shared_vllm_engine_processor(
     distributed_executor_backend: str = None,
 ):
     """Build vLLM engine processor for multi-turn benchmark."""
+    config = _build_vllm_engine_config(
+        model,
+        batch_size,
+        concurrency,
+        pipeline_parallel_size,
+        tensor_parallel_size,
+        distributed_executor_backend,
+    )
+
     processor1 = build_llm_processor(
-        vLLMEngineProcessorConfig(
-            model_source=model,
-            batch_size=batch_size,
-            concurrency=concurrency,
-            apply_chat_template=False,
-            tokenize=False,
-            detokenize=False,
-            engine_kwargs=build_vllm_engine_kwargs(
-                pipeline_parallel_size=pipeline_parallel_size,
-                tensor_parallel_size=tensor_parallel_size,
-                distributed_executor_backend=distributed_executor_backend,
-            ),
-        ),
+        config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
             sampling_params=sampling_params,
@@ -153,19 +190,7 @@ def build_shared_vllm_engine_processor(
     )
 
     processor2 = build_llm_processor(
-        vLLMEngineProcessorConfig(
-            model_source=model,
-            batch_size=batch_size,
-            concurrency=concurrency,
-            apply_chat_template=False,
-            tokenize=False,
-            detokenize=False,
-            engine_kwargs=build_vllm_engine_kwargs(
-                pipeline_parallel_size=pipeline_parallel_size,
-                tensor_parallel_size=tensor_parallel_size,
-                distributed_executor_backend=distributed_executor_backend,
-            ),
-        ),
+        config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
             sampling_params=sampling_params,
@@ -254,14 +279,11 @@ def build_single_serve_deployment_processor(
     **kwargs,
 ):
     """Build Serve deployment processor for single-turn benchmark."""
-    config = ServeDeploymentProcessorConfig(
-        deployment_name=deployment_name,
-        app_name=app_name,
-        dtype_mapping={
-            "CompletionRequest": CompletionRequest,
-        },
-        batch_size=batch_size,
-        concurrency=concurrency,
+    config = _build_serve_deployment_config(
+        batch_size,
+        concurrency,
+        deployment_name,
+        app_name,
     )
     return build_llm_processor(
         config,
@@ -289,14 +311,11 @@ def build_shared_serve_deployment_processor(
     **kwargs,
 ):
     """Build Serve deployment processor for multi-turn benchmark."""
-    config = ServeDeploymentProcessorConfig(
-        deployment_name=deployment_name,
-        app_name=app_name,
-        dtype_mapping={
-            "CompletionRequest": CompletionRequest,
-        },
-        batch_size=batch_size,
-        concurrency=concurrency,
+    config = _build_serve_deployment_config(
+        batch_size,
+        concurrency,
+        deployment_name,
+        app_name,
     )
 
     processor1 = build_llm_processor(
@@ -381,10 +400,10 @@ def benchmark(
     distributed_executor_backend: str = None,
 ) -> BenchmarkResult:
     mode_to_builder = {
-        "vllm_engine": build_single_vllm_engine_processor,
-        "shared_vllm_engine": build_shared_vllm_engine_processor,
-        "serve_deployment": build_single_serve_deployment_processor,
-        "shared_serve_deployment": build_shared_serve_deployment_processor,
+        Mode.VLLM_ENGINE: build_single_vllm_engine_processor,
+        Mode.SHARED_VLLM_ENGINE: build_shared_vllm_engine_processor,
+        Mode.SERVE_DEPLOYMENT: build_single_serve_deployment_processor,
+        Mode.SHARED_SERVE_DEPLOYMENT: build_shared_serve_deployment_processor,
     }
 
     if mode not in mode_to_builder:
@@ -392,7 +411,7 @@ def benchmark(
 
     builder = mode_to_builder[mode]
 
-    if mode in ["serve_deployment", "shared_serve_deployment"]:
+    if mode in [Mode.SERVE_DEPLOYMENT, Mode.SHARED_SERVE_DEPLOYMENT]:
         deployment_name, app_name = setup_serve_deployment(model, concurrency)
         try:
             return run_processor(
@@ -430,13 +449,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="vLLM throughput benchmark")
     parser.add_argument(
         "--mode",
-        choices=[
-            "vllm_engine",
-            "shared_vllm_engine",
-            "serve_deployment",
-            "shared_serve_deployment",
-        ],
-        default="vllm_engine",
+        choices=[mode.value for mode in Mode],
+        default=Mode.VLLM_ENGINE.value,
         help="Ray Data LLM processor to run benchmarks for",
     )
     # Dataset configuration
@@ -528,7 +542,7 @@ def main() -> None:
 
         dataset = data.from_items(prompts)
         result = benchmark(
-            args.mode,
+            Mode(args.mode),
             dataset,
             batch_size=args.batch_size,
             concurrency=args.concurrency,
