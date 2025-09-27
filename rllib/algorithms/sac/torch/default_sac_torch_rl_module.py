@@ -1,17 +1,18 @@
-import gymnasium as gym
 from typing import Any, Dict
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
-    QF_PREDS,
-    QF_TWIN_PREDS,
-    QF_TARGET_NEXT,
-    ACTION_LOG_PROBS_NEXT,
-    ACTION_PROBS_NEXT,
-    ACTION_PROBS,
     ACTION_LOG_PROBS,
+    ACTION_LOG_PROBS_NEXT,
+    ACTION_PROBS,
+    ACTION_PROBS_NEXT,
+    QF_PREDS,
+    QF_TARGET_NEXT,
+    QF_TWIN_PREDS,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model

@@ -3,16 +3,15 @@ from typing import Any, Dict, List, Tuple, Union
 
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.core.rl_module.apis import QNetAPI, InferenceOnlyAPI, TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
+    override,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import NetworkType, TensorType
 from ray.util.annotations import DeveloperAPI
-
 
 QF_PREDS = "qf_preds"
 ATOMS = "atoms"
