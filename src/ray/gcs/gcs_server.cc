@@ -182,7 +182,7 @@ GcsServer::GcsServer(
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-      },
+          rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -451,7 +451,7 @@ void GcsServer::InitClusterLeaseManager() {
       *cluster_resource_scheduler_,
       /*get_node_info=*/
       [this](const NodeID &node_id) {
-        auto node = gcs_node_manager_->GetAliveNode(node_id);
+        auto node = gcs_node_manager_->GetAliveNodeAddress(node_id);
         return node.has_value() ? node.value().get() : nullptr;
       },
       /*announce_infeasible_task=*/nullptr,
