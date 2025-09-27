@@ -79,7 +79,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
     Trying to submit a config to the serve agent with the HTTP options modified should fail:
       - If Serve is NOT running, HTTP options will be honored when starting Serve
       - If Serve is running and HTTP options are attempted to be changed, deployment will fail,
-        urging users to restart Serve if they want their options to take effect.
+        forcing users to restart Serve if they want their options to take effect.
     """
 
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"

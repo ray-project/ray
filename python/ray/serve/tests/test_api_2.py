@@ -68,9 +68,9 @@ def test_serve_start(serve_instance):
     serve.start()  # success with default params
     with pytest.raises(
         RayServeConfigException,
-        match=r"{'host': {'previous': '127.0.0.1', 'new': '0.0.0.0'}}",
+        match=r"{'host': {'previous': '0.0.0.0', 'new': '127.0.0.1'}}",
     ):
-        serve.start(http_options={"host": "0.0.0.0"})
+        serve.start(http_options={"host": "127.0.0.1"})
 
 
 class TestPrepHttpOptions:

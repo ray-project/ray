@@ -299,12 +299,9 @@ def test_deploy_with_different_http_options(serve_instance, tmp_path):
         "Attempt to update `http_options` or `proxy_location` has been detected!"
         in error
     )
-    assert (
-        "Attempted updates: {"
-        "'host': {'previous': '0.0.0.0', 'new': '0.0.0.1'}, "
-        "'port': {'previous': 8000, 'new': 8001}, "
-        "'location': {'previous': <ProxyLocation.EveryNode: 'EveryNode'>, 'new': <ProxyLocation.HeadOnly: 'HeadOnly'>}}"
-    ) in error
+    assert "'host': {'previous': '0.0.0.0', 'new': '0.0.0.1'}" in error
+    assert "'port': {'previous': 8000, 'new': 8001}" in error
+    assert "'location': {'previous': 'EveryNode', 'new': 'HeadOnly'}" in error
     assert (
         "HTTP config is global to your Ray cluster, and you can't update it during runtime."
         in error

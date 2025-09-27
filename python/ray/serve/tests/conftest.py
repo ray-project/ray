@@ -148,7 +148,7 @@ def _shared_serve_instance():
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
-        http_options={"host": "127.0.0.1"},
+        http_options={"host": "0.0.0.0"},
         grpc_options={
             "port": 9000,
             "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
