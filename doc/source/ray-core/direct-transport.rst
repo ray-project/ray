@@ -14,12 +14,12 @@ For example, passing a CUDA ``torch.Tensor`` from one Ray task to another would 
 *Ray Direct Transport (RDT)* is a new feature that allows Ray to store and pass objects directly between Ray actors.
 This feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by:
 
-- Keeping GPU data in GPU memory until a transfer is needed
+- Keeping GPU data in GPU memory until a transfer is necessary
 - Avoiding expensive serialization and copies to and from the Ray object store
 - Using efficient data transports like collective communication libraries (`Gloo <https://github.com/pytorch/gloo>`__ or `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__) or point-to-point RDMA (via `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data directly between devices, including both CPU and GPUs
 
 .. note::
-   RDT is currently in **alpha**. Not all Ray Core APIs are supported yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
+   RDT is currently in **alpha**. All Ray Core APIs aren't supported yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
 
 Getting started
 ===============
@@ -250,9 +250,9 @@ For collective-based tensor transports (Gloo and NCCL):
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
 * If a system-level error occurs during a GLOO or NCCL collective operation, the collective group will be destroyed and the actors will be killed.
-If the error occurs during a NIXL transfer, Ray will attempt to abort the transfer and raise an exception inside the task using the object ref.
-Note that it's more likely NIXL will abort the transport before Ray does, but Ray will still propagate the NIXL error in the task using the object ref.
-Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects. System-level errors include:
+  If a system-level error occurs during a NIXL transfer, Ray or NIXL will abort the transfer with an exception and Ray will raise the exception in the task using the object ref.
+  Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
+  System-level errors include:
 
    * Errors internal to the third-party transport, e.g., NCCL network errors
    * Actor and node failure
