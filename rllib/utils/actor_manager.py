@@ -1,9 +1,9 @@
-from collections import defaultdict
 import copy
-from dataclasses import dataclass
 import logging
 import sys
 import time
+from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -11,7 +11,6 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayError, RayTaskError
 from ray.rllib.utils.typing import T
 from ray.util.annotations import DeveloperAPI
-
 
 logger = logging.getLogger(__name__)
 

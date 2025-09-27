@@ -1,6 +1,7 @@
-from gymnasium.spaces import Space
+from typing import Optional, Union
+
 import numpy as np
-from typing import Union, Optional
+from gymnasium.spaces import Space
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -8,10 +9,10 @@ from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import (
+    TensorType,
+    get_variable,
     try_import_tf,
     try_import_torch,
-    get_variable,
-    TensorType,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule

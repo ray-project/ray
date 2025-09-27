@@ -1,7 +1,7 @@
 import numpy as np
 
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
