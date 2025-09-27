@@ -236,9 +236,8 @@ def test_llm_serve_data_parallel_placement_override():
             model_id="test_model",
             model_source="facebook/opt-1.3b",
         ),
-        deployment_config=dict(
-            autoscaling_config=dict(min_replicas=1, max_replicas=1),
-        ),
+        # For DP correctness, do not set autoscaling_config; DP size fixes replicas
+        deployment_config=dict(),
         engine_kwargs=dict(
             tensor_parallel_size=2,
             pipeline_parallel_size=1,

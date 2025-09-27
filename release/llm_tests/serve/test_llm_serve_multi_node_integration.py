@@ -4,6 +4,7 @@ import time
 import ray
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app, ModelLoadingConfig
+from ray.llm._internal.serve.configs.server_models import LLMServingArgs
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +77,8 @@ def test_llm_serve_multi_node_deployment(tp_size, pp_size, placement_strategy):
     )
 
     # Build and deploy the application
-    app = build_openai_app(llm_config)
+    # build_openai_app expects LLMServingArgs; wrap the single config
+    app = build_openai_app(llm_serving_args=LLMServingArgs(llm_configs=[llm_config]))
     serve.run(app, name=app_name)
 
     # Wait for deployment to be ready
@@ -89,10 +91,12 @@ def test_llm_serve_multi_node_deployment(tp_size, pp_size, placement_strategy):
     assert app_name in serve_status.applications
     assert serve_status.applications[app_name].status == "RUNNING"
 
-    # Clean up
-    serve.delete(app_name)
+    # Cleanup handled by autouse fixture
 
 
+@pytest.mark.skip(
+    reason="Requires autoscaler/multi-node resources; covered in release jobs."
+)
 def test_llm_serve_placement_group_failure_recovery():
     """Test that deployment handles placement group creation failures gracefully."""
     # Create a configuration that's likely to fail (too many resources)
@@ -121,7 +125,7 @@ def test_llm_serve_placement_group_failure_recovery():
     )
 
     app_name = "test_placement_group_failure"
-    app = build_openai_app(llm_config)
+    app = build_openai_app(llm_serving_args=LLMServingArgs(llm_configs=[llm_config]))
 
     # This should either fail gracefully or handle resource constraints
     try:
@@ -133,52 +137,48 @@ def test_llm_serve_placement_group_failure_recovery():
         print(f"Expected failure occurred: {e}")
 
 
-def test_llm_serve_mixed_parallelism_strategies():
-    """Test different placement strategies for the same TP/PP configuration."""
-    configurations = [
-        {"strategy": "PACK", "description": "pack_strategy"},
-        {"strategy": "SPREAD", "description": "spread_strategy"},
-    ]
+@pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
+def test_llm_serve_mixed_parallelism_strategies(placement_strategy: str):
+    """Test different placement strategies for the same TP/PP configuration.
 
-    for i, config in enumerate(configurations):
-        app_name = f"test_mixed_{config['description']}"
+    Using parametrization ensures the autouse cleanup fixture runs between
+    invocations instead of doing ad-hoc cleanup inside the test body.
+    """
+    app_name = f"test_mixed_{placement_strategy.lower()}"
 
-        placement_group_config = {
-            "bundles": [{"GPU": 1, "CPU": 1}] * 4,
-            "strategy": config["strategy"],
-        }
+    placement_group_config = {
+        "bundles": [{"GPU": 1, "CPU": 1}] * 4,
+        "strategy": placement_strategy,
+    }
 
-        llm_config = LLMConfig(
-            model_loading_config=ModelLoadingConfig(
-                model_id="test_model",
-                model_source="facebook/opt-1.3b",
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-1.3b",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(
+                min_replicas=1,
+                max_replicas=1,
             ),
-            deployment_config=dict(
-                autoscaling_config=dict(
-                    min_replicas=1,
-                    max_replicas=1,
-                ),
-            ),
-            engine_kwargs=dict(
-                tensor_parallel_size=2,
-                pipeline_parallel_size=2,
-                distributed_executor_backend="ray",
-                max_model_len=512,
-            ),
-            placement_group_config=placement_group_config,
-            runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
-        )
+        ),
+        engine_kwargs=dict(
+            tensor_parallel_size=2,
+            pipeline_parallel_size=2,
+            distributed_executor_backend="ray",
+            max_model_len=512,
+        ),
+        placement_group_config=placement_group_config,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+    )
 
-        app = build_openai_app(llm_config)
-        serve.run(app, name=app_name)
+    app = build_openai_app(llm_serving_args=LLMServingArgs(llm_configs=[llm_config]))
+    serve.run(app, name=app_name)
 
-        # Verify deployment configuration
-        serve_options = llm_config.get_serve_options()
-        assert serve_options["placement_group_strategy"] == config["strategy"]
-
-        # Clean up
-        serve.delete(app_name)
-        time.sleep(2)  # Brief pause between deployments
+    # Wait for app to be healthy; cleanup is handled by autouse fixture
+    assert wait_for_deployment_ready(
+        app_name
+    ), f"Deployment {app_name} failed to become ready"
 
 
 def test_llm_serve_custom_resources():

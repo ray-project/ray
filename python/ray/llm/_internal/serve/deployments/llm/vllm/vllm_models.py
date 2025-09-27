@@ -184,8 +184,11 @@ class VLLMEngineConfig(BaseModelExtended):
         # Convert placement_group_config from dict to schema if provided
         placement_group_config = None
         if llm_config.placement_group_config:
-            # Ensure strategy defaults to PACK if not specified
+            # Ensure strategy defaults to PACK if not specified and provide
+            # a clear error if bundles are missing before invoking schema validation.
             pg_config = llm_config.placement_group_config.copy()
+            if "bundles" not in pg_config:
+                raise ValueError("placement_group_config must contain 'bundles'")
             pg_config.setdefault("strategy", "PACK")
             placement_group_config = PlacementGroupSchema(**pg_config)
 
@@ -219,8 +222,8 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_strategy(self) -> str:
-        # Default to PACK strategy for best-effort placement
-        # vLLM handles TP/PP optimal placement internally
+        # Default to PACK to allow cross-node best-effort placement by default.
+        # DP deployments continue to override to STRICT_PACK in Serve config.
         return "PACK"
 
     @property
@@ -246,7 +249,9 @@ class VLLMEngineConfig(BaseModelExtended):
             )
             bundle = self.resources_per_bundle.copy()
         else:
-            bundle = {"GPU": 1, "CPU": 1}
+            # Default to GPU-only bundles; the replica actor contributes CPU to the
+            # first bundle via merge, matching legacy Serve expectations.
+            bundle = {"GPU": 1}
 
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001

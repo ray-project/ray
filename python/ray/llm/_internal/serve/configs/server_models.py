@@ -473,6 +473,8 @@ class LLMConfig(BaseModelExtended):
         ray_actor_options = deployment_config.get("ray_actor_options", {})
         deployment_config["ray_actor_options"] = ray_actor_options
 
+        # Default replica actor CPU to 1, but do not double-count CPU in the
+        # tail bundles; only the first bundle should gain replica CPU.
         replica_actor_resources = {
             "CPU": ray_actor_options.get("num_cpus", 1),
             "GPU": ray_actor_options.get("num_gpus", 0),
