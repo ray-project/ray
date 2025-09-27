@@ -857,19 +857,46 @@ class ArrowTensorArray(pa.ExtensionArray):
         """
         return pa.chunked_array(unify_tensor_arrays(arrs))
 
-    def to_variable_shaped_tensor_array(self) -> "ArrowVariableShapedTensorArray":
+    def to_var_shaped_tensor_array(
+        self,
+        ndim: int,
+    ) -> "ArrowVariableShapedTensorArray":
         """
         Convert this tensor array to a variable-shaped tensor array.
-
-        This is primarily used when concatenating multiple chunked tensor arrays where
-        at least one chunked array is already variable-shaped and/or the shapes of the
-        chunked arrays differ, in which case the resulting concatenated tensor array
-        will need to be in the variable-shaped representation.
         """
-        # TODO(Clark): Eliminate this NumPy roundtrip by directly constructing the
-        # underlying storage array buffers (NumPy roundtrip will not be zero-copy for
-        # e.g. boolean arrays).
-        return ArrowVariableShapedTensorArray.from_numpy(self.to_numpy())
+
+        shape = self.type.shape
+        if ndim < len(shape):
+            raise ValueError(
+                f"Can't convert {self.type} to var-shaped tensor type with {ndim=}"
+            )
+
+        # NOTE: For ``ArrowTensorTypeV2`` we can construct variable-shaped
+        #       tensor directly w/o modifying its internal storage.
+        #
+        #       For (deprecated) ``ArrowTensorType`` we fallback to converting to Numpy,
+        #       and reconstructing.
+        if not isinstance(self.type, ArrowTensorTypeV2):
+            return ArrowVariableShapedTensorArray.from_numpy(self.to_numpy())
+
+        # Pad target shape with singleton axis to match target number of
+        # dimensions
+        target_shape = (1,) * (ndim - len(shape)) + shape
+        # Construct shapes array
+        shape_array = (
+            pa.nulls(
+                len(self.storage),
+                type=ArrowVariableShapedTensorArray.SHAPES_ARRAY_TYPE,
+            )
+            .fill_null(target_shape)
+        )
+
+        storage = pa.StructArray.from_arrays(
+            [self.storage, shape_array],
+            ["data", "shape"],
+        )
+
+        return ArrowVariableShapedTensorType.wrap_array(storage)
 
 
 @PublicAPI(stability="alpha")
@@ -1025,6 +1052,8 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
     See Arrow docs for customizing extension arrays:
     https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
     """
+
+    SHAPES_ARRAY_TYPE = pa.list_(pa.int64())
 
     @classmethod
     def from_numpy(
