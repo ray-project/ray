@@ -484,6 +484,7 @@ py_test(
     data = [
         "hello_world_tests/hello_world_compute_config.yaml",
         "ray_release/configs/oss_config.yaml",
+        "ray_release/tests/sample_5_tests.yaml",
         "ray_release/tests/sample_tests.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
