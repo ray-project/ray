@@ -76,9 +76,9 @@ Before we start, you will need to install some Python dependencies as follows:
 
             .. code-block:: shell
 
-                $ pip install -U "ray[default]" "git+https://github.com/vmware/vsphere-automation-sdk-python.git"
+                $ pip install -U "ray[default]"
 
-            vSphere Cluster Launcher Maintainers (GitHub handles): @LaynePeng, @roshankathawate, @JingChen23
+            vSphere Cluster Launcher Maintainers (GitHub handles): @roshankathawate, @ankitasonawane30, @VamshikShetty
 
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
@@ -120,12 +120,6 @@ Next, if you're not set up to use your cloud provider from the command line, you
 
          .. tab-item:: vSphere
             :sync: vSphere
-
-            .. code-block:: shell
-
-                $ export VSPHERE_SERVER=192.168.0.1 # Enter your vSphere vCenter Address
-                $ export VSPHERE_USER=user # Enter your username
-                $ export VSPHERE_PASSWORD=password # Enter your password
 
 
 Create a (basic) Python application
