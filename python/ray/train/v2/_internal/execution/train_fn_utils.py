@@ -136,7 +136,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], None]
+            Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
     ) -> None:
         return get_internal_train_context().report(
@@ -191,7 +191,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], None]
+            Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
     ) -> None:
         self._last_metrics = metrics
