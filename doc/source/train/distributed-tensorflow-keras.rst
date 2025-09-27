@@ -143,7 +143,7 @@ The main difference is that you may want to convert your Ray Data dataset shard 
 a TensorFlow dataset in your training function so that you can use the Keras
 API for model training.
 
-`See this example <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tune_tensorflow_autoencoder_example.py>`__
+`See this example <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tensorflow_autoencoder_example.py>`__
 for distributed data loading. The relevant parts are:
 
 .. testcode::
