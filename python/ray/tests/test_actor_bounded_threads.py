@@ -39,6 +39,8 @@ KNOWN_THREADS = {
     "grpc_global_tim",  # grpc global timer
     "grpcpp_sync_ser",  # grpc
     "jemalloc_bg_thd",  # jemalloc background thread
+    "task_event_buff",  # task event buffer thread, starts once the dashboard agent is available
+    "client.poll0",     # task_event_buffer creates grpc clients once it starts
 }
 
 

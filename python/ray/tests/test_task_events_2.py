@@ -32,6 +32,14 @@ from ray.util.state.common import ListApiOptions, StateResource
 
 import psutil
 
+# Run every test in this module twice: default and aggregator-enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
+
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
     "metrics_report_interval_ms": 200,
@@ -603,6 +611,10 @@ def test_fault_tolerance_chained_task_fail(
 ):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
+    A_NAME = "A_NAME"
+    B_NAME = "B_NAME"
+    C_NAME = "C_NAME"
+
     def sleep_or_fail(pid_actor=None, exit_type=None):
         if exit_type is None:
             time.sleep(999)
@@ -620,21 +632,21 @@ def test_fault_tolerance_chained_task_fail(
     # Test a chain of tasks
     @ray.remote(max_retries=0)
     def A(exit_type, pid_actor):
-        x = B.remote(pid_actor)
-        ray.get(pid_actor.report_pid.remote("A", os.getpid()))
+        x = B.options(name=B_NAME).remote(pid_actor)
+        ray.get(pid_actor.report_pid.remote(A_NAME, os.getpid()))
         sleep_or_fail(pid_actor, exit_type)
         ray.get(x)
 
     @ray.remote(max_retries=0)
     def B(pid_actor):
-        x = C.remote(pid_actor)
-        ray.get(pid_actor.report_pid.remote("B", os.getpid()))
+        x = C.options(name=C_NAME).remote(pid_actor)
+        ray.get(pid_actor.report_pid.remote(B_NAME, os.getpid()))
         sleep_or_fail()
         ray.get(x)
 
     @ray.remote(max_retries=0)
     def C(pid_actor):
-        ray.get(pid_actor.report_pid.remote("C", os.getpid()))
+        ray.get(pid_actor.report_pid.remote(C_NAME, os.getpid()))
         sleep_or_fail()
 
     @ray.remote(max_restarts=0, max_task_retries=0)
@@ -643,7 +655,11 @@ def test_fault_tolerance_chained_task_fail(
             with pytest.raises(
                 (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
             ):
-                ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
+                ray.get(
+                    A.options(name=A_NAME).remote(
+                        exit_type=exit_type, pid_actor=pid_actor
+                    )
+                )
 
     pid_actor = PidActor.remote()
 
@@ -651,7 +667,9 @@ def test_fault_tolerance_chained_task_fail(
         with pytest.raises(
             (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
         ):
-            ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
+            ray.get(
+                A.options(name=A_NAME).remote(exit_type=exit_type, pid_actor=pid_actor)
+            )
     else:
         a = Actor.remote()
         ray.get(a.run.remote(pid_actor=pid_actor))
