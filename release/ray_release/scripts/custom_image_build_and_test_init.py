@@ -67,6 +67,7 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     "--test-filters",
     default=None,
     type=str,
+    help="Test filters by prefix/regex",
 )
 @click.option(
     "--run-per-test",
