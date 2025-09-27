@@ -1076,35 +1076,6 @@ class TensorArray(
         # TODO(Clark): Copy cached properties.
         return TensorArray(self._tensor.copy())
 
-    @classmethod
-    def _concat_same_type(cls, to_concat: Sequence["TensorArray"]) -> "TensorArray":
-        """
-        Concatenate multiple array of this dtype.
-
-        Parameters
-        ----------
-        to_concat : sequence of this type
-
-        Returns
-        -------
-        ExtensionArray
-        """
-        should_flatten = False
-        shape = None
-        for a in to_concat:
-            if shape is None:
-                shape = a.dtype.element_shape
-            if a.is_variable_shaped or a.dtype.element_shape != shape:
-                should_flatten = True
-                break
-        if should_flatten:
-            concated = TensorArray(
-                np.array([e for a in to_concat for e in a._tensor], dtype=object)
-            )
-        else:
-            concated = TensorArray(np.concatenate([a._tensor for a in to_concat]))
-        return concated
-
     def __setitem__(self, key: Union[int, np.ndarray], value: Any) -> None:
         """
         Set one or more values inplace.
