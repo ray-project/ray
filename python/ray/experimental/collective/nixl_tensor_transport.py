@@ -24,6 +24,10 @@ class NixlTensorTransport(TensorTransportManager):
     def is_one_sided() -> bool:
         return True
 
+    @staticmethod
+    def can_abort_transport() -> bool:
+        return True
+
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",
@@ -119,6 +123,7 @@ class NixlTensorTransport(TensorTransportManager):
     @staticmethod
     def recv_multiple_tensors(
         tensors,
+        obj_id: str,
         tensor_transport_metadata: NixlTransportMetadata,
         communicator_metadata: NixlCommunicatorMetadata,
     ):
@@ -137,6 +142,7 @@ class NixlTensorTransport(TensorTransportManager):
 
             g.recv(
                 tensors,
+                obj_id,
                 tensor_transport_metadata.nixl_serialized_descs,
                 tensor_transport_metadata.nixl_agent_meta,
             )
@@ -150,3 +156,14 @@ class NixlTensorTransport(TensorTransportManager):
         raise NotImplementedError(
             "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
         )
+
+    @staticmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: NixlCommunicatorMetadata,
+    ):
+        from ray.util.collective.collective import get_group_handle
+
+        g = get_group_handle(communicator_metadata.communicator_name)
+        if g:
+            g.abort(obj_id)
