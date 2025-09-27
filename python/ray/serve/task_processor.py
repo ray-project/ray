@@ -1,4 +1,3 @@
-import json
 import logging
 import threading
 import time
@@ -10,7 +9,10 @@ from celery import Celery
 from celery.signals import task_failure, task_unknown
 
 from ray.serve import get_replica_context
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_CONSUMER_CONCURRENCY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.schema import (
     CeleryAdapterConfig,
     TaskProcessorConfig,
@@ -19,6 +21,21 @@ from ray.serve.schema import (
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+CELERY_WORKER_POOL = "worker_pool"
+CELERY_WORKER_CONCURRENCY = "worker_concurrency"
+CELERY_TASK_IGNORE_RESULT = "task_ignore_result"
+CELERY_TASK_ACKS_LATE = "task_acks_late"
+CELERY_TASK_REJECT_ON_WORKER_LOST = "task_reject_on_worker_lost"
+
+CELERY_DEFAULT_APP_CONFIG = [
+    CELERY_WORKER_POOL,
+    CELERY_WORKER_CONCURRENCY,
+    CELERY_TASK_IGNORE_RESULT,
+    CELERY_TASK_ACKS_LATE,
+    CELERY_TASK_REJECT_ON_WORKER_LOST,
+]
 
 
 @PublicAPI(stability="alpha")
@@ -38,18 +55,6 @@ class AsyncCapability(Enum):
     HEALTH_CHECK = auto()  # Ability to perform health checks asynchronously
 
 
-def _json_dump(obj: Any) -> Any:
-    """Recursively make an object JSON serializable."""
-    if isinstance(obj, dict):
-        return {k: _json_dump(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_json_dump(i) for i in obj]
-    try:
-        return json.dumps(obj)
-    except (TypeError, ValueError):
-        return str(obj)
-
-
 @PublicAPI(stability="alpha")
 class TaskProcessorAdapter(ABC):
     """
@@ -59,7 +64,7 @@ class TaskProcessorAdapter(ABC):
     Use supports_async_capability() to check if a specific async operation is supported.
     """
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         """
         Initialize the TaskProcessorAdapter.
 
@@ -103,7 +108,7 @@ class TaskProcessorAdapter(ABC):
         return len(self._async_capabilities) > 0
 
     @abstractmethod
-    def initialize(self):
+    def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
         """
         Initialize the task processor.
         """
@@ -329,42 +334,51 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     _config: TaskProcessorConfig
     _worker_thread: Optional[threading.Thread] = None
     _worker_hostname: Optional[str] = None
+    _worker_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
 
-    def __init__(self, config: TaskProcessorConfig):
-        super().__init__()
+    def __init__(self, config: TaskProcessorConfig, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         if not isinstance(config.adapter_config, CeleryAdapterConfig):
             raise TypeError(
                 "TaskProcessorConfig.adapter_config must be an instance of CeleryAdapterConfig"
             )
 
+        # Check if any app_custom_config keys conflict with default Celery app config
+        if config.adapter_config.app_custom_config:
+            conflicting_keys = set(
+                config.adapter_config.app_custom_config.keys()
+            ) & set(CELERY_DEFAULT_APP_CONFIG)
+            if conflicting_keys:
+                raise ValueError(
+                    f"The following configuration keys cannot be changed via app_custom_config: {sorted(conflicting_keys)}. "
+                    f"These are managed internally by the CeleryTaskProcessorAdapter."
+                )
+
         self._config = config
 
         # Celery adapter does not support any async capabilities
         # self._async_capabilities is already an empty set from parent class
 
-    def initialize(self):
+    def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
         self._app = Celery(
             self._config.queue_name,
             backend=self._config.adapter_config.backend_url,
             broker=self._config.adapter_config.broker_url,
         )
 
-        self._app.conf.update(
-            loglevel="info",
-            worker_pool="threads",
-            worker_concurrency=self._config.adapter_config.worker_concurrency,
-            max_retries=self._config.max_retries,
-            task_default_queue=self._config.queue_name,
-            # Store task results so they can be retrieved after completion
-            task_ignore_result=False,
-            # Acknowledge tasks only after completion (not when received) for better reliability
-            task_acks_late=True,
-            # Reject and requeue tasks when worker is lost to prevent data loss
-            task_reject_on_worker_lost=True,
-            # Only prefetch 1 task at a time to match concurrency and prevent task hoarding
-            worker_prefetch_multiplier=1,
-        )
+        app_configuration = {
+            CELERY_WORKER_POOL: "threads",
+            CELERY_WORKER_CONCURRENCY: consumer_concurrency,
+            CELERY_TASK_IGNORE_RESULT: False,  # Store task results so they can be retrieved after completion
+            CELERY_TASK_ACKS_LATE: True,  # Acknowledge tasks only after completion (not when received) for better reliability
+            CELERY_TASK_REJECT_ON_WORKER_LOST: True,  # Reject and requeue tasks when worker is lost to prevent data loss
+        }
+
+        if self._config.adapter_config.app_custom_config:
+            app_configuration.update(self._config.adapter_config.app_custom_config)
+
+        self._app.conf.update(app_configuration)
 
         queue_config = {
             self._config.queue_name: {
@@ -415,6 +429,8 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             "retry_backoff_max": 60,  # Max backoff of 60 seconds
             "retry_jitter": False,  # Disable jitter for predictable testing
         }
+        if self._config.adapter_config.task_custom_config:
+            task_options.update(self._config.adapter_config.task_custom_config)
 
         if name:
             self._app.task(name=name, **task_options)(func)
@@ -545,14 +561,14 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             **kw: Additional keyword arguments passed by Celery
         """
         logger.info(
-            f"Task failure detected for task_id: {task_id}, args: {args}, kwargs: {kwargs}, einfo: {einfo}"
+            f"Task failure detected for task_id: {task_id}, einfo: {str(einfo)}"
         )
 
         dlq_args = [
             task_id,
             str(einfo.exception),
-            _json_dump(args),
-            _json_dump(kwargs),
+            str(args),
+            str(kwargs),
             str(einfo),
         ]
 
@@ -591,7 +607,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             **kwargs: Additional context information from Celery
         """
         logger.info(
-            f"Unknown task detected by Celery. Name: {name}, ID: {id}, Message: {message}"
+            f"Unknown task detected by Celery. Name: {name}, ID: {id}, Exc: {str(exc)}"
         )
 
         if self._config.unprocessable_task_queue_name:
@@ -601,9 +617,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
                 [
                     name,
                     id,
-                    _json_dump(message),
+                    str(message),
                     str(exc),
-                    _json_dump(kwargs),
+                    str(kwargs),
                 ],
             )
 

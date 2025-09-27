@@ -16,6 +16,7 @@ from ray.serve._private.common import (
     RequestMetadata,
     RequestProtocol,
 )
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.http_util import ASGIReceiveProxy
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve.generated import serve_pb2
@@ -103,6 +104,7 @@ def _make_user_callable_wrapper(
         run_sync_methods_in_threadpool=run_sync_methods_in_threadpool,
         run_user_code_in_separate_thread=run_user_code_in_separate_thread,
         local_testing_mode=False,
+        deployment_config=DeploymentConfig(max_ongoing_requests=100),
     )
 
 

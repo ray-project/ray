@@ -21,7 +21,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
         self._config = config
         self.register_task_handle_mock = MagicMock()
 
-    def initialize(self):
+    def initialize(self, consumer_concurrency: int = 3):
         pass
 
     def register_task_handle(self, func, name=None):
@@ -130,6 +130,7 @@ class TestTaskConsumerDecorator:
 
     def _verify_and_cleanup(self, instance, expected_calls=None):
         """Verify consumer and cleanup instance."""
+        instance.initialize_callable()
         adapter = instance._adapter
         assert adapter._start_consumer_received
 

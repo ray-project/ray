@@ -490,6 +490,7 @@ class ReplicaBase(ABC):
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
+            deployment_config=deployment_config,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -1338,6 +1339,7 @@ class UserCallableWrapper:
         run_sync_methods_in_threadpool: bool,
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
+        deployment_config: DeploymentConfig,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1360,6 +1362,7 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._deployment_config = deployment_config
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -1610,6 +1613,13 @@ class UserCallableWrapper:
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._initialize_asgi_callable()
+
+            from ray.serve.task_consumer import TaskConsumerWrapper
+
+            if isinstance(self._callable, TaskConsumerWrapper):
+                self._callable.initialize_callable(
+                    self._deployment_config.max_ongoing_requests
+                )
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         self._user_record_routing_stats = getattr(
