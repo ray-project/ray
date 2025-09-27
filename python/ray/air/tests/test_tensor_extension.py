@@ -14,6 +14,8 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    concat_tensor_arrays,
+    unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -689,33 +691,12 @@ pytest_tensor_array_concat_arr_combinations = list(
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
-def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
-    ta1 = TensorArray(a1)
-    ta2 = TensorArray(a2)
-    ta = TensorArray._concat_same_type([ta1, ta2])
-    assert len(ta) == a1.shape[0] + a2.shape[0]
-    assert ta.dtype.element_dtype == ta1.dtype.element_dtype
-    if a1.shape[1:] == a2.shape[1:]:
-        assert ta.dtype.element_shape == a1.shape[1:]
-        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
-    else:
-        assert ta.dtype.element_shape == (None,) * (len(a1.shape) - 1)
-        for arr, expected in zip(
-            ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
-        ):
-            np.testing.assert_array_equal(arr, expected)
-
-
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-@pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
 def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
-    ta = ArrowTensorArray._concat_same_type([ta1, ta2])
+    ta = concat_tensor_arrays([ta1, ta2])
     assert len(ta) == a1.shape[0] + a2.shape[0]
     if a1.shape[1:] == a2.shape[1:]:
         if tensor_format == "v1":
@@ -753,8 +734,8 @@ def test_variable_shaped_tensor_array_chunked_concat(
     a2 = np.arange(np.prod(shape2)).reshape(shape2)
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
-    chunked_ta = ArrowTensorArray._chunk_tensor_arrays([ta1, ta2])
-    ta = ArrowTensorArray._concat_same_type(chunked_ta.chunks)
+    unified_arrs = unify_tensor_arrays([ta1, ta2])
+    ta = concat_tensor_arrays(unified_arrs)
     assert len(ta) == shape1[0] + shape2[0]
     assert isinstance(ta.type, ArrowVariableShapedTensorType)
     assert pa.types.is_struct(ta.type.storage_type)
@@ -826,6 +807,116 @@ def test_tensor_array_string_tensors_simple(restore_data_context, tensor_format)
 
     np.testing.assert_array_equal(original_strings, roundtrip_strings)
     np.testing.assert_array_equal(roundtrip_strings, string_tensors)
+
+
+def test_tensor_type_equality_checks():
+    # Test that different types are not equal
+    fs_tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
+    fs_tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
+
+    assert fs_tensor_type_v1 != fs_tensor_type_v2
+
+    # Test different shapes/dtypes aren't equal
+    assert fs_tensor_type_v1 != ArrowTensorType((3, 3), pa.int64())
+    assert fs_tensor_type_v1 != ArrowTensorType((2, 3), pa.float64())
+    assert fs_tensor_type_v2 != ArrowTensorTypeV2((3, 3), pa.int64())
+    assert fs_tensor_type_v2 != ArrowTensorTypeV2((2, 3), pa.float64())
+
+    # Test var-shaped tensor type
+    vs_tensor_type = ArrowVariableShapedTensorType(pa.int64(), 2)
+
+    # Test that different types are not equal
+    assert vs_tensor_type != ArrowVariableShapedTensorType(pa.int64(), 3)
+    assert vs_tensor_type != ArrowVariableShapedTensorType(pa.float64(), 2)
+    assert vs_tensor_type != fs_tensor_type_v1
+    assert vs_tensor_type != fs_tensor_type_v2
+
+
+def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
+    """Test that ArrowTensorType and ArrowTensorTypeV2 __eq__ methods work correctly
+    when concatenating Arrow arrays with the same tensor type."""
+    from ray.data.context import DataContext
+    from ray.data.extensions.tensor_extension import (
+        ArrowTensorArray,
+        ArrowTensorType,
+        ArrowTensorTypeV2,
+    )
+
+    # Test ArrowTensorType V1
+    tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
+
+    DataContext.get_current().use_arrow_tensor_v2 = False
+    first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
+    second = ArrowTensorArray.from_numpy(np.zeros((3, 2, 3), dtype=np.int64))
+
+    assert first.type == second.type
+    # Assert commutation
+    assert tensor_type_v1 == first.type
+    assert first.type == tensor_type_v1
+
+    # Test concatenation works appropriately
+    concatenated = pa.concat_arrays([first, second])
+    assert len(concatenated) == 5
+    assert concatenated.type == tensor_type_v1
+
+    expected = np.vstack([first.to_numpy(), second.to_numpy()])
+    np.testing.assert_array_equal(concatenated.to_numpy(), expected)
+
+    # Test ArrowTensorTypeV2
+    tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
+
+    DataContext.get_current().use_arrow_tensor_v2 = True
+
+    first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
+    second = ArrowTensorArray.from_numpy(np.ones((3, 2, 3), dtype=np.int64))
+
+    assert first.type == second.type
+    # Assert commutation
+    assert tensor_type_v2 == first.type
+    assert first.type == tensor_type_v2
+
+    # Test concatenation works appropriately
+    concatenated_v2 = pa.concat_arrays([first, second])
+    assert len(concatenated_v2) == 5
+    assert concatenated_v2.type == tensor_type_v2
+
+    # Assert on the full concatenated array
+    expected = np.vstack([first.to_numpy(), second.to_numpy()])
+    np.testing.assert_array_equal(concatenated_v2.to_numpy(), expected)
+
+
+def test_arrow_variable_shaped_tensor_type_eq_with_concat():
+    """Test that ArrowVariableShapedTensorType __eq__ method works correctly
+    when concatenating Arrow arrays with variable shaped tensors."""
+    from ray.data.extensions.tensor_extension import (
+        ArrowVariableShapedTensorArray,
+        ArrowVariableShapedTensorType,
+    )
+
+    # Create ArrowVariableShapedTensorType
+    var_tensor_type = ArrowVariableShapedTensorType(pa.int64(), 2)
+
+    # Create arrays with variable-shaped tensors
+    tensors1 = [np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10]])]
+    tensors2 = [np.array([[11, 12, 13, 14]]), np.array([[15], [16], [17]])]
+
+    arr1 = ArrowVariableShapedTensorArray.from_numpy(tensors1)
+    arr2 = ArrowVariableShapedTensorArray.from_numpy(tensors2)
+
+    assert arr1.type == arr2.type
+    # Assert commutation
+    assert var_tensor_type == arr1.type
+    assert arr1.type == var_tensor_type
+
+    # Test concatenation works appropriately
+    concatenated = pa.concat_arrays([arr1, arr2])
+    assert len(concatenated) == 4
+    assert concatenated.type == var_tensor_type
+
+    result = concatenated.to_numpy()
+    expected_shapes = [(2, 2), (2, 3), (1, 4), (3, 1)]
+    for i, expected_shape in enumerate(expected_shapes):
+        assert result[i].shape == expected_shape
 
 
 if __name__ == "__main__":
