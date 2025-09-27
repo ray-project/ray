@@ -354,7 +354,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void SubscribeRefRemoved(const ObjectID &object_id,
                            const ObjectID &contained_in_id,
                            const rpc::Address &owner_address,
-                           const std::string &subscriber_worker_id)
+                           const WorkerID &subscriber_worker_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback to call whenever a Reference that we own is deleted. A
@@ -367,8 +367,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void SetReleaseLineageCallback(const LineageReleasedCallback &callback);
 
   /// Just calls PublishRefRemovedInternal with a lock.
-  void PublishRefRemoved(const ObjectID &object_id,
-                         const std::string &subscriber_worker_id)
+  void PublishRefRemoved(const ObjectID &object_id, const WorkerID &subscriber_worker_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
@@ -812,7 +811,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// longer a borrower (RefCount() == 0).
     bool publish_ref_removed = false;
     /// The worker ID of the subscriber who requested ref removal notification.
-    std::string subscriber_worker_id;
+    WorkerID subscriber_worker_id;
 
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
@@ -989,7 +988,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// sender is the owner of the object ID. We will send the reply when our
   /// RefCount() for the object ID goes to 0.
   void PublishRefRemovedInternal(const ObjectID &object_id,
-                                 const std::string &subscriber_worker_id = "")
+                                 const WorkerID &subscriber_worker_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Erase the Reference from the table. Assumes that the entry has no more
