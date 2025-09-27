@@ -1236,11 +1236,8 @@ def unify_tensor_types(types: Collection[AnyArrowExtTensorType]) -> AnyArrowExtT
 
     return ArrowVariableShapedTensorType(
         dtype=scalar_types.pop(),
-        dims=dims.pop(),
+        ndim=dims.pop(),
     )
-
-
-AnyArrowExtTensorType = Union[ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType]
 
 
 def unify_tensor_arrays(
