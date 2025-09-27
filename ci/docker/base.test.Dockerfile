@@ -47,6 +47,9 @@ echo \
 apt-get update
 apt-get install -y docker-ce-cli
 
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
 EOF
 
 # System conf for tests
