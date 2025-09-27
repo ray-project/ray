@@ -453,14 +453,14 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         super().__init__(tensor_dtype, ext_type_id)
 
     @property
-    def shape(self):
+    def shape(self) -> Tuple[int, ...]:
         """
         Shape of contained tensors.
         """
         return self._shape
 
     @property
-    def scalar_type(self):
+    def scalar_type(self) -> pa.DataType:
         """Returns the type of the underlying tensor elements."""
         return self.storage_type.value_type
 
@@ -1016,7 +1016,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return self._ndim
 
     @property
-    def scalar_type(self):
+    def scalar_type(self) -> pa.DataType:
         """Returns the type of the underlying tensor elements."""
         data_field_index = self.storage_type.get_field_index("data")
         return self.storage_type[data_field_index].type.value_type
