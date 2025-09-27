@@ -16,6 +16,11 @@
 
 #include <fstream>
 #include <functional>
+#ifndef _WIN32
+#include <sys/socket.h>
+#else
+#include <winsock2.h>
+#endif
 
 #include "absl/strings/escaping.h"
 #include "ray/common/buffer.h"
@@ -53,7 +58,7 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
     do {
       actual_port = rand() % 5000 + 2000;
-    } while (!CheckPortFree(actual_port));
+    } while (!CheckPortFree(AF_INET, actual_port));
   }
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;

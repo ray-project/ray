@@ -3,6 +3,7 @@ import importlib.util
 import logging
 import os
 import platform
+import socket
 import threading
 from collections import defaultdict
 from types import FunctionType
@@ -25,6 +26,7 @@ from gymnasium.spaces import Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
+from ray._common.network_utils import is_ipv6
 from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
@@ -1686,7 +1688,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """Finds a free port on the node that this worker runs on."""
         from ray.air._internal.util import find_free_port
 
-        return find_free_port()
+        return find_free_port(
+            socket.AF_INET6 if is_ipv6(self.get_node_ip()) else socket.AF_INET
+        )
 
     def _update_policy_map(
         self,

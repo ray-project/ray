@@ -30,6 +30,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+from ray._common.network_utils import is_ipv6
 from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
@@ -698,7 +699,10 @@ async def start_asgi_http_server(
     """
     app = _apply_middlewares(app, http_options.middlewares)
 
-    sock = socket.socket()
+    sock = socket.socket(
+        socket.AF_INET6 if is_ipv6(http_options.host) else socket.AF_INET,
+        socket.SOCK_STREAM,
+    )
     if enable_so_reuseport:
         set_socket_reuse_port(sock)
 
