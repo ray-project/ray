@@ -34,6 +34,7 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
 
 def build_serve_deployment_processor(
     config: ServeDeploymentProcessorConfig,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
 ) -> Processor:
@@ -42,6 +43,7 @@ def build_serve_deployment_processor(
 
     Args:
         config: The configuration for the processor.
+        chat_template_kwargs: The optional kwargs to pass to apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.

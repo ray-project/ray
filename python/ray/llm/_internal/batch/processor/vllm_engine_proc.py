@@ -58,6 +58,16 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "specified and LoRA is enabled, then the 'model' in LoRA "
         "requests will be interpreted as model ID used by HF transformers.",
     )
+    # Placement group config for TP/PP.
+    placement_group_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Custom Ray placement group configuration for scheduling vLLM engine workers. "
+            "Each bundle should define its resource requirements, such as 'CPU' and 'GPU'. "
+            "Note: When using vLLM's Ray distributed executor backend, each bundle must be restricted "
+            "to a single GPU. This configuration is only applicable when the Ray distributed executor backend is enabled."
+        ),
+    )
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
@@ -146,6 +156,7 @@ def build_vllm_engine_processor(
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
+                placement_group_config=config.placement_group_config,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,

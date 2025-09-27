@@ -29,6 +29,10 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         tokenize=True,
         detokenize=True,
         has_image=True,
+        placement_group_config=dict(
+            bundles=[{"CPU": 1, "GPU": 1}],
+            strategy="PACK",
+        ),
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
