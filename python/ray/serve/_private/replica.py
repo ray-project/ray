@@ -20,11 +20,13 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
 )
 
+import aiohttp
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
@@ -56,6 +58,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -162,6 +165,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        user_callable_wrapper: Optional["UserCallableWrapper"],
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -239,6 +243,14 @@ class ReplicaMetricsManager:
         )
 
         self.set_autoscaling_config(autoscaling_config)
+
+        self._prometheus_metrics_enabled = False
+        self._prometheus_queries: Optional[List[Tuple[str, Optional[str]]]] = None
+
+        if autoscaling_config and autoscaling_config.prometheus_custom_metrics:
+            self._prometheus_metrics_enabled = True
+            self._prometheus_queries = autoscaling_config.prometheus_custom_metrics
+            self.start_metrics_pusher()
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -376,6 +388,87 @@ class ReplicaMetricsManager:
             replica_metric_report
         )
 
+    async def _fetch_prometheus_metrics(
+        self, prometheus_metrics: List[Tuple[str, Optional[str]]]
+    ) -> Optional[Dict[str, float]]:
+        """
+        Fetch metrics from the prometheus exporter endpoint, given a list of (metric_name, optional[promql_expression]) tuples.
+        The promql_expression parameter is ignored for now.
+        """
+
+        metrics_result = {}
+        logger.info(
+            f"Fetching prometheus metrics {prometheus_metrics}",
+            extra={"log_to_stderr": False},
+        )
+
+        try:
+            prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
+
+            logger.debug(f"Fetching metrics from prometheus exporter at {prom_addr}")
+
+            timeout = aiohttp.ClientTimeout(
+                total=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
+            )
+
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(f"{prom_addr}/metrics") as response:
+                    if response.status == 200:
+                        metrics_text = await response.text()
+
+                        # Parse the prometheus metrics text format
+                        try:
+                            from prometheus_client.parser import (
+                                text_string_to_metric_families,
+                            )
+
+                            # Parse metrics and create a lookup by metric name
+                            metric_samples_by_name = {}
+                            for metric in text_string_to_metric_families(metrics_text):
+                                for sample in metric.samples:
+                                    if sample.name not in metric_samples_by_name:
+                                        metric_samples_by_name[sample.name] = []
+                                    metric_samples_by_name[sample.name].append(sample)
+
+                            # Extract requested metrics
+                            for metric_name, promql_expression in prometheus_metrics:
+                                if metric_name in metric_samples_by_name:
+                                    # Get the latest sample for this metric
+                                    samples = metric_samples_by_name[metric_name]
+                                    if samples:
+                                        # Use the last sample's value
+                                        latest_sample = samples[-1]
+                                        metrics_result[metric_name] = float(
+                                            latest_sample.value
+                                        )
+                                    else:
+                                        metrics_result[metric_name] = 0.0
+                                else:
+                                    logger.warning(
+                                        f"Metric {metric_name} not found in exporter response"
+                                    )
+                                    metrics_result[metric_name] = 0.0
+
+                        except ImportError:
+                            logger.error(
+                                "prometheus_client not available for parsing metrics"
+                            )
+                            return None
+                        except Exception as e:
+                            logger.error(f"Error parsing prometheus metrics: {e}")
+                            return None
+                    else:
+                        logger.error(
+                            f"Failed to fetch metrics from prometheus exporter: HTTP {response.status}"
+                        )
+                        return None
+
+        except Exception as e:
+            logger.error(f"Error fetching prometheus metrics: {e}")
+            return None
+
+        return metrics_result
+
     async def _fetch_custom_autoscaling_metrics(
         self,
     ) -> Optional[Dict[str, Union[int, float]]]:
@@ -443,6 +536,13 @@ class ReplicaMetricsManager:
             custom_metrics = await self._fetch_custom_autoscaling_metrics()
             if custom_metrics:
                 metrics_dict.update(custom_metrics)
+
+        if self._prometheus_metrics_enabled:
+            prom_metrics = await self._fetch_prometheus_metrics(
+                self._prometheus_queries
+            )
+            if prom_metrics:
+                metrics_dict.update(prom_metrics)
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
@@ -518,6 +618,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
+            user_callable_wrapper=self._user_callable_wrapper,
         )
 
         self._internal_grpc_port: Optional[int] = None

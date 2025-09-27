@@ -2,7 +2,7 @@ import json
 import logging
 import warnings
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray import cloudpickle
 from ray._common.pydantic_compat import (
@@ -234,6 +234,10 @@ class AutoscalingConfig(BaseModel):
     upscale_delay_s: NonNegativeFloat = Field(
         default=30.0, description="How long to wait before scaling up replicas."
     )
+
+    # Prometheus metrics which will be collected at each replica, which will be available in the custom AutoscalingPolicy function
+    # Tuple of (metric_name, promql_query)
+    prometheus_custom_metrics: Optional[List[Tuple[str, Optional[str]]]] = None
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
