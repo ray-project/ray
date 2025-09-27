@@ -972,7 +972,7 @@ jupyter-ydoc==0.2.5
     # via
     #   jupyter-server-ydoc
     #   jupyterlab
-jupyterlab==3.6.1
+jupyterlab==4.4.8
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
