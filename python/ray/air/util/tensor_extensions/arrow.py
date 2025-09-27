@@ -1310,7 +1310,7 @@ def unify_tensor_arrays(
 
 
 def concat_tensor_arrays(
-    arrays: Sequence[
+    arrays: List[
         Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
     ],
     ensure_copy: bool = False,
@@ -1327,16 +1327,19 @@ def concat_tensor_arrays(
         ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
     """
 
-    # Verify provided tensor arrays could be concatenated
-    unified_tensor_type = unify_tensor_types([arr.type for arr in arrays])
+    assert arrays, "List of tensor arrays may not be empty"
 
     if len(arrays) == 1 and not ensure_copy:
         # Short-circuit
         return arrays[0]
 
-    storage = pa.concat_arrays([c.storage for c in arrays])
+    # First, unify provided tensor arrays
+    unified_arrays = unify_tensor_arrays(arrays)
+    # Then, simply concat underlying internal storage
+    storage = pa.concat_arrays([c.storage for c in unified_arrays])
 
-    return unified_tensor_type.wrap_array(storage)
+    unified_array_type = unified_arrays[0].type
+    return unified_array_type.wrap_array(storage)
 
 
 def _is_contiguous_view(curr: np.ndarray, prev: Optional[np.ndarray]) -> bool:
