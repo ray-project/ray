@@ -588,10 +588,15 @@ def build(build_python, build_java, build_cpp, build_redis):
         )
 
     bazel_targets = []
-    bazel_targets += ["//:gen_ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:gen_ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:gen_ray_java_pkg"] if build_java else []
-    bazel_targets += ["//:gen_redis_pkg"] if build_redis else []
+    if build_python:
+        bazel_targets.append("//:gen_ray_pkg")
+    if build_cpp:
+        bazel_targets.append("//cpp:gen_ray_cpp_pkg")
+    if build_java:
+        bazel_targets.append("//java:gen_ray_java_pkg")
+    if build_redis:
+        bazel_targets.append("//:gen_redis_pkg")
+
     if not bazel_targets:
         return
 
@@ -614,7 +619,6 @@ def build(build_python, build_java, build_cpp, build_redis):
                 " environment variable for Bazel."
             ).format(name="BAZEL_SH")
             raise RuntimeError(msg)
-
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
