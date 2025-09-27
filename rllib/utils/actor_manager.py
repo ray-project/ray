@@ -885,7 +885,7 @@ class FaultTolerantActorManager:
                 )
         else:
             for raid in remote_actor_ids:
-                calls.append(self._actors[raid].apply.remote(func))
+                calls.append(self._actors[raid].apply.remote(func=func, **kwargs or {}))
 
         return calls
 
