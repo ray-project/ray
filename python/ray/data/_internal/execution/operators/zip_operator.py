@@ -104,12 +104,17 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             ref, _ = self._zip(self._input_buffers)
             self._output_buffer.append(ref)
             self._metrics.on_output_queued(ref)
-        assert all(len(buffer) == 0 for buffer in self._input_buffers), list(
-            self._input_buffers
-        )
-        assert all(
+
+        # TODO(Clark): Support different number of rows via user-directed
+        # dropping/padding.
+        assert all(len(buffer) == 0 for buffer in self._input_buffers) and all(
             len(leftover_blocks) == 0 for leftover_blocks in self._leftover_blocks
-        ), "leftover blocks should be empty"
+        ), (
+            f"Zip operation failed: inputs have different numbers of rows. "
+            f"Inputs with leftover rows: {[i for i, buffer in enumerate(self._input_buffers) if len(buffer) > 0 or len(self._leftover_blocks[i]) > 0]}. "
+            f"All inputs must have the same number of rows to be zipped together."
+        )
+
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -154,8 +159,9 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     ) -> bool:
         """Check if the input buffers or leftover blocks have at least one bundle reference."""
 
-        return not all(len(buffer) == 0 for buffer in input_buffers) or not all(
-            len(leftover_blocks) == 0 for leftover_blocks in self._leftover_blocks
+        return all(
+            len(buffer) > 0 or len(leftover_blocks) > 0
+            for buffer, leftover_blocks in zip(input_buffers, leftover_blocks)
         )
 
     def _zip(
@@ -232,7 +238,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             block_list = aligned_all_blocks_with_metadata[idx][0].pop()
             metadata_list = aligned_all_blocks_with_metadata[idx][1].pop()
             if len(block_list) > 0:
-                self._leftover_blocks[idx] = (block_list[0], metadata_list[0])
+                self._leftover_blocks[idx] = (
+                    block_list[0],
+                    metadata_list[0],
+                )  # we can do this because it is guaranteed that the remaining rows will be packed into one block
             # remove the last block
             # [input_idx][block or metadata][object refs]
 
