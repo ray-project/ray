@@ -4,6 +4,8 @@ import logging
 import os
 import platform
 import threading
+
+# Trigger rllib GPU CI tests for learning_tests_cartpole_appo_multi_gpu
 from collections import defaultdict
 from types import FunctionType
 from typing import (
@@ -1686,6 +1688,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """Finds a free port on the node that this worker runs on."""
         from ray.air._internal.util import find_free_port
 
+        logger.info("test")
         return find_free_port()
 
     def _update_policy_map(
