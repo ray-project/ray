@@ -821,9 +821,7 @@ def test_drop_columns(
         ds1.drop_columns(["col1", "col2", "col2"])
 
 
-def test_select_rename_columns(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
+def test_select_rename_columns(ray_start_regular_shared):
     ds = ray.data.range(1)
 
     def map_fn(row):
@@ -3331,6 +3329,135 @@ def test_with_column_alias_expressions(
     non_aliased_df = ds_non_aliased.to_pandas()
 
     pd.testing.assert_frame_equal(result_df, non_aliased_df)
+
+
+@pytest.mark.parametrize(
+    "operations,expected",
+    [
+        # Single operations
+        ([("rename", {"a": "A"})], {"A": 1, "b": 2, "c": 3}),
+        ([("select", ["a", "b"])], {"a": 1, "b": 2}),
+        ([("with_column", "d", 4)], {"a": 1, "b": 2, "c": 3, "d": 4}),
+        # Two operations - rename then select
+        ([("rename", {"a": "A"}), ("select", ["A"])], {"A": 1}),
+        ([("rename", {"a": "A"}), ("select", ["b"])], {"b": 2}),
+        ([("rename", {"a": "A", "b": "B"}), ("select", ["A", "B"])], {"A": 1, "B": 2}),
+        # Two operations - select then rename
+        ([("select", ["a", "b"]), ("rename", {"a": "A"})], {"A": 1, "b": 2}),
+        ([("select", ["a"]), ("rename", {"a": "x"})], {"x": 1}),
+        # Two operations - with_column combinations
+        ([("with_column", "d", 4), ("select", ["a", "d"])], {"a": 1, "d": 4}),
+        ([("select", ["a"]), ("with_column", "d", 4)], {"a": 1, "d": 4}),
+        (
+            [("rename", {"a": "A"}), ("with_column", "d", 4)],
+            {"A": 1, "b": 2, "c": 3, "d": 4},
+        ),
+        (
+            [("with_column", "d", 4), ("rename", {"d": "D"})],
+            {"a": 1, "b": 2, "c": 3, "D": 4},
+        ),
+        # Three operations
+        (
+            [("rename", {"a": "A"}), ("select", ["A", "b"]), ("with_column", "d", 4)],
+            {"A": 1, "b": 2, "d": 4},
+        ),
+        (
+            [("with_column", "d", 4), ("rename", {"a": "A"}), ("select", ["A", "d"])],
+            {"A": 1, "d": 4},
+        ),
+        (
+            [("select", ["a", "b"]), ("rename", {"a": "x"}), ("with_column", "d", 4)],
+            {"x": 1, "b": 2, "d": 4},
+        ),
+        # Column swap
+        ([("rename", {"a": "b", "b": "a"}), ("select", ["a"])], {"a": 2}),
+        ([("rename", {"a": "b", "b": "a"}), ("select", ["b"])], {"b": 1}),
+        # Multiple same operations
+        ([("rename", {"a": "x"}), ("rename", {"x": "y"})], {"y": 1, "b": 2, "c": 3}),
+        ([("select", ["a", "b"]), ("select", ["a"])], {"a": 1}),
+        (
+            [("with_column", "d", 4), ("with_column", "e", 5)],
+            {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5},
+        ),
+        # Complex expressions with with_column
+        (
+            [("rename", {"a": "x"}), ("with_column_expr", "sum", "x", 10)],
+            {"x": 1, "b": 2, "c": 3, "sum": 10},
+        ),
+        (
+            [("with_column", "d", 4), ("with_column", "e", 5), ("select", ["d", "e"])],
+            {"d": 4, "e": 5},
+        ),
+    ],
+)
+def test_projection_operations_comprehensive(
+    ray_start_regular_shared, operations, expected
+):
+    """Comprehensive test for projection operations combinations."""
+    from ray.data.expressions import col, lit
+
+    # Create initial dataset
+    ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2, "c": 3})
+
+    # Apply operations
+    for op in operations:
+        if op[0] == "rename":
+            ds = ds.rename_columns(op[1])
+        elif op[0] == "select":
+            ds = ds.select_columns(op[1])
+        elif op[0] == "with_column":
+            ds = ds.with_column(op[1], lit(op[2]))
+        elif op[0] == "with_column_expr":
+            # Special case for expressions referencing columns
+            ds = ds.with_column(op[1], col(op[2]) * op[3])
+
+    # Verify result
+    result = ds.take_all()
+    assert len(result) == 1
+    assert result[0] == expected
+
+
+def test_projection_edge_cases(ray_start_regular_shared):
+    """Test edge cases for projection operations."""
+    from ray.data.expressions import col, lit
+
+    # Test 1: Rename to existing column name (swap)
+    ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2})
+    result = ds.rename_columns({"a": "b", "b": "a"}).take_all()
+    assert result == [{"a": 2, "b": 1}]
+
+    # Test 2: Select after rename with overlapping names
+    ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2, "c": 3})
+    result = (
+        ds.rename_columns({"a": "A", "b": "B"}).select_columns(["A", "c"]).take_all()
+    )
+    assert result == [{"A": 1, "c": 3}]
+
+    # Test 3: with_column overwriting existing column
+    ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2})
+    result = ds.with_column("a", lit(10)).take_all()
+    assert result == [{"a": 10, "b": 2}]
+
+    # Test 4: Complex expression in with_column after rename
+    ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2})
+    result = (
+        ds.rename_columns({"a": "x", "b": "y"})
+        .with_column("z", col("x") + col("y"))
+        .select_columns(["z"])
+        .take_all()
+    )
+    assert result == [{"z": 3}]
+
+    # Test 5: Multiple renames and selects
+    ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2, "c": 3})
+    result = (
+        ds.rename_columns({"a": "x"})
+        .select_columns(["x", "b"])
+        .rename_columns({"x": "y"})
+        .select_columns(["y"])
+        .take_all()
+    )
+    assert result == [{"y": 1}]
 
 
 if __name__ == "__main__":
