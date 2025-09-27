@@ -101,13 +101,6 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
     def copy(self) -> "PythonObjectArray":
         return PythonObjectArray(self.values)
 
-    @classmethod
-    def _concat_same_type(
-        cls, to_concat: collections.abc.Sequence["PythonObjectArray"]
-    ) -> "PythonObjectArray":
-        values_to_concat = [element.values for element in to_concat]
-        return cls(np.concatenate(values_to_concat))
-
 
 @PublicAPI(stability="alpha")
 @pd.api.extensions.register_extension_dtype
