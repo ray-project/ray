@@ -24,9 +24,18 @@ logger = logging.getLogger(__name__)
 BACKOFF_S = 5
 
 
-def _get_log_dir() -> str:
+def _get_log_dir(gcs_client: GcsClient) -> str:
+    temp_dir = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        "temp_dir",
+        ray_constants.KV_NAMESPACE_SESSION,
+        num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+    )
+
+    logger.info(f"[myan] Getting log directory from GCS: {temp_dir}")
+
     return os.path.join(
-        ray._common.utils.get_ray_temp_dir(),
+        ray._common.utils.decode(temp_dir),
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
@@ -57,9 +66,11 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             )
             time.sleep(BACKOFF_S)
 
+    gcs_client = GcsClient(ray_address)
+
     # The Ray head container sets up the log directory. Thus, we set up logging
     # only after the Ray head is ready.
-    _setup_logging()
+    _setup_logging(gcs_client)
 
     # autoscaling_config_producer reads the RayCluster CR from K8s and uses the CR
     # to output an autoscaling config.
@@ -67,14 +78,13 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         cluster_name, cluster_namespace
     )
 
-    gcs_client = GcsClient(ray_address)
     if is_autoscaler_v2(fetch_from_server=True, gcs_client=gcs_client):
         from ray.autoscaler.v2.monitor import AutoscalerMonitor as MonitorV2
 
         MonitorV2(
             address=gcs_client.address,
             config_reader=KubeRayConfigReader(autoscaling_config_producer),
-            log_dir=_get_log_dir(),
+            log_dir=_get_log_dir(gcs_client),
             monitor_ip=head_ip,
         ).run()
     else:
@@ -91,13 +101,15 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         ).run()
 
 
-def _setup_logging() -> None:
+def _setup_logging(gcs_client: GcsClient) -> None:
     """Log to autoscaler log file
     (typically, /tmp/ray/session_latest/logs/monitor.*)
 
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
-    log_dir = _get_log_dir()
+    log_dir = _get_log_dir(gcs_client)
+    logger.info(f"[myan] Setting up logging to: {log_dir}")
+
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
 
