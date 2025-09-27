@@ -28,15 +28,27 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         super().__init__(*args, **kwargs)
         self._concurrency_caps: dict["PhysicalOperator", float] = {}
 
+        # When preserve_order is enabled, reduce concurrency to prevent
+        # out-of-order task completion that leads to ordered queue buildup
+        self._preserve_order = self._data_context.execution_options.preserve_order
+        concurrency_multiplier = (
+            self._data_context.concurrency_cap_on_preserve_order_multiplier
+            if self._preserve_order
+            else 1.0
+        )
+
         for op, _ in self._topology.items():
             if isinstance(op, TaskPoolMapOperator) and op.get_concurrency() is not None:
-                self._concurrency_caps[op] = op.get_concurrency()
+                # Apply concurrency reduction when preserve_order is enabled
+                self._concurrency_caps[op] = (
+                    op.get_concurrency() * concurrency_multiplier
+                )
             else:
                 self._concurrency_caps[op] = float("inf")
 
         logger.debug(
             "ConcurrencyCapBackpressurePolicy initialized with: "
-            f"{self._concurrency_caps}"
+            f"{self._concurrency_caps} (preserve_order={self._preserve_order})"
         )
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
