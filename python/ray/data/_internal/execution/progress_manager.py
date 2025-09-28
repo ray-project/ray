@@ -39,33 +39,36 @@ _RESOURCE_REPORT_HEADER = f"{_TREE_VERTICAL} Active/total resources: "
 
 
 class _ManagerMode(Enum):
-    NONE = 1            # no-op
-    GLOBAL_ONLY = 2     # global progress
-    ALL = 3             # show everything
+    NONE = 1  # no-op
+    GLOBAL_ONLY = 2  # global progress
+    ALL = 3  # show everything
 
     def show_op(self) -> bool:
         return self == self.ALL
-    
+
     def is_enabled(self) -> bool:
         return self != self.NONE
 
     @classmethod
-    def get_mode(cls) -> '_ManagerMode':
+    def get_mode(cls) -> "_ManagerMode":
         from ray.data.context import DataContext
-        
+
         ctx = DataContext.get_current()
         if not ctx.enable_progress_bars:
             if log_once("ray_data_progress_manager_disabled"):
                 logger.warning(
                     "Progress bars disabled. To enable, set "
                     "`ray.data.DataContext.get_current()."
-                    "enable_progress_bars = True`.")
+                    "enable_progress_bars = True`."
+                )
             return cls.NONE
         elif rich is None:
             global needs_rich_warning
             if needs_rich_warning:
-                print("[dataset]: Run `pip install rich` to enable "
-                      "execution progress reporting.")
+                print(
+                    "[dataset]: Run `pip install rich` to enable "
+                    "execution progress reporting."
+                )
                 needs_rich_warning = False
             return cls.NONE
         elif not ctx.enable_operator_progress_bars:
@@ -73,7 +76,8 @@ class _ManagerMode(Enum):
                 logger.warning(
                     "Progress bars for operators disabled. To enable, "
                     "set `ray.data.DataContext.get_current()."
-                    "enable_operator_progress_bars = True`.")
+                    "enable_operator_progress_bars = True`."
+                )
             return cls.GLOBAL_ONLY
         else:
             return cls.ALL
@@ -99,11 +103,11 @@ def _format_row_count(completed: int, total: Optional[int]) -> str:
 
 class RichExecutionProgressManager:
     """Execution progress display using rich."""
-    
+
     def __init__(self, dataset_id: str, topology: Topology):
         self._mode = _ManagerMode.get_mode()
         self._dataset_id = dataset_id
-        
+
         if self._mode.is_enabled():
             self._start_time: Optional[float] = None
 
@@ -111,33 +115,51 @@ class RichExecutionProgressManager:
             self._console = Console()
             self._total = Progress(
                 SpinnerColumn(finished_text=""),
-                TextColumn("{task.description} {task.percentage:>3.0f}%", table_column=Column(no_wrap=True)),
+                TextColumn(
+                    "{task.description} {task.percentage:>3.0f}%",
+                    table_column=Column(no_wrap=True),
+                ),
                 BarColumn(),
-                TextColumn("{task.fields[count_str]}", table_column=Column(no_wrap=True)),
-                TextColumn("["), TimeRemainingColumn(), TextColumn("]"),
+                TextColumn(
+                    "{task.fields[count_str]}", table_column=Column(no_wrap=True)
+                ),
+                TextColumn("["),
+                TimeRemainingColumn(),
+                TextColumn("]"),
                 TextColumn("{task.fields[rate]}", table_column=Column(no_wrap=True)),
-                console=self._console, transient=False, expand=True,
+                console=self._console,
+                transient=False,
+                expand=True,
             )
-            self._total_resources = Text(f"{_RESOURCE_REPORT_HEADER}Initializing...", no_wrap=True)
+            self._total_resources = Text(
+                f"{_RESOURCE_REPORT_HEADER}Initializing...", no_wrap=True
+            )
             # TODO (kyuds): op rows
 
             self._layout_table = Table.grid(padding=(0, 1, 0, 0), expand=True)
             self._layout_table.add_row(self._total)
             self._layout_table.add_row(self._total_resources)
-            self._live = Live(self._layout_table, console=self._console,
-                              refresh_per_second=2, vertical_overflow="visible")
+            self._live = Live(
+                self._layout_table,
+                console=self._console,
+                refresh_per_second=2,
+                vertical_overflow="visible",
+            )
 
             self._total_task_id = self._total.add_task(
-                f"Dataset {self._dataset_id} running:", total=_TOTAL_PROGRESS_TOTAL,
-                rate="? rows/s", count_str="0/?")
+                f"Dataset {self._dataset_id} running:",
+                total=_TOTAL_PROGRESS_TOTAL,
+                rate="? rows/s",
+                count_str="0/?",
+            )
         else:
             self._live = None
-    
+
     # Management
     def start(self):
         if self._mode.is_enabled():
             self._live.start()
-    
+
     def refresh(self):
         if self._mode.is_enabled():
             self._live.refresh()
@@ -147,17 +169,19 @@ class RichExecutionProgressManager:
             self.refresh()
             time.sleep(0.1)
             self._live.stop()
-    
+
     # Total Progress
     def _can_update_total(self) -> bool:
-        return (self._mode.is_enabled() and
-                self._total_task_id is not None and
-                self._total_task_id in self._total.task_ids)
+        return (
+            self._mode.is_enabled()
+            and self._total_task_id is not None
+            and self._total_task_id in self._total.task_ids
+        )
 
     def update_total_progress(self, total_rows: Optional[int], current_rows: int):
         if not self._can_update_total():
             return
-    
+
         # Progress Report
         if self._start_time is None:
             self._start_time = time.time()
@@ -180,8 +204,8 @@ class RichExecutionProgressManager:
             completed=completed,
             total=_TOTAL_PROGRESS_TOTAL,
             fields={"rate": rate_str, "count_str": count_str},
-            )        
-    
+        )
+
     def update_resource_status(self, resource_manager: ResourceManager):
         # running_usage is the amount of resources that have been requested but
         # not necessarily available
@@ -190,7 +214,7 @@ class RichExecutionProgressManager:
         # pending-node-assignment.
         if not self._can_update_total():
             return
-        
+
         running_usage = resource_manager.get_global_running_usage()
         pending_usage = resource_manager.get_global_pending_usage()
         limits = resource_manager.get_global_limits()
@@ -219,10 +243,8 @@ class RichExecutionProgressManager:
     def set_finishing_message(self, desc: str):
         if not self._can_update_total():
             return
-        
-        self._total.update(
-            self._total_task_id,
-            description=desc)
+
+        self._total.update(self._total_task_id, description=desc)
         self._total.stop_task(self._total_task_id)
 
     # Op Progress

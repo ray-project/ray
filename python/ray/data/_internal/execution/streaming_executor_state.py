@@ -173,6 +173,7 @@ class OpSchedulingStatus:
 @dataclass
 class OpDisplayMetrics:
     """Metrics of an operator. Used for display purposes."""
+
     cpu: float = None
     gpu: float = None
     object_store_memory: float = None
@@ -265,7 +266,7 @@ class OpState:
         self.op_display_metrics.cpu = usage.cpu
         self.op_display_metrics.gpu = usage.gpu
         self.op_display_metrics.object_store_memory = usage.object_store_memory
-        
+
         self.op_display_metrics.tasks = self.op.num_active_tasks()
         self.op_display_metrics.queued = self.total_enqueued_input_bundles()
         self.op_display_metrics.actors = self.op.get_actor_info().running
