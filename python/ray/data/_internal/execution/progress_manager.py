@@ -1,6 +1,7 @@
 import logging
 import math
 import time
+import threading
 from enum import Enum
 from typing import List, Optional, Tuple
 
@@ -9,31 +10,30 @@ from ray.data._internal.execution.streaming_executor_state import Topology, OpSt
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.util.debug import log_once
 
-try:
-    import rich
-    from rich.console import Console
-    from rich.live import Live
-    from rich.progress import (
-        Progress,
-        TaskID,
-        BarColumn,
-        TextColumn,
-        TimeRemainingColumn,
-        FractionColumn,
-        SpinnerColumn,
-    )
-    from rich.table import Table, Column
-    from rich.text import Text
+# try:
+import rich
+from rich.console import Console
+from rich.live import Live
+from rich.progress import (
+    Progress,
+    ProgressColumn,
+    TaskID,
+    BarColumn,
+    TextColumn,
+    SpinnerColumn,
+)
+from rich.table import Table, Column
+from rich.text import Text
 
-    needs_rich_warning = False
-except ImportError:
-    rich = None
-    needs_rich_warning = True
+needs_rich_warning = False
+# except ImportError:
+#     rich = None
+#     needs_rich_warning = True
 
 logger = logging.getLogger(__name__)
 
 _TREE_BRANCH = "  ├─ "
-_TREE_VERTICAL = "  │  "
+_TREE_VERTICAL = "  │"
 _TOTAL_PROGRESS_TOTAL = 1.0
 _RESOURCE_REPORT_HEADER = f"{_TREE_VERTICAL} Active/total resources: "
 
@@ -101,35 +101,75 @@ def _format_row_count(completed: int, total: Optional[int]) -> str:
     return f"{cstr}/{tstr}"
 
 
+if rich:
+    class CustomTimeColumn(ProgressColumn):
+        """A column that shows elapsed<remaining time like tqdm."""
+        
+        def render(self, task):
+            """Show time in format: elapsed<remaining"""
+            elapsed = task.elapsed
+            if elapsed is None:
+                return Text("--:--<--:--", style="progress.remaining")
+            
+            # Format elapsed time
+            elapsed_str = self._format_time(elapsed)
+            
+            # Calculate remaining time
+            if task.speed and task.remaining:
+                remaining = task.remaining / task.speed if task.speed > 0 else 0
+                remaining_str = self._format_time(remaining)
+            else:
+                remaining_str = "--:--"
+            
+            return Text(f"{elapsed_str}<{remaining_str}", style="progress.remaining")
+        
+        def _format_time(self, seconds):
+            """Format seconds into MM:SS or HH:MM:SS format."""
+            if seconds is None or seconds < 0:
+                return "--:--"
+            
+            hours, remainder = divmod(int(seconds), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            
+            if hours > 0:
+                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            else:
+                return f"{minutes:02d}:{seconds:02d}"
+
+
 class RichExecutionProgressManager:
     """Execution progress display using rich."""
 
     def __init__(self, dataset_id: str, topology: Topology):
         self._mode = _ManagerMode.get_mode()
         self._dataset_id = dataset_id
+        self._lock = None
 
         if self._mode.is_enabled():
             self._start_time: Optional[float] = None
+            self._lock = threading.RLock()
 
             # rich
             self._console = Console()
             self._total = Progress(
-                SpinnerColumn(finished_text=""),
+                TextColumn(" ", table_column=Column(no_wrap=True)),
+                SpinnerColumn(),
                 TextColumn(
                     "{task.description} {task.percentage:>3.0f}%",
                     table_column=Column(no_wrap=True),
                 ),
-                BarColumn(),
+                BarColumn(bar_width=15),
                 TextColumn(
                     "{task.fields[count_str]}", table_column=Column(no_wrap=True)
                 ),
                 TextColumn("["),
-                TimeRemainingColumn(),
-                TextColumn("]"),
+                CustomTimeColumn(),
+                TextColumn(","),
                 TextColumn("{task.fields[rate]}", table_column=Column(no_wrap=True)),
+                TextColumn("]"),
                 console=self._console,
                 transient=False,
-                expand=True,
+                expand=False,
             )
             self._total_resources = Text(
                 f"{_RESOURCE_REPORT_HEADER}Initializing...", no_wrap=True
@@ -139,6 +179,7 @@ class RichExecutionProgressManager:
             self._layout_table = Table.grid(padding=(0, 1, 0, 0), expand=True)
             self._layout_table.add_row(self._total)
             self._layout_table.add_row(self._total_resources)
+            self._layout_table.add_row(Text(_TREE_VERTICAL, no_wrap=True))
             self._live = Live(
                 self._layout_table,
                 console=self._console,
@@ -158,17 +199,23 @@ class RichExecutionProgressManager:
     # Management
     def start(self):
         if self._mode.is_enabled():
-            self._live.start()
+            with self._lock:
+                if not self._live.is_started:
+                    self._live.start()
 
     def refresh(self):
         if self._mode.is_enabled():
-            self._live.refresh()
+            with self._lock:
+                if self._live.is_started:
+                    self._live.refresh()
 
     def close(self):
         if self._mode.is_enabled():
-            self.refresh()
-            time.sleep(0.1)
-            self._live.stop()
+            with self._lock:
+                if self._live.is_started:
+                    self.refresh()
+                    time.sleep(0.1)
+                    self._live.stop()
 
     # Total Progress
     def _can_update_total(self) -> bool:
@@ -181,8 +228,11 @@ class RichExecutionProgressManager:
     def update_total_progress(self, total_rows: Optional[int], current_rows: int):
         if not self._can_update_total():
             return
-
-        # Progress Report
+        with self._lock:
+            if self._live.is_started:
+                self._update_total_progress_no_lock(total_rows, current_rows)
+    
+    def _update_total_progress_no_lock(self, total_rows: Optional[int], current_rows: int):
         if self._start_time is None:
             self._start_time = time.time()
 
@@ -207,14 +257,19 @@ class RichExecutionProgressManager:
         )
 
     def update_resource_status(self, resource_manager: ResourceManager):
+        if not self._can_update_total():
+            return
+        with self._lock:
+            if self._live.is_started:
+                self._update_resource_status_no_lock(resource_manager)
+
+    
+    def _update_resource_status_no_lock(self, resource_manager: ResourceManager):
         # running_usage is the amount of resources that have been requested but
         # not necessarily available
         # TODO(sofian) https://github.com/ray-project/ray/issues/47520
         # We need to split the reported resources into running, pending-scheduling,
         # pending-node-assignment.
-        if not self._can_update_total():
-            return
-
         running_usage = resource_manager.get_global_running_usage()
         pending_usage = resource_manager.get_global_pending_usage()
         limits = resource_manager.get_global_limits()
@@ -222,8 +277,8 @@ class RichExecutionProgressManager:
         resource_usage = _RESOURCE_REPORT_HEADER
         resource_usage += f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
         if running_usage.gpu > 0:
-            resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
-        resources_status += (
+            resource_usage += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
+        resource_usage += (
             f"{running_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object store"
         )
@@ -236,15 +291,15 @@ class RichExecutionProgressManager:
             if pending_usage.gpu:
                 pending.append(f"{pending_usage.gpu:.4g} GPU")
             pending_str = ", ".join(pending)
-            resources_status += f" (pending: {pending_str})"
+            resource_usage += f" (pending: {pending_str})"
 
-        self._total_resources.plain = resources_status
+        self._total_resources.plain = resource_usage
 
     def set_finishing_message(self, desc: str):
         if not self._can_update_total():
             return
-
-        self._total.update(self._total_task_id, description=desc)
-        self._total.stop_task(self._total_task_id)
+        with self._lock:
+            if self._live.is_started:
+                self._total.update(self._total_task_id, description=desc, refresh=True)
 
     # Op Progress
