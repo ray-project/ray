@@ -28,8 +28,6 @@ const TagKeyType LanguageKey = TagKeyType::Register("Language");
 // python/ray/_private/telemetry/metric_cardinality.py
 const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
 
-const TagKeyType JobIdKey = TagKeyType::Register("JobId");
-
 const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
 
 const TagKeyType NameKey = TagKeyType::Register("Name");

@@ -32,8 +32,6 @@ extern const TagKeyType LanguageKey;
 
 extern const TagKeyType WorkerIdKey;
 
-extern const TagKeyType JobIdKey;
-
 extern const TagKeyType SessionNameKey;
 
 extern const TagKeyType NameKey;
