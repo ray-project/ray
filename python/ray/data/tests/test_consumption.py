@@ -484,6 +484,12 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
         "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
         "   +- InputDataBuffer[Input]"
     )
+    result = ds.take()
+    assert len(result) == 9
+    ds.explain()
+    captured_after_execute = capsys.readouterr()
+    print("captured_after_execute", captured_after_execute.out)
+    assert captured.out.rstrip() == captured_after_execute.out.rstrip()
 
 
 def test_convert_types(ray_start_regular_shared):

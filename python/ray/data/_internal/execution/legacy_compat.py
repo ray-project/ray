@@ -143,7 +143,9 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    dag = get_execution_plan(plan._logical_plan).dag
+    physical_plan = get_execution_plan(plan._logical_plan)
+    # Cache the physical plan in the execution plan.
+    plan._physical_plan = physical_plan
     stats = _get_initial_stats_from_plan(plan)
 
     # Enforce to preserve ordering if the plan has operators
@@ -151,7 +153,7 @@ def _get_execution_dag(
     if preserve_order or plan.require_preserve_order():
         executor._options.preserve_order = True
 
-    return dag, stats
+    return physical_plan.dag, stats
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:

@@ -113,13 +113,19 @@ class ExecutionPlan:
 
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
-        from ray.data._internal.logical.optimizers import get_execution_plan
-
         logical_plan = self._logical_plan
         logical_plan_str, _ = self.generate_plan_string(logical_plan.dag)
         logical_plan_str = "-------- Logical Plan --------\n" + logical_plan_str
 
-        physical_plan = get_execution_plan(self._logical_plan)
+        if self._physical_plan:
+            # Use the cached physical plan if available. So we can use operator's stats and metrics later.
+            physical_plan = self._physical_plan
+        else:
+            # Generate the physical plan
+            from ray.data._internal.logical.optimizers import get_execution_plan
+
+            physical_plan = get_execution_plan(self._logical_plan)
+
         physical_plan_str, _ = self.generate_plan_string(
             physical_plan.dag, show_op_repr=True
         )
@@ -323,6 +329,7 @@ class ExecutionPlan:
         This is used for triggering execution for optimizer code path in this legacy
         execution plan.
         """
+        self._physical_plan = None
         self._logical_plan = logical_plan
         self._logical_plan._context = self._context
 
@@ -446,6 +453,8 @@ class ExecutionPlan:
         Returns:
             Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
+        # reset physical plan
+        self._physical_plan = None
         self._has_started_execution = True
 
         if self.has_computed_output():
@@ -481,6 +490,8 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
+        # reset physical plan
+        self._physical_plan = None
         self._has_started_execution = True
 
         # Always used the saved context for execution.
