@@ -25,10 +25,10 @@ try:
     from rich.table import Table, Column
     from rich.text import Text
 
-    needs_rich_warning = True
+    needs_rich_warning = False
 except ImportError:
     rich = None
-    needs_rich_warning = False
+    needs_rich_warning = True
 
 logger = logging.getLogger(__name__)
 
