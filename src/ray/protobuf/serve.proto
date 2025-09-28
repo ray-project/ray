@@ -95,9 +95,6 @@ message AutoscalingConfig {
 message PrometheusMetric {
   // Metric name.
   string metric_name = 1;
-
-  // Metric query/promql expression.
-  string query = 2;
 }
 
 // Wrapper for a list of Prometheus metrics

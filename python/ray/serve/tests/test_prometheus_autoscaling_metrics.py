@@ -58,10 +58,7 @@ class TestPrometheusCustomMetrics:
                 "metrics_interval_s": 0.1,
                 "look_back_period_s": 0.1,
                 "prometheus_custom_metrics": [
-                    (
-                        "ray_serve_deployment_processing_latency_ms_bucket",
-                        None,
-                    ),  # PromQL query is optional
+                    "ray_serve_deployment_processing_latency_ms_bucket"
                 ],
             },
             max_ongoing_requests=10,
@@ -85,10 +82,7 @@ class TestPrometheusCustomMetrics:
                 "metrics_interval_s": 0.1,
                 "look_back_period_s": 0.1,
                 "prometheus_custom_metrics": [
-                    (
-                        "ray_serve_deployment_processing_latency_ms_bucket_only_b",
-                        'ray_serve_deployment_processing_latency_ms_bucket{deployment="B",application="prometheus_test_app"}',
-                    ),
+                    "ray_serve_deployment_processing_latency_ms_bucket_only_b"
                 ],
             },
             max_ongoing_requests=10,

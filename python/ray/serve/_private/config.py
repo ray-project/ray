@@ -251,8 +251,7 @@ class DeploymentConfig(BaseModel):
                     autoscaling_config_dict.pop("prometheus_custom_metrics")
                 elif isinstance(prom_metrics, list):
                     metrics_msgs = [
-                        PrometheusMetricProto(metric_name=name, query=query)
-                        for name, query in prom_metrics
+                        PrometheusMetricProto(metric_name=name) for name in prom_metrics
                     ]
                     autoscaling_config_dict[
                         "prometheus_custom_metrics"
@@ -351,8 +350,7 @@ class DeploymentConfig(BaseModel):
             if prom_wrapper is not None:
                 metrics_list = prom_wrapper.get("metrics", []) or []
                 data["autoscaling_config"]["prometheus_custom_metrics"] = [
-                    (m.get("metric_name", ""), m.get("query", None))
-                    for m in metrics_list
+                    m.get("metric_name", "") for m in metrics_list
                 ]
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:

@@ -245,7 +245,7 @@ class ReplicaMetricsManager:
         self.set_autoscaling_config(autoscaling_config)
 
         self._prometheus_metrics_enabled = False
-        self._prometheus_queries: Optional[List[Tuple[str, Optional[str]]]] = None
+        self._prometheus_queries: Optional[List[str]] = None
 
         if autoscaling_config and autoscaling_config.prometheus_custom_metrics:
             self._prometheus_metrics_enabled = True
@@ -389,11 +389,10 @@ class ReplicaMetricsManager:
         )
 
     async def _fetch_prometheus_metrics(
-        self, prometheus_metrics: List[Tuple[str, Optional[str]]]
-    ) -> Optional[Dict[str, float]]:
+        self, prometheus_metrics: List[str]
+    ) -> Optional[Dict[str, Any]]:
         """
-        Fetch metrics from the prometheus exporter endpoint, given a list of (metric_name, optional[promql_expression]) tuples.
-        The promql_expression parameter is ignored for now.
+        Fetch metrics from the prometheus exporter endpoint, given a list of str metric_names
         """
 
         metrics_result = {}
@@ -401,6 +400,11 @@ class ReplicaMetricsManager:
             f"Fetching prometheus metrics {prometheus_metrics}",
             extra={"log_to_stderr": False},
         )
+
+        def filter_samples_by_replica_id(samples: List[Dict], replica_id: str):
+            return [
+                sample for sample in samples if sample.labels["replica"] == replica_id
+            ]
 
         try:
             prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
@@ -431,16 +435,21 @@ class ReplicaMetricsManager:
                                     metric_samples_by_name[sample.name].append(sample)
 
                             # Extract requested metrics
-                            for metric_name, promql_expression in prometheus_metrics:
+                            for metric_name in prometheus_metrics:
                                 if metric_name in metric_samples_by_name:
                                     # Get the latest sample for this metric
                                     samples = metric_samples_by_name[metric_name]
                                     if samples:
-                                        # Use the last sample's value
-                                        latest_sample = samples[-1]
-                                        metrics_result[metric_name] = float(
-                                            latest_sample.value
+                                        metrics_result[
+                                            metric_name
+                                        ] = filter_samples_by_replica_id(
+                                            samples, self._replica_id.unique_id
                                         )
+                                        # # Use the last sample's value
+                                        # latest_sample = samples[-1]
+                                        # metrics_result[metric_name] = float(
+                                        #     latest_sample.value
+                                        # )
                                     else:
                                         metrics_result[metric_name] = 0.0
                                 else:
