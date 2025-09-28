@@ -10,25 +10,25 @@ from ray.data._internal.execution.streaming_executor_state import Topology, OpSt
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.util.debug import log_once
 
-# try:
-import rich
-from rich.console import Console
-from rich.live import Live
-from rich.progress import (
-    Progress,
-    ProgressColumn,
-    TaskID,
-    BarColumn,
-    TextColumn,
-    SpinnerColumn,
-)
-from rich.table import Table, Column
-from rich.text import Text
+try:
+    import rich
+    from rich.console import Console
+    from rich.live import Live
+    from rich.progress import (
+        Progress,
+        ProgressColumn,
+        TaskID,
+        BarColumn,
+        TextColumn,
+        SpinnerColumn,
+    )
+    from rich.table import Table, Column
+    from rich.text import Text
 
-needs_rich_warning = False
-# except ImportError:
-#     rich = None
-#     needs_rich_warning = True
+    needs_rich_warning = False
+except ImportError:
+    rich = None
+    needs_rich_warning = True
 
 logger = logging.getLogger(__name__)
 
