@@ -12,11 +12,13 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
+    tags: release_wheels
     depends_on: manylinux
 
   - name: ray-dashboard-build
     label: "wanda: dashboard"
     wanda: ci/docker/ray-dashboard.wanda.yaml
+    tags: release_wheels
     depends_on: manylinux
 
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
