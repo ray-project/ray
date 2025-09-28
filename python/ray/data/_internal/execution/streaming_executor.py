@@ -260,21 +260,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
             # Close the progress manager with a finishing message.
-            if self._progress_manager:
-                # Set the appropriate description that summarizes
-                # the result of dataset execution.
-                if exception is None:
-                    prog_bar_msg = (
-                        f"{OK_PREFIX} Dataset {self._dataset_id} execution finished in "
-                        f"{self._final_stats.time_total_s:.2f} seconds"
-                    )
-                else:
-                    prog_bar_msg = (
-                        f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
-                    )
-                logger.info(prog_bar_msg)
-                self._progress_manager.set_finishing_message(prog_bar_msg)
-                self._progress_manager.close()
+            self._finish_progress_manager(exception)
 
             timer = Timer()
 
@@ -347,8 +333,23 @@ class StreamingExecutor(Executor, threading.Thread):
             # Mark state of outputting operator as finished
             _, state = self._output_node
             state.mark_finished(exc)
-            if self._progress_manager:
-                self._progress_manager.close()
+            self._finish_progress_manager()
+
+    def _finish_progress_manager(self, exception: Optional[Exception] = None):
+        if self._progress_manager:
+            final_stats = self._generate_stats()
+            if exception is None:
+                prog_bar_msg = (
+                    f"{OK_PREFIX} Dataset {self._dataset_id} execution finished in "
+                    f"{final_stats.time_total_s:.2f} seconds"
+                )
+            else:
+                prog_bar_msg = (
+                    f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
+                )
+            logger.info(prog_bar_msg)
+            self._progress_manager.set_finishing_message(prog_bar_msg)
+            self._progress_manager.close()
 
     def update_metrics(self, sched_loop_duration: int):
         self._sched_loop_duration_s.set(
