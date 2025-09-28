@@ -578,7 +578,7 @@ class EnvRunnerGroup:
         local_env_runner: bool = False,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
-    ) -> int:
+    ) -> List[Tuple[int, T]]:
         """Calls the given function asynchronously and returns previous results if any.
 
         This is a convenience function that calls `foreach_env_runner_async()` and `fetch_ready_async_reqs()`.
