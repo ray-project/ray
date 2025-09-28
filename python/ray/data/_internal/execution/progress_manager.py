@@ -83,21 +83,21 @@ class _ManagerMode(Enum):
             return cls.ALL
 
 
+def _format_k(val: int) -> str:
+    if val >= 1000:
+        fval = val / 1000.0
+        fval_str = f"{int(fval)}" if fval.is_integer() else f"{fval:.2f}"
+        return fval_str + "k"
+    return str(val)
+
+
 def _format_row_count(completed: int, total: Optional[int]) -> str:
     """Formats row counts with k units."""
-
-    def format_k(val: int) -> str:
-        if val >= 1000:
-            fval = val / 1000.0
-            fval_str = f"{int(fval)}" if fval.is_integer() else f"{fval:.2f}"
-            return fval_str + "k"
-        return str(val)
-
-    cstr = format_k(completed)
+    cstr = _format_k(completed)
     if total is None or math.isinf(total):
         tstr = "?k" if cstr.endswith("k") else "?"
     else:
-        tstr = format_k(total)
+        tstr = _format_k(total)
     return f"{cstr}/{tstr}"
 
 
@@ -234,24 +234,29 @@ class RichExecutionProgressManager:
                 self._update_total_progress_no_lock(total_rows, current_rows)
 
     def _update_total_progress_no_lock(
-        self, total_rows: Optional[int], current_rows: int
+        self, current_rows: Optional[int], total_rows: Optional[int]
     ):
         if self._start_time is None:
             self._start_time = time.time()
 
-        elapsed = time.time() - self._start_time
-        rate_val = current_rows / elapsed if elapsed > 1 else 0
-        rate_unit = "row/s"
-        if rate_val >= 1000:
-            rate_val /= 1000
-            rate_unit = "k row/s"
-        rate_str = f"{rate_val:.2f} {rate_unit}"
-
         completed = 0.0
-        if total_rows is not None and total_rows > 0:
-            completed = min(1.0, current_rows / total_rows)
-
-        count_str = _format_row_count(current_rows, total_rows)
+        if current_rows is None and total_rows is None:
+            rate_str = "? row/s"
+            count_str = "?/?"
+        elif current_rows is None:
+            rate_str = "? row/s"
+            count_str = f"?/{_format_k(total_rows)}"
+        else:
+            elapsed = time.time() - self._start_time
+            rate_val = current_rows / elapsed if elapsed > 1 else 0
+            rate_unit = "row/s"
+            if rate_val >= 1000:
+                rate_val /= 1000
+                rate_unit = "k row/s"
+            rate_str = f"{rate_val:.2f} {rate_unit}"
+            if total_rows is not None and total_rows > 0:
+                completed = min(1.0, current_rows / total_rows)
+            count_str = _format_row_count(current_rows, total_rows)
         self._total.update(
             self._total_task_id,
             completed=completed,
