@@ -627,8 +627,9 @@ def test_segfault_stack_trace(ray_start_cluster, capsys):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32" or sys.platform == "darwin",
-    reason="TODO(simon): Failing on Windows and OSX.",
+    # sys.platform == "win32" or sys.platform == "darwin",
+    # reason="TODO(simon): Failing on Windows and OSX.",
+    True, reason="Needs java.",
 )
 def test_log_java_worker_logs(shutdown_only, capsys):
     tmp_dir = tempfile.mkdtemp()
