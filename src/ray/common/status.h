@@ -39,27 +39,63 @@
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 
-namespace boost::system {
-class error_code;
-}  // namespace boost::system
+//////////////////////////////
+// USAGE EXAMPLE FOR StatusSet
+//////////////////////////////
 
-// NOLINTBEGIN
+// Function that only returns IOError or OutOfMemory
+// StatusSet<StatusT::IOError, StatusT::OutOfMemory> DoThing() {
+//   if (std::rand() % 2 == 0) {
+//     return StatusT::OK();
+//   }
+//   return StatusT::OutOfMemory("error message");
+// }
 
-// Return the given status if it is not OK.
-#define RAY_RETURN_NOT_OK(s)           \
-  do {                                 \
-    const ::ray::Status &_s = (s);     \
-    if (RAY_PREDICT_FALSE(!_s.ok())) { \
-      return _s;                       \
-    }                                  \
-  } while (0)
+// Use the StatusSet
+// void UseDoThing() {
+//   auto result = DoThing();
+//   if (result.has_error()) {
+//     std::visit(overloaded{[](const StatusT::IOError &) {
+//                             // Handle IOError
+//                           },
+//                           [](const StatusT::OutOfMemory &) {
+//                             // Handle OutOfMemory
+//                           }},
+//                result.error());
+//     return;
+//   }
+//   RAY_CHECK(result.ok());
+// }
 
-// If the status is not OK, CHECK-fail immediately, appending the status to the
-// logged message. The message can be appended with <<.
-#define RAY_CHECK_OK(s)                                          \
-  if (const ::ray::Status & RAY_UNIQUE_VARIABLE(_s) = (s); true) \
-  RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(_s).ok(), #s)       \
-      << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
+////////////////////////////////
+// USAGE EXAMPLE FOR StatusSetOr
+////////////////////////////////
+
+// Function that only returns int64_t if it succeeds, otherwise returns IOError or
+// OutOfMemory
+// StatusSetOr<int64_t, StatusT::IOError, StatusT::OutOfMemory> DoThing() {
+//   if (std::rand() % 2 == 0) {
+//     return 100;
+//   }
+//   return StatusT::OutOfMemory("error message");
+// }
+
+// Use the StatusSetOr
+// inline void UseDoThing() {
+//   auto result = DoThing();
+//   if (result.has_error()) {
+//     std::visit(overloaded{[](const StatusT::IOError &) {
+//                             // Handle IOError
+//                           },
+//                           [](const StatusT::OutOfMemory &) {
+//                             // Handle OutOfMemory
+//                           }},
+//                result.error());
+//     return;
+//   }
+//   RAY_CHECK(result.has_value());
+//   std::cout << "Got a result! " << result.value();
+// }
 
 namespace ray {
 
@@ -75,21 +111,21 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 namespace StatusT {
 
-#define STATUS_TYPE(status_name)                                            \
-  class status_name {                                                       \
-   public:                                                                  \
-    template <typename T>                                                   \
-    status_name(T &&message) : message_(std::forward<T>(message)) {}        \
-                                                                            \
-    const std::string &message() const { return message_; }                 \
-    std::string &message() { return message_; }                             \
-                                                                            \
-    std::string ToString() {                                                \
-      return absl::StrCat("StatusT: " #status_name ", Message:", message_); \
-    }                                                                       \
-                                                                            \
-   private:                                                                 \
-    std::string message_;                                                   \
+#define STATUS_TYPE(status_name)                                             \
+  class status_name {                                                        \
+   public:                                                                   \
+    template <typename T>                                                    \
+    status_name(T &&message) : message_(std::forward<T>(message)) {}         \
+                                                                             \
+    const std::string &message() const { return message_; }                  \
+    std::string &message() { return message_; }                              \
+                                                                             \
+    std::string ToString() {                                                 \
+      return absl::StrCat("StatusT: " #status_name ", Message: ", message_); \
+    }                                                                        \
+                                                                             \
+   private:                                                                  \
+    std::string message_;                                                    \
   };
 
 class OK {};
@@ -105,9 +141,6 @@ STATUS_TYPE(AlreadyExists);
 
 };  // namespace StatusT
 
-// This is just a pretty wrapper on top of std::optional<std::variant<StatusTypes...>> so
-// that we have nicer names like has_error instead of has_value for the error case and we
-// can return ok instead of std::nullopt
 template <typename... StatusTypes>
 class StatusSet {
  public:
@@ -140,7 +173,7 @@ class StatusSetOr {
   template <typename ArgType>
   StatusSetOr(ArgType &&value) : value_(std::forward<ArgType>(value)) {}
 
-  bool ok() const { return std::holds_alternative<ResultType>(value_); }
+  bool has_value() const { return std::holds_alternative<ResultType>(value_); }
 
   bool has_error() const {
     return std::holds_alternative<std::variant<StatusTypes...>>(value_);
@@ -162,36 +195,31 @@ class StatusSetOr {
   std::variant<ResultType, std::variant<StatusTypes...>> value_;
 };
 
-// Function that only returns IOError or OutOfMemory
-inline StatusSet<StatusT::IOError, StatusT::OutOfMemory> DoThing() {
-  if (std::rand() % 2 == 0) {
-    return StatusT::OK();
-  }
-  return StatusT::OutOfMemory("error message");
-}
-
-inline void UseDoThing() {
-  auto result = DoThing();
-  // Means result has error, if we really want, we can have a pretty wrapper on top so
-  // it's has_error instead of has_value for the error case
-  if (result.has_error()) {
-    // Handle our different types of errors
-    std::visit(overloaded{[](const StatusT::IOError &) {
-                            // Handle IOError
-                          },
-                          [](const StatusT::OutOfMemory &) {
-                            // Handle OutOfMemory
-                          }},
-               result.error());
-    return;
-  }
-  // Happy path
-  std::cout << "Happy thoughts";
-}
-
 /////////////////
 /// LEGACY STATUS
 /////////////////
+
+namespace boost::system {
+class error_code;
+}  // namespace boost::system
+
+// NOLINTBEGIN
+
+// Return the given status if it is not OK.
+#define RAY_RETURN_NOT_OK(s)           \
+  do {                                 \
+    const ::ray::Status &_s = (s);     \
+    if (RAY_PREDICT_FALSE(!_s.ok())) { \
+      return _s;                       \
+    }                                  \
+  } while (0)
+
+// If the status is not OK, CHECK-fail immediately, appending the status to the
+// logged message. The message can be appended with <<.
+#define RAY_CHECK_OK(s)                                          \
+  if (const ::ray::Status & RAY_UNIQUE_VARIABLE(_s) = (s); true) \
+  RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(_s).ok(), #s)       \
+      << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
 
 // If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
