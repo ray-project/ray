@@ -8,7 +8,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -26,21 +26,16 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
     InternalQueueOperatorMixin,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
-from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
@@ -175,6 +170,37 @@ class OpSchedulingStatus:
     under_resource_limits: bool = False
 
 
+@dataclass
+class OpDisplayMetrics:
+    """Metrics of an operator. Used for display purposes."""
+    cpu: float = None
+    gpu: float = None
+    object_store_memory: float = None
+    tasks: int = 0
+    actors: int = 0
+    queued: int = 0
+    extra_info: str = ""
+
+    def display_str(self) -> str:
+        """Format metrics object to a displayable string."""
+        metrics = []
+        # resource metrics
+        gpu_str = f" {self.gpu:.1f} GPU," if self.gpu else ""
+        mem_str = memory_string(self.object_store_memory)
+        metrics.append(f"{self.cpu:.1f} CPU,{gpu_str} {mem_str} object store")
+        # task
+        task_str = f"Tasks: {self.tasks}"
+        if self.extra_info:
+            task_str += f": {self.extra_info}"
+        metrics.append(task_str)
+        # actors
+        if self.actors:
+            metrics.append(f"Actors: {self.actors}")
+        # queue
+        metrics.append(f"Queued blocks: {self.queued}")
+        return "; ".join(metrics) + ";"
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -196,7 +222,6 @@ class OpState:
         # thread-safe type such as `deque`.
         self.output_queue: OpBufferQueue = OpBufferQueue()
         self.op = op
-        self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
         # Tracks whether `input_done` is called for each input op.
@@ -207,51 +232,12 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Progress Manager
+        self.op_display_metrics = OpDisplayMetrics()
+        self.rich_task_id: Any = None  # stores rich.progress.TaskID
 
     def __repr__(self):
         return f"OpState({self.op.name})"
-
-    def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
-        """Create progress bars at the given index (line offset in console).
-
-        For AllToAllOperator, zero or more sub progress bar would be created.
-        Return the number of enabled progress bars created for this operator.
-        """
-        contains_sub_progress_bars = isinstance(
-            self.op, AllToAllOperator
-        ) or isinstance(self.op, HashShuffleProgressBarMixin)
-        # Only show 1:1 ops when in verbose progress mode.
-
-        ctx = DataContext.get_current()
-        progress_bar_enabled = (
-            ctx.enable_progress_bars
-            and ctx.enable_operator_progress_bars
-            and (contains_sub_progress_bars or verbose_progress)
-        )
-        self.progress_bar = ProgressBar(
-            "- " + self.op.name,
-            self.op.num_output_rows_total(),
-            unit="row",
-            position=index,
-            enabled=progress_bar_enabled,
-        )
-        num_progress_bars = 1
-        if contains_sub_progress_bars:
-            # Initialize must be called for sub progress bars, even the
-            # bars are not enabled via the DataContext.
-            num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
-        return num_progress_bars if progress_bar_enabled else 0
-
-    def close_progress_bars(self):
-        """Close all progress bars for this operator."""
-        if self.progress_bar:
-            self.progress_bar.close()
-            contains_sub_progress_bars = isinstance(
-                self.op, AllToAllOperator
-            ) or isinstance(self.op, HashShuffleProgressBarMixin)
-            if contains_sub_progress_bars:
-                # Close all sub progress bars.
-                self.op.close_sub_progress_bars()
 
     def total_enqueued_input_bundles(self) -> int:
         """Total number of input bundles currently enqueued among:
@@ -263,7 +249,6 @@ class OpState:
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
-
         return self._pending_dispatch_input_bundles_count() + internal_queue_size
 
     def _pending_dispatch_input_bundles_count(self) -> int:
@@ -273,6 +258,19 @@ class OpState:
 
     def has_pending_bundles(self) -> bool:
         return self._pending_dispatch_input_bundles_count() > 0
+
+    def update_display_metrics(self, resource_manager: ResourceManager):
+        """Update display metrics with current metrics."""
+        usage = resource_manager.get_op_usage(self.op)
+        self.op_display_metrics.cpu = usage.cpu
+        self.op_display_metrics.gpu = usage.gpu
+        self.op_display_metrics.object_store_memory = usage.object_store_memory
+        
+        self.op_display_metrics.tasks = self.op.num_active_tasks()
+        self.op_display_metrics.queued = self.total_enqueued_input_bundles()
+        self.op_display_metrics.actors = self.op.get_actor_info().running
+
+        self.op_display_metrics.extra_info = self.op.progress_str()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -290,12 +288,6 @@ class OpState:
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
 
-        if self.progress_bar:
-            assert (
-                ref.num_rows() is not None
-            ), "RefBundle must have a valid number of rows"
-            self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
-
         actor_info = self.op.get_actor_info()
 
         self.op.metrics.num_alive_actors = actor_info.running
@@ -304,43 +296,6 @@ class OpState:
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
-
-    def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
-        """Update the console with the latest operator progress."""
-        if self.progress_bar:
-            self.progress_bar.set_description(self.summary_str(resource_manager))
-            self.progress_bar.refresh()
-
-    def summary_str(self, resource_manager: ResourceManager) -> str:
-        # Active tasks
-        active = self.op.num_active_tasks()
-        desc = f"- {self.op.name}: Tasks: {active}"
-        if (
-            self.op._in_task_submission_backpressure
-            or self.op._in_task_output_backpressure
-        ):
-            backpressure_types = []
-            if self.op._in_task_submission_backpressure:
-                # The op is backpressured from submitting new tasks.
-                backpressure_types.append("tasks")
-            if self.op._in_task_output_backpressure:
-                # The op is backpressured from producing new outputs.
-                backpressure_types.append("outputs")
-            desc += f" [backpressured:{','.join(backpressure_types)}]"
-
-        # Actors info
-        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
-
-        # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
-
-        # Any additional operator specific information.
-        suffix = self.op.progress_str()
-        if suffix:
-            desc += f"; {suffix}"
-
-        return desc
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -402,7 +357,7 @@ class OpState:
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
-) -> Tuple[Topology, int]:
+) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
     This involves creating the operator state for each operator in the DAG,
@@ -415,7 +370,6 @@ def build_streaming_topology(
 
     Returns:
         The topology dict holding the streaming execution state.
-        The number of progress bars initialized so far.
     """
 
     topology: Topology = {}
@@ -427,7 +381,7 @@ def build_streaming_topology(
 
         # Wire up the input outqueues to this op's inqueues.
         inqueues = []
-        for i, parent in enumerate(op.input_dependencies):
+        for parent in op.input_dependencies:
             parent_state = setup_state(parent)
             inqueues.append(parent_state.output_queue)
 
@@ -438,16 +392,7 @@ def build_streaming_topology(
         return op_state
 
     setup_state(dag)
-
-    # Create the progress bars starting from the first operator to run.
-    # Note that the topology dict is in topological sort order. Index zero is reserved
-    # for global progress information.
-    i = 1
-    for op_state in list(topology.values()):
-        if not isinstance(op_state.op, InputDataBuffer):
-            i += op_state.initialize_progress_bars(i, options.verbose_progress)
-
-    return (topology, i)
+    return topology
 
 
 def process_completed_tasks(

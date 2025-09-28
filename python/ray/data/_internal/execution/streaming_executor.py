@@ -22,6 +22,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
@@ -40,16 +41,15 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.metrics import Gauge
 
 logger = logging.getLogger(__name__)
 
-# Force a progress bar update after this many events processed . This avoids the
-# progress bar seeming to stall for very large scale workloads.
-PROGRESS_BAR_UPDATE_INTERVAL = 50
+# Force a progress manager update after this many events processed.
+# Avoids the progress seeming to stall for very large scale workloads.
+PROGRESS_MANAGER_UPDATE_INTERVAL = 20
 
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
@@ -75,7 +75,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
-        self._global_info: Optional[ProgressBar] = None
+        self._progress_manager: Optional[RichExecutionProgressManager] = None
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -163,18 +163,15 @@ class StreamingExecutor(Executor, threading.Thread):
 
             logger.debug("Execution config: %s", self._options)
 
-            # Note: DAG must be initialized in order to query num_outputs_total.
-            # Note: Initialize global progress bar before building the streaming
+            # Note: Initialize progress manager before building the streaming
             # topology so bars are created in the same order as they should be
             # displayed. This is done to ensure correct ordering within notebooks.
             # TODO(zhilong): Implement num_output_rows_total for all
             # AllToAllOperators
-            self._global_info = ProgressBar(
-                "Running", dag.num_output_rows_total(), unit="row"
-            )
+            self._progress_manager = RichExecutionProgressManager(self._dataset_id, dag)
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology, _ = build_streaming_topology(dag, self._options)
+        self._topology = build_streaming_topology(dag, self._options)
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
@@ -262,9 +259,8 @@ class StreamingExecutor(Executor, threading.Thread):
             self._sched_loop_duration_s.set(0, tags={"dataset": self._dataset_id})
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
-            # Close the progress bars from top to bottom to avoid them jumping
-            # around in the console after completion.
-            if self._global_info:
+            # Close the progress manager with a finishing message.
+            if self._progress_manager:
                 # Set the appropriate description that summarizes
                 # the result of dataset execution.
                 if exception is None:
@@ -277,14 +273,13 @@ class StreamingExecutor(Executor, threading.Thread):
                         f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
                     )
                 logger.info(prog_bar_msg)
-                self._global_info.set_description(prog_bar_msg)
-                self._global_info.close()
+                self._progress_manager.set_finishing_message(prog_bar_msg)
+                self._progress_manager.close()
 
             timer = Timer()
 
-            for op, state in self._topology.items():
+            for op in self._topology.keys():
                 op.shutdown(timer, force=force)
-                state.close_progress_bars()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
@@ -323,6 +318,9 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         exc: Optional[Exception] = None
         try:
+            if self._progress_manager:
+                self._progress_manager.start()
+
             # Run scheduling loop until complete.
             while True:
                 # Use `perf_counter` rather than `process_time` to ensure we include
@@ -349,6 +347,8 @@ class StreamingExecutor(Executor, threading.Thread):
             # Mark state of outputting operator as finished
             _, state = self._output_node
             state.mark_finished(exc)
+            if self._progress_manager:
+                self._progress_manager.close()
 
     def update_metrics(self, sched_loop_duration: int):
         self._sched_loop_duration_s.set(
@@ -465,15 +465,15 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager.update_usages()
 
             i += 1
-            if i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
-                self._refresh_progress_bars(topology)
+            if i % PROGRESS_MANAGER_UPDATE_INTERVAL == 0:
+                self._refresh_progress_manager(topology)
 
         # Trigger autoscaling
         self._cluster_autoscaler.try_trigger_scaling()
         self._actor_autoscaler.try_trigger_scaling()
 
         update_operator_states(topology)
-        self._refresh_progress_bars(topology)
+        self._refresh_progress_manager(topology)
 
         self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
@@ -494,13 +494,14 @@ class StreamingExecutor(Executor, threading.Thread):
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
 
-    def _refresh_progress_bars(self, topology: Topology):
-        # Update the progress bar to reflect scheduling decisions.
-        for op_state in topology.values():
-            op_state.refresh_progress_bar(self._resource_manager)
-        # Refresh the global progress bar to update elapsed time progress.
-        if self._global_info:
-            self._global_info.refresh()
+    def _refresh_progress_manager(self, topology: Topology):
+        # Update the progress manager to reflect scheduling decisions.
+        if self._progress_manager:
+            for op_state in topology.values():
+                if not isinstance(op_state.op, InputDataBuffer):
+                    op_state.update_display_metrics(self._resource_manager)
+                    # TODO (kyuds): update operator states to progress manager
+            self._progress_manager.refresh()
 
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
@@ -508,38 +509,8 @@ class StreamingExecutor(Executor, threading.Thread):
         return len(state.output_queue) == 0
 
     def _report_current_usage(self) -> None:
-        # running_usage is the amount of resources that have been requested but
-        # not necessarily available
-        # TODO(sofian) https://github.com/ray-project/ray/issues/47520
-        # We need to split the reported resources into running, pending-scheduling,
-        # pending-node-assignment.
-        running_usage = self._resource_manager.get_global_running_usage()
-        pending_usage = self._resource_manager.get_global_pending_usage()
-        limits = self._resource_manager.get_global_limits()
-        resources_status = (
-            f"Running Dataset: {self._dataset_id}. Active & requested resources: "
-            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
-        )
-        if running_usage.gpu > 0:
-            resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
-        resources_status += (
-            f"{running_usage.object_store_memory_str()}/"
-            f"{limits.object_store_memory_str()} object store"
-        )
-
-        # Only include pending section when there are pending resources.
-        if pending_usage.cpu or pending_usage.gpu:
-            if pending_usage.cpu and pending_usage.gpu:
-                pending_str = (
-                    f"{pending_usage.cpu:.4g} CPU, {pending_usage.gpu:.4g} GPU"
-                )
-            elif pending_usage.cpu:
-                pending_str = f"{pending_usage.cpu:.4g} CPU"
-            else:
-                pending_str = f"{pending_usage.gpu:.4g} GPU"
-            resources_status += f" (pending: {pending_str})"
-        if self._global_info:
-            self._global_info.set_description(resources_status)
+        if self._progress_manager:
+            self._progress_manager.update_resource_status(self._resource_manager)
 
     def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
         return f"{op.name}_{topology_index}"
@@ -645,8 +616,9 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
+        state.update_display_metrics(resource_manager)
         logger.debug(
-            f"{i}: {state.summary_str(resource_manager)}, "
+            f"{i}: {state.op_display_metrics.display_str()}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
 
@@ -680,8 +652,8 @@ class _ClosingIterator(OutputIterator):
             bundle = state.get_output_blocking(output_split_idx)
 
             # Update progress-bars
-            if self._executor._global_info:
-                self._executor._global_info.update(
+            if self._executor._progress_manager:
+                self._executor._progress_manager.update_total_progress(
                     bundle.num_rows(), op.num_output_rows_total()
                 )
 

@@ -374,6 +374,7 @@ class HashShuffleProgressBarMixin(abc.ABC):
     def reduce_name(self) -> str:
         ...
 
+    # TODO (kyuds): remove
     def initialize_sub_progress_bars(self, position: int) -> int:
         """Display all sub progres bars in the termainl, and return the number of bars."""
 
@@ -398,6 +399,7 @@ class HashShuffleProgressBarMixin(abc.ABC):
 
         return progress_bars_created
 
+    # TODO (kyuds): remove
     def close_sub_progress_bars(self):
         """Close all internal sub progress bars."""
         self.shuffle_bar.close()
