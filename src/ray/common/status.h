@@ -97,6 +97,10 @@
 //   std::cout << "Got a result! " << result.value();
 // }
 
+namespace boost::system {
+class error_code;
+}  // namespace boost::system
+
 namespace ray {
 
 // Just some magic for visiting a variant
@@ -111,21 +115,21 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 namespace StatusT {
 
-#define STATUS_TYPE(status_name)                                             \
-  class status_name {                                                        \
-   public:                                                                   \
-    template <typename T>                                                    \
-    status_name(T &&message) : message_(std::forward<T>(message)) {}         \
-                                                                             \
-    const std::string &message() const { return message_; }                  \
-    std::string &message() { return message_; }                              \
-                                                                             \
-    std::string ToString() {                                                 \
-      return absl::StrCat("StatusT: " #status_name ", Message: ", message_); \
-    }                                                                        \
-                                                                             \
-   private:                                                                  \
-    std::string message_;                                                    \
+#define STATUS_TYPE(status_name)                                              \
+  class status_name {                                                         \
+   public:                                                                    \
+    template <typename T>                                                     \
+    explicit status_name(T &&message) : message_(std::forward<T>(message)) {} \
+                                                                              \
+    const std::string &message() const { return message_; }                   \
+    std::string &message() { return message_; }                               \
+                                                                              \
+    std::string ToString() {                                                  \
+      return absl::StrCat("StatusT: " #status_name ", Message: ", message_);  \
+    }                                                                         \
+                                                                              \
+   private:                                                                   \
+    std::string message_;                                                     \
   };
 
 class OK {};
@@ -145,7 +149,7 @@ template <typename... StatusTypes>
 class StatusSet {
  public:
   static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
-                "Ok cannot be an error type");
+                "OK cannot be an error type");
 
   StatusSet(StatusT::OK) : error_(std::nullopt) {}
 
@@ -198,12 +202,6 @@ class StatusSetOr {
 /////////////////
 /// LEGACY STATUS
 /////////////////
-
-namespace boost::system {
-class error_code;
-}  // namespace boost::system
-
-// NOLINTBEGIN
 
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
@@ -548,7 +546,5 @@ inline Status &Status::operator=(Status &&rhs) {
 }
 
 Status boost_to_ray_status(const boost::system::error_code &error);
-
-// NOLINTEND
 
 }  // namespace ray
