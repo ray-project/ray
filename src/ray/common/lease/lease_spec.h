@@ -82,7 +82,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   ray::FunctionDescriptor FunctionDescriptor() const;
   int64_t MaxActorRestarts() const;
   int32_t MaxRetries() const;
-  int32_t AttemptNumber() const;
+  uint64_t AttemptNumber() const;
   bool IsRetry() const;
   std::string GetTaskName() const;
   std::string GetFunctionOrActorName() const;

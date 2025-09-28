@@ -1,0 +1,12 @@
+azure-identity
+jupyterlab
+ipywidgets
+grpcio
+grpcio-tools
+
+# Pinning jupyter_server_terminals==0.4.4 , the higher version will break the
+# webterminal when using an older version of terminado.
+jupyter_server_terminals==0.4.4
+
+# [backend] is for installing anyscale CLI for use in the anyscale cloud.
+anyscale[backend]
