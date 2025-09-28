@@ -169,14 +169,16 @@ def test_runtime_env_config(start_cluster_shared):
         run(runtime_env)
 
 
-def test_runtime_env_error_includes_node_ip(shutdown_only):
+def test_runtime_env_error_includes_node_ip(start_cluster_shared):
     """Test that RuntimeEnv errors include node IP information for debugging."""
-    fast_timeout_config = {"setup_timeout_seconds": 1}
-    # Test with invalid pip package to trigger RuntimeEnvSetupError
+    _, address = start_cluster_shared
+    ray.init(address=address)
+
+    # Test with invalid pip package to trigger RuntimeEnvSetupError.
     @ray.remote(
         runtime_env={
             "pip": ["nonexistent-package"],
-            "config": fast_timeout_config,
+            "config": {"setup_timeout_seconds": 1},
         }
     )
     def f():
