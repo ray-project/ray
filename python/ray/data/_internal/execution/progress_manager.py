@@ -102,35 +102,36 @@ def _format_row_count(completed: int, total: Optional[int]) -> str:
 
 
 if rich:
+
     class CustomTimeColumn(ProgressColumn):
         """A column that shows elapsed<remaining time like tqdm."""
-        
+
         def render(self, task):
             """Show time in format: elapsed<remaining"""
             elapsed = task.elapsed
             if elapsed is None:
                 return Text("--:--<--:--", style="progress.remaining")
-            
+
             # Format elapsed time
             elapsed_str = self._format_time(elapsed)
-            
+
             # Calculate remaining time
             if task.speed and task.remaining:
                 remaining = task.remaining / task.speed if task.speed > 0 else 0
                 remaining_str = self._format_time(remaining)
             else:
                 remaining_str = "--:--"
-            
+
             return Text(f"{elapsed_str}<{remaining_str}", style="progress.remaining")
-        
+
         def _format_time(self, seconds):
             """Format seconds into MM:SS or HH:MM:SS format."""
             if seconds is None or seconds < 0:
                 return "--:--"
-            
+
             hours, remainder = divmod(int(seconds), 3600)
             minutes, seconds = divmod(remainder, 60)
-            
+
             if hours > 0:
                 return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             else:
@@ -231,8 +232,10 @@ class RichExecutionProgressManager:
         with self._lock:
             if self._live.is_started:
                 self._update_total_progress_no_lock(total_rows, current_rows)
-    
-    def _update_total_progress_no_lock(self, total_rows: Optional[int], current_rows: int):
+
+    def _update_total_progress_no_lock(
+        self, total_rows: Optional[int], current_rows: int
+    ):
         if self._start_time is None:
             self._start_time = time.time()
 
@@ -263,7 +266,6 @@ class RichExecutionProgressManager:
             if self._live.is_started:
                 self._update_resource_status_no_lock(resource_manager)
 
-    
     def _update_resource_status_no_lock(self, resource_manager: ResourceManager):
         # running_usage is the amount of resources that have been requested but
         # not necessarily available
