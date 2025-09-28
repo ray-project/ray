@@ -3,7 +3,7 @@ from typing import Dict, List
 
 from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL
 
-# Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.cc
+# Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.h
 WORKER_ID_TAG_KEY = "WorkerId"
 # Keep in sync with the NameKey in src/ray/stats/metric_defs.cc
 TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
