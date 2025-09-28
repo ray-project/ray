@@ -115,6 +115,7 @@ class StatusSet {
                 "Ok cannot be an error type");
 
   StatusSet(StatusT::OK) : error_(std::nullopt) {}
+
   template <typename StatusType>
   StatusSet(StatusType &&status) : error_(std::forward<StatusType>(status)) {}
 
@@ -126,10 +127,39 @@ class StatusSet {
 
   std::variant<StatusTypes...> &error() { return *error_; }
 
-  std::string ToString() { return has_error() ? error_.ToString() : "OK"; }
-
  private:
   std::optional<std::variant<StatusTypes...>> error_;
+};
+
+template <typename ResultType, typename... StatusTypes>
+class StatusSetOr {
+ public:
+  static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
+                "Ok cannot be an error type");
+
+  template <typename ArgType>
+  StatusSetOr(ArgType &&value) : value_(std::forward<ArgType>(value)) {}
+
+  bool ok() const { return std::holds_alternative<ResultType>(value_); }
+
+  bool has_error() const {
+    return std::holds_alternative<std::variant<StatusTypes...>>(value_);
+  }
+
+  const ResultType &value() const { return std::get<ResultType>(value_); }
+
+  ResultType &value() { return std::get<ResultType>(value_); }
+
+  const std::variant<StatusTypes...> &error() const {
+    return std::get<std::variant<StatusTypes...>>(value_);
+  }
+
+  std::variant<StatusTypes...> &error() {
+    return std::get<std::variant<StatusTypes...>>(value_);
+  }
+
+ private:
+  std::variant<ResultType, std::variant<StatusTypes...>> value_;
 };
 
 // Function that only returns IOError or OutOfMemory
@@ -158,6 +188,10 @@ inline void UseDoThing() {
   // Happy path
   std::cout << "Happy thoughts";
 }
+
+/////////////////
+/// LEGACY STATUS
+/////////////////
 
 // If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {

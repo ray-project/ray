@@ -124,4 +124,8 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
   ASSERT_TRUE(ray_status.IsIOError());
 }
 
+TEST_F(StatusSetTest, TestStatusSetAPI) {}
+
+TEST_F(StatusSetOrTest, TestStatusSetOrAPI) {}
+
 }  // namespace ray
