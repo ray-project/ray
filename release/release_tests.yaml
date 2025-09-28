@@ -2221,7 +2221,8 @@
 # Core Nightly Tests
 ########################
 
-- name: shuffle_100gb
+- name: core_shuffle_100gb
+  python: "3.10"
   group: core-multi-test
   working_dir: nightly_tests
 
@@ -2249,7 +2250,8 @@
         cluster_compute: shuffle/shuffle_compute_multi_gce.yaml
 
 
-- name: stress_test_placement_group
+- name: core_stress_test_placement_group
+  python: "3.10"
   group: core-multi-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2273,7 +2275,8 @@
       cluster:
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
-- name: decision_tree_autoscaling_20_runs
+- name: core_decision_tree_autoscaling_20_runs
+  python: "3.10"
   group: core-multi-test
   working_dir: nightly_tests
 
@@ -2296,7 +2299,8 @@
       cluster:
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
-- name: autoscaling_shuffle_1tb_1000_partitions
+- name: core_autoscaling_shuffle_1tb_1000_partitions
+  python: "3.10"
   group: core-multi-test
   working_dir: nightly_tests
 
