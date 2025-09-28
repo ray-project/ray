@@ -135,6 +135,7 @@ class BatchIterator:
             if actor_prefetcher_enabled
             else WaitBlockPrefetcher()
         )
+        self._yielded_first_batch = False
 
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
@@ -235,15 +236,29 @@ class BatchIterator:
         return self._iter_batches()
 
     def before_epoch_start(self):
-        pass
+        self._yielded_first_batch = False
 
     def after_epoch_end(self):
         StatsManager.clear_iteration_metrics(self._dataset_tag)
 
     @contextmanager
     def get_next_batch_context(self):
-        with self._stats.iter_total_blocked_s.timer() if self._stats else nullcontext():
-            yield
+        try:
+            if self._stats:
+                # Always track total blocked time
+                total_timer = self._stats.iter_total_blocked_s.timer()
+                # Also track the time until the first batch is ready
+                first_batch_ready_timer = (
+                    self._stats.iter_time_to_first_batch_s.timer()
+                    if not self._yielded_first_batch
+                    else nullcontext()
+                )
+                with total_timer, first_batch_ready_timer:
+                    yield
+            else:
+                yield
+        finally:
+            self._yielded_first_batch = True
 
     @contextmanager
     def yield_batch_context(self, batch: Batch):
@@ -382,8 +397,8 @@ def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
     next_index_required = 0
     buffer: Dict[int, Batch] = {}
     for batch in batch_iter:
-        assert batch.batch_idx not in buffer
-        buffer[batch.batch_idx] = batch
+        assert batch.metadata.batch_idx not in buffer
+        buffer[batch.metadata.batch_idx] = batch
         while next_index_required in buffer:
             yield buffer.pop(next_index_required)
             next_index_required += 1

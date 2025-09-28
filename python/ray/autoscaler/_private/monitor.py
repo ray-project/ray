@@ -14,14 +14,15 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address, parse_address
 from ray._common.ray_constants import (
-    LOGGING_ROTATE_BYTES,
     LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
 )
+from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
-from ray._common.network_utils import parse_address, build_address
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import (
@@ -44,7 +45,6 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
-from ray._private import logging_utils
 
 try:
     import prometheus_client

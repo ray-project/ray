@@ -20,7 +20,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 
 
 @DeveloperAPI

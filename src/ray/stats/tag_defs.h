@@ -14,55 +14,37 @@
 
 #pragma once
 
+#include "ray/observability/metric_interface.h"
+
 /// The definitions of tag keys that you can use every where.
 /// You can follow these examples to define and register your tag keys.
 
-using TagKeyType = opencensus::tags::TagKey;
-using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
+namespace ray {
+namespace stats {
 
-extern const TagKeyType ComponentKey;
+inline const TagKeyType ComponentKey = TagKeyType::Register("Component");
 
-extern const TagKeyType JobNameKey;
+inline const TagKeyType NodeAddressKey = TagKeyType::Register("NodeAddress");
 
-extern const TagKeyType NodeAddressKey;
+inline const TagKeyType VersionKey = TagKeyType::Register("Version");
 
-extern const TagKeyType VersionKey;
+inline const TagKeyType LanguageKey = TagKeyType::Register("Language");
 
-extern const TagKeyType LanguageKey;
+// Keep in sync with the WORKER_ID_TAG_KEY in
+// python/ray/_private/telemetry/metric_cardinality.py
+inline const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
 
-extern const TagKeyType WorkerPidKey;
+inline const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
 
-extern const TagKeyType DriverPidKey;
-
-extern const TagKeyType ActorIdKey;
-
-extern const TagKeyType WorkerIdKey;
-
-extern const TagKeyType JobIdKey;
-
-extern const TagKeyType SessionNameKey;
-
-extern const TagKeyType NameKey;
-
-extern const TagKeyType SourceKey;
+inline const TagKeyType NameKey = TagKeyType::Register("Name");
 
 // Object store memory location tag constants
-extern const TagKeyType LocationKey;
-
-constexpr char kResourceNameKey[] = "ResourceName";
-
-constexpr char kCustomKey[] = "CustomKey";
-
-constexpr char kObjectLocMmapShm[] = "MMAP_SHM";
-constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
-constexpr char kObjectLocSpilled[] = "SPILLED";
-constexpr char kObjectLocWorkerHeap[] = "WORKER_HEAP";
+inline const TagKeyType LocationKey = TagKeyType::Register("Location");
 
 // Object store memory sealed/unsealed tag
-extern const TagKeyType ObjectStateKey;
-constexpr char kObjectSealed[] = "SEALED";
-constexpr char kObjectUnsealed[] = "UNSEALED";
+inline const TagKeyType ObjectStateKey = TagKeyType::Register("ObjectState");
 
-// GCS task manager tags
-constexpr char kGcsTaskStatusEventDropped[] = "STATUS_EVENT";
-constexpr char kGcsProfileEventDropped[] = "PROFILE_EVENT";
+inline const TagKeyType SourceKey = TagKeyType::Register("Source");
+
+}  // namespace stats
+}  // namespace ray

@@ -1,5 +1,6 @@
-import ray
 import pytest
+
+import ray
 
 
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])

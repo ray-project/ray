@@ -36,6 +36,7 @@ This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic
 - `/v1/chat/completions`: Chat interface (ChatGPT-style)
 - `/v1/completions`: Text completion
 - `/v1/embeddings`: Text embeddings
+- `/v1/score`: Text comparison
 - `/v1/models`: List available models
 - `/v1/models/{model}`: Model information
 
@@ -58,3 +59,12 @@ Quickstart <quick-start>
 Prefill/Decode Disaggregation <pd-dissagregation>
 Cache-aware request routing <prefix-aware-request-router>
 ```
+
+## Examples
+
+- {doc}`Deploy a small-sized LLM <../tutorials/deployment-serve-llm/small-size-llm/README>`
+- {doc}`Deploy a medium-sized LLM <../tutorials/deployment-serve-llm/medium-size-llm/README>`
+- {doc}`Deploy a large-sized LLM <../tutorials/deployment-serve-llm/large-size-llm/README>`
+- {doc}`Deploy a vision LLM <../tutorials/deployment-serve-llm/vision-llm/README>`
+- {doc}`Deploy a reasoning LLM <../tutorials/deployment-serve-llm/reasoning-llm/README>`
+- {doc}`Deploy a hybrid reasoning LLM <../tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`

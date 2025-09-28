@@ -18,7 +18,6 @@
 #include <utility>
 
 #include "absl/strings/match.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 

@@ -24,6 +24,7 @@ class NodeModelDownloadable(enum.Enum):
 
     MODEL_AND_TOKENIZER = enum.auto()
     TOKENIZER_ONLY = enum.auto()
+    EXCLUDE_SAFETENSORS = enum.auto()
     NONE = enum.auto()
 
     def __bool__(self):
@@ -36,7 +37,11 @@ class NodeModelDownloadable(enum.Enum):
             or other == NodeModelDownloadable.MODEL_AND_TOKENIZER
         ):
             return NodeModelDownloadable.MODEL_AND_TOKENIZER
-
+        if (
+            self == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            or other == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        ):
+            return NodeModelDownloadable.EXCLUDE_SAFETENSORS
         if (
             self == NodeModelDownloadable.TOKENIZER_ONLY
             or other == NodeModelDownloadable.TOKENIZER_ONLY
@@ -111,11 +116,13 @@ class CloudModelDownloader(CloudModelAccessor):
     def get_model(
         self,
         tokenizer_only: bool,
+        exclude_safetensors: bool = False,
     ) -> str:
         """Gets a model from cloud storage and stores it locally.
 
         Args:
             tokenizer_only: whether to download only the tokenizer files.
+            exclude_safetensors: whether to download safetensors files to disk.
 
         Returns: file path of model if downloaded, else the model id.
         """
@@ -135,10 +142,13 @@ class CloudModelDownloader(CloudModelAccessor):
             # This ensures that subsequent processes don't duplicate work.
             with FileLock(lock_path, timeout=0):
                 try:
+                    if exclude_safetensors:
+                        logger.info("Skipping download of safetensors files.")
                     CloudFileSystem.download_model(
                         destination_path=path,
                         bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
+                        exclude_safetensors=exclude_safetensors,
                     )
                     logger.info(
                         "Finished downloading %s for %s from %s storage",
@@ -282,7 +292,9 @@ def download_model_files(
 
     if download_model != NodeModelDownloadable.NONE:
         model_path_or_id = downloader.get_model(
-            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY
+            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY,
+            exclude_safetensors=download_model
+            == NodeModelDownloadable.EXCLUDE_SAFETENSORS,
         )
 
     if download_extra_files:

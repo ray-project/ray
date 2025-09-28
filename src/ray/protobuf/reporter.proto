@@ -83,6 +83,10 @@ message ReportOCMetricsRequest {
 
 message ReportOCMetricsReply {}
 
+message HealthCheckRequest {}
+
+message HealthCheckReply {}
+
 // Service for communicating with the reporter agent module on a remote node.
 service ReporterService {
   // Report OpenCensus metrics to the local metrics agent.
@@ -91,6 +95,8 @@ service ReporterService {
   rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
   rpc GpuProfiling(GpuProfilingRequest) returns (GpuProfilingReply);
   rpc MemoryProfiling(MemoryProfilingRequest) returns (MemoryProfilingReply);
+  // Health check to validate whether the service is running
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckReply);
 }
 
 message StreamLogRequest {

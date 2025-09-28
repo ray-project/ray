@@ -70,7 +70,7 @@ message AutoscalingConfig {
   bytes _serialized_policy_def = 11;
 
   // The autoscaling policy definition.
-  AutoscalingPolicy _policy = 12;
+  AutoscalingPolicy policy = 12;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
@@ -82,6 +82,9 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit downscale.
   optional double downscaling_factor = 15;
+
+  // How long to wait before scaling down replicas from 1 to 0
+  optional double downscale_to_zero_delay_s = 16;
 }
 
 //[Begin] LOGGING CONFIG
