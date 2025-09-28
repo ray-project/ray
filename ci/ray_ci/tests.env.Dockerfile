@@ -78,14 +78,20 @@ fi
 
 echo "--- Install Ray with -e"
 
+
+# Dependencies are already installed in the base CI images.
+# So we use --no-deps to avoid reinstalling them.
+
+INSTALL_FLAGS=(--no-deps --force-reinstall -v -e)
+
 if [[ "$BUILD_TYPE" == "debug" ]]; then
-  RAY_DEBUG_BUILD=debug pip install -v -e python/
+  RAY_DEBUG_BUILD=debug pip install "${INSTALL_FLAGS[@]}" python/
 elif [[ "$BUILD_TYPE" == "asan" ]]; then
-  pip install -v -e python/
+  pip install "${INSTALL_FLAGS[@]}" python/
   bazel run $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:gen_ray_pkg
 elif [[ "$BUILD_TYPE" == "java" ]]; then
   bash java/build-jar-multiplatform.sh linux
-  RAY_INSTALL_JAVA=1 pip install -v -e python/
+  RAY_INSTALL_JAVA=1 pip install "${INSTALL_FLAGS[@]}" python/
 else
   if [[ -e /opt/ray-core/ray_pkg.zip && "$BUILD_TYPE" == "optimized" && "$RAY_DISABLE_EXTRA_CPP" == "1" ]]; then
     echo "--- Extract built ray core bits"
@@ -103,11 +109,11 @@ else
     curl -sSL "${REDIS_BINARY_URL}" -o - | tar -xzf - -C python/ray/core/src/ray/thirdparty/redis/src
 
     echo "--- Install Ray with -e"
-    RAY_INSTALL_JAVA=0 SKIP_BAZEL_BUILD=1 pip install -v -e python/
+    RAY_INSTALL_JAVA=0 SKIP_BAZEL_BUILD=1 pip install "${INSTALL_FLAGS[@]}" python/
   else
     # Fall back to normal path.
     echo "--- Install Ray with -e"
-    pip install -v -e python/
+    pip install "${INSTALL_FLAGS[@]}" python/
   fi
 fi
 
