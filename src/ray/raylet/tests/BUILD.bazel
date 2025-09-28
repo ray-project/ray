@@ -145,6 +145,36 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "worker_killing_policy_group_by_owner_test",
+    size = "small",
+    srcs = [
+        "worker_killing_policy_group_by_owner_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":util",
+        "//src/ray/common:lease",
+        "//src/ray/raylet:worker_killing_policy",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "worker_killing_policy_retriable_fifo_test",
+    size = "small",
+    srcs = [
+        "worker_killing_policy_retriable_fifo_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":util",
+        "//src/ray/common:lease",
+        "//src/ray/raylet:worker_killing_policy",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "node_manager_test",
     size = "small",
     srcs = ["node_manager_test.cc"],
