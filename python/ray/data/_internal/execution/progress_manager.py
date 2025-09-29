@@ -394,7 +394,10 @@ def _get_progress_metrics(
         rate (str)
         count (str)
     """
+    # Note, when total is unknown, we default the progress bar to 0.
+    # Will properly have estimates for rate and count strings though.
     total = 1 if total_rows is None or total_rows < 1 else total_rows
+    current = 0 if total_rows is None else current_rows
 
     if total_rows is None:
         rate_str = "? row/s"
@@ -409,4 +412,4 @@ def _get_progress_metrics(
         rate_str = f"{rate_val:.2f} {rate_unit}"
         count_str = _format_row_count(current_rows, total_rows)
 
-    return current_rows, total, rate_str, count_str
+    return current, total, rate_str, count_str
