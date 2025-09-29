@@ -891,10 +891,12 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
     tensors.
 
-    This is the Arrow side of TensorDtype for tensor elements with different shapes.
-    Note that this extension only supports non-ragged tensor elements; i.e., when
-    considering each tensor element in isolation, they must have a well-defined,
-    non-ragged shape.
+    This is the Arrow side of ``TensorDtype`` for tensor elements with different shapes.
+
+    NOTE: This extension only supports tensor elements with non-ragged, well-defined
+    shapes; i.e. every tensor element must have a well-defined shape and all of their
+    shapes have to have same number of dimensions (ie ``len(shape)`` has to be the
+    same for all of them).
 
     See Arrow extension type docs:
     https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
@@ -910,13 +912,13 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
             dtype: pyarrow dtype of tensor elements.
             ndim: The number of dimensions in the tensor elements.
         """
-        self._ndim = ndim
         super().__init__(
             pa.struct(
                 [("data", pa.large_list(dtype)), ("shape", pa.list_(self.OFFSET_DTYPE))]
             ),
             "ray.data.arrow_variable_shaped_tensor",
         )
+        self._ndim = ndim
 
     def to_pandas_dtype(self):
         """
@@ -1018,11 +1020,12 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
 
         data = scalar.value.get("data")
         raw_values = data.values
-
-        shape = tuple(scalar.value.get("shape").as_py())
         value_type = raw_values.type
         offset = raw_values.offset
         data_buffer = raw_values.buffers()[1]
+
+        shape = tuple(scalar.value.get("shape").as_py())
+
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
 
