@@ -1,0 +1,13 @@
+flatbuffers
+cython
+numpy  # Necessary for Dataset to work properly.
+psutil
+# For the ease to submit jobs on various cloud providers.
+smart_open[s3,gcs,azure,http]
+six
+boto3
+pyopenssl
+cryptography
+google-api-python-client
+google-oauth
+adlfs[abfs]
