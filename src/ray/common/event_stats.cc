@@ -71,15 +71,9 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
                                                     event_context_name.value_or(name));
   }
 
-  auto start = ray::current_time_ns();
-
-  if (name == "GCSServer.deadline_timer.metrics_report") {
-    RAY_LOG(ERROR) << "START TIME: " << start;
-  }
-
   return std::make_shared<StatsHandle>(
       std::move(name),
-      start,
+      ray::current_time_ns(),
       std::move(stats),
       global_stats_,
       emit_metrics,
@@ -108,9 +102,6 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
                                    std::shared_ptr<StatsHandle> handle) {
   RAY_CHECK(!handle->end_or_execution_recorded);
   int64_t start_execution = ray::current_time_ns();
-  if (handle->event_name == "GCSServer.deadline_timer.metrics_report") {
-    RAY_LOG(ERROR) << "START_EXECUTION: " << start_execution;
-  }
   // Update running count
   {
     auto &stats = handle->handler_stats;
@@ -124,9 +115,6 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
   const auto execution_time_ns = end_execution - start_execution;
   int64_t curr_count;
   const auto queue_time_ns = start_execution - handle->start_time;
-  if (handle->event_name == "GCSServer.deadline_timer.metrics_report") {
-    RAY_LOG(ERROR) << "QUEUE_TIME: " << start_execution;
-  }
   {
     auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));

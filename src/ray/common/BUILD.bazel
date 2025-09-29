@@ -283,7 +283,6 @@ ray_cc_library(
         ":ray_config",
         "//src/ray/util:array",
         "//src/ray/util:function_traits",
-        "//src/ray/util:time",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
@@ -314,8 +313,6 @@ ray_cc_library(
         ":ray_config",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:time",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
