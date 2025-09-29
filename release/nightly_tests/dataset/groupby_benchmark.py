@@ -55,7 +55,7 @@ def main(args):
         )
         override_num_blocks = (
             100
-            if args.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+            if args.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED.value
             else None
         )
         grouped_ds = ray.data.read_parquet(
