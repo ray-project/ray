@@ -21,7 +21,7 @@ from ray.serve._private.test_utils import (
     check_ray_stopped,
     start_telemetry_app,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import (  # noqa
     external_redis,
@@ -148,6 +148,7 @@ def _shared_serve_instance():
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
+        proxy_location=ProxyLocation.HeadOnly,
         http_options={"host": "0.0.0.0"},
         grpc_options={
             "port": 9000,
@@ -195,13 +196,19 @@ def check_ray_stop():
 
 
 @pytest.fixture(scope="function")
-def ray_stop():
+def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
     ray.shutdown()
     wait_for_condition(
         check_ray_stop,
         timeout=15,
     )
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        timeout=15,
+    )
+    ray.init("auto")
     yield
     serve.shutdown()
     ray.shutdown()
@@ -210,16 +217,6 @@ def ray_stop():
         check_ray_stop,
         timeout=15,
     )
-
-
-@pytest.fixture(scope="function")
-def ray_start_stop(ray_stop):
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
-        timeout=15,
-    )
-    ray.init("auto")
 
 
 @pytest.fixture(scope="function")
