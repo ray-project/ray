@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import Any, List, Optional, Dict
 
 from ray.util.annotations import DeveloperAPI
 
@@ -532,12 +532,6 @@ class Panel:
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
     template: Optional[PanelTemplate] = PanelTemplate.GRAPH
-    interval: Optional[str] = None
-    options: Optional[PanelOptions] = None
-    # Legacy color field for Grafana 7
-    color: Optional[Dict[str, Any]] = None
-    # Legacy dataFormat field for heatmaps in Grafana 7
-    dataFormat: Optional[str] = None
 
 
 @DeveloperAPI

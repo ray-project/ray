@@ -3,13 +3,10 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
-    Row,
-    TargetTemplate,
     PanelTemplate,
-    PanelOptions,
-    Color,
-    LEGACY_COLOR_BLUES,
+    Row,
     Target,
+    TargetTemplate,
 )
 
 # When adding a new panels for an OpRuntimeMetric, follow this format:

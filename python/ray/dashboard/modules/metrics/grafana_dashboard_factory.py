@@ -225,14 +225,7 @@ def _generate_panel_template(
             "y": base_y_position + (row_number * PANEL_HEIGHT),
         }
 
-    # Configure panel visualization settings
-    if panel.template == PanelTemplate.HEATMAP:
-        # Heatmaps use yaxis instead of yaxes in Grafana 7
-        template["yAxis"]["format"] = panel.unit
-        # Newer versions of Grafana has unit in the options field
-        template.setdefault("options", {}).setdefault("yAxis", {})["unit"] = panel.unit
-    else:
-        template["yaxes"][0]["format"] = panel.unit
+    template["yaxes"][0]["format"] = panel.unit
     template["fill"] = panel.fill
     template["stack"] = panel.stack
     template["linewidth"] = panel.linewidth
@@ -240,18 +233,6 @@ def _generate_panel_template(
     # Handle stacking visualization
     if panel.stack is True:
         template["nullPointMode"] = "connected"
-
-    if panel.interval:
-        template["interval"] = panel.interval
-
-    if panel.options and panel.options.color:
-        template.setdefault("options", {})["color"] = asdict(panel.options.color)
-
-    if panel.color:
-        template["color"] = panel.color
-
-    if panel.dataFormat:
-        template["dataFormat"] = panel.dataFormat
 
     return template
 

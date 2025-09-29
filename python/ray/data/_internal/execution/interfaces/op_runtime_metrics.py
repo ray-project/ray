@@ -1,7 +1,7 @@
+import bisect
 import math
 import threading
 import time
-import bisect
 from collections import defaultdict
 from dataclasses import Field, dataclass, field
 from enum import Enum
