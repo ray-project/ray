@@ -359,7 +359,7 @@ class OpState:
                 self.op.metrics.num_external_inqueue_blocks -= len(ref.blocks)
                 input_op = self.op.input_dependencies[i]
                 input_op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                input_op.metrics.num_external_inqueue_bytes -= ref.size_bytes()
+                input_op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
                 return
 
         assert False, "Nothing to dispatch"
