@@ -54,7 +54,7 @@ class PublisherClientInterface(ABC):
     """
 
     def __init__(self):
-        self._exposable_event_types = None
+        self._exposable_event_types_list: List[str] = []
 
     def _count_num_events_in_batch(self, batch: PublishBatch) -> int:
         """Count the number of events in a given batch."""
@@ -64,19 +64,13 @@ class PublisherClientInterface(ABC):
         """
         Check if an event should be allowed to be published.
         """
-        if self._exposable_event_types is None:
+        if not self._exposable_event_types_list:
             return True
 
-        if isinstance(self._exposable_event_types, (list, set)):
-            # For list/set of event types
-            event_type_name = events_base_event_pb2.RayEvent.EventType.Name(
-                event.event_type
-            )
-            return event_type_name in self._exposable_event_types
-
-        raise ValueError(
-            f"Invalid exposable event types: {self._exposable_event_types}"
+        event_type_name = events_base_event_pb2.RayEvent.EventType.Name(
+            event.event_type
         )
+        return event_type_name in self._exposable_event_types_list
 
     @abstractmethod
     async def publish(self, batch: PublishBatch) -> PublishStats:
@@ -104,7 +98,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
 
-        self._exposable_event_types = [
+        self._exposable_event_types_list = [
             event_type.strip() for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
         ]
 
@@ -192,19 +186,15 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
         )
         self._timeout = timeout
 
-        self._exposable_event_types = GCS_EXPOSABLE_EVENT_TYPES
+        self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
 
-    async def publish(
-        self,
-        batch: PublishBatch,
-    ) -> PublishStats:
+    async def publish(self,batch: PublishBatch,) -> PublishStats:
         events = batch.events
         task_events_metadata = batch.task_events_metadata
-
-        has_task_events_metadata = (
+        has_dropped_task_attempts = (
             task_events_metadata and task_events_metadata.dropped_task_attempts
         )
-        if not events and not has_task_events_metadata:
+        if not events and not has_dropped_task_attempts:
             # Nothing to publish -> success but nothing published
             return PublishStats(
                 is_publish_successful=True,
@@ -216,7 +206,7 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
         filtered_events = [e for e in events if self._can_expose_event(e)]
         num_filtered_out = len(events) - len(filtered_events)
 
-        if not filtered_events and not has_task_events_metadata:
+        if not filtered_events and not has_dropped_task_attempts:
             # all events filtered out and no task events metadata -> success but nothing published
             return PublishStats(
                 is_publish_successful=True,
