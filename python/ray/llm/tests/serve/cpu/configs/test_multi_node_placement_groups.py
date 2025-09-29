@@ -121,7 +121,10 @@ def test_llm_serve_placement_group_validation():
     serve_options = llm_config.get_serve_options()
     assert serve_options["placement_group_strategy"] == "PACK"
 
-    # Test multiple GPUs per bundle (should now be allowed)
+    # Test multiple GPUs allowed per bundle (lift restriction at Ray Serve LLM level)
+    # Note: This will cause engine to crash in practice because vLLM still enforces one GPU
+    # max per bundle (desired behavior). TP/PP optimal placement is done from within
+    # the vLLM engine here: https://github.com/vllm-project/vllm/blob/main/vllm/executor/ray_distributed_executor.py#L259-L285
     llm_config = get_llm_config_with_placement_group(
         placement_group_config={"bundles": [{"GPU": 2, "CPU": 1}], "strategy": "PACK"}
     )
