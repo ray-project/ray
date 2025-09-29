@@ -1088,14 +1088,19 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                 "ArrowVariableShapedTensorArray can only be constructed from an "
                 f"ndarray or a list/tuple of ndarrays, but got: {type(arr)}"
             )
+
         if len(arr) == 0:
             # Empty ragged tensor arrays are not supported.
             raise ValueError("Creating empty ragged tensor arrays is not supported.")
 
-        # Whether all subndarrays are contiguous views of the same ndarray.
-        shapes, sizes, raveled = [], [], []
+        # Pre-allocate lists for better performance
+        shapes = [None] * len(arr)
+        raveled = [None] * len(arr)
+
+        sizes = np.arange(len(arr), dtype=np.int64)
+
         ndim = None
-        for a in arr:
+        for i, a in enumerate(arr):
             a = np.asarray(a)
             if ndim is not None and a.ndim != ndim:
                 raise ValueError(
@@ -1103,29 +1108,33 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                     "all have the same number of dimensions, but got tensor elements "
                     f"with dimensions: {ndim}, {a.ndim}"
                 )
+
             ndim = a.ndim
-            shapes.append(a.shape)
-            sizes.append(a.size)
+            shapes[i] = a.shape
+            sizes[i] = a.size
             # Convert to 1D array view; this should be zero-copy in the common case.
             # NOTE: If array is not in C-contiguous order, this will convert it to
             # C-contiguous order, incurring a copy.
-            a = np.ravel(a, order="C")
-            raveled.append(a)
+            raveled[i] = np.ravel(a, order="C")
+
         # Get size offsets and total size.
-        sizes = np.array(sizes)
         size_offsets = np.cumsum(sizes)
         total_size = size_offsets[-1]
+
         # Concatenate 1D views into a contiguous 1D array.
+        # TODO avoid pairwise
         if all(_is_contiguous_view(curr, prev) for prev, curr in _pairwise(raveled)):
             # An optimized zero-copy path if raveled tensor elements are already
             # contiguous in memory, e.g. if this tensor array has already done a
             # roundtrip through our Arrow representation.
-            np_data_buffer = raveled[-1].base
+            data_buffer = raveled[-1].base
         else:
-            np_data_buffer = np.concatenate(raveled)
-        dtype = np_data_buffer.dtype
-        pa_dtype = pa.from_numpy_dtype(dtype)
-        if pa.types.is_string(pa_dtype):
+            data_buffer = np.concatenate(raveled)
+
+        dtype = data_buffer.dtype
+        pa_scalar_type = pa.from_numpy_dtype(dtype)
+
+        if pa.types.is_string(pa_scalar_type):
             if dtype.byteorder == ">" or (
                 dtype.byteorder == "=" and sys.byteorder == "big"
             ):
@@ -1133,30 +1142,36 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                     "Only little-endian string tensors are supported, "
                     f"but got: {dtype}"
                 )
-            pa_dtype = pa.binary(dtype.itemsize)
-        if dtype.type is np.bool_:
+            pa_scalar_type = pa.binary(dtype.itemsize)
+
+        if dtype.type is np.bool_ and data_buffer.size > 0:
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
             # bit-pack the booleans before handing the buffer off to Arrow.
             # NOTE: Arrow expects LSB bit-packed ordering.
             # NOTE: This creates a copy.
-            np_data_buffer = np.packbits(np_data_buffer, bitorder="little")
-        data_buffer = pa.py_buffer(np_data_buffer)
+            data_buffer = np.packbits(data_buffer, bitorder="little")
+
+        # Use foreign_buffer for better performance when possible
+        data_buffer = pa.py_buffer(data_buffer)
         # Construct underlying data array.
-        value_array = pa.Array.from_buffers(pa_dtype, total_size, [None, data_buffer])
+        data_array = pa.Array.from_buffers(pa_scalar_type, total_size, [None, data_buffer])
+
         # Construct array for offsets into the 1D data array, where each offset
         # corresponds to a tensor element.
         size_offsets = np.insert(size_offsets, 0, 0)
         offset_array = pa.array(size_offsets)
-        data_array = pa.LargeListArray.from_arrays(offset_array, value_array)
+        data_storage_array = pa.LargeListArray.from_arrays(offset_array, data_array)
         # We store the tensor element shapes so we can reconstruct each tensor when
         # converting back to NumPy ndarrays.
         shape_array = pa.array(shapes)
+
         # Build storage array containing tensor data and the tensor element shapes.
         storage = pa.StructArray.from_arrays(
-            [data_array, shape_array],
+            [data_storage_array, shape_array],
             ["data", "shape"],
         )
-        type_ = ArrowVariableShapedTensorType(pa_dtype, ndim)
+
+        type_ = ArrowVariableShapedTensorType(pa_scalar_type, ndim)
         return type_.wrap_array(storage)
 
     def _to_numpy(self, zero_copy_only: bool = False):
@@ -1183,13 +1198,26 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         data_value_type = data_array.type.value_type
         data_array_buffer = data_array.buffers()[3]
 
-        shapes = shapes_array.to_pylist()
-        offsets = data_array.offsets.to_pylist()
+        # Avoid expensive to_pylist() conversions - use numpy arrays directly
+        # Get offset buffer and create numpy view
+        offset_buffer = data_array.buffers()[1]
+        offsets_np = np.frombuffer(offset_buffer, dtype=np.int64)
 
-        return create_ragged_ndarray([
-            _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
-            for shape, offset in zip(shapes, offsets)
-        ])
+        # Process shapes more efficiently
+        num_elements = len(shapes_array)
+        result_list = [None] * num_elements
+
+        for i in range(num_elements):
+            # Get shape for this element
+            shape_scalar = shapes_array[i]
+            if shape_scalar.is_valid:
+                shape = tuple(shape_scalar.as_py())
+                offset = offsets_np[i]
+                result_list[i] = _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
+            else:
+                result_list[i] = None
+
+        return create_ragged_ndarray(result_list)
 
     def to_numpy(self, zero_copy_only: bool = True):
         """
