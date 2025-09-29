@@ -411,7 +411,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   };
 
   // Initialize task event buffer before it is used by TaskManager.
-  // Store a raw pointer so we can start it later after metrics agent is ready.
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options),
       std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
