@@ -788,28 +788,32 @@ class _StatsManager:
                                 if stats_actor is None:
                                     continue
 
+                                # We need to convert the metrics to a snapshot that can be passed
+                                # to the stats actor. Primarily, the histogram metrics need to be
+                                # flushed and reset.
                                 formatted_execution_stats = []
 
-                                for (
-                                    dataset_tag,
-                                    op_metrics,
-                                    operator_tags,
-                                    state,
-                                    per_node_metrics,
-                                ) in self._last_execution_stats.values():
-                                    op_metrics_dicts = [
-                                        metric.as_dict() for metric in op_metrics
-                                    ]
-                                    for metric in op_metrics:
-                                        metric.reset_histogram_metrics()
-                                    args = (
+                                with self._stats_lock:
+                                    for (
                                         dataset_tag,
-                                        op_metrics_dicts,
+                                        op_metrics,
                                         operator_tags,
                                         state,
                                         per_node_metrics,
-                                    )
-                                    formatted_execution_stats.append(args)
+                                    ) in self._last_execution_stats.values():
+                                        op_metrics_dicts = [
+                                            metric.as_dict() for metric in op_metrics
+                                        ]
+                                        for metric in op_metrics:
+                                            metric.reset_histogram_metrics()
+                                        args = (
+                                            dataset_tag,
+                                            op_metrics_dicts,
+                                            operator_tags,
+                                            state,
+                                            per_node_metrics,
+                                        )
+                                        formatted_execution_stats.append(args)
 
                                 stats_actor.update_metrics.remote(
                                     execution_metrics=list(formatted_execution_stats),
