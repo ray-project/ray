@@ -32,10 +32,6 @@ const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
 
 const TagKeyType NameKey = TagKeyType::Register("Name");
 
-const TagKeyType LocationKey = TagKeyType::Register("Location");
-
-const TagKeyType ObjectStateKey = TagKeyType::Register("ObjectState");
-
 const TagKeyType SourceKey = TagKeyType::Register("Source");
 }  // namespace stats
 }  // namespace ray

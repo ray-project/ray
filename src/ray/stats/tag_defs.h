@@ -39,10 +39,10 @@ extern const TagKeyType NameKey;
 extern const TagKeyType SourceKey;
 
 // Object store memory location tag constants
-extern const TagKeyType LocationKey;
+constexpr std::string_view LocationKey = "Location";
 
 // Object store memory sealed/unsealed tag
-extern const TagKeyType ObjectStateKey;
+constexpr std::string_view ObjectStateKey = "ObjectState";
 
 }  // namespace stats
 }  // namespace ray
