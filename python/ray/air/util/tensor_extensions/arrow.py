@@ -561,7 +561,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
           overflow of int32 offsets utilized inside Pyarrow `ListType`)
     """
 
-    OFFSET_DTYPE = np.int32
+    OFFSET_DTYPE = pa.int32()
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -584,7 +584,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
-    OFFSET_DTYPE = np.int64
+    OFFSET_DTYPE = pa.int64()
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -749,7 +749,7 @@ class ArrowTensorArray(pa.ExtensionArray):
            0,
            (outer_len + 1) * num_items_per_element,
            num_items_per_element,
-           dtype=pa_type_.OFFSET_DTYPE
+           dtype=pa_type_.OFFSET_DTYPE.to_pandas_dtype()
         )
         offset_buffer = pa.py_buffer(offsets)
 
