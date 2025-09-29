@@ -87,6 +87,7 @@ def check_arguments():
         args.num_expected_nodes,
         args.docker_override,
         args.wheel_override,
+        args.python_version,
     )
 
 
@@ -370,6 +371,7 @@ if __name__ == "__main__":
         num_expected_nodes,
         docker_override,
         wheel_override,
+        python_version,
     ) = check_arguments()
     cluster_config = Path(cluster_config)
     check_file(cluster_config)
@@ -378,6 +380,7 @@ if __name__ == "__main__":
     print(f"Number of retries for 'verify ray is running' step: {retries}")
     print(f"Using --no-config-cache flag: {no_config_cache}")
     print(f"Number of expected nodes for 'verify ray is running': {num_expected_nodes}")
+    print(f"Using Python version: {python_version}")
 
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
@@ -392,7 +395,7 @@ if __name__ == "__main__":
 
     print("======================================")
     print(f"Overriding docker image...: {docker_override}")
-    docker_override_image = get_docker_image(docker_override)
+    docker_override_image = get_docker_image(docker_override, python_version)
     print(f"Using docker image: {docker_override_image}")
     if docker_override_image:
         override_docker_image(config_yaml, docker_override_image)
