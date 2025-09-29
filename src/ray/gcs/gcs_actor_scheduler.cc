@@ -294,7 +294,8 @@ void GcsActorScheduler::LeaseWorkerFromNode(
   RAY_CHECK(actor && node);
 
   auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO).WithField(GetActorID()).WithField(actor->GetActorID().JobId()) << "Leasing worker from node: " << node_id;
+  RAY_LOG(INFO).WithField(GetActorID()).WithField(actor->GetActorID().JobId())
+      << "Leasing worker from node: " << node_id;
 
   // We need to ensure that the RequestWorkerLease won't be sent before the reply of
   // ReleaseUnusedActorWorkers is returned.
@@ -415,8 +416,12 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
     const NodeID &node_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  RAY_LOG(INFO).WithField(actor->GetActorID()).WithField(actor->GetActorID().JobId()).WithField(node_id) << "Lease request was canceled: "
-                << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
+  RAY_LOG(INFO)
+          .WithField(actor->GetActorID())
+          .WithField(actor->GetActorID().JobId())
+          .WithField(node_id)
+      << "Lease request was canceled: "
+      << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
 
   schedule_failure_handler_(actor, failure_type, scheduling_failure_message);
 }
@@ -424,7 +429,12 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                                             std::shared_ptr<GcsLeasedWorker> worker) {
   RAY_CHECK(actor && worker);
-  RAY_LOG(INFO).WithField(actor->GetActorID()).WithField(worker->GetWorkerID()).WithField(actor->GetNodeID()).WithField(actor->GetActorID().JobId()) << "Submitting actor creation task to worker.";
+  RAY_LOG(INFO)
+          .WithField(actor->GetActorID())
+          .WithField(worker->GetWorkerID())
+          .WithField(actor->GetNodeID())
+          .WithField(actor->GetActorID().JobId())
+      << "Submitting actor creation task to worker.";
 
   auto request = std::make_unique<rpc::PushTaskRequest>();
   request->set_intended_worker_id(worker->GetWorkerID().Binary());
@@ -458,10 +468,20 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
               if (iter->second.empty()) {
                 node_to_workers_when_creating_.erase(iter);
               }
-              RAY_LOG(INFO).WithField(actor->GetActorID()).WithField(worker->GetWorkerID()).WithField(actor->GetActorID().JobId()).WithField(actor->GetNodeID()) << "Actor creation task succeeded.";
+              RAY_LOG(INFO)
+                      .WithField(actor->GetActorID())
+                      .WithField(worker->GetWorkerID())
+                      .WithField(actor->GetActorID().JobId())
+                      .WithField(actor->GetNodeID())
+                  << "Actor creation task succeeded.";
               schedule_success_handler_(actor, reply);
             } else {
-              RAY_LOG(INFO).WithField(actor->GetActorID()).WithField(worker->GetWorkerID()).WithField(actor->GetActorID().JobId()).WithField(actor->GetNodeID()) << "Actor creation task failed, will be retried.";
+              RAY_LOG(INFO)
+                      .WithField(actor->GetActorID())
+                      .WithField(worker->GetWorkerID())
+                      .WithField(actor->GetActorID().JobId())
+                      .WithField(actor->GetNodeID())
+                  << "Actor creation task failed, will be retried.";
               RetryCreatingActorOnWorker(actor, worker);
             }
           }
