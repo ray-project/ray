@@ -697,14 +697,18 @@ class ArrowTensorArray(pa.ExtensionArray):
         if len(arr) > 0 and np.isscalar(arr[0]):
             # Elements are scalar so a plain Arrow Array will suffice.
             return pa.array(arr)
+
         if _is_ndarray_variable_shaped_tensor(arr):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
             return ArrowVariableShapedTensorArray.from_numpy(arr)
+
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
+
         scalar_dtype = pa.from_numpy_dtype(arr.dtype)
+
         if pa.types.is_string(scalar_dtype):
             if arr.dtype.byteorder == ">" or (
                 arr.dtype.byteorder == "=" and sys.byteorder == "big"
@@ -714,6 +718,7 @@ class ArrowTensorArray(pa.ExtensionArray):
                     f"but got: {arr.dtype}",
                 )
             scalar_dtype = pa.binary(arr.dtype.itemsize)
+
         outer_len = arr.shape[0]
         element_shape = arr.shape[1:]
         total_num_items = arr.size
