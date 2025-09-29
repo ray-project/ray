@@ -34,7 +34,6 @@ pyarrow
 pydantic>=2.5.0
 pytest
 pytorch-lightning
-pytorch_lightning
 scikit-learn
 semidbm
 sentencepiece
