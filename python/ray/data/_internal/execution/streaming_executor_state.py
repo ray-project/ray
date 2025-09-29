@@ -175,9 +175,9 @@ class OpSchedulingStatus:
 class OpDisplayMetrics:
     """Metrics of an operator. Used for display purposes."""
 
-    cpu: float = None
-    gpu: float = None
-    object_store_memory: float = None
+    cpu: float = 0.0
+    gpu: float = 0.0
+    object_store_memory: float = 0.0
     tasks: int = 0
     actors: int = 0
     queued: int = 0

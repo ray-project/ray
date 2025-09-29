@@ -339,7 +339,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _finish_progress_manager(self, exception: Optional[Exception] = None):
         if self._progress_manager:
-            final_stats = self._generate_stats()
+            final_stats = self.get_stats()
             if exception is None:
                 desc = (
                     f"{OK_PREFIX} Dataset {self._dataset_id} execution finished in "

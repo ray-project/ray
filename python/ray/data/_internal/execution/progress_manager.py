@@ -39,10 +39,10 @@ _TOTAL_PROGRESS_TOTAL = 1.0
 _RESOURCE_REPORT_HEADER = f"  {_TREE_VERTICAL} Active/total resources: "
 
 
-class _ManagerMode(Enum):
-    NONE = 1  # no-op
-    GLOBAL_ONLY = 2  # global progress
-    ALL = 3  # show everything
+class _ManagerMode(str, Enum):
+    NONE = "NONE"  # no-op
+    GLOBAL_ONLY = "GLOBAL_ONLY"  # global progress
+    ALL = "ALL"  # show everything
 
     def show_op(self) -> bool:
         return self == self.ALL
