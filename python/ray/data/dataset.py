@@ -1059,10 +1059,6 @@ class Dataset:
                 "This may indicate a schema determination issue."
             )
 
-        # Handle empty dataset case - if dataset has columns but no rows, return as-is
-        if self.count() == 0:
-            return self
-
         # Validate keys parameter
         if keys is not None:
             if not keys:
