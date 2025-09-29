@@ -5883,9 +5883,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundle: RefBundle = self._plan.execute()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        )
         # Schema is safe to call since we have already triggered execution with
         # self._plan.execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
