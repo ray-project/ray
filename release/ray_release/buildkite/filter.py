@@ -48,7 +48,7 @@ def filter_tests(
                         break
                 else:  # Match filters using regex
                     attr_value = _unflattened_lookup(test, attr) or ""
-                    if not re.fullmatch(value, attr_value):
+                    if not re.match(value, attr_value):
                         attr_mismatch = True
                         break
         if attr_mismatch:
