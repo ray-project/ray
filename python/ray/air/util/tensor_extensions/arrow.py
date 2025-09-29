@@ -606,10 +606,10 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 @PublicAPI(stability="beta")
 class ArrowTensorScalar(pa.ExtensionScalar):
     def as_py(self, **kwargs) -> np.ndarray:
-        return self.type._extension_scalar_to_ndarray(self)
+        return self.__array__()
 
     def __array__(self) -> np.ndarray:
-        return self.as_py()
+        return self.type._extension_scalar_to_ndarray(self)
 
 
 @PublicAPI(stability="beta")
