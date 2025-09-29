@@ -4,6 +4,7 @@ from typing import Any, Dict
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
+from ray.train.v2.api.config import RunConfig
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
@@ -176,12 +177,17 @@ class TrainContext(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_run_config(self) -> RunConfig:
+        """Returns the :class:`~ray.train.RunConfig` run config"""
+        pass
+
     @DeveloperAPI
     @abstractmethod
     def get_storage(self):
         """Returns the :class:`~ray.train._internal.storage.StorageContext` storage
         context which gives advanced access to the filesystem and paths
-        configured through `RunConfig`.
+        configured through :class:`~ray.train.RunConfig`.
 
         NOTE: This is a DeveloperAPI, and the `StorageContext` interface may change
         without notice between minor versions.
@@ -209,6 +215,9 @@ class DistributedTrainContext(TrainContext):
 
     def get_node_rank(self) -> int:
         return get_internal_train_context().get_node_rank()
+
+    def get_run_config(self) -> RunConfig:
+        return get_internal_train_context().train_run_context.get_run_config()
 
     def get_storage(self):
         return get_internal_train_context().get_storage()
@@ -250,6 +259,9 @@ class LocalTrainContext(TrainContext):
 
     def get_node_rank(self) -> int:
         return self.node_rank
+
+    def get_run_config(self):
+        raise NotImplementedError("Local run config not yet implemented. ")
 
     def get_storage(self):
         raise NotImplementedError("Local storage context not yet implemented. ")
