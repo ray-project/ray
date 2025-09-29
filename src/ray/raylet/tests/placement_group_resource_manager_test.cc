@@ -20,9 +20,10 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 
 namespace ray {
