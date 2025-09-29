@@ -1123,13 +1123,13 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         size_offsets = np.cumsum(sizes)
         total_size = size_offsets[-1]
 
-        if raveled and _is_contiguous(raveled):
+        if len(raveled) > 0 and _is_contiguous(raveled):
             # An optimized zero-copy path if raveled tensor elements are already
             # contiguous in memory, e.g. if this tensor array has already done a
             # roundtrip through our Arrow representation.
             data_buffer = raveled[0].base
         else:
-            # Concatenate 1D views into a contiguous 1D array.
+            # Concatenate given ndarrays into a contiguous one.
             data_buffer = np.concatenate(raveled)
 
         dtype = data_buffer.dtype
