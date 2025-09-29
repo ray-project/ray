@@ -521,7 +521,7 @@ BLOCK_SIZE_BYTES_PANEL = Panel(
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
-            legend="{{le}} byt",
+            legend="{{le}} bytes",
             template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],

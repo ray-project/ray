@@ -561,7 +561,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._issue_detector_hanging = 0
         self._issue_detector_high_memory = 0
 
-        # Initialize histogram buckets
+        # Initialize histogram buckets (+1 to represent the +Inf bucket)
         self.task_completion_time = [0 for _ in range(len(histogram_buckets_s) + 1)]
         self.block_completion_time = [0 for _ in range(len(histogram_buckets_s) + 1)]
         self.block_size_bytes = [0 for _ in range(len(histogram_buckets_bytes) + 1)]
@@ -896,12 +896,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_task_outputs_generated += output_bytes
         self.rows_task_outputs_generated += num_rows_produced
         for block in output.metadata:
-            self.block_size_bytes[
-                find_bucket_index(histogram_buckets_bytes, block.size_bytes)
-            ] += 1
-            self.block_size_rows[
-                find_bucket_index(histogram_bucket_rows, block.num_rows)
-            ] += 1
+            if block.size_bytes is not None:
+                self.block_size_bytes[
+                    find_bucket_index(histogram_buckets_bytes, block.size_bytes)
+                ] += 1
+            if block.num_rows is not None:
+                self.block_size_rows[
+                    find_bucket_index(histogram_bucket_rows, block.num_rows)
+                ] += 1
 
         task_info = self._running_tasks[task_index]
         if task_info.num_outputs == 0:
@@ -952,9 +954,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.task_completion_time[bucket_index] += 1
 
         assert task_info.cum_block_gen_time is not None
-        block_time_delta = task_info.cum_block_gen_time / task_info.num_outputs
-        bucket_index = find_bucket_index(histogram_buckets_s, block_time_delta)
-        self.block_completion_time[bucket_index] += task_info.num_outputs
+        if task_info.num_outputs > 0:
+            block_time_delta = task_info.cum_block_gen_time / task_info.num_outputs
+            bucket_index = find_bucket_index(histogram_buckets_s, block_time_delta)
+            self.block_completion_time[bucket_index] += task_info.num_outputs
         self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)

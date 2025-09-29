@@ -410,14 +410,21 @@ class _StatsActor:
             elif isinstance(prom_metric, Counter):
                 prom_metric.inc(value, tags)
             elif isinstance(prom_metric, Histogram):
-                # Add list of bucket counts to histogram metric
+                # Take the list of samples per bucket and add them to the histogram metric.
                 if isinstance(value, list):
                     for i in range(len(value)):
-                        bucket_value = (
+                        # Pick a value between the boundaries so the sample falls into the right bucket.
+                        boundary_upper_bound = (
+                            prom_metric.boundaries[i]
+                            if i < len(value) - 1
+                            else prom_metric.boundaries[-1] + 100
+                        )
+                        boundary_lower_bound = (
                             prom_metric.boundaries[i - 1]
                             if i > 0
-                            else prom_metric.boundaries[0]
+                            else 0
                         )
+                        bucket_value = (boundary_upper_bound + boundary_lower_bound) / 2
                         for _ in range(value[i]):
                             prom_metric.observe(bucket_value, tags)
 
