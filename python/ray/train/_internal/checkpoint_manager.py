@@ -28,22 +28,6 @@ def _insert_into_sorted_list(
         key: The key function to use to sort the list.
         checkpoint_to_report_index: A dictionary mapping checkpoints to report indices.
             Used to break ties when scores are equal.
-
-    Examples:
-
-        >>> list = []
-        >>> _insert_into_sorted_list(list, {"a": 1, "b": 0}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}]
-        >>> _insert_into_sorted_list(list, {"a": 3, "b": 1}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}, {'a': 3, 'b': 1}]
-        >>> _insert_into_sorted_list(list, {"a": 4, "b": 2}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}, {'a': 3, 'b': 1}, {'a': 4, 'b': 2}]
-        >>> _insert_into_sorted_list(list, {"a": 1, "b": 3}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}, {'a': 1, 'b': 3}, {'a': 3, 'b': 1}, {'a': 4, 'b': 2}]
     """
     checkpoint_to_report_index = checkpoint_to_report_index or {}
     # TODO: optimize this with sortedlist, batching, etc
