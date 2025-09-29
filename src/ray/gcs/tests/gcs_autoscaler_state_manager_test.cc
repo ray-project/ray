@@ -37,7 +37,7 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 
@@ -110,11 +110,13 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->mutex_);
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->mutex_);
     const auto node_id = NodeID::FromBinary(node->node_id());
     node->set_state(rpc::GcsNodeInfo::DEAD);
     gcs_node_manager_->alive_nodes_.erase(node_id);
