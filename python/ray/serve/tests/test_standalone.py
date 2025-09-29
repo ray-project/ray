@@ -878,6 +878,18 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
         },
         {
             "proxy_location": None,
+            "http_options": {"test": "test"},  # location is not specified
+            "expected": HTTPOptions(
+                location=DeploymentMode.EveryNode
+            ),  # using default proxy_location (to align with previous test)
+        },
+        {
+            "proxy_location": None,
+            "http_options": HTTPOptions(location=None),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": None,
             "http_options": HTTPOptions(location="NoServer"),
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
