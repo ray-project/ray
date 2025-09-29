@@ -1,4 +1,5 @@
 import math
+import threading
 import time
 import bisect
 from collections import defaultdict
@@ -567,6 +568,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_size_bytes = [0 for _ in range(len(histogram_buckets_bytes) + 1)]
         self.block_size_rows = [0 for _ in range(len(histogram_bucket_rows) + 1)]
 
+        # Because histogram metrics are stored as a list of samples per bucket
+        # we need a lock to make sure this class is thread-safe when accessing and updating
+        # the histogram metrics.
+        self._histogram_thread_lock = threading.Lock()
+
     @property
     def extra_metrics(self) -> Dict[str, Any]:
         """Return a dict of extra metrics."""
@@ -578,38 +584,42 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
     def as_dict(self, skip_internal_metrics: bool = False) -> Dict[str, Any]:
         """Return a dict representation of the metrics."""
-        result = []
-        for metric in self.get_metrics():
-            if not self._is_map and metric.map_only:
-                continue
-            if skip_internal_metrics and metric.internal_only:
-                continue
-            value = getattr(self, metric.name)
-            if metric.metrics_type == MetricsType.Histogram:
-                value = value.copy()
-            result.append((metric.name, value))
 
-        # TODO: record resource usage in OpRuntimeMetrics,
-        # avoid calling self._op.current_processor_usage()
-        resource_usage = self._op.current_processor_usage()
-        result.extend(
-            [
-                ("cpu_usage", resource_usage.cpu or 0),
-                ("gpu_usage", resource_usage.gpu or 0),
-            ]
-        )
-        result.extend(self._extra_metrics.items())
-        return dict(result)
+        # This is the main way histogram metrics are accessed. Need a lock here.
+        with self._histogram_thread_lock:
+            result = []
+            for metric in self.get_metrics():
+                if not self._is_map and metric.map_only:
+                    continue
+                if skip_internal_metrics and metric.internal_only:
+                    continue
+                value = getattr(self, metric.name)
+                if metric.metrics_type == MetricsType.Histogram:
+                    value = value.copy()
+                result.append((metric.name, value))
+
+            # TODO: record resource usage in OpRuntimeMetrics,
+            # avoid calling self._op.current_processor_usage()
+            resource_usage = self._op.current_processor_usage()
+            result.extend(
+                [
+                    ("cpu_usage", resource_usage.cpu or 0),
+                    ("gpu_usage", resource_usage.gpu or 0),
+                ]
+            )
+            result.extend(self._extra_metrics.items())
+            return dict(result)
 
     def reset_histogram_metrics(self):
-        for i in range(len(self.task_completion_time)):
-            self.task_completion_time[i] = 0
-        for i in range(len(self.block_completion_time)):
-            self.block_completion_time[i] = 0
-        for i in range(len(self.block_size_bytes)):
-            self.block_size_bytes[i] = 0
-        for i in range(len(self.block_size_rows)):
-            self.block_size_rows[i] = 0
+        with self._histogram_thread_lock:
+            for i in range(len(self.task_completion_time)):
+                self.task_completion_time[i] = 0
+            for i in range(len(self.block_completion_time)):
+                self.block_completion_time[i] = 0
+            for i in range(len(self.block_size_bytes)):
+                self.block_size_bytes[i] = 0
+            for i in range(len(self.block_size_rows)):
+                self.block_size_rows[i] = 0
 
     @metric_property(
         description="Average number of blocks generated per task.",
@@ -895,15 +905,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_task_outputs_generated += num_outputs
         self.bytes_task_outputs_generated += output_bytes
         self.rows_task_outputs_generated += num_rows_produced
-        for block in output.metadata:
-            if block.size_bytes is not None:
-                self.block_size_bytes[
-                    find_bucket_index(histogram_buckets_bytes, block.size_bytes)
-                ] += 1
-            if block.num_rows is not None:
-                self.block_size_rows[
-                    find_bucket_index(histogram_bucket_rows, block.num_rows)
-                ] += 1
+        with self._histogram_thread_lock:
+            for block in output.metadata:
+                if block.size_bytes is not None:
+                    self.block_size_bytes[
+                        find_bucket_index(histogram_buckets_bytes, block.size_bytes)
+                    ] += 1
+                if block.num_rows is not None:
+                    self.block_size_rows[
+                        find_bucket_index(histogram_bucket_rows, block.num_rows)
+                    ] += 1
 
         task_info = self._running_tasks[task_index]
         if task_info.num_outputs == 0:
@@ -949,15 +960,21 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
-        task_time_delta = time.perf_counter() - task_info.start_time
-        bucket_index = find_bucket_index(histogram_buckets_s, task_time_delta)
-        self.task_completion_time[bucket_index] += 1
 
-        assert task_info.cum_block_gen_time is not None
-        if task_info.num_outputs > 0:
-            block_time_delta = task_info.cum_block_gen_time / task_info.num_outputs
-            bucket_index = find_bucket_index(histogram_buckets_s, block_time_delta)
-            self.block_completion_time[bucket_index] += task_info.num_outputs
+        # Need a lock here because we are updating histogram metrics
+        with self._histogram_thread_lock:
+            task_time_delta = time.perf_counter() - task_info.start_time
+            bucket_index = find_bucket_index(histogram_buckets_s, task_time_delta)
+            self.task_completion_time[bucket_index] += 1
+
+            assert task_info.cum_block_gen_time is not None
+            if task_info.num_outputs > 0:
+                # Calculate the average block generation time per block
+                block_time_delta = task_info.cum_block_gen_time / task_info.num_outputs
+                bucket_index = find_bucket_index(histogram_buckets_s, block_time_delta)
+                # Add the total number of blocks to the bucket
+                self.block_completion_time[bucket_index] += task_info.num_outputs
+
         self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
