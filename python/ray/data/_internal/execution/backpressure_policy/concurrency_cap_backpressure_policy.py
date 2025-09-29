@@ -40,9 +40,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         for op, _ in self._topology.items():
             if isinstance(op, TaskPoolMapOperator) and op.get_concurrency() is not None:
                 # Apply concurrency reduction when preserve_order is enabled
-                self._concurrency_caps[op] = (
-                    op.get_concurrency() * concurrency_multiplier
-                )
+                # Ensure minimum concurrency cap of 1 to prevent blocking all tasks
+                calculated_cap = op.get_concurrency() * concurrency_multiplier
+                self._concurrency_caps[op] = max(1.0, calculated_cap)
             else:
                 self._concurrency_caps[op] = float("inf")
 
