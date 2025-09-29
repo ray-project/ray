@@ -2493,11 +2493,11 @@ class Dataset:
             >>> ctx = ray.data.DataContext.get_current()
             >>> ctx.execution_options.preserve_order = True
             >>> ds = ray.data.range(8)
-            >>> train, test = ds.streaming_train_test_split(test_size=0.25)
-            >>> train.take_batch()
-            {'id': array([0, 1, 2, 3, 4, 6])}
-            >>> test.take_batch()
-            {'id': array([5, 7])}
+            >>> train, test = ds.streaming_train_test_split(test_size=0.25, seed=0)
+            >>> train.count()
+            6
+            >>> test.count()
+            2
             >>> ctx.execution_options.preserve_order = False
 
             Examples with Hash split:
@@ -2532,8 +2532,8 @@ class Dataset:
 
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
-        if test_size < 0 or test_size > 1:
-            raise ValueError("Test proportion must be between 0 and 1.")
+        if test_size <= 0 or test_size >= 1:
+            raise ValueError("test_size must be between 0 and 1.")
 
         if seed is not None and split_type == "hash":
             raise ValueError("seed is not supported for hash split")

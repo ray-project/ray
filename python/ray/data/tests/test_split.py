@@ -926,22 +926,29 @@ def test_streaming_train_test_split_random(ray_start_regular_shared_2_cpus, seed
 
 
 @pytest.mark.parametrize(
-    "split_type,hash_column,seed,error_msg",
+    "test_size,split_type,hash_column,seed,error_msg",
     [
-        ("hash", None, None, "hash_column is required for hash split"),
-        ("hash", "id", 42, "seed is not supported for hash split"),
-        ("random", "id", None, "hash_column is not supported for random split"),
-        ("unknown", "id", None, "Invalid split type: unknown"),
+        (0.2, "hash", None, None, "hash_column is required for hash split"),
+        (0.2, "hash", "id", 42, "seed is not supported for hash split"),
+        (0, "hash", "id", None, "test_size must be between 0 and 1"),
+        (1, "hash", "id", None, "test_size must be between 0 and 1"),
+        (0.2, "random", "id", None, "hash_column is not supported for random split"),
+        (0, "random", None, None, "test_size must be between 0 and 1"),
+        (1, "random", None, None, "test_size must be between 0 and 1"),
+        (0.2, "unknown", "id", None, "Invalid split type: unknown"),
     ],
 )
 def test_streaming_train_test_split_wrong_params(
-    ray_start_regular_shared_2_cpus, split_type, hash_column, seed, error_msg
+    ray_start_regular_shared_2_cpus, test_size, split_type, hash_column, seed, error_msg
 ):
     ds = ray.data.range(10)
 
     with pytest.raises(ValueError, match=error_msg):
         ds.streaming_train_test_split(
-            test_size=0.2, split_type=split_type, hash_column=hash_column, seed=seed
+            test_size=test_size,
+            split_type=split_type,
+            hash_column=hash_column,
+            seed=seed,
         )
 
 
