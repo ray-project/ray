@@ -124,7 +124,7 @@ namespace StatusT {
     const std::string &message() const { return message_; }                   \
     std::string &message() { return message_; }                               \
                                                                               \
-    std::string ToString() {                                                  \
+    std::string ToString() const {                                            \
       return absl::StrCat("StatusT: " #status_name ", Message: ", message_);  \
     }                                                                         \
                                                                               \
