@@ -150,7 +150,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
     def progress_str(self) -> str:
         return f"{self.num_output_rows_total() or 0} rows output"
 
-    # TODO (kyuds): remove
+    # TODO (kyuds): remove this function, as progress management is now centralized
     def initialize_sub_progress_bars(self, position: int) -> int:
         """Initialize all internal sub progress bars, and return the number of bars."""
         if self._sub_progress_bar_names is not None:
@@ -164,7 +164,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         else:
             return 0
 
-    # TODO (kyuds): remove
+    # TODO (kyuds): remove this function, as progress management is now centralized
     def close_sub_progress_bars(self):
         """Close all internal sub progress bars."""
         if self._sub_progress_bar_dict is not None:

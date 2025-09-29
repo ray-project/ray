@@ -374,7 +374,7 @@ class HashShuffleProgressBarMixin(abc.ABC):
     def reduce_name(self) -> str:
         ...
 
-    # TODO (kyuds): remove
+    # TODO (kyuds): remove this function, as progress management is now centralized
     def initialize_sub_progress_bars(self, position: int) -> int:
         """Display all sub progres bars in the termainl, and return the number of bars."""
 
@@ -399,7 +399,7 @@ class HashShuffleProgressBarMixin(abc.ABC):
 
         return progress_bars_created
 
-    # TODO (kyuds): remove
+    # TODO (kyuds): remove this function, as progress management is now centralized
     def close_sub_progress_bars(self):
         """Close all internal sub progress bars."""
         self.shuffle_bar.close()
