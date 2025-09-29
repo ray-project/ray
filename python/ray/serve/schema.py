@@ -1,4 +1,5 @@
 import logging
+from abc import ABC
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
@@ -25,6 +26,7 @@ from ray.serve._private.common import (
     ServeDeployMode,
 )
 from ray.serve._private.constants import (
+    DEFAULT_CONSUMER_CONCURRENCY,
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
@@ -1365,3 +1367,16 @@ class TaskResult(BaseModel):
         default=None, description="The timestamp of the task creation."
     )
     result: Any = Field(..., description="The result of the task.")
+
+
+class TaskConsumerWrapper(ABC):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def initialize_callable(
+        self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
+    ):
+        pass
+
+    def __del__(self):
+        pass
