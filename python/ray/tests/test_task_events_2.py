@@ -651,11 +651,7 @@ def test_fault_tolerance_chained_task_fail(
             with pytest.raises(
                 (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
             ):
-                ray.get(
-                    A.remote(
-                        exit_type=exit_type, pid_actor=pid_actor
-                    )
-                )
+                ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
 
     pid_actor = PidActor.remote()
 
@@ -663,9 +659,7 @@ def test_fault_tolerance_chained_task_fail(
         with pytest.raises(
             (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
         ):
-            ray.get(
-                A.remote(exit_type=exit_type, pid_actor=pid_actor)
-            )
+            ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
     else:
         a = Actor.remote()
         ray.get(a.run.remote(pid_actor=pid_actor))

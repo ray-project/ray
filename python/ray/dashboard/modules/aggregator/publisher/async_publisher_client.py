@@ -188,7 +188,10 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
 
         self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
 
-    async def publish(self,batch: PublishBatch,) -> PublishStats:
+    async def publish(
+        self,
+        batch: PublishBatch,
+    ) -> PublishStats:
         events = batch.events
         task_events_metadata = batch.task_events_metadata
         has_dropped_task_attempts = (

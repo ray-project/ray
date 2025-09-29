@@ -2728,12 +2728,12 @@ Status CoreWorker::ExecuteTask(
             : worker::TaskStatusEvent::TaskStateUpdate(pid_);
     RAY_UNUSED(
         task_event_buffer_.RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
-                                                          task_spec.JobId(),
-                                                          task_spec.AttemptNumber(),
-                                                          task_spec,
-                                                          rpc::TaskStatus::RUNNING,
-                                                          /*include_task_info=*/false,
-                                                          update));
+                                                         task_spec.JobId(),
+                                                         task_spec.AttemptNumber(),
+                                                         task_spec,
+                                                         rpc::TaskStatus::RUNNING,
+                                                         /*include_task_info=*/false,
+                                                         update));
 
     worker_context_->SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
