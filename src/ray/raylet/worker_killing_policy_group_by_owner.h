@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "ray/common/memory_monitor.h"
@@ -87,7 +88,7 @@ struct Group {
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   GroupByOwnerIdWorkerKillingPolicy();
-  std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 

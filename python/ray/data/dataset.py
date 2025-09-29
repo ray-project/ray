@@ -2877,7 +2877,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
-            >>> ds.unique("item")
+            >>> sorted(ds.unique("item"))
             [1, 2, 3]
 
             This function is very useful for computing labels
@@ -3152,11 +3152,12 @@ class Dataset:
             >>> import ray
             >>> round(ray.data.range(100).std("id", ddof=0), 5)
             28.86607
-            >>> ray.data.from_items([
+            >>> result = ray.data.from_items([
             ...     {"A": i, "B": i**2}
             ...     for i in range(100)
             ... ]).std(["A", "B"])
-            {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
+            >>> [(key, round(value, 10)) for key, value in result.items()]
+            [('std(A)', 29.0114919759), ('std(B)', 2968.1748039269)]
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -5881,13 +5882,12 @@ class Dataset:
         """
         import pyarrow as pa
 
-        ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
+        ref_bundle: RefBundle = self._plan.execute()
         block_refs: List[
             ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
-
+        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
         # Schema is safe to call since we have already triggered execution with
-        # iter_internal_ref_bundles.
+        # self._plan.execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
             schema = schema.base_schema
@@ -6298,6 +6298,9 @@ class Dataset:
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
         for more information about the jupyter widget mimetype.
 
+        Args:
+            **kwargs: Additional arguments passed to the widget's _repr_mimebundle_ method.
+
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
@@ -6505,6 +6508,13 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
+        """
+        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+
+        Args:
+            base_schema: The underlying Arrow or Pandas schema.
+            data_context: The data context to use for this schema.
+        """
         self.base_schema = base_schema
 
         # Snapshot the current context, so that the config of Datasets is always
