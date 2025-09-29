@@ -2736,7 +2736,7 @@ void NodeManager::HandleGetDriverAndWorkerPids(
     if (worker->IsDead()) {
       continue;
     }
-    reply->add_pids(worker->GetProcess()->GetId());
+    reply->add_pids(worker->GetProcess().GetId());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
