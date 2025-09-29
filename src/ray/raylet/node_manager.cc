@@ -2728,14 +2728,10 @@ void NodeManager::HandleGetDriverAndWorkerPids(
     rpc::GetDriverAndWorkerPidsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
-  for (const auto &driver :
-       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
-    all_workers.push_back(driver);
-  }
+  const auto &drivers =
+      worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true);
+  all_workers.insert(all_workers.end(), drivers.begin(), drivers.end());
   for (const auto &worker : all_workers) {
-    if (worker->IsDead()) {
-      continue;
-    }
     reply->add_pids(worker->GetProcess().GetId());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);

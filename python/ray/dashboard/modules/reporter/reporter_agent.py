@@ -896,18 +896,19 @@ class ReporterAgent(
                 stats.write_count,
             )
 
-    def _get_worker_pids_from_raylet(self):
+    async def _get_worker_pids_from_raylet(self):
         channel = ray._private.utils.init_grpc_channel(
             self._node_manager_address, GLOBAL_GRPC_OPTIONS, asynchronous=True
         )
         timeout = NODE_MANAGER_RPC_TIMEOUT_SECONDS
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
-            reply = await stub.GetDriverAndWorkers(
-                node_manager_pb2.GetDriverAndWorkersRequest(), timeout=timeout
+            reply = await stub.GetDriverAndWorkerPids(
+                node_manager_pb2.GetDriverAndWorkerPidsRequest(), timeout=timeout
             )
             return reply.pids
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to get worker pids from raylet via gRPC: {e}")
             return None
 
     def _get_agent_proc(self) -> psutil.Process:
@@ -919,7 +920,7 @@ class ReporterAgent(
         return (proc.pid, proc.create_time())
 
     def _get_worker_processes(self):
-        pids = self._get_worker_pids_from_raylet()
+        pids = asyncio.run(self._get_worker_pids_from_raylet())
         if pids is not None:
             workers = {}
             for pid in pids:
