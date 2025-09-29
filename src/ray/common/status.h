@@ -30,7 +30,9 @@
 
 #include <cstring>
 #include <iosfwd>
+#include <optional>
 #include <string>
+#include <variant>
 
 #include "absl/strings/str_cat.h"
 #include "ray/common/macros.h"
@@ -115,21 +117,23 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 namespace StatusT {
 
-#define STATUS_TYPE(status_name)                                              \
-  class status_name {                                                         \
-   public:                                                                    \
-    template <typename T>                                                     \
-    explicit status_name(T &&message) : message_(std::forward<T>(message)) {} \
-                                                                              \
-    const std::string &message() const { return message_; }                   \
-    std::string &message() { return message_; }                               \
-                                                                              \
-    std::string ToString() const {                                            \
-      return absl::StrCat("StatusT: " #status_name ", Message: ", message_);  \
-    }                                                                         \
-                                                                              \
-   private:                                                                   \
-    std::string message_;                                                     \
+#define STATUS_TYPE(status_name)                                                     \
+  class status_name {                                                                \
+   public:                                                                           \
+    template <                                                                       \
+        typename T,                                                                  \
+        typename Enable = std::enable_if_t<std::is_constructible_v<std::string, T>>> \
+    explicit status_name(T &&message) : message_(std::forward<T>(message)) {}        \
+                                                                                     \
+    const std::string &message() const { return message_; }                          \
+    std::string &message() { return message_; }                                      \
+                                                                                     \
+    std::string ToString() const {                                                   \
+      return absl::StrCat("StatusT: " #status_name ", Message: ", message_);         \
+    }                                                                                \
+                                                                                     \
+   private:                                                                          \
+    std::string message_;                                                            \
   };
 
 class OK {};
@@ -151,9 +155,11 @@ class StatusSet {
   static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
                 "OK cannot be an error type");
 
-  StatusSet(StatusT::OK) : error_(std::nullopt) {}
+  StatusSet(StatusT::OK ok) : error_(std::nullopt) {}
 
-  template <typename StatusType>
+  template <typename StatusType,
+            typename Enable = std::enable_if_t<
+                std::is_constructible_v<std::variant<StatusTypes...>, StatusType>>>
   StatusSet(StatusType &&status) : error_(std::forward<StatusType>(status)) {}
 
   bool ok() const { return !error_.has_value(); }
@@ -174,7 +180,10 @@ class StatusSetOr {
   static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
                 "Ok cannot be an error type");
 
-  template <typename ArgType>
+  template <typename ArgType,
+            typename Enable = std::enable_if_t<std::is_constructible_v<
+                std::variant<ResultType, std::variant<StatusTypes...>>,
+                ArgType>>>
   StatusSetOr(ArgType &&value) : value_(std::forward<ArgType>(value)) {}
 
   bool has_value() const { return std::holds_alternative<ResultType>(value_); }
