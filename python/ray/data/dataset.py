@@ -990,7 +990,7 @@ class Dataset:
 
         The method uses a distributed groupby operation to identify and remove duplicates.
         Due to the distributed nature of Ray Data, the specific row kept from each duplicate
-        group is implementation-dependent and may vary between runs.
+        group is non-deterministic by design and may vary between runs.
 
         .. tip::
             Setting ``keys`` allows you to find unique values based on one or more chosen columns,
@@ -1059,6 +1059,10 @@ class Dataset:
                 "This may indicate a schema determination issue."
             )
 
+        # Handle empty dataset case - if dataset has columns but no rows, return as-is
+        if self.count() == 0:
+            return self
+
         # Validate keys parameter
         if keys is not None:
             if not keys:
@@ -1083,7 +1087,7 @@ class Dataset:
         else:
             subset_cols = all_cols
 
-        # Simple distinct implementation using groupby - keeps one arbitrary row per group
+        # Simple distinct implementation using groupby - keeps one row per group
         def reducer_keep_one(batch: pa.Table) -> pa.Table:
             return batch.slice(0, 1)
 
