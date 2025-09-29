@@ -294,7 +294,10 @@ void GcsActorScheduler::LeaseWorkerFromNode(
   RAY_CHECK(actor && node);
 
   auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO).WithField(actor->GetActorID()).WithField(actor->GetActorID().JobId()).WithField(node_id)
+  RAY_LOG(INFO)
+          .WithField(actor->GetActorID())
+          .WithField(actor->GetActorID().JobId())
+          .WithField(node_id)
       << "Leasing worker for actor.";
 
   // We need to ensure that the RequestWorkerLease won't be sent before the reply of
