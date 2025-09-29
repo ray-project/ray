@@ -1156,15 +1156,12 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         type_ = ArrowVariableShapedTensorType(pa_dtype, ndim)
         return type_.wrap_array(storage)
 
-    def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
+    def _to_numpy(self, zero_copy_only: bool = False):
         """
         Helper for getting either an element of the array of tensors as an ndarray, or
         the entire array of tensors as a single ndarray.
 
         Args:
-            index: The index of the tensor element that we wish to return as an
-                ndarray. If not given, the entire array of tensors is returned as an
-                ndarray.
             zero_copy_only: If True, an exception will be raised if the conversion to a
                 NumPy array would require copying the underlying data (e.g. in presence
                 of nulls, or for non-primitive types). This argument is currently
@@ -1176,20 +1173,20 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         """
         # TODO(Clark): Enforce zero_copy_only.
         # TODO(Clark): Support strides?
-        if index is None:
-            # Get individual ndarrays for each tensor element.
-            arrs = [self._to_numpy(i, zero_copy_only) for i in range(len(self))]
-            # Return ragged NumPy ndarray in the ndarray of ndarray pointers
-            # representation.
-            return create_ragged_ndarray(arrs)
-        data = self.storage.field("data")
-        shapes = self.storage.field("shape")
 
-        shape = shapes[index].as_py()
-        value_type = data.type.value_type
-        offset = data.offsets[index].as_py()
-        data_buffer = data.buffers()[3]
-        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+        data_array = self.storage.field("data")
+        shapes_array = self.storage.field("shape")
+
+        data_value_type = data_array.type.value_type
+        data_array_buffer = data_array.buffers()[3]
+
+        shapes = shapes_array.to_pylist()
+        offsets = data_array.offsets.to_pylist()
+
+        return create_ragged_ndarray([
+            _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
+            for shape, offset in zip(shapes, offsets)
+        ])
 
     def to_numpy(self, zero_copy_only: bool = True):
         """
