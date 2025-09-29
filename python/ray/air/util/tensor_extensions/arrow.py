@@ -1123,14 +1123,13 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         size_offsets = np.cumsum(sizes)
         total_size = size_offsets[-1]
 
-        # Concatenate 1D views into a contiguous 1D array.
-        # TODO avoid pairwise
-        if all(_is_contiguous_view(curr, prev) for prev, curr in _pairwise(raveled)):
+        if raveled and _is_contiguous(raveled):
             # An optimized zero-copy path if raveled tensor elements are already
             # contiguous in memory, e.g. if this tensor array has already done a
             # roundtrip through our Arrow representation.
-            data_buffer = raveled[-1].base
+            data_buffer = raveled[0].base
         else:
+            # Concatenate 1D views into a contiguous 1D array.
             data_buffer = np.concatenate(raveled)
 
         dtype = data_buffer.dtype
@@ -1378,53 +1377,39 @@ def concat_tensor_arrays(
     return unified_array_type.wrap_array(storage)
 
 
-def _is_contiguous_view(curr: np.ndarray, prev: Optional[np.ndarray]) -> bool:
-    """Check if the provided tensor element is contiguous with the previous tensor
-    element.
+def _is_contiguous(arrays: np.ndarray) -> bool:
+    """Check if all arrays in the object array form a contiguous block in memory.
 
     Args:
-        curr: The tensor element whose contiguity that we wish to check.
-        prev: The previous tensor element in the tensor array.
+        arrays: Object array containing numpy arrays
 
     Returns:
-        Whether the provided tensor element is contiguous with the previous tensor
-        element.
+        True if all arrays are contiguous in memory (can be zero-copy concatenated)
     """
-    if (
-        curr.base is None
-        or not curr.data.c_contiguous
-        or (prev is not None and curr.base is not prev.base)
-    ):
-        # curr is either:
-        # - not a view,
-        # - not in C-contiguous order,
-        # - a view that does not share its base with the other subndarrays.
-        return False
-    else:
-        # curr is a C-contiguous view that shares the same base with the seen
-        # subndarrays, but we need to confirm that it is contiguous with the
-        # previous subndarray.
-        if prev is not None and (
-            _get_buffer_address(curr) - _get_buffer_address(prev)
-            != prev.base.dtype.itemsize * prev.size
-        ):
-            # This view is not contiguous with the previous view.
+    assert len(arrays) > 0, "Passed ndarray may not be empty"
+
+    expected_addr = None
+
+    for i, arr in enumerate(arrays):
+        # Check array is C-contiguous
+        if not arr.flags.c_contiguous:
             return False
-        else:
-            return True
+
+        # For arrays after the first, check if address matches expected
+        if i > 0:
+            actual_addr = _get_buffer_address(arr)
+            if actual_addr != expected_addr:
+                return False
+
+        # Update expected address for next array
+        expected_addr = _get_buffer_address(arr) + arr.dtype.itemsize * arr.size
+
+    return True
 
 
 def _get_buffer_address(arr: np.ndarray) -> int:
     """Get the address of the buffer underlying the provided NumPy ndarray."""
     return arr.__array_interface__["data"][0]
-
-
-def _pairwise(iterable):
-    # pairwise('ABCDEFG') --> AB BC CD DE EF FG
-    # Backport of itertools.pairwise for Python < 3.10.
-    a, b = itertools.tee(iterable)
-    next(b, None)
-    return zip(a, b)
 
 
 def _to_ndarray_helper(shape, value_type, offset, data_buffer):

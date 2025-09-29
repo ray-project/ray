@@ -15,7 +15,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
     concat_tensor_arrays,
-    unify_tensor_arrays,
+    unify_tensor_arrays, _is_contiguous, _get_buffer_address,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -938,6 +938,71 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     expected_shapes = [(2, 2), (2, 3), (1, 4), (3, 1)]
     for i, expected_shape in enumerate(expected_shapes):
         assert result[i].shape == expected_shape
+
+
+def test_contiguous_views():
+    """Test that contiguous views of the same array are considered appropriately contiguous"""
+    # Create a large base array
+    base = np.arange(100, dtype=np.int64)
+
+    # Create contiguous views (slices that are adjacent in memory)
+    raveled = np.empty(4, dtype=np.object_)
+
+    raveled[0] = base[0:10].ravel()
+    raveled[1] = base[10:30].ravel()
+    raveled[2] = base[30:60].ravel()
+    raveled[3] = base[60:100].ravel()
+
+    # These should be contiguous
+    assert _is_contiguous(raveled), "Contiguous views not detected"
+
+
+def test_non_contiguous_views():
+    """Test that non-contiguous views are detected correctly."""
+    # Create a large base array
+    base = np.arange(100, dtype=np.float64)
+
+    # Create non-contiguous views (with gaps)
+    raveled = np.empty(3, dtype=np.object_)
+    raveled[0] = base[0:10].ravel()
+    # Gap from 10-20
+    raveled[1] = base[20:30].ravel()
+    raveled[2] = base[30:40].ravel()
+
+    # These should NOT be contiguous
+    assert not _is_contiguous(raveled), "Non-contiguous views incorrectly detected as contiguous"
+
+
+def test_different_memory_locations():
+    """Test that arrays at different memory locations are not contiguous."""
+    # Create separate arrays at different memory locations
+    # Force them to be non-contiguous by creating a large gap
+    arr1 = np.arange(10, dtype=np.float64)
+    # Create a large array in between to ensure memory gap
+    _ = np.zeros(10000, dtype=np.float64)
+    arr2 = np.arange(10, 20, dtype=np.float64)
+
+    raveled = np.empty(2, dtype=np.object_)
+    raveled[0] = arr1
+    raveled[1] = arr2
+
+    # These should NOT be contiguous (different memory locations)
+    # NOTE:: In rare cases, arrays might still be allocated contiguously by chance
+    # but this is highly unlikely with the gap array in between
+    assert not _is_contiguous(raveled) or (_get_buffer_address(arr1) + arr1.size * arr1.dtype.itemsize == _get_buffer_address(arr2))
+
+
+def test_reverse_order():
+    """Test views in reverse order."""
+    base = np.arange(100, dtype=np.float64)
+
+    raveled = np.empty(3, dtype=np.object_)
+    raveled[0] = base[50:60].ravel()
+    raveled[1] = base[30:50].ravel()
+    raveled[2] = base[0:30].ravel()
+
+    # Reverse order views should NOT be contiguous
+    assert not _is_contiguous(raveled)
 
 
 if __name__ == "__main__":
