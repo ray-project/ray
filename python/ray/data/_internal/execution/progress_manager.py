@@ -214,7 +214,7 @@ class RichExecutionProgressManager:
             total = state.op.num_output_rows_total()
             tid = progress.add_task(
                 state.op.name,
-                total=float(total) if total is not None else float("inf"),
+                total=total if total is not None else 1,
                 start=True,
                 rate="? rows/s",
                 count_str="?/?",
