@@ -85,6 +85,19 @@ def test_pandas_python_object_take():
     )
 
 
+@pytest.mark.skipif(
+    not _object_extension_type_allowed(), reason="Object extension not supported."
+)
+def test_pandas_python_object_concat():
+    arr1 = np.array([1, 2, 3, 4, 5], dtype=object)
+    arr2 = np.array([6, 7, 8, 9, 10], dtype=object)
+    ta1 = PythonObjectArray(arr1)
+    ta2 = PythonObjectArray(arr2)
+    concat_arr = PythonObjectArray._concat_same_type([ta1, ta2])
+    assert len(concat_arr) == arr1.shape[0] + arr2.shape[0]
+    np.testing.assert_array_equal(concat_arr.to_numpy(), np.concatenate([arr1, arr2]))
+
+
 if __name__ == "__main__":
     import sys
 

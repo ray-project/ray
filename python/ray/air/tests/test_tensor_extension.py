@@ -691,6 +691,27 @@ pytest_tensor_array_concat_arr_combinations = list(
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
+def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+
+    ta1 = TensorArray(a1)
+    ta2 = TensorArray(a2)
+    ta = TensorArray._concat_same_type([ta1, ta2])
+    assert len(ta) == a1.shape[0] + a2.shape[0]
+    assert ta.dtype.element_dtype == ta1.dtype.element_dtype
+    if a1.shape[1:] == a2.shape[1:]:
+        assert ta.dtype.element_shape == a1.shape[1:]
+        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
+    else:
+        assert ta.dtype.element_shape == (None,) * (len(a1.shape) - 1)
+        for arr, expected in zip(
+            ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
+        ):
+            np.testing.assert_array_equal(arr, expected)
+
+
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
 def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
