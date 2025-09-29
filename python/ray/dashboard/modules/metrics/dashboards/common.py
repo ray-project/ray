@@ -120,15 +120,6 @@ HEATMAP_TEMPLATE = {
             "show": True,
         },
     ],
-    "yAxis": {
-        "show": True,
-        "format": "short",
-        "decimals": None,
-        "logBase": 1,
-        "splitFactor": None,
-        "min": None,
-        "max": None,
-    },
 }
 
 GRAPH_PANEL_TEMPLATE = {
@@ -480,28 +471,6 @@ class PanelTemplate(Enum):
     STAT = STAT_PANEL_TEMPLATE
     GAUGE = GAUGE_PANEL_TEMPLATE
     BAR_CHART = BAR_CHART_PANEL_TEMPLATE
-
-
-LEGACY_COLOR_BLUES = {
-    "mode": "opacity",
-    "cardColor": "#5794F2",
-    "colorScale": "sqrt",
-    "exponent": 0.5,
-    "colorScheme": "interpolateBlues",
-}
-
-
-@DeveloperAPI
-@dataclass
-class Color:
-    mode: str
-    scheme: str
-
-
-@DeveloperAPI
-@dataclass
-class PanelOptions:
-    color: Color
 
 
 @DeveloperAPI
