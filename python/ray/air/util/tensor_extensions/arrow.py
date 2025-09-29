@@ -1199,26 +1199,13 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         data_value_type = data_array.type.value_type
         data_array_buffer = data_array.buffers()[3]
 
-        # Avoid expensive to_pylist() conversions - use numpy arrays directly
-        # Get offset buffer and create numpy view
-        offset_buffer = data_array.buffers()[1]
-        offsets_np = np.frombuffer(offset_buffer, dtype=np.int64)
+        shapes = shapes_array.to_pylist()
+        offsets = data_array.offsets.to_pylist()
 
-        # Process shapes more efficiently
-        num_elements = len(shapes_array)
-        result_list = [None] * num_elements
-
-        for i in range(num_elements):
-            # Get shape for this element
-            shape_scalar = shapes_array[i]
-            if shape_scalar.is_valid:
-                shape = tuple(shape_scalar.as_py())
-                offset = offsets_np[i]
-                result_list[i] = _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
-            else:
-                result_list[i] = None
-
-        return create_ragged_ndarray(result_list)
+        return create_ragged_ndarray([
+            _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
+            for shape, offset in zip(shapes, offsets)
+        ])
 
     def to_numpy(self, zero_copy_only: bool = True):
         """
