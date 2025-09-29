@@ -10,9 +10,7 @@ from ray.data.tests.conftest import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 
-def test_filter_mutex(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
+def test_filter_mutex(ray_start_regular_shared, tmp_path):
     """Test filter op."""
 
     # Generate sample data
@@ -46,9 +44,7 @@ def test_filter_mutex(
         parquet_ds.filter(fn="sepal.length > 5.0")
 
 
-def test_filter_with_expressions(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
+def test_filter_with_expressions(ray_start_regular_shared, tmp_path):
     """Test filtering with expressions."""
 
     # Generate sample data
@@ -93,9 +89,7 @@ def test_filter_with_expressions(
     ), "UDF-filtered data contains rows with 'sepal.length' <= 5.0"
 
 
-def test_filter_with_invalid_expression(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
+def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
     """Test filtering with invalid expressions."""
 
     # Generate sample data
@@ -281,7 +275,6 @@ def test_filter_with_predicate_expressions(
     test_data,
     expected_indices,
     test_description,
-    target_max_block_size_infinite_or_default,
 ):
     """Test filter() with Ray Data predicate expressions."""
     # Create dataset from test data
@@ -309,9 +302,7 @@ def test_filter_with_predicate_expressions(
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="predicate expressions require PyArrow >= 20.0.0",
 )
-def test_filter_predicate_expr_vs_function_consistency(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
+def test_filter_predicate_expr_vs_function_consistency(ray_start_regular_shared):
     """Test that predicate expressions produce the same results as equivalent functions."""
     test_data = [
         {"age": 20, "score": 85, "active": True},
@@ -340,9 +331,7 @@ def test_filter_predicate_expr_vs_function_consistency(
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="predicate expressions require PyArrow >= 20.0.0",
 )
-def test_filter_predicate_with_different_block_formats(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
+def test_filter_predicate_with_different_block_formats(ray_start_regular_shared):
     """Test that predicate expressions work with different block formats (pandas/arrow)."""
     test_data = [
         {"category": "A", "value": 10},
