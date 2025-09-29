@@ -33,7 +33,9 @@ MIN_SUPPORTED_PYARROW_VERSION = parse_version("9.0.0")
 
 
 if PYARROW_VERSION < MIN_SUPPORTED_PYARROW_VERSION:
-    raise ImportError(f"Found Pyarrow version of {PYARROW_VERSION}, minimum supported version is {MIN_SUPPORTED_PYARROW_VERSION}")
+    raise ImportError(
+        f"Found Pyarrow version of {PYARROW_VERSION}, minimum supported version is {MIN_SUPPORTED_PYARROW_VERSION}"
+    )
 
 
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
