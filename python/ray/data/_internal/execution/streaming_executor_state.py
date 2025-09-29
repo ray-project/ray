@@ -292,8 +292,8 @@ class OpState:
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
-        assert ref.num_rows() is not None, "RefBundle must have a valid number of rows"
-        self.output_row_count += ref.num_rows()
+        if ref.num_rows() is not None:
+            self.output_row_count += ref.num_rows()
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting

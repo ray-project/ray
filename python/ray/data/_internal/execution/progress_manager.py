@@ -166,8 +166,29 @@ class RichExecutionProgressManager:
         self._layout_table = Table.grid(padding=(0, 1, 0, 0), expand=True)
         self._layout_table.add_row(self._total)
         self._layout_table.add_row(self._total_resources)
-        self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
 
+        if self._mode.show_op():
+            self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
+            self._setup_progress_grid(topology)
+
+        # empty new line to prevent "packed" feeling
+        self._layout_table.add_row(Text())
+        self._live = Live(
+            self._layout_table,
+            console=self._console,
+            refresh_per_second=2,
+            vertical_overflow="visible",
+        )
+
+        self._total_task_id = self._total.add_task(
+            f"Dataset {self._dataset_id} running:",
+            total=_TOTAL_PROGRESS_TOTAL,
+            rate="? rows/s",
+            count_str="0/?",
+        )
+
+    def _setup_progress_grid(self, topology: Topology):
+        assert self._mode.show_op()
         for state in topology.values():
             if isinstance(state.op, InputDataBuffer):
                 continue
@@ -202,21 +223,6 @@ class RichExecutionProgressManager:
             self._layout_table.add_row(stats)
             state.progress_manager_uuid = uid
             self._op_display[uid] = (tid, progress, stats)
-        # empty new line to prevent "packed" feeling
-        self._layout_table.add_row(Text())
-        self._live = Live(
-            self._layout_table,
-            console=self._console,
-            refresh_per_second=2,
-            vertical_overflow="visible",
-        )
-
-        self._total_task_id = self._total.add_task(
-            f"Dataset {self._dataset_id} running:",
-            total=_TOTAL_PROGRESS_TOTAL,
-            rate="? rows/s",
-            count_str="0/?",
-        )
 
     # Management
     def start(self):
@@ -273,15 +279,15 @@ class RichExecutionProgressManager:
             self._start_time = time.time()
         if new_rows is not None:
             self._current_rows += new_rows
-        c, t, rs, cs = _get_progress_metrics(
+        completed, total, rate, count_str = _get_progress_metrics(
             self._start_time, self._current_rows, total_rows
         )
         self._total.update(
             self._total_task_id,
-            completed=c,
-            total=t,
-            rate=rs,
-            count_str=cs,
+            completed=completed,
+            total=total,
+            rate=rate,
+            count_str=count_str,
         )
 
     def update_resource_status(self, resource_manager: ResourceManager):
@@ -348,13 +354,15 @@ class RichExecutionProgressManager:
         # progress
         current_rows = op_state.output_row_count
         total_rows = op_state.op.num_output_rows_total()
-        c, t, rs, cs = _get_progress_metrics(self._start_time, current_rows, total_rows)
+        completed, total, rate, count_str = _get_progress_metrics(
+            self._start_time, current_rows, total_rows
+        )
         progress.update(
             tid,
-            completed=c,
-            total=t,
-            rate=rs,
-            count_str=cs,
+            completed=completed,
+            total=total,
+            rate=rate,
+            count_str=count_str,
         )
         # stats
         stats_str = op_state.op_display_metrics.display_str()
