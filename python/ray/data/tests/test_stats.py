@@ -2005,9 +2005,7 @@ def test_op_metrics_logging():
         # InputDataBuffer has no inqueue, manually set to 0
         map_str = replace(
             "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE.replace(
-            "'num_external_outqueue_blocks': Z", "'num_external_outqueue_blocks': N"
+            "Operator Metrics:\n" + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
         )
         # Check that these strings are logged exactly once.
         assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
