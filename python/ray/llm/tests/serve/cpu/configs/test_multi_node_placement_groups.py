@@ -1,5 +1,6 @@
+from typing import Any, Dict
+
 import pytest
-from typing import Dict, Any
 
 import ray
 from ray import serve
