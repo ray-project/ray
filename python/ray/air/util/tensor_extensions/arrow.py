@@ -762,7 +762,7 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         return pa_type_.wrap_array(storage)
 
-    def _to_numpy(self, zero_copy_only: bool):
+    def to_numpy(self, zero_copy_only: bool = True):
         """
         Convert the entire array of tensors into a single ndarray.
 
@@ -776,7 +776,6 @@ class ArrowTensorArray(pa.ExtensionArray):
         Returns:
             A single ndarray representing the entire array of tensors.
         """
-        # TODO(Clark): Support strides?
 
         # Buffers layout: [None, offset_buffer, None, data_buffer]
         buffers = self.buffers()
@@ -841,22 +840,6 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
-    def to_numpy(self, zero_copy_only: bool = True):
-        """
-        Convert the entire array of tensors into a single ndarray.
-
-        Args:
-            zero_copy_only: If True, an exception will be raised if the
-                conversion to a NumPy array would require copying the
-                underlying data (e.g. in presence of nulls, or for
-                non-primitive types). This argument is currently ignored, so
-                zero-copy isn't enforced even if this argument is true.
-
-        Returns:
-            A single ndarray representing the entire array of tensors.
-        """
-        return self._to_numpy(zero_copy_only=zero_copy_only)
-
     def to_var_shaped_tensor_array(
         self,
         ndim: int,
@@ -881,6 +864,7 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         # Pad target shape with singleton axis to match target number of
         # dimensions
+        # TODO avoid padding
         target_shape = _pad_shape_with_singleton_axes(shape, ndim)
         # Construct shapes array
         shape_array = pa.nulls(
@@ -1175,10 +1159,9 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         type_ = ArrowVariableShapedTensorType(pa_scalar_type, ndim)
         return type_.wrap_array(storage)
 
-    def _to_numpy(self, zero_copy_only: bool = False):
+    def to_numpy(self, zero_copy_only: bool = True):
         """
-        Helper for getting either an element of the array of tensors as an ndarray, or
-        the entire array of tensors as a single ndarray.
+        Convert the entire array of tensors into a single ndarray.
 
         Args:
             zero_copy_only: If True, an exception will be raised if the conversion to a
@@ -1187,11 +1170,8 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                 ignored, so zero-copy isn't enforced even if this argument is true.
 
         Returns:
-            The corresponding tensor element as an ndarray if an index was given, or
-            the entire array of tensors as an ndarray otherwise.
+            A single ndarray representing the entire array of tensors.
         """
-        # TODO(Clark): Enforce zero_copy_only.
-        # TODO(Clark): Support strides?
 
         data_array = self.storage.field("data")
         shapes_array = self.storage.field("shape")
@@ -1206,21 +1186,6 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
             for shape, offset in zip(shapes, offsets)
         ])
-
-    def to_numpy(self, zero_copy_only: bool = True):
-        """
-        Convert the entire array of tensors into a single ndarray.
-
-        Args:
-            zero_copy_only: If True, an exception will be raised if the conversion to a
-                NumPy array would require copying the underlying data (e.g. in presence
-                of nulls, or for non-primitive types). This argument is currently
-                ignored, so zero-copy isn't enforced even if this argument is true.
-
-        Returns:
-            A single ndarray representing the entire array of tensors.
-        """
-        return self._to_numpy(zero_copy_only=zero_copy_only)
 
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
         if ndim == self.type.ndim:
