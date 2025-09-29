@@ -2723,6 +2723,24 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
+void NodeManager::HandleGetDriverAndWorkerPids(
+    rpc::GetDriverAndWorkerPidsRequest request,
+    rpc::GetDriverAndWorkerPidsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+  for (const auto &driver :
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
+    all_workers.push_back(driver);
+  }
+  for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      continue;
+    }
+    reply->add_pids(worker->GetProcess()->GetId());
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::Stop() {
   // This never fails.
   RAY_CHECK_OK(store_client_.Disconnect());

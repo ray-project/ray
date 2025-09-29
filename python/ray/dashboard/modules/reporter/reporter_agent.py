@@ -25,7 +25,7 @@ import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import parse_address
+from ray._common.network_utils import build_address, parse_address
 from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
@@ -34,6 +34,7 @@ from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
+    GLOBAL_GRPC_OPTIONS,
     RAY_ENABLE_OPEN_TELEMETRY,
     env_integer,
 )
@@ -42,7 +43,12 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
 )
 from ray._private.utils import get_system_memory
 from ray._raylet import GCS_PID_KEY, WorkerID
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.core.generated import (
+    node_manager_pb2,
+    node_manager_pb2_grpc,
+    reporter_pb2,
+    reporter_pb2_grpc,
+)
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
@@ -50,6 +56,7 @@ from ray.dashboard.consts import (
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
+    NODE_MANAGER_RPC_TIMEOUT_SECONDS,
     NODE_TAG_KEYS,
     TPU_TAG_KEYS,
 )
@@ -483,6 +490,10 @@ class ReporterAgent(
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
 
+        self._node_manager_address = build_address(
+            self._ip, self._dashboard_agent.node_manager_port
+        )
+
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
@@ -885,6 +896,20 @@ class ReporterAgent(
                 stats.write_count,
             )
 
+    def _get_worker_pids_from_raylet(self):
+        channel = ray._private.utils.init_grpc_channel(
+            self._node_manager_address, GLOBAL_GRPC_OPTIONS, asynchronous=True
+        )
+        timeout = NODE_MANAGER_RPC_TIMEOUT_SECONDS
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        try:
+            reply = await stub.GetDriverAndWorkers(
+                node_manager_pb2.GetDriverAndWorkersRequest(), timeout=timeout
+            )
+            return reply.pids
+        except Exception:
+            return None
+
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
         # This method is not necessary, but we have it for mock testing.
@@ -894,6 +919,18 @@ class ReporterAgent(
         return (proc.pid, proc.create_time())
 
     def _get_worker_processes(self):
+        pids = self._get_worker_pids_from_raylet()
+        if pids is not None:
+            workers = {}
+            for pid in pids:
+                try:
+                    proc = psutil.Process(pid)
+                    workers[self._generate_worker_key(proc)] = proc
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            return workers
+
+        logger.debug("fallback to get worker processes from raylet children")
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
             return []
