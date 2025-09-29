@@ -1582,8 +1582,6 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
-    *,
-    pipe_stdin: Optional[bool] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1660,8 +1658,6 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
-        pipe_stdin: If True, pass a pipe to raylet's stdin so it can detect
-            parent-death via EOF.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1963,7 +1959,6 @@ def start_raylet(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
-        pipe_stdin=(pipe_stdin is True),
         env_updates=env_updates,
     )
     return process_info

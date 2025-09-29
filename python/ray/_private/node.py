@@ -63,7 +63,6 @@ class Node:
         connect_only: bool = False,
         default_worker: bool = False,
         ray_init_cluster: bool = False,
-        pipe_stdin_for_raylet: Optional[bool] = None,
     ):
         """Start a node.
 
@@ -80,7 +79,6 @@ class Node:
                 new processes.
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
-            pipe_stdin_for_raylet: Whether to pipe stdin to the raylet process.
         """
         if shutdown_at_exit:
             if connect_only:
@@ -90,7 +88,6 @@ class Node:
             self._register_shutdown_hooks()
         self._default_worker = default_worker
         self.head = head
-        self.pipe_stdin_for_raylet = pipe_stdin_for_raylet
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
         )
@@ -1241,7 +1238,6 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
             resource_isolation_config=self.resource_isolation_config,
-            pipe_stdin=self.pipe_stdin_for_raylet,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

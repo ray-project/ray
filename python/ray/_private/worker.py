@@ -1914,8 +1914,6 @@ def init(
             shutdown_at_exit=False,
             spawn_reaper=True,
             ray_init_cluster=True,
-            # Safe context: local ray.init() owns the raylet; couple lifetimes via stdin.
-            pipe_stdin_for_raylet=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.
