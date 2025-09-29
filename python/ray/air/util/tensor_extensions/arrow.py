@@ -724,13 +724,14 @@ class ArrowTensorArray(pa.ExtensionArray):
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
-        # Data buffer.
+        # Shape up data buffer
         if pa.types.is_boolean(scalar_dtype):
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
             # bit-pack the booleans before handing the buffer off to Arrow.
             # NOTE: Arrow expects LSB bit-packed ordering.
             # NOTE: This creates a copy.
             arr = np.packbits(arr, bitorder="little")
+
         data_buffer = pa.py_buffer(arr)
         data_array = pa.Array.from_buffers(
             scalar_dtype, total_num_items, [None, data_buffer]
@@ -743,12 +744,14 @@ class ArrowTensorArray(pa.ExtensionArray):
         else:
             pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
-        # Create Offset buffer
-        offset_buffer = pa.py_buffer(
-            pa_type_.OFFSET_DTYPE(
-                [i * num_items_per_element for i in range(outer_len + 1)]
-            )
+        # Create offsets buffer
+        offsets = np.arange(
+           0,
+           (outer_len + 1) * num_items_per_element,
+           num_items_per_element,
+           dtype=pa_type_.OFFSET_DTYPE
         )
+        offset_buffer = pa.py_buffer(offsets)
 
         storage = pa.Array.from_buffers(
             pa_type_.storage_type,
