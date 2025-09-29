@@ -156,7 +156,6 @@ def test_hanging_detector_detects_issues(should_trigger, test_description):
         )
 
         if should_trigger:
-            # Just log the result rather than asserting to avoid flakiness
             assert hanging_detected, test_description
         else:
             assert not hanging_detected, test_description
