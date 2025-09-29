@@ -23,7 +23,7 @@ def _torch_run_launch(
     absolute_path: str,
     n_nodes: int = 4,
     n_processes_per_node: int = 4,
-    master_port: str = 29500,
+    master_port: int = 29500,
 ):
     cmd_node1 = [
         "torchrun",
