@@ -8,14 +8,14 @@ llm_config = LLMConfig(
         # Or unsloth/Meta-Llama-3.1-70B-Instruct for an ungated model
         model_source="meta-llama/Llama-3.1-70B-Instruct",
     ),
-    accelerator_type="A100-40G",
+    accelerator_type="L40S",  # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
             max_replicas=4,
         )
     ),
-    ### If your model is not gated, you can skip `hf_token`
+    ### If your model is not gated, you can skip `HF_TOKEN`
     # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3.
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),

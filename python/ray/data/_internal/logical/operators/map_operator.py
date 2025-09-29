@@ -33,27 +33,38 @@ class AbstractMap(AbstractOneToOne):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         compute: Optional[ComputeStrategy] = None,
     ):
-        """
+        """Initialize an ``AbstractMap`` logical operator that will later
+        be converted into a physical ``MapOperator``.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
-            min_rows_per_bundled_input: Min number of rows a single bundle of blocks
-                passed on to the task must possess.
+            input_op: The operator preceding this operator in the plan DAG. The
+                outputs of ``input_op`` will be the inputs to this operator.
+            num_outputs: Number of outputs for this operator.
+            min_rows_per_bundled_input: Minimum number of rows a single bundle of
+                blocks passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
-            ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict
-                always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+            ray_remote_args_fn: A function that returns a dictionary of remote
+                args passed to each map worker. The purpose of this argument is
+                to generate dynamic arguments for each actor/task, and it will
+                be called each time prior to initializing the worker. Args
+                returned from this dict always override the args in
+                ``ray_remote_args``. Note: this is an advanced, experimental
+                feature.
+            compute: The compute strategy, either ``TaskPoolStrategy`` (default)
+                to use Ray tasks, or ``ActorPoolStrategy`` to use an
+                autoscaling actor pool.
         """
         super().__init__(name, input_op, num_outputs)
         self._min_rows_per_bundled_input = min_rows_per_bundled_input
         self._ray_remote_args = ray_remote_args or {}
         self._ray_remote_args_fn = ray_remote_args_fn
         self._compute = compute or TaskPoolStrategy()
+        self._per_block_limit = None
+
+    def set_per_block_limit(self, per_block_limit: int):
+        self._per_block_limit = per_block_limit
 
 
 class AbstractUDFMap(AbstractMap):
@@ -360,37 +371,3 @@ class StreamingRepartition(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         return False
-
-
-class Download(AbstractMap):
-    """Logical operator for download operation."""
-
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        uri_column_name: str,
-        output_bytes_column_name: str,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        from ray.data._internal.compute import ActorPoolStrategy
-
-        # Download operation uses CallableClass (PartitionActor) so needs ActorPoolStrategy
-        super().__init__(
-            "Download",
-            input_op,
-            ray_remote_args=ray_remote_args,
-            compute=ActorPoolStrategy(size=1),
-        )
-        self._uri_column_name = uri_column_name
-        self._output_bytes_column_name = output_bytes_column_name
-
-    def can_modify_num_rows(self) -> bool:
-        return False
-
-    @property
-    def uri_column_name(self) -> str:
-        return self._uri_column_name
-
-    @property
-    def output_bytes_column_name(self) -> str:
-        return self._output_bytes_column_name

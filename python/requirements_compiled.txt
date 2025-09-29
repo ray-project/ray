@@ -34,9 +34,9 @@ aimrecords==0.0.7
     # via aim
 aimrocks==0.5.2
     # via aim
-aioboto3==11.2.0
+aioboto3==12.1.0
     # via -r python/requirements/ml/data-requirements.txt
-aiobotocore==2.5.0
+aiobotocore==2.8.0
     # via
     #   aioboto3
     #   s3fs
@@ -231,7 +231,7 @@ boltons==21.0.0
     #   semgrep
 boto==2.49.0
     # via gcs-oauth2-boto-plugin
-boto3==1.26.76
+boto3==1.29.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -241,7 +241,7 @@ boto3==1.26.76
     #   moto
     #   smart-open
     #   snowflake-connector-python
-botocore==1.29.76
+botocore==1.32.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
@@ -573,7 +573,7 @@ frozenlist==1.4.1
     #   aiosignal
 fs==2.4.16
     # via triad
-fsspec==2023.5.0
+fsspec==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
@@ -703,7 +703,7 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.66.2 ; python_version >= "3.10"
+grpcio==1.74.0 ; python_version >= "3.10"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1965,9 +1965,9 @@ ruamel-yaml==0.17.40
     #   yahp
 ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
-s3fs==2023.5.0
+s3fs==2023.12.1
     # via -r python/requirements/ml/core-requirements.txt
-s3transfer==0.6.2
+s3transfer==0.8.0
     # via boto3
 safetensors==0.4.3
     # via

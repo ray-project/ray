@@ -30,6 +30,8 @@ namespace ray {
 
 namespace raylet {
 
+using std::literals::operator""sv;
+
 /// Used for unit-testing the ClusterLeaseManager, which requests dependencies
 /// for queued leases.
 class LeaseDependencyManagerInterface {
@@ -55,8 +57,10 @@ class LeaseDependencyManagerInterface {
 class LeaseDependencyManager : public LeaseDependencyManagerInterface {
  public:
   /// Create a lease dependency manager.
-  explicit LeaseDependencyManager(ObjectManagerInterface &object_manager)
-      : object_manager_(object_manager) {
+  explicit LeaseDependencyManager(
+      ObjectManagerInterface &object_manager,
+      ray::observability::MetricInterface &task_by_state_counter)
+      : object_manager_(object_manager), task_by_state_counter_(task_by_state_counter) {
     waiting_leases_counter_.SetOnChangeCallback(
         [this](std::pair<std::string, bool> key) mutable {
           int64_t num_total = waiting_leases_counter_.Get(key);
@@ -66,25 +70,26 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
           int64_t num_inactive = std::min(
               num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
           // Offset the metric values recorded from the owner process.
-          ray::stats::STATS_tasks.Record(
+          task_by_state_counter_.Record(
               -num_total,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          ray::stats::STATS_tasks.Record(
+              {{"State"sv,
+                rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
+          task_by_state_counter_.Record(
               num_total - num_inactive,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          ray::stats::STATS_tasks.Record(
+              {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
+          task_by_state_counter_.Record(
               num_inactive,
-              {{"State",
+              {{"State"sv,
                 rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
         });
   }
 
@@ -316,6 +321,14 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// Counts the number of active lease dependency fetches by lease name. The counter
   /// total will be less than or equal to the size of queued_lease_requests_.
   CounterMap<TaskMetricsKey> waiting_leases_counter_;
+
+  // Metric to track the number of tasks by state.
+  // Expected tags:
+  // - State: the task state, as described by rpc::TaskState proto in common.proto
+  // - Name: the name of the function called
+  // - IsRetry: whether the task is a retry
+  // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
+  ray::observability::MetricInterface &task_by_state_counter_;
 
   friend class LeaseDependencyManagerTest;
 };

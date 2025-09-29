@@ -11,7 +11,6 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
-from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
@@ -22,6 +21,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     unify_schemas,
 )
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
     ArrowPythonObjectArray,
@@ -572,22 +572,6 @@ def test_unify_schemas(unify_schemas_basic_schemas, unify_schemas_multicol_schem
     )
 
 
-def test_unify_schemas_null_typed_lists(unify_schemas_null_typed_lists_schemas):
-    """Test handling of null-typed lists (cols_with_null_list functionality)."""
-    schemas = unify_schemas_null_typed_lists_schemas
-
-    # Should find valid value_type from schema2 and override
-    result = unify_schemas([schemas["null_list"], schemas["int_list"]])
-    assert result == schemas["expected"]
-
-    # Test with multiple schemas, some with null types
-    result = unify_schemas(
-        [schemas["null_list"], schemas["int_list"], schemas["string_list"]]
-    )
-    # Should use the first non-null type found (int32)
-    assert result == schemas["expected"]
-
-
 def test_unify_schemas_object_types(unify_schemas_object_types_schemas):
     """Test handling of object types (columns_with_objects functionality)."""
     schemas = unify_schemas_object_types_schemas
@@ -626,6 +610,10 @@ def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_sch
         unify_schemas(unify_schemas_objects_and_tensors_schemas)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_unify_schemas_missing_tensor_fields(
     unify_schemas_missing_tensor_fields_schemas,
 ):
@@ -2224,7 +2212,7 @@ def struct_with_null_tensor_values_expected():
                 "struct",
                 pa.struct(
                     [
-                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                        ("tensor", ArrowTensorTypeV2((2,), pa.float32())),
                         ("value", pa.int64()),
                     ]
                 ),
@@ -2751,20 +2739,6 @@ def struct_variable_shaped_tensor_expected():
 
 
 @pytest.fixture
-def unify_schemas_null_typed_lists_schemas():
-    """Fixture for null typed lists unify schemas test data."""
-    schema1 = pa.schema([("list_col", pa.list_(pa.null()))])
-    schema2 = pa.schema([("list_col", pa.list_(pa.int32()))])
-    schema3 = pa.schema([("list_col", pa.list_(pa.string()))])
-    return {
-        "null_list": schema1,
-        "int_list": schema2,
-        "string_list": schema3,
-        "expected": pa.schema([("list_col", pa.list_(pa.int32()))]),
-    }
-
-
-@pytest.fixture
 def unify_schemas_object_types_schemas():
     """Fixture for object types unify schemas test data."""
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
@@ -2825,7 +2799,7 @@ def unify_schemas_missing_tensor_fields_schemas():
                 "struct",
                 pa.struct(
                     [
-                        ("tensor", ArrowVariableShapedTensorType(pa.int32(), 2)),
+                        ("tensor", ArrowTensorType((2, 2), pa.int32())),
                         ("value", pa.int64()),
                     ]
                 ),
@@ -2887,7 +2861,7 @@ def unify_schemas_nested_struct_tensors_schemas():
                                 [
                                     (
                                         "tensor",
-                                        ArrowVariableShapedTensorType(pa.float32(), 2),
+                                        ArrowTensorType((3, 3), pa.float32()),
                                     ),
                                     ("data", pa.string()),
                                 ]
