@@ -2221,7 +2221,7 @@
 # Core Nightly Tests
 ########################
 
-- name: core_shuffle_100gb
+- name: shuffle_100gb
   python: "3.10"
   group: core-multi-test
   working_dir: nightly_tests
