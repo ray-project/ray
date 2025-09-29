@@ -143,7 +143,7 @@ def test_hanging_detector_detects_issues(should_trigger, test_description):
             if x["id"] == 0 and should_trigger:
                 # Issue detection is based on the mean + stdev. One of the tasks must take
                 # awhile, so doing it just for one of the rows.
-                time.sleep(0.5)
+                time.sleep(1)
             return x
 
         ray.data.range(10, override_num_blocks=10).map(sleep_task).materialize()
