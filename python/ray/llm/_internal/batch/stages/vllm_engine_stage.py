@@ -1,12 +1,12 @@
 """The stage that runs vLLM engine."""
 
 import asyncio
-from collections import Counter
 import dataclasses
 import logging
 import math
 import time
 import uuid
+from collections import Counter
 from enum import Enum
 from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
@@ -701,15 +701,20 @@ class vLLMEngineStage(StatefulStage):
             else:
                 bundles = placement_group_config["bundles"]
                 resource_counter = Counter()
-                for bundle in placement_group_config["bundles"]:
+                for bundle in bundles:
                     resource_counter.update(bundle)
 
                 total_cpus = resource_counter.pop("CPU", 0)
                 total_gpus = resource_counter.pop("GPU", 0)
 
-                # CPU and GPU must not present in ray_remote_args["resources"]
-                ray_remote_args["num_cpus"] = total_cpus
-                ray_remote_args["num_gpus"] = total_gpus
+                # Ray Data expects CPU/GPU to be specified via num_cpus/num_gpus,
+                # not inside the resources dict.
+                if total_cpus:
+                    ray_remote_args["num_cpus"] = total_cpus
+                if total_gpus:
+                    ray_remote_args["num_gpus"] = total_gpus
+
+                # Keep only non-CPU/GPU custom resources, if any.
                 if resource_counter:
                     ray_remote_args["resources"] = dict(resource_counter)
 

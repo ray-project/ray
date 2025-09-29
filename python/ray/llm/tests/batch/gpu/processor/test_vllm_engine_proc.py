@@ -87,7 +87,8 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
         "zero_copy_batch": True,
         "max_concurrency": 8,
         "accelerator_type": gpu_type,
-        "resources": {"CPU": 1, "GPU": 1},
+        "num_cpus": 1,
+        "num_gpus": 1,
     }
 
 

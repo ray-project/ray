@@ -3,9 +3,8 @@ This module defines a dataset framework for sampling benchmark requests.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from datasets import load_dataset, load_from_disk
 
@@ -45,6 +44,12 @@ class BenchmarkDataset(ABC):
     def sample(self, num_requests: int) -> List[Dict]:
         """
         Sample prompts from the loaded dataset.
+
+        Args:
+            num_requests: The number of prompts to sample from the dataset.
+
+        Returns:
+            A list of sampled request dictionaries.
 
         Raises:
             NotImplementedError: If the method is not implemented in subclasses.

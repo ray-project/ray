@@ -1,6 +1,6 @@
 """The vLLM engine processor."""
 
-from typing import Any, Dict, Literal, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import transformers
 from pydantic import ConfigDict, Field, root_validator

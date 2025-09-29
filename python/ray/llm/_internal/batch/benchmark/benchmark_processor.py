@@ -7,19 +7,20 @@ python ray.llm._internal.batch.benchmark.benchmark_processor --mode vllm_engine 
     --tensor-parallel-size 2 --pipeline-parallel-size 2 --distributed-executor-backend ray
 """
 
+import argparse
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from time import perf_counter, sleep
 
-import argparse
-import sys
+from dataset import ShareGPTDataset
 
 import ray
 from ray import data, serve
 from ray.data.llm import (
-    vLLMEngineProcessorConfig,
     ServeDeploymentProcessorConfig,
     build_llm_processor,
+    vLLMEngineProcessorConfig,
 )
 from ray.serve.llm import (
     LLMConfig,
@@ -27,8 +28,6 @@ from ray.serve.llm import (
     build_llm_deployment,
 )
 from ray.serve.llm.openai_api_models import CompletionRequest
-
-from dataset import ShareGPTDataset
 
 
 class Mode(Enum):
