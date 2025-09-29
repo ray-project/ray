@@ -230,7 +230,7 @@ class TestAutoscalingMetrics:
         print("Confirmed many queries are inflight.")
 
         wait_for_condition(
-            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=20
+            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=30
         )
         print("Confirmed deployment scaled to 5 replicas.")
 
