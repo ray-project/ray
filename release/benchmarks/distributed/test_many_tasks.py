@@ -1,5 +1,6 @@
 import click
 import ray
+import ray._common.test_utils
 import ray._private.test_utils as test_utils
 import time
 import tqdm
@@ -69,7 +70,7 @@ def no_resource_leaks():
 def test(num_tasks):
     addr = ray.init(address="auto")
 
-    test_utils.wait_for_condition(no_resource_leaks)
+    ray._common.test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
     dashboard_test = DashboardTestAtScale(addr)
 
@@ -93,7 +94,7 @@ def test(num_tasks):
 
     del api_caller
     del monitor_actor
-    test_utils.wait_for_condition(no_resource_leaks)
+    ray._common.test_utils.wait_for_condition(no_resource_leaks)
 
     try:
         summarize_worker_startup_time()

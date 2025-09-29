@@ -16,6 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <string>
+
 #include "ray/common/ray_syncer/common.h"
 #include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
 #include "ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h"

@@ -208,7 +208,9 @@ class IcebergDatasource(Datasource):
 
         return chunks
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         from pyiceberg.io import pyarrow as pyi_pa_io
         from pyiceberg.manifest import DataFileContent
 
@@ -276,7 +278,6 @@ class IcebergDatasource(Datasource):
                 num_rows=sum(task.file.record_count for task in chunk_tasks)
                 - position_delete_count,
                 size_bytes=sum(task.length for task in chunk_tasks),
-                schema=pya_schema,
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
             )
@@ -284,6 +285,8 @@ class IcebergDatasource(Datasource):
                 ReadTask(
                     read_fn=lambda tasks=chunk_tasks: get_read_task(tasks),
                     metadata=metadata,
+                    schema=pya_schema,
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
 

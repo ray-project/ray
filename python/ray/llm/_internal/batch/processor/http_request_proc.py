@@ -5,15 +5,14 @@ from typing import Any, Dict, Optional
 from pydantic import Field
 
 from ray.data.block import UserDefinedFunction
-
-from ray.llm._internal.batch.processor.base import (
-    Processor,
-    ProcessorConfig,
-    ProcessorBuilder,
-)
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     get_or_create_telemetry_agent,
+)
+from ray.llm._internal.batch.processor.base import (
+    Processor,
+    ProcessorBuilder,
+    ProcessorConfig,
 )
 from ray.llm._internal.batch.stages import HttpRequestStage
 

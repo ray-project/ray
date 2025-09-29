@@ -7,11 +7,11 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.utils import (
+from ray._common.utils import (
     try_to_create_directory,
 )
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ class NsightPlugin(RuntimeEnvPlugin):
         nsight_config_copy["o"] = str(Path(self._nsight_dir) / "empty")
         nsight_cmd = parse_nsight_config(nsight_config_copy)
         try:
-            nsight_cmd = nsight_cmd + ["python", "-c", '""']
+            nsight_cmd = nsight_cmd + [sys.executable, "-c", '""']
             process = await asyncio.create_subprocess_exec(
                 *nsight_cmd,
                 stdout=subprocess.PIPE,

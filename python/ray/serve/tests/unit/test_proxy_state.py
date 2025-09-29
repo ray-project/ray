@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
@@ -683,6 +683,7 @@ def test_proxy_state_manager_get_targets(all_nodes):
     assert targets[0].ip == "mock_node_ip"
     assert targets[0].port == 8000
     assert targets[0].instance_id == "mock_instance_id"
+    assert targets[0].name == "alice"
 
     targets = manager.get_targets(RequestProtocol.GRPC)
     assert len(targets) == 0

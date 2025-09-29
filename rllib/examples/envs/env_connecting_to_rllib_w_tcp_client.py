@@ -1,6 +1,6 @@
 """Example of running against a TCP-connected external env performing its own inference.
 
-The example uses a custom EnvRunner (TcpClientInferenceEnvRunner) to allow
+The example uses a custom EnvRunner (EnvRunnerServerForExternalInference) to allow
 connections from one or more TCP clients to RLlib's EnvRunner actors, which act as
 RL servers.
 In this example, action inference for stepping the env is performed on the client's
@@ -21,7 +21,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --port 5555
+`python [script file name].py --port 5555
 
 Use the `--port` option to change the default port (5555) to some other value.
 Make sure that you do the same on the client side.
@@ -60,16 +60,17 @@ From the dummy client (thread), you should see at the end:
 ConnectionError: Error receiving message from peer on socket ...
 ```
 """
-from functools import partial
 import threading
 
 import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.env.tcp_client_inference_env_runner import (
-    _dummy_client,
-    TcpClientInferenceEnvRunner,
+from ray.rllib.env.external.env_runner_server_for_external_inference import (
+    EnvRunnerServerForExternalInference,
+)
+from ray.rllib.examples.envs.classes.utils.dummy_external_client import (
+    _dummy_external_client,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -81,7 +82,6 @@ parser = add_rllib_example_script_args(
     default_reward=450.0, default_iters=200, default_timesteps=2000000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_env_runners=1,
 )
 parser.add_argument(
@@ -91,34 +91,44 @@ parser.add_argument(
     help="The port for RLlib's EnvRunner to listen to for incoming UE5 connections. "
     "You need to specify the same port inside your UE5 `RLlibClient` plugin.",
 )
+parser.add_argument(
+    "--use-dummy-client",
+    action="store_true",
+    help="If set, the script runs with its own external client acting as a "
+    "simulator. Otherwise connect on your own from your C++ application.",
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # Start the dummy CartPole client in a thread (and do its thing in parallel).
-    client_thread = threading.Thread(
-        target=partial(
-            _dummy_client,
-            port=args.port
-            + (args.num_env_runners if args.num_env_runners is not None else 1),
-        ),
-    )
-    client_thread.start()
+    # Start the dummy CartPole "simulation".
+    if args.use_dummy_client:
+        threading.Thread(
+            target=_dummy_external_client,
+            args=(
+                # Connect to the first remote EnvRunner, of - if there is no remote one -
+                # to the local EnvRunner.
+                args.port
+                + (args.num_env_runners if args.num_env_runners is not None else 1),
+            ),
+        ).start()
 
     # Define the RLlib (server) config.
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment(
-            observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
+            observation_space=gym.spaces.Box(
+                float("-inf"), float("-inf"), (4,), np.float32
+            ),
             action_space=gym.spaces.Discrete(2),
             # EnvRunners listen on `port` + their worker index.
             env_config={"port": args.port},
         )
         .env_runners(
             # Point RLlib to the custom EnvRunner to be used here.
-            env_runner_cls=TcpClientInferenceEnvRunner,
+            env_runner_cls=EnvRunnerServerForExternalInference,
         )
         .training(
             num_epochs=10,

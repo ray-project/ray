@@ -2,7 +2,7 @@ Profiling
 =========
 
 Ray Compiled Graph provides both PyTorch-based and Nsight-based profiling functionalities to better understand the performance
-of individual tasks, systems overhead, and performance bottlenecks. You can pick your favorite profiler based on your preference.
+of individual tasks, system overhead, and performance bottlenecks. You can pick your favorite profiler based on your preference.
 
 PyTorch profiler
 ----------------

@@ -12,7 +12,7 @@ This feature requires KubeRay version 1.2.2 or newer, and it's in alpha testing.
 
 :::
 
-## Step 1: Create a Kubernetes cluster with KinD
+## Step 1: Create a Kubernetes cluster with Kind
 Run the following command in a terminal:
 
 ```shell
@@ -29,7 +29,7 @@ See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn install
 When installing KubeRay operator using Helm, pass the `--set batchScheduler.name=yunikorn` flag at the command line:
 
 ```shell
-helm install kuberay-operator kuberay/kuberay-operator --version 1.3.0 --set batchScheduler.name=yunikorn
+helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2 --set batchScheduler.name=yunikorn
 ```
 
 ## Step 4: Use Apache YuniKorn for gang scheduling

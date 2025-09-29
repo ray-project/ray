@@ -1,13 +1,14 @@
 import os
 import re
 import signal
-import subprocess
 import sys
+import tempfile
 import time
 
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -21,7 +22,7 @@ def test_dedup_logs():
 import time
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 signal = SignalActor.remote()
 
@@ -191,28 +192,33 @@ def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
     ],
     indirect=True,
 )
-def test_autoscaler_infeasible(ray_start_cluster_head_with_env_vars):
+def test_autoscaler_warn_infeasible(ray_start_cluster_head_with_env_vars):
     script = """
 import ray
-import time
 
-ray.init()
-
-@ray.remote(num_gpus=1)
-def foo():
+@ray.remote(resources={{"does_not_exist": 1}})
+class A:
     pass
 
-x = foo.remote()
-time.sleep(15)
-    """
+ray.init(address="{address}")
 
-    out_str, err_str = run_string_as_driver_stdout_stderr(script)
-    print(out_str, err_str)
-    assert "Tip:" in out_str, (out_str, err_str)
-    assert "No available node types can fulfill" in out_str, (
-        out_str,
-        err_str,
+# Will hang forever due to infeasible resource.
+ray.get(A.remote().__ray_ready__.remote())
+    """.format(
+        address=ray_start_cluster_head_with_env_vars.address
     )
+
+    proc = run_string_as_driver_nonblocking(script, env={"PYTHONUNBUFFERED": "1"})
+
+    def _check_for_infeasible_msg():
+        l = proc.stdout.readline().decode("ascii")
+        if len(l) > 0:
+            print(l)
+        return "(autoscaler" in l and "No available node types can fulfill" in l
+
+    wait_for_condition(_check_for_infeasible_msg, timeout=30)
+    os.kill(proc.pid, signal.SIGTERM)
+    proc.wait()
 
 
 @pytest.mark.parametrize(
@@ -222,12 +228,14 @@ time.sleep(15)
             "num_cpus": 1,
             "env_vars": {
                 "RAY_enable_autoscaler_v2": "0",
+                "RAY_debug_dump_period_milliseconds": "1000",
             },
         },
         {
             "num_cpus": 1,
             "env_vars": {
                 "RAY_enable_autoscaler_v2": "1",
+                "RAY_debug_dump_period_milliseconds": "1000",
             },
         },
     ],
@@ -238,163 +246,47 @@ def test_autoscaler_warn_deadlock(ray_start_cluster_head_with_env_vars):
 import ray
 import time
 
-ray.init()
-
 @ray.remote(num_cpus=1)
 class A:
     pass
 
+ray.init(address="{address}")
+
+# Only one of a or b can be scheduled, so the other will hang.
 a = A.remote()
 b = A.remote()
-time.sleep(25)
-    """
+ray.get([a.__ray_ready__.remote(), b.__ray_ready__.remote()])
+    """.format(
+        address=ray_start_cluster_head_with_env_vars.address
+    )
 
-    out_str, err_str = run_string_as_driver_stdout_stderr(script)
-
-    print(out_str, err_str)
-    assert "Tip:" in out_str, (out_str, err_str)
+    proc = run_string_as_driver_nonblocking(script, env={"PYTHONUNBUFFERED": "1"})
 
     if is_autoscaler_v2():
-        assert "No available node types can fulfill resource requests" in out_str, (
-            out_str,
-            err_str,
-        )
+        infeasible_msg = "No available node types can fulfill resource requests"
     else:
-        assert "Warning: The following resource request cannot" in out_str, (
-            out_str,
-            err_str,
-        )
+        infeasible_msg = "Warning: The following resource request cannot"
+
+    def _check_for_deadlock_msg():
+        l = proc.stdout.readline().decode("ascii")
+        if len(l) > 0:
+            print(l)
+        return "(autoscaler" in l and infeasible_msg in l
+
+    wait_for_condition(_check_for_deadlock_msg, timeout=30)
 
 
-# TODO(rickyx): Remove this after migration
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "num_cpus": 1,
-            "resources": {"node:x": 1},
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "0",
-            },
-        },
-    ],
-    indirect=True,
-)
-def test_autoscaler_no_spam(ray_start_cluster_head_with_env_vars):
-    script = """
-import ray
-import time
-
-# Check that there are no false positives with custom resources.
-ray.init()
-
-@ray.remote(num_cpus=1, resources={"node:x": 1})
-def f():
-    time.sleep(1)
-    print("task done")
-
-ray.get([f.remote() for _ in range(15)])
-    """
-
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
-    print(out_str, err_str)
-    assert "Tip:" not in out_str
-    assert "Tip:" not in err_str
-
-
-def test_autoscaler_prefix():
-    script = """
-import ray
-import time
-
-ray.init(num_cpus=1)
-
-@ray.remote(num_cpus=1)
-class A:
-    pass
-
-a = A.remote()
-b = A.remote()
-time.sleep(25)
-    """
-
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
-    print(out_str, err_str)
-    assert "(autoscaler" in out_str
-
-
-# TODO(rickyx): Remove this after migration
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "1",
-            },
-        }
-    ],
-    indirect=True,
-)
-def test_autoscaler_v2_stream_events(ray_start_cluster_head_with_env_vars):
-    """
-    Test in autoscaler v2, autoscaler events are streamed directly from
-    events file
-    """
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaler_v2_stream_events_with_filter(shutdown_only):
+    """Test that autoscaler v2 events are streamed to the driver."""
+    address = ray.init(_system_config={"enable_autoscaler_v2": True})["address"]
     script = """
 import ray
 import time
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray._private.event.event_logger import get_event_logger
 
-ray.init("auto")
-
-# Get event logger to write autoscaler events.
-log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
-event_logger = get_event_logger(RayEvent.SourceType.AUTOSCALER, log_dir)
-event_logger.info("Test autoscaler event")
-
-# Block and sleep
-time.sleep(3)
-    """
-    out_str, err_str = run_string_as_driver_stdout_stderr(script)
-    print(out_str)
-    print(err_str)
-    assert "Test autoscaler event" in out_str, (out_str, err_str)
-
-
-@pytest.mark.parametrize(
-    "event_level,expected_msg,unexpected_msg",
-    [
-        ("TRACE", "TRACE,DEBUG,INFO,WARNING,ERROR,FATAL", ""),
-        ("DEBUG", "DEBUG,INFO,WARNING,ERROR,FATAL", "TRACE"),
-        ("INFO", "INFO,WARNING,ERROR,FATAL", "TRACE,DEBUG"),
-        ("WARNING", "WARNING,ERROR,FATAL", "TRACE,DEBUG,INFO"),
-        ("ERROR", "ERROR,FATAL", "TRACE,DEBUG,INFO,WARNING"),
-        ("FATAL", "FATAL", "TRACE,DEBUG,INFO,WARNING,ERROR"),
-    ],
-)
-def test_autoscaler_v2_stream_events_filter_level(
-    shutdown_only, event_level, expected_msg, unexpected_msg, monkeypatch
-):
-    """
-    Test in autoscaler v2, autoscaler events are streamed directly from
-    events file
-    """
-
-    script = """
-import ray
-import time
-from ray.core.generated.event_pb2 import Event as RayEvent
-from ray._private.event.event_logger import get_event_logger
-
-ray.init("auto")
+ray.init(address="{address}")
 
 # Get event logger to write autoscaler events.
 log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
@@ -406,148 +298,140 @@ event_logger.warning("WARNING")
 event_logger.error("ERROR")
 event_logger.fatal("FATAL")
 
-# Block and sleep
-time.sleep(3)
-    """
+# Sleep to allow the event logs to be streamed to the driver.
+while True:
+    time.sleep(1)
+    """.format(
+        address=address
+    )
+    test_cases = [
+        ("TRACE", "TRACE,DEBUG,INFO,WARNING,ERROR,FATAL", ""),
+        ("DEBUG", "DEBUG,INFO,WARNING,ERROR,FATAL", "TRACE"),
+        ("INFO", "INFO,WARNING,ERROR,FATAL", "TRACE,DEBUG"),
+        ("WARNING", "WARNING,ERROR,FATAL", "TRACE,DEBUG,INFO"),
+        ("ERROR", "ERROR,FATAL", "TRACE,DEBUG,INFO,WARNING"),
+        ("FATAL", "FATAL", "TRACE,DEBUG,INFO,WARNING,ERROR"),
+    ]
 
-    ray.init(_system_config={"enable_autoscaler_v2": True})
+    for event_level, expected_msg, unexpected_msg in test_cases:
+        print("Running test case for level:", event_level)
+        proc = run_string_as_driver_nonblocking(
+            script,
+            env={
+                "PYTHONUNBUFFERED": "1",
+                "RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level,
+            },
+        )
 
-    env = os.environ.copy()
-    env["RAY_LOG_TO_DRIVER_EVENT_LEVEL"] = event_level
+        out_str = ""
 
-    out_str, err_str = run_string_as_driver_stdout_stderr(script, env=env)
-    print(out_str)
-    print(err_str)
+        def _check_events():
+            nonlocal out_str
 
-    # Filter only autoscaler prints.
-    assert out_str
+            # Incrementally read driver stdout.
+            l = proc.stdout.readline().decode("ascii")
+            if len(l) > 0 and "autoscaler" in l:
+                out_str += l
 
-    out_str = "".join([line for line in out_str.splitlines() if "autoscaler" in line])
-    for expected in expected_msg.split(","):
-        assert expected in out_str
-    if unexpected_msg:
-        for unexpected in unexpected_msg.split(","):
-            assert unexpected not in out_str
+            # Check that *all* expected messages are present.
+            assert all([msg in out_str for msg in expected_msg.split(",")]), out_str
+
+            # Check that *no* unexpected messages are present.
+            if unexpected_msg:
+                assert all(
+                    [msg not in out_str for msg in unexpected_msg.split(",")]
+                ), out_str
+
+            return True
+
+        wait_for_condition(_check_events)
+
+        proc.kill()
+        proc.wait()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_fail_importing_actor(ray_start_regular, error_pubsub):
+@pytest.mark.parametrize("async_actor", [True, False])
+def test_fail_importing_actor(async_actor):
     script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init(address='{ray_start_regular.address_info["address"]}')
-temporary_python_file = '''
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
+try:
+    f.write('''
 def temporary_helper_function():
    return 1
-'''
+''')
+    f.flush()
+    f.close()
 
-f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True)
-f_name = f.name
-f.close()
-f = open(f_name, "w+")
-f.write(temporary_python_file)
-f.flush()
-directory = os.path.dirname(f_name)
-# Get the module name and strip ".py" from the end.
-module_name = os.path.basename(f_name)[:-3]
-sys.path.append(directory)
-module = __import__(module_name)
+    # Get the module name and strip ".py" from the end.
+    directory = os.path.dirname(f.name)
+    module_name = os.path.basename(f.name)[:-3]
+    sys.path.append(directory)
+    module = __import__(module_name)
 
-# Define an actor that closes over this temporary module. This should
-# fail when it is unpickled.
-@ray.remote(max_restarts=0)
-class Foo:
-    def __init__(self):
-        self.x = module.temporary_python_file()
-    def ready(self):
-        pass
-a = Foo.remote()
-try:
-    ray.get(a.ready.remote())
-except Exception as e:
-    pass
-from time import sleep
-sleep(3)
+    # Define an actor that closes over this temporary module. This should
+    # fail when it is unpickled.
+    @ray.remote
+    class Foo:
+        def __init__(self):
+            self.x = module.temporary_python_file()
+
+        {"async " if async_actor else ""}def ready(self):
+            pass
+finally:
+    os.unlink(f.name)
+
+ray.get(Foo.remote().ready.remote())
 """
     proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
     err_str = proc.stderr.read().decode("ascii")
-    print(out_str)
-    print("-----")
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The actor with name Foo failed to import" in err_str
 
 
-def test_fail_importing_task(ray_start_regular, error_pubsub):
-    script = f"""
+def test_fail_importing_task():
+    script = """
 import os
 import sys
 import tempfile
 import ray
 
-ray.init(address='{ray_start_regular.address_info["address"]}')
-temporary_python_file = '''
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
+try:
+    f.write('''
 def temporary_helper_function():
    return 1
-'''
+''')
+    f.flush()
+    f.close()
 
-f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True)
-f_name = f.name
-f.close()
-f = open(f_name, "w+")
-f.write(temporary_python_file)
-f.flush()
-directory = os.path.dirname(f_name)
-# Get the module name and strip ".py" from the end.
-module_name = os.path.basename(f_name)[:-3]
-sys.path.append(directory)
-module = __import__(module_name)
+    # Get the module name and strip ".py" from the end.
+    directory = os.path.dirname(f.name)
+    module_name = os.path.basename(f.name)[:-3]
+    sys.path.append(directory)
+    module = __import__(module_name)
 
-# Define an actor that closes over this temporary module. This should
-# fail when it is unpickled.
-@ray.remote
-def foo():
-    return module.temporary_python_file()
+    # Define a task that closes over this temporary module. This should
+    # fail when it is unpickled.
+    @ray.remote
+    def foo():
+        return module.temporary_python_file()
+finally:
+    os.unlink(f.name)
 
 ray.get(foo.remote())
 """
     proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
     err_str = proc.stderr.read().decode("ascii")
-    print(out_str)
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The remote function failed to import" in err_str
-
-
-def test_worker_stdout():
-    script = """
-import ray
-import sys
-
-ray.init(num_cpus=2)
-
-@ray.remote
-def foo(out_str, err_str):
-    print(out_str)
-    print(err_str, file=sys.stderr)
-
-ray.get(foo.remote("abc", "def"))
-    """
-
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
-    out_str = "".join(out_str.splitlines())
-    assert out_str.endswith("abc"), out_str
-    assert "(foo pid=" in out_str, out_str
-    err_str_sec_last = "".join(err_str.split("\n")[-2].splitlines())
-    assert err_str_sec_last.endswith("def")
 
 
 def test_core_worker_error_message():
@@ -568,144 +452,87 @@ ray._private.utils.push_error_to_driver(
     assert "Hello there" in err_str, err_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_disable_driver_logs_breakpoint():
+def test_task_stdout_stderr():
+    """Test that task stdout and stderr is streamed to the driver correctly."""
     script = """
-import time
-import os
 import ray
 import sys
-import threading
-
-os.environ["RAY_DEBUG"] = "legacy"
-ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
 @ray.remote
-def f():
-    while True:
-        start_time = time.monotonic()
-        while time.monotonic() - start_time < 1:
-            time.sleep(0.1)
-            print(f"slept {time.monotonic() - start_time} seconds")
-        print("hello there")
-        sys.stdout.flush()
+def foo():
+    print("foo stdout")
+    print("foo stderr", file=sys.stderr)
 
-def kill():
-    start_time = time.monotonic()
-    while time.monotonic() - start_time < 5:
-        time.sleep(0.1)
-    sys.stdout.flush()
-    start_time = time.monotonic()
-    while time.monotonic() - start_time < 1:
-        time.sleep(0.1)
-    os._exit(0)
+@ray.remote
+def bar():
+    print("bar stdout")
+    print("bar stderr", file=sys.stderr)
 
-t = threading.Thread(target=kill)
-t.start()
-x = f.remote()
-time.sleep(3)  # Enough time to print one hello.
-breakpoint()  # This should disable worker logs.
+@ray.remote
+def baz():
+    print("baz stdout")
+    print("baz stderr", file=sys.stderr)
+
+ray.init(num_cpus=3)
+ray.get([foo.remote(), bar.remote(), baz.remote()])
     """
 
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
-    num_hello = out_str.count("hello")
-    assert num_hello >= 1, out_str
-    assert num_hello <= 3, out_str
-    assert "Temporarily disabling Ray worker logs" in out_str, out_str
-    # TODO(ekl) nice to test resuming logs too, but it's quite complicated
+    err_str = proc.stderr.read().decode("ascii")
+
+    assert re.search("(foo pid=.*) foo stdout", out_str), out_str
+    assert re.search("(foo pid=.*) foo stderr", err_str), err_str
+    assert re.search("(bar pid=.*) bar stdout", out_str), out_str
+    assert re.search("(bar pid=.*) bar stderr", err_str), err_str
+    assert re.search("(baz pid=.*) baz stdout", out_str), out_str
+    assert re.search("(baz pid=.*) baz stderr", err_str), err_str
 
 
-@pytest.mark.parametrize("file", ["stdout", "stderr"])
-def test_multi_stdout_err(file):
-    if file == "stdout":
-        file_handle = "sys.stdout"
-    else:  # sys.stderr
-        file_handle = "sys.stderr"
-
-    script = f"""
+def test_actor_stdout_stderr():
+    """Test that actor stdout and stderr is streamed to the driver correctly."""
+    script = """
 import ray
 import sys
-
-ray.init(num_cpus=1)
-
-@ray.remote
-def foo():
-    print(file={file_handle})
-
-@ray.remote
-def bar():
-    print(file={file_handle})
-
-@ray.remote
-def baz():
-    print(file={file_handle})
-
-ray.get(foo.remote())
-ray.get(bar.remote())
-ray.get(baz.remote())
-    """
-
-    proc = run_string_as_driver_nonblocking(script)
-    if file == "stdout":
-        out_str = proc.stdout.read().decode("ascii")
-    else:
-        out_str = proc.stderr.read().decode("ascii")
-
-    out_str = "".join(out_str.splitlines())
-    assert "(foo pid=" in out_str, out_str
-    assert "(bar pid=" in out_str, out_str
-    assert "(baz pid=" in out_str, out_str
-
-
-@pytest.mark.parametrize("file", ["stdout", "stderr"])
-def test_actor_stdout(file):
-    if file == "stdout":
-        file_handle = "sys.stdout"
-    else:  # sys.stderr
-        file_handle = "sys.stderr"
-
-    script = f"""
-import ray
-import sys
-
-ray.init(num_cpus=2)
 
 @ray.remote
 class Actor1:
     def f(self):
-        print("hi", file={file_handle})
+        print("hi stdout")
+        print("hi stderr", file=sys.stderr)
 
 @ray.remote
 class Actor2:
     def __init__(self):
-        print("init", file={file_handle})
+        print("init stdout")
+        print("init stderr", file=sys.stderr)
         self.name = "ActorX"
+
     def f(self):
-        print("bye", file={file_handle})
+        print("bye stdout")
+        print("bye stderr", file=sys.stderr)
+
     def __repr__(self):
         return self.name
 
-a = Actor1.remote()
-ray.get(a.f.remote())
-b = Actor2.remote()
-ray.get(b.f.remote())
+ray.init(num_cpus=2)
+ray.get([Actor1.remote().f.remote(), Actor2.remote().f.remote()])
     """
 
     proc = run_string_as_driver_nonblocking(script)
-    if file == "stdout":
-        out_str = proc.stdout.read().decode("ascii")
-    else:
-        out_str = proc.stderr.read().decode("ascii")
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+    assert "stderr" not in out_str
+    assert "stdout" not in err_str
 
-    out_str = "".join(out_str.splitlines())
-    assert "hi" in out_str, out_str
-    assert "(Actor1 pid=" in out_str, out_str
-    assert "bye" in out_str, out_str
-    assert re.search("Actor2 pid=.*init", out_str), out_str
-    assert not re.search("ActorX pid=.*init", out_str), out_str
-    assert re.search("ActorX pid=.*bye", out_str), out_str
-    assert re.search("Actor2 pid=.*bye", out_str), out_str
+    assert re.search("(Actor1 pid=.*) hi stdout", out_str), out_str
+    assert re.search("(Actor1 pid=.*) hi stderr", err_str), err_str
+    assert re.search("(Actor2 pid=.*) init stdout", out_str), out_str
+    assert re.search("(Actor2 pid=.*) init stderr", err_str), err_str
+    assert not re.search("(ActorX pid=.*) init", out_str), out_str
+    assert not re.search("(ActorX pid=.*) init", err_str), err_str
+    assert re.search("(ActorX pid=.*) bye stdout", out_str), out_str
+    assert re.search("(ActorX pid=.*) bye stderr", err_str), err_str
 
 
 def test_output_local_ray():
@@ -746,50 +573,45 @@ ray.init()
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test currently fails with minimal install.",
 )
-def test_output_on_driver_shutdown(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=16)
-    script = """
+def test_output_on_driver_shutdown():
+    with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as f:
+        script = """
 import ray
-ray.init(address="auto")
 
 @ray.remote
-def f(i: int):
+def t(i: int):
     return i
 
-obj_refs = [f.remote(i) for i in range(100)]
+obj_refs = [t.remote(i) for i in range(10)]
+
+with open("{ready_path}", "w") as f:
+    f.write("ready")
+    f.flush()
 
 while True:
-    assert len(obj_refs) == 100
-    ready, pending = ray.wait(obj_refs, num_returns=10)
+    assert len(obj_refs) == 10
+    ready, pending = ray.wait(obj_refs, num_returns=2)
     for i in ray.get(ready):
-        obj_refs[i] = f.remote(i)
-    """
+        obj_refs[i] = t.remote(i)
+        """.format(
+            ready_path=f.name
+        )
 
-    proc = run_string_as_driver_nonblocking(script)
-    # Make sure the script is running before sending a sigterm.
-    with pytest.raises(subprocess.TimeoutExpired):
-        print(proc.wait(timeout=10))
-        std_str = proc.stdout.read().decode("ascii")
+        # Start the driver and wait for it to start executing Ray code.
+        proc = run_string_as_driver_nonblocking(script)
+        wait_for_condition(lambda: len(f.read()) > 0)
+        print(f"Script is running... pid: {proc.pid}")
+
+        # Send multiple signals to terminate the driver like a real-world scenario.
+        for _ in range(3):
+            time.sleep(0.1)
+            os.kill(proc.pid, signal.SIGINT)
+
+        proc.wait(timeout=10)
         err_str = proc.stderr.read().decode("ascii")
-        print(f"STDOUT:\n{std_str}")
-        print(f"STDERR:\n{err_str}")
-    print(f"Script is running... pid: {proc.pid}")
-    # Send multiple signals to terminate it like real world scenario.
-    for _ in range(10):
-        time.sleep(0.1)
-        os.kill(proc.pid, signal.SIGINT)
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        print("Script wasn't terminated by SIGINT. Try SIGTERM.")
-        os.kill(proc.pid, signal.SIGTERM)
-    print(proc.wait(timeout=5))
-    err_str = proc.stderr.read().decode("ascii")
-    assert len(err_str) > 0
-    assert "KeyboardInterrupt" in err_str
-    assert "StackTrace Information" not in err_str
-    print(err_str)
+        assert len(err_str) > 0
+        assert "KeyboardInterrupt" in err_str
+        assert "StackTrace Information" not in err_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -797,93 +619,52 @@ while True:
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test currently fails with minimal install.",
 )
-@pytest.mark.parametrize("execution_number", range(3))
-def test_empty_line_thread_safety_bug(execution_number, ray_start_cluster):
+def test_empty_line_thread_safety_bug():
     """Make sure when new threads are used within __init__,
     the empty line is not printed.
     Related: https://github.com/ray-project/ray/pull/20987
     """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=24)
-
     actor_repr = "TESTER"
-
     script = f"""
-import time
-import os
 import threading
-import torch
-
-from filelock import FileLock
 
 import ray
 
-class Repro:
-    pass
-
-def do_lock():
-    path = f"/tmp/lock"
-    lock = FileLock(path, timeout=4)
-    lock.acquire()
-
 @ray.remote
-class Train:
-    def __init__(self, config: Repro):
-        # print("b")
-        def warmup():
+class A:
+    def __init__(self, *, num_threads: int = 5):
+        self._num_threads = num_threads
+        self._done_count = 0
+        self._done_lock = threading.Lock()
+        self._done_event = threading.Event()
 
-            do_lock()
-            torch.empty(0, device="cpu")
+        def _spin():
             for _ in range(300000000):
                 pass
 
-        threading.Thread(target=warmup, daemon=True).start()
+        for _ in range(5):
+            threading.Thread(target=self._spin, daemon=True).start()
+
+    def _spin(self):
+        for _ in range(300000000):
+            pass
+
+        with self._done_lock:
+            self._done_count += 1
+            if self._done_count == self._num_threads:
+                self._done_event.set()
 
     def ready(self):
-        pass
+        self._done_event.wait()
 
     def __repr__(self):
         return "{actor_repr}"
 
-ray.init("auto")
-actors = [Train.remote(config=None) for i in range(24)]
-for a in actors:
-    ray.get(a.ready.remote())
-time.sleep(5)
+a = A.remote()
+ray.get(a.ready.remote())
     """
     out = run_string_as_driver(script)
     assert actor_repr not in out
-
-
-def test_node_name_in_raylet_death():
-    NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
-    script = f"""
-import time
-import os
-
-WAIT_BUFFER_SECONDS=5
-
-os.environ["RAY_pull_based_healthcheck"]="true"
-os.environ["RAY_health_check_initial_delay_ms"]="0"
-os.environ["RAY_health_check_period_ms"]="1000"
-os.environ["RAY_health_check_timeout_ms"]="10"
-os.environ["RAY_health_check_failure_threshold"]="2"
-sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
-    int(os.environ["RAY_health_check_failure_threshold"])
-sleep_time += WAIT_BUFFER_SECONDS
-
-import ray
-
-ray.init(_node_name=\"{NODE_NAME}\")
-# This will kill raylet without letting it exit gracefully.
-ray._private.worker._global_node.kill_raylet()
-
-time.sleep(sleep_time)
-ray.shutdown()
-    """
-    out = run_string_as_driver(script)
-    print(out)
-    assert out.count(f"node name: {NODE_NAME} has been marked dead") == 1
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/profile_events.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -157,6 +158,10 @@ message ActorTableData {
   // format depends on the language. Only populated if
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 34;
+  // The label selector of the actor.
+  map<string, string> label_selector = 35;
+  // Number of times this actor is restarted due to node preemption.
+  uint64 num_restarts_due_to_node_preemption = 36;
 }
 
 message ErrorTableData {
@@ -170,31 +175,6 @@ message ErrorTableData {
   // Unit: millisecond.
   // TODO(hjiang): Update field naming from `timestamp` to `timestamp_millisec`.
   double timestamp = 4;
-}
-
-message ProfileEventEntry {
-  // The start timestamp of the event time.
-  int64 start_time = 1;
-  // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus
-  // change.
-  int64 end_time = 2;
-  // Additional data associated with the event. This data must be serialized
-  // using JSON.
-  optional string extra_data = 3;
-  // Customized event name if not a TaskStatus change point event.
-  string event_name = 4;
-}
-
-message ProfileEvents {
-  // The type of the component that generated the event, e.g., worker or
-  // object_manager, or node_manager.
-  string component_type = 1;
-  // An identifier for the component that generated the event.
-  bytes component_id = 2;
-  // Node IP address.
-  string node_ip_address = 3;
-  // Events.
-  repeated ProfileEventEntry events = 4;
 }
 
 // Represents the info of a worker's log file for which executes the task.
@@ -460,7 +440,7 @@ message WorkerTableData {
 
 // Fields to publish when worker fails.
 message WorkerDeltaData {
-  bytes raylet_id = 1;
+  bytes node_id = 1;
   bytes worker_id = 2;
 }
 
@@ -491,6 +471,8 @@ message ResourceDemand {
   // The number of requests of this shape still queued in CoreWorkers that this
   // raylet knows about.
   int64 backlog_size = 4;
+  // The label selector constraints for this Resource shape on a node.
+  repeated LabelSelector label_selectors = 5;
 }
 
 // Represents the demand sorted by resource shape.
@@ -537,6 +519,8 @@ message ResourcesData {
   // The value is the timestamp when
   // the node will be force killed.
   int64 draining_deadline_timestamp_ms = 18;
+  // Te key-value labels of this node.
+  map<string, string> labels = 19;
 }
 
 message ResourceUsageBatchData {
@@ -658,8 +642,6 @@ message PlacementGroupTableData {
   // The placement group's stats / information such as when it is created or
   // what's the current scheduling state.
   PlacementGroupStats stats = 12;
-  // The maximum fraction of CPU cores that this placement group can use on each node.
-  double max_cpu_fraction_per_node = 13;
   // Binary ID of the target node where bundles should be placed
   // iff the target node has enough available resources and alive.
   // Otherwise, the bundles can be placed elsewhere.

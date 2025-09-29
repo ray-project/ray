@@ -13,17 +13,21 @@ import requests
 from google.protobuf import text_format
 
 import ray
+import ray._common.usage.usage_lib as ray_usage_lib
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
-import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
-from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
+from ray.dashboard.modules.reporter.reporter_agent import (
+    ReporterAgent,
+    TpuUtilizationInfo,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -119,6 +123,8 @@ STATS_TEMPLATE = {
         ),
     },
     "gpus": [],
+    "gpu_processes": {},
+    "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
 }
@@ -187,14 +193,31 @@ def enable_grpc_metrics_collection():
     os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
 
 
+@pytest.fixture
+def enable_open_telemetry(request):
+    """
+    Fixture to enable OpenTelemetry for the test.
+    """
+    if request.param:
+        os.environ["RAY_enable_open_telemetry"] = "1"
+    else:
+        os.environ["RAY_enable_open_telemetry"] = "0"
+    yield
+    os.environ.pop("RAY_enable_open_telemetry", None)
+
+
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
+@pytest.mark.parametrize("enable_open_telemetry", [True, False], indirect=True)
 def test_prometheus_physical_stats_record(
-    enable_grpc_metrics_collection, enable_test_module, shutdown_only
+    enable_open_telemetry,
+    enable_grpc_metrics_collection,
+    enable_test_module,
+    shutdown_only,
 ):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
-    addr = addresses["raylet_ip_address"]
-    prom_addresses = [f"{addr}:{metrics_export_port}"]
+    addr = addresses["node_ip_address"]
+    prom_addresses = [build_address(addr, metrics_export_port)]
 
     def test_case_stats_exist():
         _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
@@ -246,11 +269,8 @@ def test_prometheus_physical_stats_record(
                 break
         return str(raylet_proc.process.pid) == str(raylet_pid)
 
-    wait_for_condition(
-        lambda: test_case_stats_exist() and test_case_ip_correct(),
-        timeout=30,
-        retry_interval_ms=1000,
-    )
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+    wait_for_condition(test_case_ip_correct, timeout=30, retry_interval_ms=1000)
 
 
 @pytest.mark.skipif(
@@ -260,8 +280,8 @@ def test_prometheus_physical_stats_record(
 def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
-    addr = addresses["raylet_ip_address"]
-    prom_addresses = [f"{addr}:{metrics_export_port}"]
+    addr = addresses["node_ip_address"]
+    prom_addresses = [build_address(addr, metrics_export_port)]
 
     @ray.remote
     def f():
@@ -289,6 +309,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
 def test_report_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -311,9 +332,11 @@ def test_report_stats():
         print(record.gauge.name)
         print(record)
     assert len(records) == 41
-    # Verify IsHeadNode tag
+    # Verify RayNodeType and IsHeadNode tags
     for record in records:
         if record.gauge.name.startswith("node_"):
+            assert "RayNodeType" in record.tags
+            assert record.tags["RayNodeType"] == "head"
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
@@ -324,16 +347,31 @@ def test_report_stats():
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
+    # Test stats with tpus
+    STATS_TEMPLATE["tpus"] = [
+        {
+            "index": 0,
+            "name": "foo",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 25.0,
+            "hbm_utilization": 50.0,
+            "duty_cycle": 10.0,
+            "memory_used": 1000,
+            "memory_total": 2000,
+        }
+    ]
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 41
+    assert len(records) == 46
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 39
+    assert len(records) == 44
 
 
 def test_report_stats_gpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -420,13 +458,19 @@ def test_report_stats_gpu():
         index = 0
         for record in records:
             if record.tags["GpuIndex"] == "3":
-                assert record.tags == {"ip": ip, "GpuIndex": "3", "IsHeadNode": "true"}
+                assert record.tags == {
+                    "ip": ip,
+                    "GpuIndex": "3",
+                    "IsHeadNode": "true",
+                    "RayNodeType": "head",
+                }
             else:
                 assert record.tags == {
                     "ip": ip,
                     # The tag value must be string for prometheus.
                     "GpuIndex": str(index),
                     "GpuDeviceName": "NVIDIA A10G",
+                    "RayNodeType": "head",
                     "IsHeadNode": "true",
                 }
 
@@ -446,8 +490,139 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
 
 
+def test_get_tpu_usage():
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    agent = ReporterAgent(dashboard_agent)
+
+    fake_metrics_content = """
+    duty_cycle{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 20.0
+    duty_cycle{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 40.0
+    memory_bandwidth_utilization{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 11
+    memory_bandwidth_utilization{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 12
+    memory_used{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 1000
+    memory_used{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 2000
+    memory_total{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 4000
+    tensorcore_utilization{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 22
+    tensorcore_utilization{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 23
+    """
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        TPU_DEVICE_PLUGIN_ADDR="localhost:2112",
+    ):
+        with patch("requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.content = fake_metrics_content.encode("utf-8")
+            mock_get.return_value = mock_response
+
+            tpu_utilizations = agent._get_tpu_usage()
+
+            mock_get.assert_called_once_with("http://localhost:2112/metrics")
+
+            expected_utilizations = [
+                TpuUtilizationInfo(
+                    index="0",
+                    name="1234-0",
+                    tpu_type="tpu-v6e-slice",
+                    tpu_topology="2x2",
+                    tensorcore_utilization=22.0,
+                    hbm_utilization=11.0,
+                    duty_cycle=20.0,
+                    memory_used=1000,
+                    memory_total=4000,
+                ),
+                TpuUtilizationInfo(
+                    index="1",
+                    name="1234-1",
+                    tpu_type="tpu-v6e-slice",
+                    tpu_topology="2x2",
+                    tensorcore_utilization=23.0,
+                    hbm_utilization=12.0,
+                    duty_cycle=40.0,
+                    memory_used=2000,
+                    memory_total=4000,
+                ),
+            ]
+            assert tpu_utilizations == expected_utilizations
+
+
+def test_report_stats_tpu():
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    agent = ReporterAgent(dashboard_agent)
+
+    STATS_TEMPLATE["tpus"] = [
+        {
+            "index": 0,
+            "name": "tpu-0",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 10.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 1.0,
+            "memory_used": 500,
+            "memory_total": 2000,
+        },
+        {
+            "index": 1,
+            "name": "tpu-1",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 20.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 2.0,
+            "memory_used": 400,
+            "memory_total": 2000,
+        },
+        {
+            "index": 2,
+            "name": "tpu-2",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 30.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 3.0,
+            "memory_used": 300,
+            "memory_total": 2000,
+        },
+        {
+            "index": 3,
+            "name": "tpu-3",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 40.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 4.0,
+            "memory_used": 200,
+            "memory_total": 2000,
+        },
+    ]
+    tpu_metrics_aggregated = {
+        "tpu_tensorcore_utilization": 0.0,
+        "tpu_memory_bandwidth_utilization": 0.0,
+        "tpu_duty_cycle": 0.0,
+        "tpu_memory_used": 0,
+        "tpu_memory_total": 0,
+    }
+    records = agent._to_records(STATS_TEMPLATE, {})
+    num_tpu_records = 0
+    for record in records:
+        if record.gauge.name in tpu_metrics_aggregated:
+            num_tpu_records += 1
+            tpu_metrics_aggregated[record.gauge.name] += record.value
+
+    assert num_tpu_records == 20
+    assert tpu_metrics_aggregated["tpu_tensorcore_utilization"] == 100
+    assert tpu_metrics_aggregated["tpu_memory_bandwidth_utilization"] == 40
+    assert tpu_metrics_aggregated["tpu_duty_cycle"] == 10
+    assert tpu_metrics_aggregated["tpu_memory_used"] == 1400
+    assert tpu_metrics_aggregated["tpu_memory_total"] == 8000
+
+
 def test_report_per_component_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -706,6 +881,9 @@ def test_reporter_worker_cpu_percent():
 
         def _generate_worker_key(self, proc):
             return (proc.pid, proc.create_time())
+
+        def _get_worker_processes(self):
+            return ReporterAgent._get_worker_processes(self)
 
     obj = ReporterAgentDummy()
 

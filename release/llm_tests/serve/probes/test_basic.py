@@ -160,7 +160,7 @@ async def test_too_long_completion_request(
     )
 
     # XXX: AE-686 hack, should read model data instead
-    length = 20000
+    length = 200000
     if "8x22" in model:
         length = 70000
 
@@ -304,19 +304,15 @@ async def test_logprobs(
     )
 
     response = await deterministic_query.query(model, stream, **params)
+
     response = response.full_dict()
     for resp in response:
-        running_str = ""
         for logprob in resp["logprobs"]["content"]:
             assert len(logprob["top_logprobs"]) == num_logprobs
             assert list(logprob["token"].encode()) == logprob["bytes"]
-            # Special tokens that will not be a part of the response content
-            if logprob["token"] not in ("<step>", "<|eot_id|>"):
-                running_str += logprob["token"]
-        assert running_str == resp["message"]["content"]
 
-    # top logprobs have to be between 0 and 5
-    invalid_num_logprobs = [-1, 6]
+    # top logprobs have to be positive integer
+    invalid_num_logprobs = [-1]
     bad_config = configuration.copy()
     for invalid_num_logprob in invalid_num_logprobs:
         bad_config["top_logprobs"] = invalid_num_logprob

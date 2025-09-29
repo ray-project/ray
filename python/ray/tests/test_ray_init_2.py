@@ -1,23 +1,24 @@
 import logging
 import os
-import sys
-import unittest.mock
-import tempfile
 import shutil
+import sys
+import tempfile
+import unittest.mock
 from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
 import ray._private.services
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import wait_for_condition
+from ray._private.ray_constants import DEFAULT_RESOURCES, RAY_OVERRIDE_DASHBOARD_URL
 from ray._private.services import get_node_ip_address
-from ray.dashboard.utils import ray_address_to_api_server_url
 from ray._private.test_utils import (
     get_current_unused_port,
     run_string_as_driver,
-    wait_for_condition,
 )
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
@@ -301,7 +302,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     node2 = cluster.add_node(node_ip_address="127.0.0.3")
     address = cluster.address
     password = cluster.redis_password
-    assert address.split(":")[0] == "127.0.0.2"
+    assert parse_address(address)[0] == "127.0.0.2"
     assert node1.node_manager_port != node2.node_manager_port
     info = ray.init(address, _redis_password=password, _node_ip_address="127.0.0.3")
     assert info["node_ip_address"] == "127.0.0.3"

@@ -1,0 +1,11 @@
+head_node_type:
+    name: head_node
+    resources:
+      limits:
+        cpu: "16"
+        memory: "64Gi"
+      requests:
+        cpu: "16"
+        memory: "64Gi"
+
+worker_node_types: []

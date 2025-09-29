@@ -1,24 +1,19 @@
 import asyncio
-import logging
 import pickle
 from abc import ABC, abstractmethod
-from typing import Optional, Set, Tuple, Union
+from typing import Any, Dict, Optional, Set
 
 import ray
-from ray import ObjectRef, ObjectRefGenerator
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ReplicaID,
-    ReplicaQueueLengthInfo,
     RunningReplicaInfo,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
-
-logger = logging.getLogger(SERVE_LOGGER_NAME)
+from ray.util.annotations import PublicAPI
 
 
 class ReplicaWrapper(ABC):
@@ -34,7 +29,7 @@ class ReplicaWrapper(ABC):
     @abstractmethod
     def send_request_python(
         self, pr: PendingRequest, *, with_rejection: bool
-    ) -> Tuple[ReplicaResult, Optional[ReplicaQueueLengthInfo]]:
+    ) -> ReplicaResult:
         """Send request to Python replica.
 
         If sending request with rejection, the replica will yield a
@@ -75,9 +70,9 @@ class ActorReplicaWrapper(ReplicaWrapper):
             pr.metadata,
         )
 
-    def _send_request_python(
+    def send_request_python(
         self, pr: PendingRequest, *, with_rejection: bool
-    ) -> Union[ObjectRef, ObjectRefGenerator]:
+    ) -> ActorReplicaResult:
         """Send the request to a Python replica."""
         if with_rejection:
             # Call a separate handler that may reject the request.
@@ -93,29 +88,13 @@ class ActorReplicaWrapper(ReplicaWrapper):
         else:
             method = self._actor_handle.handle_request
 
-        return method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
-
-    async def send_request_python(
-        self, pr: PendingRequest, with_rejection: bool
-    ) -> Tuple[ActorReplicaResult, Optional[ReplicaQueueLengthInfo]]:
-        obj_ref_gen = self._send_request_python(pr, with_rejection=with_rejection)
-
-        if not with_rejection:
-            return ActorReplicaResult(obj_ref_gen, pr.metadata), None
-
-        try:
-            first_ref = await obj_ref_gen.__anext__()
-            queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
-            return ActorReplicaResult(obj_ref_gen, pr.metadata), queue_len_info
-        except asyncio.CancelledError as e:
-            # HTTP client disconnected or request was explicitly canceled.
-            logger.info(
-                "Cancelling request that has already been assigned to a replica."
-            )
-            ray.cancel(obj_ref_gen)
-            raise e from None
+        obj_ref_gen = method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
+        return ActorReplicaResult(
+            obj_ref_gen, pr.metadata, with_rejection=with_rejection
+        )
 
 
+@PublicAPI(stability="alpha")
 class RunningReplica:
     """Contains info on a running replica.
     Also defines the interface for a request router to talk to a replica.
@@ -142,10 +121,12 @@ class RunningReplica:
 
     @property
     def node_id(self) -> str:
+        """Node ID of the node this replica is running on."""
         return self._replica_info.node_id
 
     @property
     def availability_zone(self) -> Optional[str]:
+        """Availability zone of the node this replica is running on."""
         return self._replica_info.availability_zone
 
     @property
@@ -154,12 +135,18 @@ class RunningReplica:
         return self._multiplexed_model_ids
 
     @property
+    def routing_stats(self) -> Dict[str, Any]:
+        """Dictionary of routing stats."""
+        return self._replica_info.routing_stats
+
+    @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
         return self._replica_info.max_ongoing_requests
 
     @property
     def is_cross_language(self) -> bool:
+        """Whether this replica is cross-language (Java)."""
         return self._replica_info.is_cross_language
 
     def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
@@ -183,17 +170,13 @@ class RunningReplica:
             ray.cancel(obj_ref)
             raise
 
-    async def send_request(
+    def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
-    ) -> Tuple[Optional[ReplicaResult], Optional[ReplicaQueueLengthInfo]]:
-        """Send request to this replica."""
+    ) -> ReplicaResult:
+        """Try to send the request to this replica. It may be rejected."""
         wrapper = self._get_replica_wrapper(pr)
         if self._replica_info.is_cross_language:
             assert not with_rejection, "Request rejection not supported for Java."
-            return wrapper.send_request_java(pr), None
+            return wrapper.send_request_java(pr)
 
-        result, queue_len_info = await wrapper.send_request_python(pr, with_rejection)
-        if queue_len_info and not queue_len_info.accepted:
-            return None, queue_len_info
-
-        return result, queue_len_info
+        return wrapper.send_request_python(pr, with_rejection=with_rejection)

@@ -1,16 +1,16 @@
 import os
 import sys
-import torch
 
 import pytest
+import torch
 
 import ray
 import ray.cluster_utils
+import ray.experimental.collective as collective
+from ray.dag import InputNode
+from ray.dag.output_node import MultiOutputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
-from ray.dag import InputNode
-import ray.experimental.collective as collective
-from ray.dag.output_node import MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
 
@@ -317,16 +317,10 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
         computes = [worker.return_tensor.bind(inp) for _ in range(2)]
         with pytest.raises(
             ValueError,
-            match="Expected unique actor handles for a collective operation",
-        ):
-            collective.allreduce.bind(computes, transport=cpu_group)
-
-    with InputNode() as inp:
-        compute = worker.return_tensor.bind(inp)
-        computes = [compute for _ in range(2)]
-        with pytest.raises(
-            ValueError,
-            match="Expected unique input nodes for a collective operation",
+            match=(
+                "Expected unique actor handles, but found duplicate actor handles "
+                "from input nodes"
+            ),
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
 
@@ -355,7 +349,7 @@ def test_allreduce_wrong_actors(ray_start_cluster):
         computes = [worker.return_tensor.bind(inp) for worker in workers[2:]]
         with pytest.raises(
             ValueError,
-            match="Expected actor handles to match the custom NCCL group",
+            match="Expected actor handles to match the custom communicator group",
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
 

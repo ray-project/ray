@@ -1,4 +1,5 @@
 import itertools
+import uuid
 from typing import Callable, Iterator, List, Union
 
 from pandas import DataFrame
@@ -16,6 +17,8 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.datasource import Datasource
+
+WRITE_UUID_KWARG_NAME = "write_uuid"
 
 
 def gen_datasink_write_result(
@@ -53,9 +56,7 @@ def generate_write_fn(
     return fn
 
 
-def generate_collect_write_stats_fn() -> (
-    Callable[[Iterator[Block], TaskContext], Iterator[Block]]
-):
+def generate_collect_write_stats_fn() -> BlockMapTransformFn:
     # If the write op succeeds, the resulting Dataset is a list of
     # one Block which contain stats/metrics about the write.
     # Otherwise, an error will be raised. The Datasource can handle
@@ -79,7 +80,11 @@ def generate_collect_write_stats_fn() -> (
         )
         return iter([block])
 
-    return fn
+    return BlockMapTransformFn(
+        fn,
+        is_udf=False,
+        disable_block_shaping=True,
+    )
 
 
 def plan_write_op(
@@ -87,23 +92,44 @@ def plan_write_op(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
+    collect_stats_fn = generate_collect_write_stats_fn()
+
+    return _plan_write_op_internal(
+        op, physical_children, data_context, extra_transformations=[collect_stats_fn]
+    )
+
+
+def _plan_write_op_internal(
+    op: Write,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+    extra_transformations: List[BlockMapTransformFn],
+) -> PhysicalOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
     write_fn = generate_write_fn(op._datasink_or_legacy_datasource, **op._write_args)
-    collect_stats_fn = generate_collect_write_stats_fn()
+
     # Create a MapTransformer for a write operator
     transform_fns = [
-        BlockMapTransformFn(write_fn),
-        BlockMapTransformFn(collect_stats_fn),
-    ]
+        BlockMapTransformFn(
+            write_fn,
+            is_udf=False,
+            # NOTE: No need for block-shaping
+            disable_block_shaping=True,
+        ),
+    ] + extra_transformations
+
     map_transformer = MapTransformer(transform_fns)
+
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
         name="Write",
-        target_max_block_size=None,
+        # Add a UUID to write tasks to prevent filename collisions. This a UUID for the
+        # overall write operation, not the individual write tasks.
+        map_task_kwargs={WRITE_UUID_KWARG_NAME: uuid.uuid4().hex},
         ray_remote_args=op._ray_remote_args,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         compute_strategy=TaskPoolStrategy(op._concurrency),

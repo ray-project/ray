@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
@@ -12,6 +12,7 @@ from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.controller.state import (
+    AbortedState,
     ErroredState,
     InitializingState,
     ReschedulingState,
@@ -26,13 +27,16 @@ from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
 )
-from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
     MockFailurePolicy,
     MockScalingPolicy,
+    create_dummy_run_context,
 )
+
+pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
 @pytest.fixture(autouse=True)
@@ -50,9 +54,10 @@ def ray_start():
     ray.shutdown()
 
 
-def test_resize():
+@pytest.mark.asyncio
+async def test_resize():
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -78,7 +83,7 @@ def test_resize():
 
     # Noop decision should be ignored
     scaling_policy.queue_recovery_decision(NoopDecision())
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), InitializingState)
     assert controller.get_worker_group() is None
 
@@ -86,11 +91,11 @@ def test_resize():
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=1, resources_per_worker={})
     )
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
     assert controller.get_worker_group() is None
 
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
     worker_group = controller.get_worker_group()
@@ -105,7 +110,7 @@ def test_resize():
         scaling_policy.queue_monitor_decision(decision)
 
         if isinstance(decision, NoopDecision):
-            controller._run_control_loop_iteration()
+            await controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), RunningState)
 
             worker_group = controller.get_worker_group()
@@ -114,11 +119,11 @@ def test_resize():
             num_workers = len(worker_group.get_workers())
             assert num_workers == prev_num_workers
         else:
-            controller._run_control_loop_iteration()
+            await controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), ResizingState)
-            controller._run_control_loop_iteration()
+            await controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), SchedulingState)
-            controller._run_control_loop_iteration()
+            await controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), RunningState)
 
             worker_group = controller.get_worker_group()
@@ -128,10 +133,11 @@ def test_resize():
             assert num_workers == decision.num_workers
 
 
-def test_failure_handling():
+@pytest.mark.asyncio
+async def test_failure_handling():
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -143,38 +149,39 @@ def test_failure_handling():
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
     controller.get_worker_group().error_worker(1)
-    failure_policy.queue_decision(FailureDecision.RESTART)
-    controller._run_control_loop_iteration()
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RestartingState)
 
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=4, resources_per_worker={})
     )
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
     controller.get_worker_group().error_worker(3)
     failure_policy.queue_decision(FailureDecision.RAISE)
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
 
 
 @pytest.mark.parametrize(
     "error_type", [WorkerGroupStartupFailedError, WorkerGroupStartupTimeoutError(2)]
 )
-def test_worker_group_start_failure(monkeypatch, error_type):
+@pytest.mark.asyncio
+async def test_worker_group_start_failure(monkeypatch, error_type):
     """Check that controller can gracefully handle worker group start failures."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -190,12 +197,13 @@ def test_worker_group_start_failure(monkeypatch, error_type):
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
 
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
 
     # Worker group will fail to start, but controller should not raise
     # and should go into RESCHEDULING state.
-    controller._run_control_loop_iteration()
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ReschedulingState)
 
     # Let the worker group start successfully the 2nd time.
@@ -205,24 +213,29 @@ def test_worker_group_start_failure(monkeypatch, error_type):
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
 
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
 
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
 
-def test_poll_frequency(monkeypatch):
+@pytest.mark.asyncio
+async def test_poll_frequency(monkeypatch):
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "1")
 
+    async def sleep_mock(t):
+        sleep_calls.append(t)
+
     sleep_calls = []
-    monkeypatch.setattr("time.sleep", lambda t: sleep_calls.append(t))
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    monkeypatch.setattr("asyncio.sleep", sleep_mock)
+    train_run_context = create_dummy_run_context()
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
 
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
-        scaling_policy=None,
+        scaling_policy=scaling_policy,
         failure_policy=None,
     )
     # Mock worker group to avoid actual polling
@@ -230,13 +243,14 @@ def test_poll_frequency(monkeypatch):
 
     num_polls = 5
     for _ in range(num_polls):
-        controller._poll_workers()
+        await controller._poll_workers()
 
     # No sleep calls for the first poll
     assert len(sleep_calls) == num_polls - 1
 
 
-def test_controller_callback():
+@pytest.mark.asyncio
+async def test_controller_callback():
     """Check that all controller callback hooks are called."""
 
     class AssertCallback(ControllerCallback):
@@ -247,7 +261,7 @@ def test_controller_callback():
             self.resize_decision_called = False
             self.shutdown_called = False
 
-        def after_controller_start(self):
+        def after_controller_start(self, train_run_context: TrainRunContext):
             self.start_called = True
 
         def after_controller_state_update(
@@ -276,7 +290,7 @@ def test_controller_callback():
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
 
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
@@ -293,12 +307,12 @@ def test_controller_callback():
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
 
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert not callback.resize_decision_called
     assert isinstance(callback.latest_state_update[0], InitializingState)
     assert isinstance(callback.latest_state_update[1], SchedulingState)
 
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert callback.resize_decision_called
     assert isinstance(callback.latest_state_update[0], SchedulingState)
     assert isinstance(callback.latest_state_update[1], RunningState)
@@ -307,13 +321,31 @@ def test_controller_callback():
     failure_policy.queue_decision(FailureDecision.RAISE)
 
     assert not callback.failure_decision_called
-    controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
     assert callback.failure_decision_called
     assert isinstance(callback.latest_state_update[0], RunningState)
     assert isinstance(callback.latest_state_update[1], ErroredState)
 
     controller._shutdown()
     assert callback.shutdown_called
+
+
+@pytest.mark.asyncio
+async def test_controller_abort(monkeypatch):
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+    await controller.abort()
+    assert mock_exit_actor.call_count == 1
+    assert isinstance(controller.get_state(), AbortedState)
 
 
 if __name__ == "__main__":

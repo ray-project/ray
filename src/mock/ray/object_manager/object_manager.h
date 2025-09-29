@@ -53,6 +53,9 @@ class MockObjectManager : public ObjectManagerInterface {
   MOCK_METHOD(double, GetUsedMemoryPercentage, (), (const, override));
   MOCK_METHOD(void, Stop, (), (override));
   MOCK_METHOD(void, RecordMetrics, (), (override));
+  MOCK_METHOD(void, HandleNodeRemoved, (const NodeID &node_id), (override));
+  MOCK_METHOD(void, HandleObjectAdded, (const ObjectInfo &object_info), (override));
+  MOCK_METHOD(void, HandleObjectDeleted, (const ObjectID &object_id), (override));
 };
 
 }  // namespace ray

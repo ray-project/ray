@@ -6,10 +6,11 @@ import sys
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray.util.state import list_workers, list_nodes, list_tasks
+from ray._private.test_utils import run_string_as_driver
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_nodes, list_tasks, list_workers
 
 
 def get_worker_by_pid(pid, detail=True):
@@ -232,8 +233,7 @@ ray.shutdown()
         assert type == "INTENDED_USER_EXIT" and "ray.cancel" in detail
         return verify_failed_task(
             name="cancel-f",
-            error_type="WORKER_DIED",  # Since it's a force cancel through kill signal.
-            error_message="Socket closed",
+            error_type="TASK_CANCELLED",
         )
 
     wait_for_condition(verify_exit_by_ray_cancel)

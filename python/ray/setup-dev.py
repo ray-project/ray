@@ -16,9 +16,10 @@ if this_dir in sys.path:
     sys.path.append(this_dir)
 
 import argparse
-import click
 import shutil
 import subprocess
+
+import click
 
 import ray
 
@@ -84,7 +85,7 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
             generated_folder = os.path.join(package_home, "generated")
             if not os.path.exists(serve_temp_dir):
                 os.makedirs(serve_temp_dir)
-            subprocess.check_call(["mv", "-r", generated_folder, serve_temp_dir])
+            subprocess.check_call(["mv", generated_folder, serve_temp_dir])
 
         # Create backup of the old directory if it exists
         if os.path.exists(package_home):
@@ -165,6 +166,7 @@ if __name__ == "__main__":
         "widgets": None,
         "cluster_utils.py": None,
         "_private": None,
+        "_common": None,
         "dashboard": None,
     }
 

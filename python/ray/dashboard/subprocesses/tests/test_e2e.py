@@ -1,19 +1,23 @@
 import asyncio
+import pathlib
 import re
 import sys
-import pathlib
 from typing import List
 
-from ray.dashboard.optional_deps import aiohttp
 import pytest
 
+import ray._private.ray_constants as ray_constants
+import ray.dashboard.consts as dashboard_consts
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray.dashboard.optional_deps import aiohttp
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleConfig
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule, TestModule1
-import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import wait_for_condition, async_wait_for_condition
-import ray.dashboard.consts as dashboard_consts
 
 # This test requires non-minimal Ray.
 
@@ -33,8 +37,8 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=str(tmp_path),
         logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
         socket_dir=str(tmp_path),
     )
 

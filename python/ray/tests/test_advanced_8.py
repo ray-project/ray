@@ -9,7 +9,6 @@ import time
 from unittest import mock
 
 import numpy as np
-import psutil
 import pytest
 
 import ray
@@ -18,9 +17,12 @@ import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -86,39 +88,6 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Wait till the log monitor reads the file.
     time.sleep(1.0)
-
-    # Make sure that nothing has died.
-    assert ray._private.services.remaining_processes_alive()
-
-
-@pytest.mark.skip(reason="This test is too expensive to run.")
-def test_move_log_files_to_old(shutdown_only):
-    info = ray.init(num_cpus=1)
-
-    logs_dir = os.path.join(info["session_dir"], "logs")
-
-    @ray.remote
-    class Actor:
-        def f(self):
-            print("function f finished")
-
-    # First create a temporary actor.
-    actors = [Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)]
-    ray.get([a.f.remote() for a in actors])
-
-    # Make sure no log files are in the "old" directory before the actors
-    # are killed.
-    assert len(glob.glob(f"{logs_dir}/old/worker*.out")) == 0
-
-    # Now kill the actors so the files get moved to logs/old/.
-    [a.__ray_terminate__.remote() for a in actors]
-
-    while True:
-        log_file_paths = glob.glob(f"{logs_dir}/old/worker*.out")
-        if len(log_file_paths) > 0:
-            with open(log_file_paths[0], "r") as f:
-                assert "function f finished\n" in f.readlines()
-            break
 
     # Make sure that nothing has died.
     assert ray._private.services.remaining_processes_alive()
@@ -208,7 +177,7 @@ def test_ray_labels_environment_variables(shutdown_only):
     [ray.util.accelerators.NVIDIA_TESLA_V100, ray.util.accelerators.AWS_NEURON_CORE],
 )
 def test_accelerator_type_api(accelerator_type, shutdown_only):
-    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
+    resource_name = f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
     ray.init(num_cpus=4, resources={resource_name: 1})
 
     quantity = 1
@@ -266,7 +235,7 @@ def test_get_system_memory():
         memory_limit_file.write("100")
         memory_limit_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -279,7 +248,7 @@ def test_get_system_memory():
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -290,7 +259,7 @@ def test_get_system_memory():
         memory_max_file.write("100\n")
         memory_max_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )
@@ -303,7 +272,7 @@ def test_get_system_memory():
         memory_max_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )

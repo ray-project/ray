@@ -276,17 +276,18 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       FunctionDescriptor functionDescriptor, List<FunctionArg> args, ActorCreationOptions options)
       throws IllegalArgumentException {
     if (options != null) {
-      if (options.group != null) {
-        PlacementGroupImpl group = (PlacementGroupImpl) options.group;
+      if (options.getGroup() != null) {
+        PlacementGroupImpl group = (PlacementGroupImpl) options.getGroup();
         // bundleIndex == -1 indicates using any available bundle.
         Preconditions.checkArgument(
-            options.bundleIndex == -1
-                || options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
+            options.getBundleIndex() == -1
+                || options.getBundleIndex() >= 0
+                    && options.getBundleIndex() < group.getBundles().size(),
             String.format(
                 "Bundle index %s is invalid, the correct bundle index should be "
                     + "either in the range of 0 to the number of bundles "
                     + "or -1 which means put the task to any available bundles.",
-                options.bundleIndex));
+                options.getBundleIndex()));
       }
     }
 
@@ -294,8 +295,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder =
         ActorCreationTaskSpec.newBuilder()
             .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-            .setMaxConcurrency(options.maxConcurrency)
-            .setMaxPendingCalls(options.maxPendingCalls);
+            .setMaxConcurrency(options.getMaxConcurrency())
+            .setMaxPendingCalls(options.getMaxPendingCalls());
     appendConcurrencyGroupsBuilder(actorCreationTaskSpecBuilder, options);
     TaskSpec taskSpec =
         getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
@@ -306,11 +307,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     final LocalModeActorHandle actorHandle =
         new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
     actorHandles.put(actorId, actorHandle.copy());
-    if (StringUtils.isNotBlank(options.name)) {
+    if (StringUtils.isNotBlank(options.getName())) {
       Preconditions.checkArgument(
-          !namedActors.containsKey(options.name),
-          String.format("Actor of name %s exists", options.name));
-      namedActors.put(options.name, actorHandle);
+          !namedActors.containsKey(options.getName()),
+          String.format("Actor of name %s exists", options.getName()));
+      namedActors.put(options.getName(), actorHandle);
     }
     return actorHandle;
   }
@@ -333,7 +334,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 ActorTaskSpec.newBuilder()
                     .setActorId(ByteString.copyFrom(actor.getId().getBytes()))
                     .build())
-            .setConcurrencyGroupName(options.concurrencyGroupName)
+            .setConcurrencyGroupName(options.getConcurrencyGroupName())
             .build();
     submitTaskSpec(taskSpec);
     if (numReturns == 0) {
@@ -348,9 +349,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     PlacementGroupImpl placementGroup =
         new PlacementGroupImpl.Builder()
             .setId(PlacementGroupId.fromRandom())
-            .setName(creationOptions.name)
-            .setBundles(creationOptions.bundles)
-            .setStrategy(creationOptions.strategy)
+            .setName(creationOptions.getName())
+            .setBundles(creationOptions.getBundles())
+            .setStrategy(creationOptions.getStrategy())
             .build();
     placementGroups.put(placementGroup.getId(), placementGroup);
     return placementGroup;
@@ -576,22 +577,24 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder, ActorCreationOptions options) {
     Preconditions.checkNotNull(actorCreationTaskSpecBuilder);
     if (options == null
-        || options.concurrencyGroups == null
-        || options.concurrencyGroups.isEmpty()) {
+        || options.getConcurrencyGroups() == null
+        || options.getConcurrencyGroups().isEmpty()) {
       return;
     }
 
-    options.concurrencyGroups.forEach(
-        (concurrencyGroup) -> {
-          Common.ConcurrencyGroup.Builder concurrencyGroupBuilder =
-              Common.ConcurrencyGroup.newBuilder();
-          ConcurrencyGroupImpl impl = (ConcurrencyGroupImpl) concurrencyGroup;
-          concurrencyGroupBuilder
-              .setMaxConcurrency(impl.getMaxConcurrency())
-              .setName(impl.getName());
-          appendFunctionDescriptors(concurrencyGroupBuilder, impl.getFunctionDescriptors());
-          actorCreationTaskSpecBuilder.addConcurrencyGroups(concurrencyGroupBuilder);
-        });
+    options
+        .getConcurrencyGroups()
+        .forEach(
+            (concurrencyGroup) -> {
+              Common.ConcurrencyGroup.Builder concurrencyGroupBuilder =
+                  Common.ConcurrencyGroup.newBuilder();
+              ConcurrencyGroupImpl impl = (ConcurrencyGroupImpl) concurrencyGroup;
+              concurrencyGroupBuilder
+                  .setMaxConcurrency(impl.getMaxConcurrency())
+                  .setName(impl.getName());
+              appendFunctionDescriptors(concurrencyGroupBuilder, impl.getFunctionDescriptors());
+              actorCreationTaskSpecBuilder.addConcurrencyGroups(concurrencyGroupBuilder);
+            });
   }
 
   private static void appendFunctionDescriptors(

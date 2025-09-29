@@ -10,15 +10,17 @@ steps:
       IMAGE_TO: "llmbuild"
       IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_build-py3.11"
       RAY_CUDA_CODE: "cpu"
+    tags: cibase
 
   - name: llmgpubuild
     wanda: ci/docker/llm.build.wanda.yaml
     depends_on:
-      - oss-ci-base_gpu-multipy
+      - oss-ci-base_cu128-multipy
     env:
       IMAGE_TO: "llmgpubuild"
-      IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_gpu-py3.11"
-      RAY_CUDA_CODE: "cu121"
+      IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_cu128-py3.11"
+      RAY_CUDA_CODE: "cu128"
+    tags: cibase
 
   - label: "llm cpu tests"
     key: "llm-cpu-tests"
@@ -35,11 +37,10 @@ steps:
   - label: "llm gpu tests"
     key: "llm-gpu-tests"
     tags:
-      - python
       - llm
       - gpu
-    instance_type: gpu-large
+    instance_type: g6-large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
         --build-name llmgpubuild --only-tags gpu
     depends_on: llmgpubuild

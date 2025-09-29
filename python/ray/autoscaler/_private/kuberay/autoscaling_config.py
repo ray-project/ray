@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ray._private.label_utils import parse_node_labels_string
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -27,6 +28,9 @@ UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
+
+GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
+GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
@@ -198,6 +202,7 @@ def _node_type_from_group_spec(
         max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
+    labels = _get_labels_from_group_spec(group_spec)
 
     node_type = {
         "min_workers": min_workers,
@@ -206,6 +211,7 @@ def _node_type_from_group_spec(
         # Pod config data is required by the operator but not by the autoscaler.
         "node_config": {},
         "resources": resources,
+        "labels": labels,
     }
 
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
@@ -264,15 +270,27 @@ def _get_ray_resources_from_group_spec(
         resource labels on worker 0 of each replica:
             worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
         """
-        topology = group_spec["template"]["spec"]["nodeSelector"][
-            "cloud.google.com/gke-tpu-topology"
-        ]
-        accelerator = group_spec["template"]["spec"]["nodeSelector"][
-            "cloud.google.com/gke-tpu-accelerator"
-        ]
-        accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
-        if accelerator_type:
-            resources[f"TPU-{accelerator_type}-head"] = 1
+        if (
+            "nodeSelector" in group_spec["template"]["spec"]
+            and GKE_TPU_TOPOLOGY_LABEL in group_spec["template"]["spec"]["nodeSelector"]
+            and GKE_TPU_ACCELERATOR_LABEL
+            in group_spec["template"]["spec"]["nodeSelector"]
+        ):
+            topology = group_spec["template"]["spec"]["nodeSelector"][
+                GKE_TPU_TOPOLOGY_LABEL
+            ]
+            accelerator = group_spec["template"]["spec"]["nodeSelector"][
+                GKE_TPU_ACCELERATOR_LABEL
+            ]
+            accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
+            if accelerator_type:
+                resources[f"TPU-{accelerator_type}-head"] = 1
+        else:
+            logger.error(
+                f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
+                "See https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/tpu.html#configuring-ray-pods-for-tpu-usage "
+                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
+            )
 
     if memory is not None:
         resources["memory"] = memory
@@ -280,6 +298,28 @@ def _get_ray_resources_from_group_spec(
     resources.update(custom_resource_dict)
 
     return resources
+
+
+def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Parses Ray node labels from rayStartParams for autoscaling config.
+    Labels are a comma-separated string of key-value pairs.
+    """
+    ray_start_params = group_spec.get("rayStartParams", {})
+    labels_str = ray_start_params.get("labels")
+
+    if not labels_str:
+        return {}
+
+    try:
+        return parse_node_labels_string(labels_str)
+    except ValueError as e:
+        group_name = group_spec.get("groupName", _HEAD_GROUP_NAME)
+        logger.error(
+            f"Error parsing `labels`: {labels_str} in rayStartParams for group {group_name}: {e}"
+        )
+        # Return an empty dict when failed to parse labels.
+        return {}
 
 
 def _get_num_cpus(

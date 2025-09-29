@@ -1,10 +1,10 @@
-from typing import TYPE_CHECKING, Callable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data.block import Schema
 
 
 class LogicalOperator(Operator):
@@ -26,7 +26,8 @@ class LogicalOperator(Operator):
         )
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
-        self._num_outputs = num_outputs
+
+        self._num_outputs: Optional[int] = num_outputs
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -61,17 +62,21 @@ class LogicalOperator(Operator):
     ) -> "LogicalOperator":
         return super()._apply_transform(transform)  # type: ignore
 
-    def output_data(self) -> Optional[List["RefBundle"]]:
-        """The output data of this operator, or ``None`` if not known."""
+    def _get_args(self) -> Dict[str, Any]:
+        """This Dict must be serializable"""
+        return vars(self)
+
+    def infer_schema(self) -> Optional["Schema"]:
+        """Returns the inferred schema of the output blocks."""
         return None
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> "BlockMetadata":
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
 
         This method is used by methods like :meth:`~ray.data.Dataset.schema` to
         efficiently return metadata.
         """
-        return BlockMetadata(None, None, None, None, None)
+        return BlockMetadata(None, None, None, None)
 
     def is_lineage_serializable(self) -> bool:
         """Returns whether the lineage of this operator can be serialized.
@@ -83,6 +88,15 @@ class LogicalOperator(Operator):
         """
         return True
 
-    @classmethod
-    def is_read_op(cls):
+
+class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
+    """Mixin for reading operators supporting projection pushdown"""
+
+    def supports_projection_pushdown(self) -> bool:
         return False
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        return None
+
+    def apply_projection(self, columns: Optional[List[str]]) -> LogicalOperator:
+        return self

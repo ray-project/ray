@@ -85,7 +85,7 @@ def test_read(
                 return [pd.DataFrame({"id": [value]})]
 
             meta = BlockMetadata(
-                num_rows=1, size_bytes=8, schema=None, input_files=None, exec_stats=None
+                num_rows=1, size_bytes=8, input_files=None, exec_stats=None
             )
             return [ReadTask(read_fn, meta)]
 

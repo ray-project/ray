@@ -68,8 +68,8 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     conda remove -y python || true
     conda install -y python="${PY_MM}"
 
-    PYTHON_EXE="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/python"
-    PIP_CMD="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/pip"
+    PYTHON_EXE="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/python"
+    PIP_CMD="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/pip"
   else
     PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
     PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
@@ -90,7 +90,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
   # Install the dependencies to run the tests.
-  "$PIP_CMD" install -q aiohttp numpy 'pytest==7.0.1' requests proxy.py
+  "$PIP_CMD" install -q aiohttp numpy 'pytest==7.4.4' requests proxy.py
 
   # Run a simple test script to make sure that the wheel works.
   # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090

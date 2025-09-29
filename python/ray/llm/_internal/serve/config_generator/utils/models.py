@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 
 from ray.llm._internal.serve.config_generator.utils.gpu import GPUType
 
-
 TEXT_COMPLETION_MODEL_TYPE: Literal["TextCompletion"] = "TextCompletion"
 
 ModelType = Literal["TextCompletion"]

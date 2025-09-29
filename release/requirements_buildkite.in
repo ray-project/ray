@@ -21,9 +21,13 @@ aws_requests_auth
 # Below are requirements only used by ray_ci
 tzdata
 requests >= 2.31.0
+tqdm
+networkx
 -r requirements-doc.txt
 
 # Upgrades
 typing-extensions>=4.10
 jsonschema>=4.23.0
 certifi>=2025.1.31
+h11>=0.16.0
+google-cloud-logging

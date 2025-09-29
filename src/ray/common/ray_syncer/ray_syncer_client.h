@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
 #include "ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h"
 

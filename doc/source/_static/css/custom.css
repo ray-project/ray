@@ -394,6 +394,12 @@ table.autosummary tr > td:first-child > p > a > code > span {
   overflow-y: scroll;
 }
 
+/* Right align the version switcher dropdown menu to prevent it from going off screen */
+.version-switcher__menu[data-bs-popper] {
+  right: 0;
+  left: unset;
+}
+
 /* Hide the RTD version switcher since we are using PyData theme one */
 readthedocs-flyout {
   display: none !important;
@@ -402,4 +408,18 @@ readthedocs-flyout {
 /* Styling the experimental Anyscale upsell CTA */
 .anyscale-cta {
   margin-bottom: 16px;
+}
+
+
+/* Prevent text wrapping around left-aligned images on ultra-wide screens */
+@media (min-width: 1600px) {
+  .bd-content .align-left,
+  .bd-content .figure.align-left,
+  .bd-content img.align-left {
+    float: none !important;
+    display: block;
+    clear: both;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
 }

@@ -1,26 +1,17 @@
-import binascii
 import contextlib
-import errno
-import functools
 import importlib
-import inspect
 import json
 import logging
 import multiprocessing
 import os
 import platform
-import random
 import re
 import signal
-import string
 import subprocess
 import sys
-import tempfile
 import threading
 import time
-import warnings
 from collections import defaultdict
-from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
@@ -39,7 +30,12 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.core.generated.runtime_env_common_pb2 import (
+from ray._common.utils import (
+    PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME,
+    get_ray_address_file,
+    get_system_memory,
+)
+from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
@@ -80,42 +76,6 @@ PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
 PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 
-# Match the standard alphabet used for UUIDs.
-RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
-
-
-def get_random_alphanumeric_string(length: int):
-    """Generates random string of length consisting exclusively of
-    - Lower-case ASCII chars
-    - Digits
-    """
-    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
-
-
-def get_user_temp_dir():
-    if "RAY_TMPDIR" in os.environ:
-        return os.environ["RAY_TMPDIR"]
-    elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
-        return os.environ["TMPDIR"]
-    elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
-        # Ideally we wouldn't need this fallback, but keep it for now for
-        # for compatibility
-        tempdir = os.path.join(os.sep, "tmp")
-    else:
-        tempdir = tempfile.gettempdir()
-    return tempdir
-
-
-def get_ray_temp_dir():
-    return os.path.join(get_user_temp_dir(), "ray")
-
-
-def get_ray_address_file(temp_dir: Optional[str]):
-    if temp_dir is None:
-        temp_dir = get_ray_temp_dir()
-    return os.path.join(temp_dir, "ray_current_cluster")
-
-
 def write_ray_address(ray_address: str, temp_dir: Optional[str] = None):
     address_file = get_ray_address_file(temp_dir)
     if os.path.exists(address_file):
@@ -133,15 +93,6 @@ def write_ray_address(ray_address: str, temp_dir: Optional[str] = None):
 
     with open(address_file, "w+") as f:
         f.write(ray_address)
-
-
-def reset_ray_address(temp_dir: Optional[str] = None):
-    address_file = get_ray_address_file(temp_dir)
-    if os.path.exists(address_file):
-        try:
-            os.remove(address_file)
-        except OSError:
-            pass
 
 
 def read_ray_address(temp_dir: Optional[str] = None) -> str:
@@ -223,26 +174,6 @@ def publish_error_to_driver(
         logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
 
-def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
-    """Make this unicode in Python 3, otherwise leave it as bytes.
-
-    Args:
-        byte_str: The byte string to decode.
-        allow_none: If true, then we will allow byte_str to be None in which
-            case we will return an empty string. TODO(rkn): Remove this flag.
-            This is only here to simplify upgrading to flatbuffers 1.10.0.
-
-    Returns:
-        A byte string in Python 2 and a unicode string in Python 3.
-    """
-    if byte_str is None and allow_none:
-        return ""
-
-    if not isinstance(byte_str, bytes):
-        raise ValueError(f"The argument {byte_str} must be a bytes object.")
-    return byte_str.decode(encode_type)
-
-
 def ensure_str(s, encoding="utf-8", errors="strict"):
     """Coerce *s* to `str`.
 
@@ -262,16 +193,6 @@ def binary_to_object_ref(binary_object_ref):
 
 def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
-
-
-def binary_to_hex(identifier):
-    hex_identifier = binascii.hexlify(identifier)
-    hex_identifier = hex_identifier.decode()
-    return hex_identifier
-
-
-def hex_to_binary(hex_identifier):
-    return binascii.unhexlify(hex_identifier)
 
 
 # TODO(qwang): Remove these hepler functions
@@ -345,65 +266,45 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_visible_accelerator_ids() -> None:
+def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
-    environment variables based on the accelerator runtime.
+    environment variables based on the accelerator runtime. Return the original
+    environment variables.
     """
+    from ray._private.ray_constants import env_bool
+
+    original_visible_accelerator_env_vars = {}
+    override_on_zero = env_bool(
+        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+        True,
+    )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
     ):
+        # If no accelerator ids are set, skip overriding the environment variable.
+        if not override_on_zero and len(accelerator_ids) == 0:
+            continue
+        env_var = ray._private.accelerators.get_accelerator_manager_for_resource(
+            resource_name
+        ).get_visible_accelerator_ids_env_var()
+        original_visible_accelerator_env_vars[env_var] = os.environ.get(env_var, None)
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
 
+    return original_visible_accelerator_env_vars
 
-def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """Determine a task's resource requirements.
 
-    Args:
-        options_dict: The dictionary that contains resources requirements.
-
-    Returns:
-        A dictionary of the resource requirements for the task.
-    """
-    resources = (options_dict.get("resources") or {}).copy()
-
-    if "CPU" in resources or "GPU" in resources:
-        raise ValueError(
-            "The resources dictionary must not contain the key 'CPU' or 'GPU'"
-        )
-    elif "memory" in resources or "object_store_memory" in resources:
-        raise ValueError(
-            "The resources dictionary must not "
-            "contain the key 'memory' or 'object_store_memory'"
-        )
-    elif ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
-        raise ValueError(
-            "The resource should not include `bundle` which "
-            f"is reserved for Ray. resources: {resources}"
-        )
-
-    num_cpus = options_dict.get("num_cpus")
-    num_gpus = options_dict.get("num_gpus")
-    memory = options_dict.get("memory")
-    object_store_memory = options_dict.get("object_store_memory")
-    accelerator_type = options_dict.get("accelerator_type")
-
-    if num_cpus is not None:
-        resources["CPU"] = num_cpus
-    if num_gpus is not None:
-        resources["GPU"] = num_gpus
-    if memory is not None:
-        resources["memory"] = int(memory)
-    if object_store_memory is not None:
-        resources["object_store_memory"] = object_store_memory
-    if accelerator_type is not None:
-        resources[
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
-        ] = 0.001
-
-    return resources
+def reset_visible_accelerator_env_vars(
+    original_visible_accelerator_env_vars: Mapping[str, Optional[str]]
+) -> None:
+    """Reset the visible accelerator env vars to the original values."""
+    for env_var, env_value in original_visible_accelerator_env_vars.items():
+        if env_value is None:
+            os.environ.pop(env_var, None)
+        else:
+            os.environ[env_var] = env_value
 
 
 class Unbuffered(object):
@@ -429,6 +330,9 @@ class Unbuffered(object):
         self.stream.flush()
 
     def __getattr__(self, attr):
+        # Avoid endless loop when get `stream` attribute
+        if attr == "stream":
+            return super().__getattribute__("stream")
         return getattr(self.stream, attr)
 
 
@@ -446,45 +350,6 @@ def open_log(path, unbuffered=False, **kwargs):
         return Unbuffered(stream)
     else:
         return stream
-
-
-def get_system_memory(
-    # For cgroups v1:
-    memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
-    # For cgroups v2:
-    memory_limit_filename_v2="/sys/fs/cgroup/memory.max",
-):
-    """Return the total amount of system memory in bytes.
-
-    Returns:
-        The total amount of system memory in bytes.
-    """
-    # Try to accurately figure out the memory limit if we are in a docker
-    # container. Note that this file is not specific to Docker and its value is
-    # often much larger than the actual amount of memory.
-    docker_limit = None
-    if os.path.exists(memory_limit_filename):
-        with open(memory_limit_filename, "r") as f:
-            docker_limit = int(f.read().strip())
-    elif os.path.exists(memory_limit_filename_v2):
-        with open(memory_limit_filename_v2, "r") as f:
-            # Don't forget to strip() the newline:
-            max_file = f.read().strip()
-            if max_file.isnumeric():
-                docker_limit = int(max_file)
-            else:
-                # max_file is "max", i.e. is unset.
-                docker_limit = None
-
-    # Use psutil if it is available.
-    psutil_memory_in_bytes = psutil.virtual_memory().total
-
-    if docker_limit is not None:
-        # We take the min because the cgroup limit is very large if we aren't
-        # in Docker.
-        return min(docker_limit, psutil_memory_in_bytes)
-
-    return psutil_memory_in_bytes
 
 
 def _get_docker_cpus(
@@ -505,9 +370,10 @@ def _get_docker_cpus(
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
     if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
         try:
-            with open(cpu_quota_file_name, "r") as quota_file, open(
-                cpu_period_file_name, "r"
-            ) as period_file:
+            with (
+                open(cpu_quota_file_name, "r") as quota_file,
+                open(cpu_period_file_name, "r") as period_file,
+            ):
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception:
             logger.exception("Unexpected error calculating docker cpu quota.")
@@ -932,34 +798,6 @@ def set_sigterm_handler(sigterm_handler):
         signal.signal(signal.SIGTERM, sigterm_handler)
 
 
-def try_make_directory_shared(directory_path):
-    try:
-        os.chmod(directory_path, 0o0777)
-    except OSError as e:
-        # Silently suppress the PermissionError that is thrown by the chmod.
-        # This is done because the user attempting to change the permissions
-        # on a directory may not own it. The chmod is attempted whether the
-        # directory is new or not to avoid race conditions.
-        # ray-project/ray/#3591
-        if e.errno in [errno.EACCES, errno.EPERM]:
-            pass
-        else:
-            raise
-
-
-def try_to_create_directory(directory_path):
-    """Attempt to create a directory that is globally readable/writable.
-
-    Args:
-        directory_path: The path of the directory to create.
-    """
-    directory_path = os.path.expanduser(directory_path)
-    os.makedirs(directory_path, exist_ok=True)
-    # Change the log directory permissions so others can use it. This is
-    # important when multiple people are using the same machine.
-    try_make_directory_shared(directory_path)
-
-
 def try_to_symlink(symlink_path, target_path):
     """Attempt to create a symlink.
 
@@ -998,11 +836,6 @@ def get_user():
         return pwd.getpwuid(os.getuid()).pw_name
     except Exception:
         return ""
-
-
-def get_function_args(callable):
-    all_parameters = frozenset(signature(callable).parameters)
-    return list(all_parameters)
 
 
 def get_conda_bin_executable(executable_name):
@@ -1072,23 +905,6 @@ def get_conda_env_dir(env_name):
     return env_dir
 
 
-def get_call_location(back: int = 1):
-    """
-    Get the location (filename and line number) of a function caller, `back`
-    frames up the stack.
-
-    Args:
-        back: The number of frames to go up the stack, not including this
-            function.
-    """
-    stack = inspect.stack()
-    try:
-        frame = stack[back + 1]
-        return f"{frame.filename}:{frame.lineno}"
-    except IndexError:
-        return "UNKNOWN"
-
-
 def get_ray_doc_version():
     """Get the docs.ray.io version corresponding to the ray.__version__."""
     # The ray.__version__ can be official Ray release (such as 1.12.0), or
@@ -1103,75 +919,6 @@ def get_ray_doc_version():
 
 # Used to only print a deprecation warning once for a given function if we
 # don't wish to spam the caller.
-_PRINTED_WARNING = set()
-
-
-# The following is inspired by
-# https://github.com/tensorflow/tensorflow/blob/dec8e0b11f4f87693b67e125e67dfbc68d26c205/tensorflow/python/util/deprecation.py#L274-L329
-def deprecated(
-    instructions: Optional[str] = None,
-    removal_release: Optional[str] = None,
-    removal_date: Optional[str] = None,
-    warn_once: bool = True,
-    stacklevel=2,
-):
-    """
-    Creates a decorator for marking functions as deprecated. The decorator
-    will log a deprecation warning on the first (or all, see `warn_once` arg)
-    invocations, and will otherwise leave the wrapped function unchanged.
-
-    Args:
-        instructions: Instructions for the caller to update their code.
-        removal_release: The release in which this deprecated function
-            will be removed. Only one of removal_release and removal_date
-            should be specified. If neither is specfieid, we'll warning that
-            the function will be removed "in a future release".
-        removal_date: The date on which this deprecated function will be
-            removed. Only one of removal_release and removal_date should be
-            specified. If neither is specfieid, we'll warning that
-            the function will be removed "in a future release".
-        warn_once: If true, the deprecation warning will only be logged
-            on the first invocation. Otherwise, the deprecation warning will
-            be logged on every invocation. Defaults to True.
-        stacklevel: adjust the warnings stacklevel to trace the source call
-
-    Returns:
-        A decorator to be used for wrapping deprecated functions.
-    """
-    if removal_release is not None and removal_date is not None:
-        raise ValueError(
-            "Only one of removal_release and removal_date should be specified."
-        )
-
-    def deprecated_wrapper(func):
-        @functools.wraps(func)
-        def new_func(*args, **kwargs):
-            global _PRINTED_WARNING
-            if func not in _PRINTED_WARNING:
-                if warn_once:
-                    _PRINTED_WARNING.add(func)
-                msg = (
-                    "From {}: {} (from {}) is deprecated and will ".format(
-                        get_call_location(), func.__name__, func.__module__
-                    )
-                    + "be removed "
-                    + (
-                        f"in version {removal_release}."
-                        if removal_release is not None
-                        else f"after {removal_date}"
-                        if removal_date is not None
-                        else "in a future version"
-                    )
-                    + (f" {instructions}" if instructions is not None else "")
-                )
-                warnings.warn(msg, stacklevel=stacklevel)
-            return func(*args, **kwargs)
-
-        return new_func
-
-    return deprecated_wrapper
-
-
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
@@ -1201,9 +948,9 @@ def get_wheel_filename(
     architecture = architecture or platform.processor()
 
     if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
-        darwin_os_string = "macosx_11_0_arm64"
+        darwin_os_string = "macosx_12_0_arm64"
     else:
-        darwin_os_string = "macosx_10_15_x86_64"
+        darwin_os_string = "macosx_12_0_x86_64"
 
     if architecture == "aarch64":
         linux_os_string = "manylinux2014_aarch64"
@@ -1307,34 +1054,33 @@ def init_grpc_channel(
     return channel
 
 
-def check_dashboard_dependencies_installed() -> bool:
-    """Returns True if Ray Dashboard dependencies are installed.
+def get_dashboard_dependency_error() -> Optional[ImportError]:
+    """Returns the exception error if Ray Dashboard dependencies are not installed.
+    None if they are installed.
 
     Checks to see if we should start the dashboard agent or not based on the
     Ray installation version the user has installed (ray vs. ray[default]).
     Unfortunately there doesn't seem to be a cleaner way to detect this other
     than just blindly importing the relevant packages.
-
     """
     try:
         import ray.dashboard.optional_deps  # noqa: F401
 
-        return True
-    except ImportError:
-        return False
+        return None
+    except ImportError as e:
+        return e
 
 
-def check_ray_client_dependencies_installed() -> bool:
-    """Returns True if Ray Client dependencies are installed.
-
-    See documents for check_dashboard_dependencies_installed.
+def get_ray_client_dependency_error() -> Optional[ImportError]:
+    """Returns the exception error if Ray Client dependencies are not installed.
+    None if they are installed.
     """
     try:
         import grpc  # noqa: F401
 
-        return True
-    except ImportError:
-        return False
+        return None
+    except ImportError as e:
+        return e
 
 
 connect_error = (
@@ -1818,7 +1564,7 @@ def parse_pg_formatted_resources_to_original(
             # it is an implementation detail.
             # This resource is automatically added to the resource
             # request for all tasks that require placement groups.
-            if result.group(1) == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
+            if result.group(1) == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
 
             original_resources[result.group(1)] = value
@@ -1834,20 +1580,6 @@ def parse_pg_formatted_resources_to_original(
         original_resources[key] = value
 
     return original_resources
-
-
-def load_class(path):
-    """Load a class at runtime given a full path.
-
-    Example of the path: mypkg.mysubpkg.myclass
-    """
-    class_data = path.split(".")
-    if len(class_data) < 2:
-        raise ValueError("You need to pass a valid path like mymodule.provider_class")
-    module_path = ".".join(class_data[:-1])
-    class_str = class_data[-1]
-    module = importlib.import_module(module_path)
-    return getattr(module, class_str)
 
 
 def validate_actor_state_name(actor_state_name):

@@ -1,6 +1,13 @@
+import time
+import uuid
+from typing import Optional
 from unittest.mock import MagicMock
 
-from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.context import TrainContext
+from ray.train.v2._internal.execution.context import (
+    DistributedContext,
+    TrainRunContext,
+)
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
@@ -17,7 +24,17 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupState,
     WorkerStatus,
 )
+from ray.train.v2._internal.state.schema import (
+    ActorStatus,
+    RunAttemptStatus,
+    RunStatus,
+    TrainResources,
+    TrainRun,
+    TrainRunAttempt,
+    TrainWorker,
+)
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 class DummyWorkerGroup(WorkerGroup):
@@ -109,7 +126,7 @@ class MockFailurePolicy(FailurePolicy):
         super().__init__(failure_config)
 
     def make_decision(
-        self, worker_group_status: WorkerGroupPollStatus
+        self, training_failed_error: TrainingFailedError
     ) -> FailureDecision:
         if self._decision_queue:
             return self._decision_queue.pop(0)
@@ -128,3 +145,117 @@ class DummyObjectRefWrapper(ObjectRefWrapper):
 
     def get(self):
         return self._obj
+
+
+_RUN_ID = "mock_run_id"
+
+
+def create_mock_train_run(
+    status: RunStatus = RunStatus.RUNNING,
+    controller_actor_id: Optional[str] = None,
+    end_time_ns: Optional[int] = None,
+    id: Optional[str] = None,
+    status_detail: Optional[str] = None,
+):
+    return TrainRun(
+        schema_version=0,
+        id=id or _RUN_ID,
+        name="test_run",
+        job_id=uuid.uuid4().hex,
+        controller_actor_id=controller_actor_id or uuid.uuid4().hex,
+        status=status,
+        status_detail=status_detail,
+        start_time_ns=time.time_ns(),
+        end_time_ns=end_time_ns,
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+    )
+
+
+def create_mock_train_run_attempt(
+    attempt_id: str = "mock_attempt_id",
+    status: RunAttemptStatus = RunAttemptStatus.RUNNING,
+    end_time_ns: Optional[int] = None,
+    run_id: Optional[str] = None,
+    worker_status: Optional[ActorStatus] = ActorStatus.ALIVE,
+    status_detail: Optional[str] = None,
+):
+    worker = TrainWorker(
+        world_rank=0,
+        local_rank=0,
+        node_rank=0,
+        actor_id=uuid.uuid4().hex,
+        node_id=uuid.uuid4().hex,
+        node_ip="127.0.0.1",
+        pid=1234,
+        gpu_ids=[0],
+        status=worker_status,
+        resources=TrainResources(resources={"CPU": 1}),
+        log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
+    )
+
+    return TrainRunAttempt(
+        schema_version=0,
+        attempt_id=attempt_id,
+        run_id=run_id or _RUN_ID,
+        status=status,
+        status_detail=status_detail,
+        start_time_ns=time.time_ns(),
+        resources=[TrainResources(resources={"CPU": 1})],
+        workers=[worker],
+        end_time_ns=end_time_ns,
+    )
+
+
+def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
+    """Create a standardized TrainRunContext for testing.
+
+    Args:
+        **kwargs: Optional overrides for the default configuration.
+
+    Returns:
+        TrainRunContext: A standardized TrainRunContext instance for testing.
+    """
+    from ray.train import BackendConfig, DataConfig
+    from ray.train.v2._internal.execution.context import TrainRunContext
+    from ray.train.v2.api.config import RunConfig, ScalingConfig
+
+    config = dict(
+        run_config=RunConfig(name="test"),
+        train_loop_config={},
+        scaling_config=ScalingConfig(num_workers=1),
+        backend_config=BackendConfig(),
+        datasets={},
+        dataset_config=DataConfig(),
+    )
+    config.update(kwargs)
+    return TrainRunContext(**config)
+
+
+class DummyTrainContext(TrainContext):
+    """A dummy TrainContext subclass for testing."""
+
+    def __init__(self):
+        self.train_run_context = create_dummy_run_context()
+        self.distributed_context = DistributedContext(
+            world_rank=0,
+            world_size=1,
+            local_rank=0,
+            local_world_size=1,
+            node_rank=0,
+        )
+        # Mock everything else since we don't need the actual functionality
+        self.execution_context = MagicMock()
+        self.storage_context = MagicMock()
+        self.dataset_shards = {}
+
+    def get_run_config(self):
+        return self.train_run_context.run_config
+
+
+def create_dummy_train_context() -> TrainContext:
+    """Create a standardized TrainContext for testing.
+
+    Returns:
+        TrainContext: A standardized TrainContext instance for testing.
+    """
+    return DummyTrainContext()

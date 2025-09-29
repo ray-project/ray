@@ -6,7 +6,7 @@ from joblib._parallel_backends import MultiprocessingBackend
 from joblib.pool import PicklingPool
 
 import ray
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
 from ray.util.multiprocessing.pool import Pool
 
 logger = logging.getLogger(__name__)

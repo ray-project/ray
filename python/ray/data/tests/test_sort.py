@@ -8,13 +8,14 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data import Dataset
+from ray._raylet import NodeID
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
@@ -120,13 +121,13 @@ def test_sort_arrow(
     num_items,
     parallelism,
     configure_shuffle_method,
-    use_polars,
+    use_polars_sort,
 ):
     ctx = ray.data.context.DataContext.get_current()
 
     try:
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
+        original_use_polars = ctx.use_polars_sort
+        ctx.use_polars_sort = use_polars_sort
 
         a = list(reversed(range(num_items)))
         b = [f"{x:03}" for x in range(num_items)]
@@ -159,10 +160,10 @@ def test_sort_arrow(
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_polars = original_use_polars
+        ctx.use_polars_sort = original_use_polars
 
 
-def test_sort(ray_start_regular, use_polars):
+def test_sort(ray_start_regular, use_polars_sort):
     import random
 
     import pyarrow as pa
@@ -184,13 +185,13 @@ def test_sort(ray_start_regular, use_polars):
 
 
 def test_sort_arrow_with_empty_blocks(
-    ray_start_regular, configure_shuffle_method, use_polars
+    ray_start_regular, configure_shuffle_method, use_polars_sort
 ):
     ctx = ray.data.context.DataContext.get_current()
 
     try:
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
+        original_use_polars = ctx.use_polars_sort
+        ctx.use_polars_sort = use_polars_sort
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
@@ -208,8 +209,8 @@ def test_sort_arrow_with_empty_blocks(
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
-            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-            .num_rows
+            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+            .metadata.num_rows
             == 0
         )
 
@@ -231,7 +232,7 @@ def test_sort_arrow_with_empty_blocks(
         )
         assert ds.sort("id").count() == 0
     finally:
-        ctx.use_polars = original_use_polars
+        ctx.use_polars_sort = original_use_polars
 
 
 @pytest.mark.parametrize("descending", [False, True])
@@ -317,8 +318,8 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, configure_shuffle_meth
 
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
-        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-        .num_rows
+        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+        .metadata.num_rows
         == 0
     )
 
@@ -444,21 +445,24 @@ def test_push_based_shuffle_schedule():
             expected {num_reducers_per_merge_idx[i]}."""
             assert num_reducers > 0
 
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
+    node_id_3 = NodeID.from_random().hex()
     for num_cpus in range(1, 20):
-        _test(20, 3, {"node1": num_cpus})
-    _test(20, 3, {"node1": 100})
-    _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
-    _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
+        _test(20, 3, {node_id_1: num_cpus})
+    _test(20, 3, {node_id_1: 100})
+    _test(100, 3, {node_id_1: 10, node_id_2: 10, node_id_3: 10})
+    _test(100, 10, {node_id_1: 10, node_id_2: 10, node_id_3: 10})
     # Regression test for https://github.com/ray-project/ray/issues/25863.
-    _test(1000, 2, {f"node{i}": 16 for i in range(20)})
+    _test(1000, 2, {NodeID.from_random().hex(): 16 for i in range(20)})
     # Regression test for https://github.com/ray-project/ray/issues/37754.
-    _test(260, 2, {"node1": 128})
-    _test(1, 2, {"node1": 128})
+    _test(260, 2, {node_id_1: 128})
+    _test(1, 2, {node_id_1: 128})
 
     # Test float merge_factor.
     for cluster_config in [
-        {"node1": 10},
-        {"node1": 10, "node2": 10},
+        {node_id_1: 10},
+        {node_id_1: 10, node_id_2: 10},
     ]:
         _test(100, 1, cluster_config)
         _test(100, 1.3, cluster_config)
@@ -558,9 +562,9 @@ def patch_ray_remote(condition, callback):
 def patch_ray_get(callback):
     original_ray_get = ray.get
 
-    def ray_get_override(object_refs):
+    def ray_get_override(object_refs, *args, **kwargs):
         callback(object_refs)
-        return original_ray_get(object_refs)
+        return original_ray_get(object_refs, *args, **kwargs)
 
     ray.get = ray_get_override
     return original_ray_get

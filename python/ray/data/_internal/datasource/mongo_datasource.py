@@ -55,7 +55,9 @@ class MongoDatasource(Datasource):
                 "collstats", self._collection
             )["avgObjSize"]
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         from bson.objectid import ObjectId
 
         self._get_or_create_client()
@@ -107,7 +109,6 @@ class MongoDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=partition["count"],
                 size_bytes=partition["count"] * self._avg_obj_size,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )
@@ -125,6 +126,7 @@ class MongoDatasource(Datasource):
             read_task = ReadTask(
                 lambda args=make_block_args: [make_block(*args)],
                 metadata,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 

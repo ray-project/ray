@@ -1,48 +1,45 @@
 import random
 import sys
 import time
-from unittest.mock import patch
-
-import pytest
-
-import ray._private.prometheus_exporter as prometheus_exporter
-
 from typing import List
 
+import pytest
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
-from opencensus.stats.view_manager import ViewManager
-from opencensus.stats.stats_recorder import StatsRecorder
+from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import execution_context
-from prometheus_client.core import REGISTRY
-
-
-from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
 from opencensus.stats.aggregation_data import (
-    LastValueAggregationData,
-    SumAggregationData,
     CountAggregationData,
     DistributionAggregationData,
+    LastValueAggregationData,
+    SumAggregationData,
 )
-from opencensus.metrics.export.value import ValueDouble
+from opencensus.stats.stats_recorder import StatsRecorder
+from opencensus.stats.view_manager import ViewManager
+from prometheus_client.core import REGISTRY
+
+import ray._private.prometheus_exporter as prometheus_exporter
+from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import (
-    MetricCardinalityLevel,
+    RAY_WORKER_TIMEOUT_S,
+    Gauge,
+    MetricsAgent,
     OpenCensusProxyCollector,
     OpencensusProxyMetric,
-    WORKER_ID_TAG_KEY,
+    Record,
 )
-from ray.core.generated.metrics_pb2 import (
-    Metric,
-    MetricDescriptor,
-    Point,
-    LabelKey,
-    TimeSeries,
-    LabelValue,
-)
-from ray._raylet import WorkerID
+from ray._private.telemetry.metric_cardinality import WORKER_ID_TAG_KEY
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
-    wait_for_condition,
+)
+from ray._raylet import WorkerID
+from ray.core.generated.metrics_pb2 import (
+    LabelKey,
+    LabelValue,
+    Metric,
+    MetricDescriptor,
+    Point,
+    TimeSeries,
 )
 
 
@@ -503,28 +500,6 @@ def test_metrics_agent_export_format_correct(get_agent):
     assert response.count("# TYPE test_test gauge") == 1
     assert response.count("# HELP test_test2 desc") == 1
     assert response.count("# TYPE test_test2 gauge") == 1
-
-
-@patch(
-    "ray._private.metrics_agent.OpenCensusProxyCollector._get_metric_cardinality_level_setting"
-)
-def test_get_metric_cardinality_level(
-    mock_get_metric_cardinality_level_setting,
-):
-    """
-    Test the core metric cardinality level.
-    """
-    collector = OpenCensusProxyCollector("")
-    mock_get_metric_cardinality_level_setting.return_value = "recommended"
-    assert (
-        collector._get_metric_cardinality_level() == MetricCardinalityLevel.RECOMMENDED
-    )
-
-    mock_get_metric_cardinality_level_setting.return_value = "legacy"
-    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
-
-    mock_get_metric_cardinality_level_setting.return_value = "unknown"
-    assert collector._get_metric_cardinality_level() == MetricCardinalityLevel.LEGACY
 
 
 def _stub_node_level_metric(label: str, value: float) -> OpencensusProxyMetric:

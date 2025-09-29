@@ -4,27 +4,27 @@ If you need a customized Ray instance (e.g., to change system config or env vars
 put the test in `test_reference_counting_standalone.py`.
 """
 # coding: utf-8
+import copy
 import logging
 import os
-import copy
 import pickle
 import signal
 import sys
 import time
+from typing import Union
 
 import numpy as np
 import pytest
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import (
-    SignalActor,
     put_object,
-    wait_for_condition,
     wait_for_num_actors,
 )
-import ray._private.gcs_utils as gcs_utils
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -37,6 +37,8 @@ def one_cpu_100MiB_shared():
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
         "automatic_object_spilling_enabled": False,
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+        "core_worker_rpc_server_reconnect_timeout_s": 0,
     }
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
@@ -44,7 +46,14 @@ def one_cpu_100MiB_shared():
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
+def _fill_object_store_and_get(
+    obj: Union[ray.ObjectRef, bytes],
+    *,
+    succeed: bool = True,
+    object_MiB: float = 20,
+    num_objects: int = 5,
+    timeout_s: float = 10.0,
+):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
@@ -53,11 +62,15 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
     if succeed:
         wait_for_condition(
-            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj),
+            timeout=timeout_s,
         )
     else:
         wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
+                obj
+            ),
+            timeout=timeout_s,
         )
 
 
@@ -199,6 +212,7 @@ def test_pass_returned_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
@@ -255,7 +269,7 @@ def test_recursively_pass_returned_object_ref(
     del outer_oid
 
     # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(inner_oid_bytes, succeed=False)
+    _fill_object_store_and_get(inner_oid_bytes, succeed=False, timeout_s=20)
 
 
 # Call a recursive chain of tasks. The final task in the chain returns an

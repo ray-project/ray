@@ -1,0 +1,11 @@
+name: "servetracingbuild"
+froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
+dockerfile: ci/docker/serve.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+build_args:
+  - ENABLE_TRACING=1
+tags:
+  - cr.ray.io/rayproject/servetracingbuild

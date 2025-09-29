@@ -191,14 +191,13 @@ kind: RayCluster
 metadata:
   name: raycluster-fluentbit-sidecar-logs
 spec:
-  rayVersion: '2.9.0'
+  rayVersion: '2.46.0'
   headGroupSpec:
-    rayStartParams: {}
     template:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray:2.9.0
+          image: rayproject/ray:2.46.0
           # This config is meant for demonstration purposes only.
           # Use larger Ray containers in production!
           resources:

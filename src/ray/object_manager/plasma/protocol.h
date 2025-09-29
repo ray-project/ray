@@ -147,14 +147,12 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id);
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
                       const ObjectID *object_ids,
                       int64_t num_objects,
-                      int64_t timeout_ms,
-                      bool is_from_worker);
+                      int64_t timeout_ms);
 
 Status ReadGetRequest(const uint8_t *data,
                       size_t size,
                       std::vector<ObjectID> &object_ids,
-                      int64_t *timeout_ms,
-                      bool *is_from_worker);
+                      int64_t *timeout_ms);
 
 Status SendGetReply(const std::shared_ptr<Client> &client,
                     ObjectID object_ids[],
@@ -163,13 +161,13 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                     const std::vector<MEMFD_TYPE> &store_fds,
                     const std::vector<int64_t> &mmap_sizes);
 
-Status ReadGetReply(uint8_t *data,
-                    size_t size,
-                    ObjectID object_ids[],
-                    PlasmaObject plasma_objects[],
-                    int64_t num_objects,
-                    std::vector<MEMFD_TYPE> &store_fds,
-                    std::vector<int64_t> &mmap_sizes);
+void ReadGetReply(uint8_t *data,
+                  size_t size,
+                  ObjectID object_ids[],
+                  PlasmaObject plasma_objects[],
+                  int64_t num_objects,
+                  std::vector<MEMFD_TYPE> &store_fds,
+                  std::vector<int64_t> &mmap_sizes);
 
 /* Plasma Release message functions. */
 

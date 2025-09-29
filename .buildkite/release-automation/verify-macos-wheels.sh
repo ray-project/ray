@@ -4,7 +4,10 @@ set -euo pipefail
 
 set -x
 
-PYTHON_VERSIONS=("3.9" "3.10" "3.11" "3.12" "3.13")
+# TODO(#54047): Python 3.13 is skipped due to the bug
+# we should re-enable it when the bug is fixed.
+
+PYTHON_VERSIONS=("3.9" "3.10" "3.11" "3.12")
 BAZELISK_VERSION="v1.16.0"
 
 # Check arguments
@@ -35,16 +38,16 @@ install_bazel() {
     chmod +x "${TARGET}"
 }
 
-install_miniconda() {
-    # Install miniconda3 based on the architecture used
-    mkdir -p "$TMP_DIR/miniconda3"
-    curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-MacOSX-"$MAC_ARCH".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
-    bash "$TMP_DIR/miniconda3/miniconda.sh" -b -u -p "$TMP_DIR/miniconda3"
-    rm -rf "$TMP_DIR/miniconda3/miniconda.sh"
+install_miniforge() {
+    # Install miniforge3 based on the architecture used
+    mkdir -p "$TMP_DIR/miniforge3"
+    curl -sfL https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/Miniforge3-25.3.0-1-MacOSX-"$MAC_ARCH".sh -o "$TMP_DIR/miniforge3/miniforge.sh"
+    bash "$TMP_DIR/miniforge3/miniforge.sh" -b -u -p "$TMP_DIR/miniforge3"
+    rm -rf "$TMP_DIR/miniforge3/miniforge.sh"
 
     # Initialize conda. This replaces calling `conda init bash`.
     # Conda init command requires a shell restart which should not be done on BK.
-    source "$TMP_DIR/miniconda3/etc/profile.d/conda.sh"
+    source "$TMP_DIR/miniforge3/etc/profile.d/conda.sh"
 }
 
 run_sanity_check() {
@@ -77,7 +80,7 @@ export PATH="$TMP_DIR/bin:$PATH"
 
 trap _clean_up EXIT
 
-install_miniconda
+install_miniforge
 install_bazel
 
 # Install Ray & run sanity checks for each python version

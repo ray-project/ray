@@ -1,22 +1,30 @@
 import io
+import logging
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
-import logging
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Dict, List, Tuple
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import colorama
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
+from ray._private.log_monitor import (
+    LOG_NAME_UPDATE_INTERVAL_S,
+    RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
+    LogFileInfo,
+    LogMonitor,
+    is_proc_alive,
+)
 from ray._private.ray_constants import (
     PROCESS_TYPE_DASHBOARD,
     PROCESS_TYPE_DASHBOARD_AGENT,
@@ -25,31 +33,23 @@ from ray._private.ray_constants import (
     PROCESS_TYPE_MONITOR,
     PROCESS_TYPE_PYTHON_CORE_WORKER,
     PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
-    PROCESS_TYPE_RAYLET,
     PROCESS_TYPE_RAY_CLIENT_SERVER,
+    PROCESS_TYPE_RAYLET,
     PROCESS_TYPE_REAPER,
     PROCESS_TYPE_REDIS_SERVER,
     PROCESS_TYPE_RUNTIME_ENV_AGENT,
     PROCESS_TYPE_WORKER,
 )
-from ray._private.log_monitor import (
-    LOG_NAME_UPDATE_INTERVAL_S,
-    RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
-    LogFileInfo,
-    LogMonitor,
-    is_proc_alive,
-)
 from ray._private.test_utils import (
     get_log_batch,
-    get_log_message,
     get_log_data,
+    get_log_message,
     init_log_pubsub,
     run_string_as_driver,
-    wait_for_condition,
 )
-from ray.cross_language import java_actor_class
-from ray.autoscaler._private.cli_logger import cli_logger
 from ray._private.worker import print_worker_logs
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.cross_language import java_actor_class
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -1063,7 +1063,6 @@ def test_ray_does_not_break_makeRecord():
         ("ray.serve", logging.INFO),
         ("ray.train", logging.INFO),
         ("ray.tune", logging.INFO),
-        ("ray.workflow", logging.INFO),
     ),
 )
 @pytest.mark.parametrize(

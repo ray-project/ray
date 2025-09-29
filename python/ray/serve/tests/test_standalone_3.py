@@ -4,14 +4,13 @@ import subprocess
 import sys
 from contextlib import contextmanager
 
+import httpx
 import pytest
-import requests
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
@@ -20,6 +19,14 @@ from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
+
+
+# Some tests are not possible to run if proxy is not available on every node.
+# We skip them if proxy is not available.
+def is_proxy_on_every_node() -> bool:
+    client = _get_global_client()
+    return client._http_config.location == "EveryNode"
 
 
 @pytest.fixture
@@ -94,7 +101,7 @@ def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
 
     @ray.remote
     def do_req():
-        return requests.get("http://localhost:8000").text
+        return httpx.get("http://localhost:8000").text
 
     # The request should be hanging waiting on the `SignalActor`.
     first_ref = do_req.remote()
@@ -139,7 +146,7 @@ def test_replica_health_metric(ray_instance):
     serve.run(f.bind())
 
     def count_live_replica_metrics():
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999").text
         resp = resp.split("\n")
         count = 0
         for metrics in resp:
@@ -203,10 +210,10 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
     # Ensure Serve can be restarted and shutdown with for loop
     for _ in range(2):
         subprocess.check_output([sys.executable, str(deploy_file)])
-        assert requests.get("http://localhost:8000/f").text == "got f"
+        assert httpx.get("http://localhost:8000/f").text == "got f"
         subprocess.check_output([sys.executable, str(shutdown_file)])
-        with pytest.raises(requests.exceptions.ConnectionError):
-            requests.get("http://localhost:8000/f")
+        with pytest.raises(httpx.ConnectError):
+            httpx.get("http://localhost:8000/f")
 
 
 def test_handle_early_detect_failure(shutdown_ray):
@@ -286,8 +293,10 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.run(A.bind(), name="app_f")
 
-    # 2 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, 2 replicas.
+    # Otherwise, total actors are 1 proxy, 1 controller, 2 replicas.
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Stop all deployment replicas.
@@ -295,15 +304,7 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     # The http proxy on worker node should exit as well.
     wait_for_condition(
-        lambda: len(
-            list(
-                filter(
-                    lambda a: a["State"] == "ALIVE",
-                    ray._private.state.actors().values(),
-                )
-            )
-        )
-        == 2
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 2,
     )
 
     client = _get_global_client()
@@ -332,82 +333,6 @@ def test_autoscaler_shutdown_node_http_everynode(
     ray.shutdown()
 
 
-def test_drain_and_undrain_http_proxy_actors(
-    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
-):
-    """Test the state transtion of the proxy actor between
-    HEALTHY, DRAINING and DRAINED
-    """
-    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-
-    cluster = Cluster()
-    head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
-    cluster.wait_for_nodes()
-    ray.init(address=head_node.address)
-    serve.start(http_options={"location": "EveryNode"})
-
-    @serve.deployment
-    class HelloModel:
-        def __call__(self):
-            return "hello"
-
-    serve.run(HelloModel.options(num_replicas=2).bind())
-
-    # 3 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
-    assert len(ray.nodes()) == 3
-
-    client = _get_global_client()
-    serve_details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
-    )
-    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
-    assert len(proxy_actor_ids) == 3
-
-    serve.run(HelloModel.options(num_replicas=1).bind())
-    # 1 proxy should be draining
-
-    def check_proxy_status(proxy_status_to_count):
-        serve_details = ServeInstanceDetails(
-            **ray.get(client._controller.get_serve_instance_details.remote())
-        )
-        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
-        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
-        current_status = {
-            status: proxy_status_list.count(status) for status in proxy_status_list
-        }
-        return current_status == proxy_status_to_count, current_status
-
-    wait_for_condition(
-        condition_predictor=check_proxy_status,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
-    )
-
-    serve.run(HelloModel.options(num_replicas=2).bind())
-    # The draining proxy should become healthy.
-    wait_for_condition(
-        condition_predictor=check_proxy_status,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
-    )
-    serve_details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
-    )
-    {proxy.actor_id for _, proxy in serve_details.proxies.items()} == proxy_actor_ids
-
-    serve.run(HelloModel.options(num_replicas=1).bind())
-    # 1 proxy should be draining and eventually be drained.
-    wait_for_condition(
-        condition_predictor=check_proxy_status,
-        timeout=40,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
-    )
-
-    # Clean up serve.
-    serve.shutdown()
-
-
 @pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
 def test_controller_shutdown_gracefully(
     shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
@@ -434,8 +359,10 @@ def test_controller_shutdown_gracefully(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
+    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
@@ -450,9 +377,7 @@ def test_controller_shutdown_gracefully(
 
     # Ensure the all resources are shutdown.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        )
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     # Clean up serve.
@@ -495,8 +420,11 @@ def test_client_shutdown_gracefully_when_timeout(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    # Check expected actors based on mode
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
+    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Ensure client times out if the controller does not shutdown within timeout.
@@ -510,9 +438,7 @@ def test_client_shutdown_gracefully_when_timeout(
 
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        ),
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     # Clean up serve.
@@ -543,9 +469,7 @@ def test_serve_shut_down_without_duplicated_logs(
 
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        ),
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     all_serve_logs = ""

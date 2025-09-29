@@ -1,13 +1,12 @@
 import asyncio
 import logging
 import os
-import sys
 import signal
+import sys
 from typing import AsyncIterator
 
 from ray.dashboard import optional_utils
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType

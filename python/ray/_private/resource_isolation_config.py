@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+import ray._common.utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 
@@ -42,10 +43,10 @@ class ResourceIsolationConfig:
         system_reserved_cpu: Optional[float] = None,
         system_reserved_memory: Optional[int] = None,
     ):
-
         self._resource_isolation_enabled = enable_resource_isolation
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
+        self.system_pids = ""
         # cgroupv2 cpu.weight calculated from system_reserved_cpu
         # assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
@@ -104,7 +105,7 @@ class ResourceIsolationConfig:
             "multiple times."
         )
         self.system_reserved_memory += object_store_memory
-        available_system_memory = utils.get_system_memory()
+        available_system_memory = ray._common.utils.get_system_memory()
         if self.system_reserved_memory > available_system_memory:
             raise ValueError(
                 f"The total requested system_reserved_memory={self.system_reserved_memory}, calculated by "
@@ -113,6 +114,10 @@ class ResourceIsolationConfig:
                 "or system_reserved_memory."
             )
         self._constructed = True
+
+    def add_system_pids(self, system_pids: str):
+        """A comma-separated list of pids to move into the system cgroup."""
+        self.system_pids = system_pids
 
     @staticmethod
     def _validate_and_get_cgroup_path(cgroup_path: Optional[str]) -> str:
@@ -220,7 +225,7 @@ class ResourceIsolationConfig:
         Raises:
             ValueError: If system_reserved_memory is specified, but invalid.
         """
-        available_system_memory = utils.get_system_memory()
+        available_system_memory = ray._common.utils.get_system_memory()
 
         if not system_reserved_memory:
             system_reserved_memory = int(

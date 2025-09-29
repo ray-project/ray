@@ -7,7 +7,6 @@ from ray.rllib.examples.envs.classes.cartpole_with_large_observation_space impor
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=300000)
-parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()

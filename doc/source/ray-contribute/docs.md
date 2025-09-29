@@ -25,7 +25,7 @@ The editorial style is enforced in CI by Vale. For more information, see
 If you want to contribute to the Ray documentation, you need a way to build it.
 Don't install Ray in the environment you plan to use to build documentation. The requirements for the docs build system are generally not compatible with those you need to run Ray itself.
 
-Follow the these instructions to build the documentation:
+Follow these instructions to build the documentation:
 
 ### Fork Ray
 1. [Fork the Ray repository](https://docs.ray.io/en/master/ray-contribute/development.html#fork-the-ray-repository)

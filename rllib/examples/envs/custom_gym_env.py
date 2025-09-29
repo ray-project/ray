@@ -14,7 +14,7 @@ To see more details on which env we are building for this example, take a look a
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--corridor-length` option to set a custom length for the corridor. Note that
 for extremely long corridors, the algorithm should take longer to learn.
@@ -64,7 +64,9 @@ from ray.tune.registry import get_trainable_cls, register_env  # noqa
 
 
 parser = add_rllib_example_script_args(
-    default_reward=0.9, default_iters=50, default_timesteps=100000
+    default_reward=0.9,
+    default_iters=50,
+    default_timesteps=100000,
 )
 parser.add_argument(
     "--corridor-length",

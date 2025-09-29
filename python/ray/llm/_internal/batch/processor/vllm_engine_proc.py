@@ -1,40 +1,36 @@
 """The vLLM engine processor."""
 
 from typing import Any, Dict, Optional
+
+import transformers
 from pydantic import Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    DEFAULT_MAX_TASKS_IN_FLIGHT,
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    BatchModelTelemetry,
+    TelemetryAgent,
+    get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor.base import (
-    Processor,
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
     OfflineProcessorConfig,
+    Processor,
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.stages import (
-    vLLMEngineStage,
     ChatTemplateStage,
+    DetokenizeStage,
     PrepareImageStage,
     TokenizeStage,
-    DetokenizeStage,
+    vLLMEngineStage,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    TelemetryAgent,
-    BatchModelTelemetry,
-)
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    get_or_create_telemetry_agent,
-)
-
-import transformers
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
@@ -72,6 +68,7 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
 
 def build_vllm_engine_processor(
     config: vLLMEngineProcessorConfig,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
     telemetry_agent: Optional[TelemetryAgent] = None,
@@ -79,11 +76,14 @@ def build_vllm_engine_processor(
     """Construct a Processor and configure stages.
     Args:
         config: The configuration for the processor.
+        chat_template_kwargs: The optional kwargs to pass to apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        telemetry_agent: An optional telemetry agent for collecting usage telemetry.
+
 
     Returns:
         The constructed processor.
@@ -91,22 +91,13 @@ def build_vllm_engine_processor(
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
-    if isinstance(config.concurrency, int):
-        processor_concurrency = (1, config.concurrency)  # copied from previous logic
-    elif isinstance(config.concurrency, tuple):
-        processor_concurrency = config.concurrency
-    else:
-        raise ValueError(
-            "``concurrency`` is expected to be set as an integer or a "
-            f"tuple of integers, but got: {config.concurrency}."
-        )
 
     if config.has_image:
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=processor_concurrency,
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                 ),
             )
@@ -117,10 +108,11 @@ def build_vllm_engine_processor(
                 fn_constructor_kwargs=dict(
                     model=config.model_source,
                     chat_template=config.chat_template,
+                    chat_template_kwargs=chat_template_kwargs,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=processor_concurrency,
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -135,7 +127,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=processor_concurrency,
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -162,10 +154,10 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    min_size=config.concurrency,
-                    max_size=config.concurrency,
-                    max_tasks_in_flight_per_actor=max(
-                        DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                    min_size=config.get_concurrency(autoscaling_enabled=False)[0],
+                    max_size=config.get_concurrency(autoscaling_enabled=False)[1],
+                    max_tasks_in_flight_per_actor=config.experimental.get(
+                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
                 ),
                 # The number of running batches "per actor" in Ray Core level.
@@ -187,7 +179,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=processor_concurrency,
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -204,7 +196,9 @@ def build_vllm_engine_processor(
         model_path,
         trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
     )
-    architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
+
+    architectures = getattr(hf_config, "architectures", [])
+    architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(

@@ -31,7 +31,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                     const rpc::Address &owner_address,
                     bool foreign_owner_already_monitoring));
 
-  MOCK_METHOD8(AddOwnedObject,
+  MOCK_METHOD9(AddOwnedObject,
                void(const ObjectID &object_id,
                     const std::vector<ObjectID> &contained_ids,
                     const rpc::Address &owner_address,
@@ -39,7 +39,8 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                     const int64_t object_size,
                     bool is_reconstructable,
                     bool add_local_ref,
-                    const std::optional<NodeID> &pinned_at_raylet_id));
+                    const std::optional<NodeID> &pinned_at_node_id,
+                    rpc::TensorTransport tensor_transport));
 
   MOCK_METHOD2(AddObjectOutOfScopeOrFreedCallback,
                bool(const ObjectID &object_id,

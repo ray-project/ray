@@ -1,5 +1,7 @@
 import asyncio
 import inspect
+import logging
+import pickle
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -7,12 +9,20 @@ from functools import wraps
 from typing import Callable, Coroutine, Optional, Union
 
 import ray
-from ray.serve._private.common import RequestMetadata
-from ray.serve._private.utils import calculate_remaining_timeout
+from ray.exceptions import TaskCancelledError
+from ray.serve._private.common import ReplicaQueueLengthInfo, RequestMetadata
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.utils import calculate_remaining_timeout, generate_request_id
 from ray.serve.exceptions import RequestCancelledError
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaResult(ABC):
+    @abstractmethod
+    async def get_rejection_response(self) -> Optional[ReplicaQueueLengthInfo]:
+        raise NotImplementedError
+
     @abstractmethod
     def get(self, timeout_s: Optional[float]):
         raise NotImplementedError
@@ -57,6 +67,8 @@ class ActorReplicaResult(ReplicaResult):
         self,
         obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator],
         metadata: RequestMetadata,
+        *,
+        with_rejection: bool = False,
     ):
         self._obj_ref: Optional[ray.ObjectRef] = None
         self._obj_ref_gen: Optional[ray.ObjectRefGenerator] = None
@@ -64,6 +76,8 @@ class ActorReplicaResult(ReplicaResult):
         self._request_id: str = metadata.request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
         self._lazy_object_ref_or_gen_asyncio_lock = None
+        self._with_rejection = with_rejection
+        self._rejection_response = None
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -74,6 +88,19 @@ class ActorReplicaResult(ReplicaResult):
             assert (
                 self._obj_ref_gen is not None
             ), "An ObjectRefGenerator must be passed for streaming requests."
+
+        request_context = ray.serve.context._get_serve_request_context()
+        if request_context.cancel_on_parent_request_cancel:
+            # Keep track of in-flight requests.
+            self._response_id = generate_request_id()
+            ray.serve.context._add_in_flight_request(
+                request_context._internal_request_id, self._response_id, self
+            )
+            self.add_done_callback(
+                lambda _: ray.serve.context._remove_in_flight_request(
+                    request_context._internal_request_id, self._response_id
+                )
+            )
 
     @property
     def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
@@ -96,12 +123,35 @@ class ActorReplicaResult(ReplicaResult):
             try:
                 return await f(self, *args, **kwargs)
             except ray.exceptions.TaskCancelledError:
-                raise RequestCancelledError(self._request_id)
+                raise asyncio.CancelledError()
 
         if inspect.iscoroutinefunction(f):
             return async_wrapper
         else:
             return wrapper
+
+    @_process_response
+    async def get_rejection_response(self) -> Optional[ReplicaQueueLengthInfo]:
+        """Get the queue length info from the replica to handle rejection."""
+        assert (
+            self._with_rejection and self._obj_ref_gen is not None
+        ), "get_rejection_response() can only be called when request rejection is enabled."
+
+        try:
+            if self._rejection_response is None:
+                response = await (await self._obj_ref_gen.__anext__())
+                self._rejection_response = pickle.loads(response)
+
+            return self._rejection_response
+        except asyncio.CancelledError as e:
+            # HTTP client disconnected or request was explicitly canceled.
+            logger.info(
+                "Cancelling request that has already been assigned to a replica."
+            )
+            self.cancel()
+            raise e from None
+        except TaskCancelledError:
+            raise asyncio.CancelledError()
 
     @_process_response
     def get(self, timeout_s: Optional[float]):

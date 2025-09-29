@@ -3,11 +3,8 @@ model_loading_config:
 
 accelerator_type: A10G
 
-# Test V1 at the same time
-runtime_env:
-  env_vars:
-    VLLM_USE_V1: "1"
-
 engine_kwargs:
   max_model_len: 8192
   tensor_parallel_size: 1
+  # NOTE: This is used for perf testing as well, so cuda graph must be enabled.
+  enforce_eager: false

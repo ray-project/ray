@@ -1,8 +1,7 @@
 """Utilities for telemetry."""
 
-from typing import Callable
 from threading import Lock
-
+from typing import Callable
 
 DEFAULT_GPU_TYPE = "UNSPECIFIED"
 

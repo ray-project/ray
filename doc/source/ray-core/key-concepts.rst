@@ -10,7 +10,7 @@ This section overviews Ray's key concepts. These primitives work together to ena
 Tasks
 -----
 
-Ray enables arbitrary functions to execute asynchronously on separate Python workers. These asynchronous Ray functions are called tasks. Ray enables tasks to specify their resource requirements in terms of CPUs, GPUs, and custom resources. The cluster scheduler uses these resource requests to distribute tasks across the cluster for parallelized execution.
+Ray enables arbitrary functions to execute asynchronously on separate worker processes. These asynchronous Ray functions are called tasks. Ray enables tasks to specify their resource requirements in terms of CPUs, GPUs, and custom resources. The cluster scheduler uses these resource requests to distribute tasks across the cluster for parallelized execution.
 
 See the :ref:`User Guide for Tasks <ray-remote-functions>`.
 

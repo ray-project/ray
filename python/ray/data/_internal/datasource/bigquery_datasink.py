@@ -95,7 +95,7 @@ class BigQueryDatasink(Datasink[None]):
                     try:
                         logger.info(job.result())
                         break
-                    except exceptions.Forbidden as e:
+                    except (exceptions.Forbidden, exceptions.TooManyRequests) as e:
                         retry_cnt += 1
                         if retry_cnt > self.max_retry_cnt:
                             break

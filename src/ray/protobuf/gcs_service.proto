@@ -19,6 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/pubsub.proto";
+import "src/ray/protobuf/events_event_aggregator_service.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -225,21 +226,24 @@ message UnregisterNodeReply {
 }
 
 message GetAllNodeInfoRequest {
-  // Filter object where predicates are AND together.
-  message Filters {
-    optional bytes node_id = 1;
-    optional GcsNodeInfo.GcsNodeState state = 2;
-    optional string node_name = 3;
-    optional string node_ip_address = 4;
+  message NodeSelector {
+    oneof node_selector {
+      bytes node_id = 1;
+      string node_name = 2;
+      string node_ip_address = 3;
+    }
   }
 
   // Maximum number to return.
-  // If set, the exact `limit` returned do not have any ordering or selection
+  // If set, the exact `limit` returned does not have any ordering or selection
   // guarantee.
-  optional int64 limit = 3;
+  optional int64 limit = 1;
 
-  // Filters to apply to the get query.
-  optional Filters filters = 4;
+  // Filters out specific nodes.
+  repeated NodeSelector node_selectors = 2;
+
+  // Filter out for a specific state.
+  optional GcsNodeInfo.GcsNodeState state_filter = 3;
 }
 
 message GetAllNodeInfoReply {
@@ -252,7 +256,7 @@ message GetAllNodeInfoReply {
 }
 
 message CheckAliveRequest {
-  repeated string raylet_address = 1;
+  repeated bytes node_ids = 1;
 }
 
 message CheckAliveReply {
@@ -509,21 +513,25 @@ autoscaler in a separate pod, if the user upgrades the ray version on the head
 pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
 
+// TODO(#56627): This message will be deleted once autoscaler v1 is fully deprecated.
 message DrainNodeData {
   // The id of the node to drain.
   bytes node_id = 1;
 }
 
+// TODO(#56627): This message will be deleted once autoscaler v1 is fully deprecated.
 message DrainNodeRequest {
   // Batched information of nodes to drain.
   repeated DrainNodeData drain_node_data = 1;
 }
 
+// TODO(#56627): This message will be deleted once autoscaler v1 is fully deprecated.
 message DrainNodeStatus {
   // The node id that is acknowledged for draining by GCS.
   bytes node_id = 1;
 }
 
+// TODO(#56627): This message will be deleted once autoscaler v1 is fully deprecated.
 message DrainNodeReply {
   // Whether or not the RPC succeeds.
   GcsStatus status = 1;
@@ -676,12 +684,6 @@ message GcsSubscriberCommandBatchReply {
   GcsStatus status = 100;
 }
 
-message GcsUnregisterSubscriberRequest {
-  bytes subscriber_id = 1;
-}
-
-message GcsUnregisterSubscriberReply {}
-
 /// This supports subscribing updates from GCS with long poll, and registering /
 /// de-registering subscribers.
 service InternalPubSubGcsService {
@@ -695,10 +697,6 @@ service InternalPubSubGcsService {
   /// A batch of subscribe / unsubscribe requests sent by the subscriber.
   rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
       returns (GcsSubscriberCommandBatchReply);
-  /// Unregister a subscriber from GCS, removing all subscriptions as well as the
-  /// subscriber itself.
-  rpc GcsUnregisterSubscriber(GcsUnregisterSubscriberRequest)
-      returns (GcsUnregisterSubscriberReply);
 }
 
 message GetAllResourceUsageRequest {}
@@ -757,6 +755,8 @@ service NodeInfoGcsService {
   // - It is guaranteed that the requested nodes are going to be drained eventually.
   // - It is guaranteed that GCS has persisted the draining states.
   // - It is **not** guaranteed that nodes receive the drain requests from GCS.
+  // TODO(#56627): This rpc is only called by autoscaler v1. It will be deleted
+  // once autoscaler v1 is fully deprecated.
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
@@ -863,6 +863,12 @@ service TaskInfoGcsService {
 
   // Get task events.
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+}
+
+// Service for recording the unified ray events.
+service RayEventExportGcsService {
+  // Add OneEvent task data to GCS.
+  rpc AddEvents(events.AddEventsRequest) returns (events.AddEventsReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

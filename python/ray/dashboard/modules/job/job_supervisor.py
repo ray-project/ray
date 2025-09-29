@@ -11,11 +11,13 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter, TextFormatter
+from ray._common.network_utils import build_address
+from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.utils import remove_ray_internal_flags_from_env
-from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -23,8 +25,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
-from ray.job_submission import JobStatus
-from ray._raylet import GcsClient
+from ray.job_submission import JobErrorType, JobStatus
 
 import psutil
 
@@ -250,7 +251,7 @@ class JobSupervisor:
         if ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE in os.environ:
             os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = "auto"
         ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
-            "auto", ray.worker._global_node._ray_params.temp_dir
+            "auto", ray._private.worker._global_node._ray_params.temp_dir
         )
         assert ray_addr is not None
         return {
@@ -335,11 +336,8 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        driver_agent_http_address = (
-            "http://"
-            f"{ray.worker.global_worker.node.node_ip_address}:"
-            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
-        )
+        node = ray._private.worker.global_worker.node
+        driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
         driver_node_id = ray.get_runtime_context().get_node_id()
 
         await self._job_info_client.put_status(
@@ -452,6 +450,7 @@ class JobSupervisor:
                         JobStatus.FAILED,
                         message=message,
                         driver_exit_code=return_code,
+                        error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
                     )
         except Exception:
             self._logger.error(
@@ -463,6 +462,7 @@ class JobSupervisor:
                     self._job_id,
                     JobStatus.FAILED,
                     message=traceback.format_exc(),
+                    error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_START_ERROR,
                 )
             except Exception:
                 self._logger.error(

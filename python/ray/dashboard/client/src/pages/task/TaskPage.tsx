@@ -90,6 +90,7 @@ const TaskPageContents = ({
     func_or_class_name,
     name,
     call_site,
+    label_selector,
   } = task;
   const isTaskActive = task.state === "RUNNING" && task.worker_id;
 
@@ -194,6 +195,21 @@ const TaskPageContents = ({
                   value: "{}",
                 }
               ),
+          },
+          {
+            label: "Label Selector",
+            content: (
+              <Box display="inline-block">
+                {Object.entries(label_selector || {}).length > 0 ? (
+                  <CodeDialogButtonWithPreview
+                    title="Label selector"
+                    code={JSON.stringify(label_selector, undefined, 2)}
+                  />
+                ) : (
+                  "{}"
+                )}
+              </Box>
+            ),
           },
           {
             label: "Started at",

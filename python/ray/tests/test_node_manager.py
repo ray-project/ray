@@ -11,18 +11,17 @@ from typing import List, Optional
 import pytest
 
 import ray
-from ray.util.state import list_workers
-from ray._private.test_utils import (
-    get_load_metrics_report,
-    run_string_as_driver,
-    run_string_as_driver_nonblocking,
-    wait_for_condition,
-    get_resource_usage,
-)
-from ray.util.state import list_objects
-from ray._private.utils import get_num_cpus
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import (
+    get_load_metrics_report,
+    get_resource_usage,
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+)
+from ray._private.utils import get_num_cpus
+from ray.util.state import list_objects, list_workers
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue

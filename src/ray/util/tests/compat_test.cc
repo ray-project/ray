@@ -38,7 +38,7 @@ namespace {
 constexpr std::string_view kContent = "helloworld";
 
 TEST(CompatTest, WriteTest) {
-  MEMFD_TYPE_NON_UNIQUE fd = GetStdoutHandle();
+  int fd = GetStdoutFd();
 
   testing::internal::CaptureStdout();
   RAY_CHECK_OK(CompleteWrite(fd, kContent.data(), kContent.length()));

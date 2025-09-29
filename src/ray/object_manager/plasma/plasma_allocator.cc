@@ -120,12 +120,12 @@ std::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
 }
 
 void PlasmaAllocator::Free(Allocation allocation) {
-  RAY_CHECK(allocation.address != nullptr) << "Cannot free the nullptr";
-  RAY_LOG(DEBUG) << "deallocating " << allocation.size << " at " << allocation.address;
-  dlfree(allocation.address);
-  allocated_ -= allocation.size;
-  if (internal::IsOutsideInitialAllocation(allocation.address)) {
-    fallback_allocated_ -= allocation.size;
+  RAY_CHECK(allocation.address_ != nullptr) << "Cannot free the nullptr";
+  RAY_LOG(DEBUG) << "deallocating " << allocation.size_ << " at " << allocation.address_;
+  dlfree(allocation.address_);
+  allocated_ -= allocation.size_;
+  if (internal::IsOutsideInitialAllocation(allocation.address_)) {
+    fallback_allocated_ -= allocation.size_;
   }
 }
 

@@ -4,6 +4,7 @@ import shutil
 import unittest
 
 import ray
+import ray._common
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_torch
@@ -51,7 +52,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
-        ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
+        ray._common.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
     algo.train()

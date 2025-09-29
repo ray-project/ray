@@ -33,6 +33,7 @@
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "ray/common/macros.h"
 #include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
@@ -53,10 +54,10 @@ class error_code;
 
 // If the status is not OK, CHECK-fail immediately, appending the status to the
 // logged message. The message can be appended with <<.
-#define RAY_CHECK_OK(s)                          \
-  if (const ::ray::Status &_status_ = (s); true) \
-  RAY_CHECK_WITH_DISPLAY(_status_.ok(), #s)      \
-      << "Status not OK: " << _status_.ToString() << " "
+#define RAY_CHECK_OK(s)                                          \
+  if (const ::ray::Status & RAY_UNIQUE_VARIABLE(_s) = (s); true) \
+  RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(_s).ok(), #s)       \
+      << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
 
 namespace ray {
 
@@ -76,6 +77,8 @@ enum class StatusCode : char {
   IntentionalSystemExit = 14,
   UnexpectedSystemExit = 15,
   CreationTaskError = 16,
+  // Indicates that the caller request a resource that could not be found. A common
+  // example is that a request file does not exist.
   NotFound = 17,
   Disconnected = 18,
   SchedulingCancelled = 19,
@@ -101,6 +104,9 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // Indicates that the executing user does not have permissions to perform the
+  // requested operation. A common example is filesystem permissions.
+  PermissionDenied = 37,
   // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
@@ -254,6 +260,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelTimeoutError, msg);
   }
 
+  static Status PermissionDenied(const std::string &msg) {
+    return Status(StatusCode::PermissionDenied, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -274,11 +284,6 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool ShouldExitWorker() const {
-    return code() == StatusCode::IntentionalSystemExit ||
-           code() == StatusCode::UnexpectedSystemExit ||
-           code() == StatusCode::CreationTaskError;
-  }
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
   }
@@ -308,6 +313,7 @@ class RAY_EXPORT Status {
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
   bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
+  bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

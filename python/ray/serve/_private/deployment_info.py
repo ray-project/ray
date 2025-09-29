@@ -20,7 +20,6 @@ class DeploymentInfo:
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         route_prefix: str = None,
-        docs_path: str = None,
         ingress: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
@@ -39,7 +38,6 @@ class DeploymentInfo:
         self._cached_actor_def = None
 
         self.route_prefix = route_prefix
-        self.docs_path = docs_path
         self.ingress = ingress
 
         self.target_capacity = target_capacity
@@ -70,7 +68,6 @@ class DeploymentInfo:
             version=version or self.version,
             end_time_ms=self.end_time_ms,
             route_prefix=route_prefix or self.route_prefix,
-            docs_path=self.docs_path,
             ingress=self.ingress,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,

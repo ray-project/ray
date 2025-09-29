@@ -13,7 +13,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -372,12 +372,6 @@ class SingleAgentEpisode:
         assert self.t == self.t_started == 0
 
         infos = infos or {}
-
-        if self.observation_space is not None:
-            assert self.observation_space.contains(observation), (
-                f"`observation` {observation} does NOT fit SingleAgentEpisode's "
-                f"observation_space: {self.observation_space}!"
-            )
 
         self.observations.append(observation)
         self.infos.append(infos)

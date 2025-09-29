@@ -1,3 +1,5 @@
+.. _ray-get-too-many-objects:
+
 Anti-pattern: Fetching too many objects at once with ray.get causes failure
 ===========================================================================
 

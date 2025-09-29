@@ -1,8 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 @dataclass
 class GridPos:
     x: int
@@ -30,11 +33,13 @@ HEATMAP_TARGET_TEMPLATE = {
 }
 
 
+@DeveloperAPI
 class TargetTemplate(Enum):
     GRAPH = GRAPH_TARGET_TEMPLATE
     HEATMAP = HEATMAP_TARGET_TEMPLATE
 
 
+@DeveloperAPI
 @dataclass
 class Target:
     """Defines a Grafana target (time-series query) within a panel.
@@ -360,6 +365,7 @@ PIE_CHART_TEMPLATE = {
 }
 
 
+@DeveloperAPI
 class PanelTemplate(Enum):
     GRAPH = GRAPH_PANEL_TEMPLATE
     HEATMAP = HEATMAP_TEMPLATE
@@ -368,6 +374,7 @@ class PanelTemplate(Enum):
     GAUGE = GAUGE_PANEL_TEMPLATE
 
 
+@DeveloperAPI
 @dataclass
 class Panel:
     """Defines a Grafana panel (graph) for the Ray dashboard page.
@@ -397,6 +404,24 @@ class Panel:
     template: Optional[PanelTemplate] = PanelTemplate.GRAPH
 
 
+@DeveloperAPI
+@dataclass
+class Row:
+    """Defines a Grafana row that can contain multiple panels.
+
+    Attributes:
+        title: The title of the row
+        panels: List of panels contained in this row
+        collapsed: Whether the row should be collapsed by default
+    """
+
+    title: str
+    id: int
+    panels: List[Panel]
+    collapsed: bool = False
+
+
+@DeveloperAPI
 @dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars
@@ -404,8 +429,15 @@ class DashboardConfig:
     name: str
     # The uid of the dashboard json if not overridden by a user
     default_uid: str
-    panels: List[Panel]
     # The global filters applied to all graphs in this dashboard. Users can
     # add additional global_filters on top of this.
     standard_global_filters: List[str]
     base_json_file_name: str
+    # Panels can be specified in `panels`, or nested within `rows`.
+    # If both are specified, panels will be rendered before rows.
+    panels: List[Panel] = field(default_factory=list)
+    rows: List[Row] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not self.panels and not self.rows:
+            raise ValueError("At least one of panels or rows must be specified")

@@ -10,6 +10,6 @@ srcs:
   - python/requirements/ml/data-requirements.txt
   - python/requirements/ml/data-test-requirements.txt
 build_args:
-  - ARROW_VERSION=19.*
+  - ARROW_VERSION=21.*
 tags:
   - cr.ray.io/rayproject/datalbuild

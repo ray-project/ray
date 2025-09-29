@@ -4,13 +4,14 @@ import time
 from collections import defaultdict
 from typing import Callable
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.pydantic_compat import ValidationError
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.test_utils import check_running, get_application_url
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
@@ -34,7 +35,8 @@ def test_deploy_basic(serve_instance, use_handle):
             handle = serve.get_deployment_handle("d", "default")
             return handle.remote().result()
         else:
-            return requests.get("http://localhost:8000/d").json()
+            url = get_application_url("HTTP")
+            return httpx.get(f"{url}/d", timeout=None).json()
 
     serve.run(d.bind())
     resp, pid1 = call()
@@ -157,7 +159,8 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            return requests.get("http://localhost:8000/").json()
+            url = get_application_url("HTTP", app_name="app")
+            return httpx.get(f"{url}/", timeout=None).json()
 
     signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
@@ -182,7 +185,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             return await self.handler()
 
     serve.run(V1.bind(), name="app")
-
+    wait_for_condition(check_running, app_name="app", timeout=15)
     # Send unblocked signal first to get pid of running replica
     signal.send.remote()
     val1, pid1 = ray.get(call.remote())
@@ -198,6 +201,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     start = time.time()
     while time.time() - start < 30:
+        # The app is not supposed to be in RUNNING state here as V1 replica stopping
+        # V2 replica running makes the app to be in DEPLOYING state so we don't check
+        # if the app is in RUNNING state.
         ready, _ = ray.wait([call.remote()], timeout=2)
         # If the request doesn't block, it must be V2 which doesn't wait
         # for signal. Otherwise, it must have been sent to V1 which
@@ -292,8 +298,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             ret = handle.handler.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
-
+            url = get_application_url("HTTP", app_name="app")
+            ret = httpx.get(url).text
         return ret.split("|")[0], ret.split("|")[1]
 
     signal_name = f"signal-{get_random_string()}"
@@ -325,7 +331,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote() for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=5)
+            ready, not_ready = ray.wait(refs, timeout=10)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -342,6 +348,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         return responses, blocking
 
     serve.run(V1.options(user_config={"test": "1"}).bind(), name="app")
+    wait_for_condition(check_running, app_name="app", timeout=15)
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -350,6 +357,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     serve._run(
         V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False
     )
+    # The app is not supposed to be in RUNNING state here as one of the replicas among the two
+    # is updating with user_config. This makes the app to be in DEPLOYING state so we don't check
+    # if the app is in RUNNING state.
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
@@ -384,10 +394,12 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
     responses = [handle.remote() for _ in range(10)]
 
+    def check():
+        assert ray.get(signal.cur_num_waiters.remote()) == len(responses)
+        return True
+
     # Give the queries time to get to the replicas before the reconfigure.
-    wait_for_condition(
-        lambda: ray.get(signal.cur_num_waiters.remote()) == len(responses)
-    )
+    wait_for_condition(check)
 
     @ray.remote(num_cpus=0)
     def reconfigure():
@@ -433,7 +445,8 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            url = get_application_url("HTTP", app_name="app")
+            ret = httpx.get(f"{url}/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -484,7 +497,8 @@ def test_redeploy_scale_up(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            url = get_application_url("HTTP", app_name="app")
+            ret = httpx.get(f"{url}/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -710,8 +724,10 @@ def test_deploy_multiple_apps_batched(serve_instance):
     assert serve.get_app_handle("a").remote().result() == "a"
     assert serve.get_app_handle("b").remote().result() == "b"
 
-    assert requests.get("http://localhost:8000/a").text == "a"
-    assert requests.get("http://localhost:8000/b").text == "b"
+    urla = get_application_url("HTTP", app_name="a", use_localhost=True)
+    urlb = get_application_url("HTTP", app_name="b", use_localhost=True)
+    assert httpx.get(urla).text == "a"
+    assert httpx.get(urlb).text == "b"
 
 
 def test_redeploy_multiple_apps_batched(serve_instance):

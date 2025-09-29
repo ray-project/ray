@@ -95,10 +95,10 @@ fi
 
 bazel --version
 
-# clear bazelrc
-echo > ~/.bazelrc
+if [[ "${CI-}" == "true" && "${BUILDKITE-}" != "" ]]; then
+  # clear bazelrc
+  echo > ~/.bazelrc
 
-if [[ "${CI-}" == "true" ]]; then
   # Ask bazel to anounounce the config it finds in bazelrcs, which makes
   # understanding how to reproduce bazel easier.
   echo "build --announce_rc" >> ~/.bazelrc
@@ -116,7 +116,7 @@ if [[ "${CI-}" == "true" ]]; then
     echo "build --repository_cache=/tmp/bazel-repo-cache" >> ~/.bazelrc
   elif [[ "${BUILDKITE_BAZEL_CACHE_URL:-}" != "" ]]; then
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> ~/.bazelrc
-    if [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" ]]; then
+    if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
       echo "build --remote_upload_local_results=false" >> ~/.bazelrc
     fi
   fi

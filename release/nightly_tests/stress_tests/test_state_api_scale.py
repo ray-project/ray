@@ -1,6 +1,7 @@
 import click
 import json
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME, LOG_PREFIX_JOB_ID
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
@@ -376,7 +377,7 @@ def test(
         num_tasks, num_actors, num_objects, log_file_size_byte
     )
 
-    test_utils.wait_for_condition(no_resource_leaks)
+    wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
     start_time = time.perf_counter()
     # Run some long-running tasks

@@ -6,8 +6,8 @@ from unittest import mock
 
 import pytest
 
-from ray._private.test_utils import wait_for_condition
-from ray._private.utils import binary_to_hex, hex_to_binary
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import binary_to_hex, hex_to_binary
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
     CloudInstanceUpdater,
 )
