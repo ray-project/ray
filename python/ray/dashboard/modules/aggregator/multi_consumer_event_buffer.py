@@ -93,6 +93,22 @@ class MultiConsumerEventBuffer:
             # Signal the consumers that there are new events to consume
             self._has_new_events_to_consume.notify_all()
 
+    def _evict_old_events(self) -> None:
+        """Clean the buffer by removing events from the buffer who have index lower than
+        all the cursor indexes of all consumers and updating the cursor index of all
+        consumers.
+        """
+        if not self._consumers:
+            return
+        min_cursor_index = min(
+            consumer_state.cursor_index for consumer_state in self._consumers.values()
+        )
+        for _ in range(min_cursor_index):
+            self._buffer.popleft()
+        # update the cursor index of all consumers
+        for consumer_state in self._consumers.values():
+            consumer_state.cursor_index -= min_cursor_index
+
     async def wait_for_batch(
         self, consumer_name: str, timeout_seconds: float = 1.0
     ) -> List[events_base_event_pb2.RayEvent]:
@@ -154,6 +170,7 @@ class MultiConsumerEventBuffer:
                 except asyncio.TimeoutError:
                     # Timeout, return the current batch
                     break
+            self._evict_old_events()
 
         return batch
 
