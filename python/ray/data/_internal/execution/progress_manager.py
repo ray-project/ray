@@ -1,13 +1,14 @@
 import logging
 import math
-import time
 import threading
+import time
+import uuid
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
-from ray.data._internal.execution.resource_manager import ResourceManager
-from ray.data._internal.execution.streaming_executor_state import Topology, OpState
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 from ray.util.debug import log_once
 
 try:
@@ -15,14 +16,13 @@ try:
     from rich.console import Console
     from rich.live import Live
     from rich.progress import (
+        BarColumn,
         Progress,
         ProgressColumn,
-        TaskID,
-        BarColumn,
-        TextColumn,
         SpinnerColumn,
+        TextColumn,
     )
-    from rich.table import Table, Column
+    from rich.table import Column, Table
     from rich.text import Text
 
     needs_rich_warning = False
@@ -32,10 +32,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_TREE_BRANCH = "  ├─ "
-_TREE_VERTICAL = "  │"
+_TREE_BRANCH = "  ├─"
+_TREE_VERTICAL = "│"
+_TREE_VERTICAL_INDENT = f"  {_TREE_VERTICAL}    "
 _TOTAL_PROGRESS_TOTAL = 1.0
-_RESOURCE_REPORT_HEADER = f"{_TREE_VERTICAL} Active/total resources: "
+_RESOURCE_REPORT_HEADER = f"  {_TREE_VERTICAL} Active/total resources: "
 
 
 class _ManagerMode(Enum):
@@ -83,24 +84,6 @@ class _ManagerMode(Enum):
             return cls.ALL
 
 
-def _format_k(val: int) -> str:
-    if val >= 1000:
-        fval = val / 1000.0
-        fval_str = f"{int(fval)}" if fval.is_integer() else f"{fval:.2f}"
-        return fval_str + "k"
-    return str(val)
-
-
-def _format_row_count(completed: int, total: Optional[int]) -> str:
-    """Formats row counts with k units."""
-    cstr = _format_k(completed)
-    if total is None or math.isinf(total):
-        tstr = "?k" if cstr.endswith("k") else "?"
-    else:
-        tstr = _format_k(total)
-    return f"{cstr}/{tstr}"
-
-
 if rich:
 
     class CustomTimeColumn(ProgressColumn):
@@ -146,20 +129,54 @@ class RichExecutionProgressManager:
         self._dataset_id = dataset_id
         self._lock = None
 
-        if self._mode.is_enabled():
-            self._start_time: Optional[float] = None
-            self._lock = threading.RLock()
+        if not self._mode.is_enabled():
+            self._live = None
+            return
 
-            # rich
-            self._console = Console()
-            self._total = Progress(
-                TextColumn(" ", table_column=Column(no_wrap=True)),
+        self._start_time: Optional[float] = None
+        self._lock = threading.RLock()
+
+        # rich
+        self._console = Console()
+        self._total = Progress(
+            TextColumn(" ", table_column=Column(no_wrap=True)),
+            SpinnerColumn(finished_text="•"),
+            TextColumn(
+                "{task.description} {task.percentage:>3.0f}%",
+                table_column=Column(no_wrap=True),
+            ),
+            BarColumn(bar_width=15),
+            TextColumn("{task.fields[count_str]}", table_column=Column(no_wrap=True)),
+            TextColumn("["),
+            CustomTimeColumn(),
+            TextColumn(","),
+            TextColumn("{task.fields[rate]}", table_column=Column(no_wrap=True)),
+            TextColumn("]"),
+            console=self._console,
+            transient=False,
+            expand=False,
+        )
+        self._current_count = 0
+        self._total_resources = Text(
+            f"{_RESOURCE_REPORT_HEADER}Initializing...", no_wrap=True
+        )
+
+        self._op_display = {}
+
+        self._layout_table = Table.grid(padding=(0, 1, 0, 0), expand=True)
+        self._layout_table.add_row(self._total)
+        self._layout_table.add_row(self._total_resources)
+        self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
+
+        for state in topology.values():
+            if isinstance(state.op, InputDataBuffer):
+                continue
+            uid = uuid.uuid4()
+            progress = Progress(
+                TextColumn(_TREE_BRANCH, table_column=Column(no_wrap=True)),
                 SpinnerColumn(),
-                TextColumn(
-                    "{task.description} {task.percentage:>3.0f}%",
-                    table_column=Column(no_wrap=True),
-                ),
-                BarColumn(bar_width=15),
+                TextColumn("{task.description}", table_column=Column(no_wrap=True)),
+                BarColumn(bar_width=10),
                 TextColumn(
                     "{task.fields[count_str]}", table_column=Column(no_wrap=True)
                 ),
@@ -172,30 +189,34 @@ class RichExecutionProgressManager:
                 transient=False,
                 expand=False,
             )
-            self._total_resources = Text(
-                f"{_RESOURCE_REPORT_HEADER}Initializing...", no_wrap=True
-            )
-            # TODO (kyuds): op rows
-
-            self._layout_table = Table.grid(padding=(0, 1, 0, 0), expand=True)
-            self._layout_table.add_row(self._total)
-            self._layout_table.add_row(self._total_resources)
-            self._layout_table.add_row(Text(_TREE_VERTICAL, no_wrap=True))
-            self._live = Live(
-                self._layout_table,
-                console=self._console,
-                refresh_per_second=2,
-                vertical_overflow="visible",
-            )
-
-            self._total_task_id = self._total.add_task(
-                f"Dataset {self._dataset_id} running:",
-                total=_TOTAL_PROGRESS_TOTAL,
+            stats = Text(f"{_TREE_VERTICAL_INDENT}Initializing...", no_wrap=True)
+            total = state.op.num_output_rows_total()
+            tid = progress.add_task(
+                state.op.name,
+                total=float(total) if total is not None else float("inf"),
+                start=True,
                 rate="? rows/s",
-                count_str="0/?",
+                count_str="?/?",
             )
-        else:
-            self._live = None
+            self._layout_table.add_row(progress)
+            self._layout_table.add_row(stats)
+            state.progress_manager_uuid = uid
+            self._op_display[uid] = (tid, progress, stats)
+        # empty new line to prevent "packed" feeling
+        self._layout_table.add_row(Text())
+        self._live = Live(
+            self._layout_table,
+            console=self._console,
+            refresh_per_second=2,
+            vertical_overflow="visible",
+        )
+
+        self._total_task_id = self._total.add_task(
+            f"Dataset {self._dataset_id} running:",
+            total=_TOTAL_PROGRESS_TOTAL,
+            rate="? rows/s",
+            count_str="0/?",
+        )
 
     # Management
     def start(self):
@@ -210,13 +231,27 @@ class RichExecutionProgressManager:
                 if self._live.is_started:
                     self._live.refresh()
 
+    def _close_no_lock(self):
+        self.refresh()
+        time.sleep(0.02)
+        self._live.stop()
+
     def close(self):
         if self._mode.is_enabled():
             with self._lock:
                 if self._live.is_started:
-                    self.refresh()
-                    time.sleep(0.1)
-                    self._live.stop()
+                    self._close_no_lock()
+
+    def close_with_finishing_description(self, desc: str, success: bool):
+        if self._mode.is_enabled():
+            with self._lock:
+                if self._live.is_started:
+                    kwargs = {}
+                    if success:
+                        kwargs["completed"] = 1.0
+                        kwargs["total"] = 1.0
+                    self._total.update(self._total_task_id, description=desc, **kwargs)
+                    self._close_no_lock()
 
     # Total Progress
     def _can_update_total(self) -> bool:
@@ -234,34 +269,21 @@ class RichExecutionProgressManager:
                 self._update_total_progress_no_lock(total_rows, current_rows)
 
     def _update_total_progress_no_lock(
-        self, current_rows: Optional[int], total_rows: Optional[int]
+        self, new_rows: Optional[int], total_rows: Optional[int]
     ):
         if self._start_time is None:
             self._start_time = time.time()
-
-        completed = 0.0
-        if current_rows is None and total_rows is None:
-            rate_str = "? row/s"
-            count_str = "?/?"
-        elif current_rows is None:
-            rate_str = "? row/s"
-            count_str = f"?/{_format_k(total_rows)}"
-        else:
-            elapsed = time.time() - self._start_time
-            rate_val = current_rows / elapsed if elapsed > 1 else 0
-            rate_unit = "row/s"
-            if rate_val >= 1000:
-                rate_val /= 1000
-                rate_unit = "k row/s"
-            rate_str = f"{rate_val:.2f} {rate_unit}"
-            if total_rows is not None and total_rows > 0:
-                completed = min(1.0, current_rows / total_rows)
-            count_str = _format_row_count(current_rows, total_rows)
+        if new_rows is not None:
+            self._current_count += new_rows
+        c, t, rs, cs = _get_progress_metrics(
+            self._start_time, self._current_count, total_rows
+        )
         self._total.update(
             self._total_task_id,
-            completed=completed,
-            total=_TOTAL_PROGRESS_TOTAL,
-            fields={"rate": rate_str, "count_str": count_str},
+            completed=c,
+            total=t,
+            rate=rs,
+            count_str=cs,
         )
 
     def update_resource_status(self, resource_manager: ResourceManager):
@@ -302,11 +324,91 @@ class RichExecutionProgressManager:
 
         self._total_resources.plain = resource_usage
 
-    def set_finishing_message(self, desc: str):
-        if not self._can_update_total():
+    def _can_update_operator(self, op_state: OpState) -> bool:
+        if not self._mode.show_op():
+            return False
+        uid = op_state.progress_manager_uuid
+        if uid is None or uid not in self._op_display:
+            return False
+        tid, progress, stats = self._op_display[uid]
+        if tid is None or not progress or not stats or tid not in progress.task_ids:
+            return False
+        return True
+
+    def update_operator_progress(self, op_state: OpState):
+        if not self._can_update_operator(op_state):
             return
         with self._lock:
-            if self._live.is_started:
-                self._total.update(self._total_task_id, description=desc, refresh=True)
+            self._update_operator_progress_no_lock(op_state)
 
-    # Op Progress
+    def _update_operator_progress_no_lock(self, op_state: OpState):
+        if self._start_time is None:
+            self._start_time = time.time()
+        uid = op_state.progress_manager_uuid
+        tid, progress, stats = self._op_display[uid]
+
+        # progress
+        current_rows = op_state.output_row_count
+        total_rows = op_state.op.num_output_rows_total()
+        c, t, rs, cs = _get_progress_metrics(self._start_time, current_rows, total_rows)
+        progress.update(
+            tid,
+            completed=c,
+            total=t,
+            rate=rs,
+            count_str=cs,
+        )
+        # stats
+        stats_str = op_state.op_display_metrics.display_str()
+        stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
+
+
+# utilities
+def _format_k(val: int) -> str:
+    if val >= 1000:
+        fval = val / 1000.0
+        fval_str = f"{int(fval)}" if fval.is_integer() else f"{fval:.2f}"
+        return fval_str + "k"
+    return str(val)
+
+
+def _format_row_count(completed: int, total: Optional[int]) -> str:
+    """Formats row counts with k units."""
+    cstr = _format_k(completed)
+    if total is None or math.isinf(total):
+        tstr = "?k" if cstr.endswith("k") else "?"
+    else:
+        tstr = _format_k(total)
+    return f"{cstr}/{tstr}"
+
+
+def _get_progress_metrics(
+    start_time: float, current_rows: int, total_rows: Optional[int]
+) -> Tuple[int, int, str, str]:
+    """
+    Args:
+        start_time: time when progress tracking started
+        current_rows: current rows outputted (cumulative)
+        total_rows: total rows expected (can be unknown)
+    Returns:
+        completed (int)
+        total (int)
+        rate (str)
+        count (str)
+    """
+    total = 1 if total_rows is None or total_rows < 1 else total_rows
+
+    if total_rows is None:
+        rate_str = "? row/s"
+        count_str = "?/?"
+    else:
+        elapsed = time.time() - start_time
+        rate_val = current_rows / elapsed if elapsed > 1 else 0
+        rate_unit = "row/s"
+        if rate_val >= 1000:
+            rate_val /= 1000
+            rate_unit = "k row/s"
+        rate_str = f"{rate_val:.2f} {rate_unit}"
+        count_str = _format_row_count(current_rows, total_rows)
+
+    return current_rows, total, rate_str, count_str
