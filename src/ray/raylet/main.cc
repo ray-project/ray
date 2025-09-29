@@ -517,11 +517,6 @@ int main(int argc, char *argv[]) {
           << "Both per-worker process groups and subreaper are enabled. "
           << "Per-worker process groups will be used for worker cleanup. "
           << "Subreaper is deprecated and will be removed in a future release.";
-    } else if (subreaper_enabled) {
-      RAY_LOG(WARNING)
-          << "Subreaper-based orphan cleanup is enabled. "
-          << "Subreaper is deprecated and will be removed in a future release. "
-          << "Prefer per-worker process groups.";
     }
 
 #if !defined(_WIN32)
@@ -533,7 +528,17 @@ int main(int argc, char *argv[]) {
 #endif
 
     if (subreaper_enabled && !pg_enabled) {
+      RAY_LOG(WARNING)
+          << "Subreaper-based orphan cleanup is enabled. "
+          << "Subreaper is deprecated and will be removed in a future release. "
+          << "Prefer per-worker process groups.";
       enable_subreaper();
+    } else {
+#if !defined(_WIN32)
+      // Ensure child processes are auto-reaped to avoid zombies even when both
+      // subreaper and per-worker PG cleanup are disabled.
+      ray::SetSigchldIgnore();
+#endif
     }
 
     // Parse the worker port list.

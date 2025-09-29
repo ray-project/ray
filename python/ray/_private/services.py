@@ -1657,10 +1657,8 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
-    pipe_stdin: If True, pass a pipe to raylet's stdin so it can detect
-            parent-death via EOF. Prefer passing this explicitly in safe contexts
-            (e.g., `ray start --block`, local `ray.init()`), and leave it unset
-            elsewhere to avoid premature shutdowns when the launcher exits.
+        pipe_stdin: If True, pass a pipe to raylet's stdin so it can detect
+            parent-death via EOF.
     Returns:
         ProcessInfo for the process that was started.
     """
