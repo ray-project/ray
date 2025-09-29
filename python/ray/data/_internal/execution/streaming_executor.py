@@ -168,10 +168,12 @@ class StreamingExecutor(Executor, threading.Thread):
             # displayed. This is done to ensure correct ordering within notebooks.
             # TODO(zhilong): Implement num_output_rows_total for all
             # AllToAllOperators
-            self._progress_manager = RichExecutionProgressManager(self._dataset_id, dag)
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
+        self._progress_manager = RichExecutionProgressManager(
+            self._dataset_id, self._topology
+        )
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
@@ -333,23 +335,22 @@ class StreamingExecutor(Executor, threading.Thread):
             # Mark state of outputting operator as finished
             _, state = self._output_node
             state.mark_finished(exc)
-            self._finish_progress_manager()
+            self._finish_progress_manager(exc)
 
     def _finish_progress_manager(self, exception: Optional[Exception] = None):
         if self._progress_manager:
             final_stats = self._generate_stats()
             if exception is None:
-                prog_bar_msg = (
+                desc = (
                     f"{OK_PREFIX} Dataset {self._dataset_id} execution finished in "
                     f"{final_stats.time_total_s:.2f} seconds"
                 )
             else:
-                prog_bar_msg = (
-                    f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
-                )
-            logger.info(prog_bar_msg)
-            self._progress_manager.set_finishing_message(prog_bar_msg)
-            self._progress_manager.close()
+                desc = f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
+            self._progress_manager.close_with_finishing_description(
+                desc, exception is None
+            )
+            logger.info(desc)
 
     def update_metrics(self, sched_loop_duration: int):
         self._sched_loop_duration_s.set(
@@ -501,7 +502,7 @@ class StreamingExecutor(Executor, threading.Thread):
             for op_state in topology.values():
                 if not isinstance(op_state.op, InputDataBuffer):
                     op_state.update_display_metrics(self._resource_manager)
-                    # TODO (kyuds): update operator states to progress manager
+                    self._progress_manager.update_operator_progress(op_state)
             self._progress_manager.refresh()
 
     def _consumer_idling(self) -> bool:

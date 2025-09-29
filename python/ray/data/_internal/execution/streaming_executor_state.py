@@ -8,7 +8,8 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from uuid import UUID
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -235,7 +236,8 @@ class OpState:
         self._warned_on_schema_divergence: bool = False
         # Progress Manager
         self.op_display_metrics = OpDisplayMetrics()
-        self.rich_task_id: Any = None  # stores rich.progress.TaskID
+        self.progress_manager_uuid: Optional[UUID] = None
+        self.output_row_count: int = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -290,6 +292,7 @@ class OpState:
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
+        self.output_row_count += ref.num_rows()
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
