@@ -2,17 +2,7 @@ from typing import Any, Dict
 
 import pytest
 
-import ray
-from ray import serve
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
-
-
-@pytest.fixture(autouse=True)
-def cleanup_ray_resources():
-    """Automatically cleanup Ray resources between tests to prevent conflicts."""
-    yield
-    serve.shutdown()
-    ray.shutdown()
 
 
 def get_llm_config_with_placement_group(
