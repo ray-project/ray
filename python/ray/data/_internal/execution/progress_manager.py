@@ -156,7 +156,7 @@ class RichExecutionProgressManager:
             transient=False,
             expand=False,
         )
-        self._current_count = 0
+        self._current_rows = 0
         self._total_resources = Text(
             f"{_RESOURCE_REPORT_HEADER}Initializing...", no_wrap=True
         )
@@ -261,22 +261,20 @@ class RichExecutionProgressManager:
             and self._total_task_id in self._total.task_ids
         )
 
-    def update_total_progress(self, total_rows: Optional[int], current_rows: int):
+    def update_total_progress(self, new_rows: int, total_rows: Optional[int]):
         if not self._can_update_total():
             return
         with self._lock:
             if self._live.is_started:
-                self._update_total_progress_no_lock(total_rows, current_rows)
+                self._update_total_progress_no_lock(new_rows, total_rows)
 
-    def _update_total_progress_no_lock(
-        self, new_rows: Optional[int], total_rows: Optional[int]
-    ):
+    def _update_total_progress_no_lock(self, new_rows: int, total_rows: Optional[int]):
         if self._start_time is None:
             self._start_time = time.time()
         if new_rows is not None:
-            self._current_count += new_rows
+            self._current_rows += new_rows
         c, t, rs, cs = _get_progress_metrics(
-            self._start_time, self._current_count, total_rows
+            self._start_time, self._current_rows, total_rows
         )
         self._total.update(
             self._total_task_id,
