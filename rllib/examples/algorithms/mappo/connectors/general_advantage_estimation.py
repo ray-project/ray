@@ -162,7 +162,7 @@ class MAPPOGAEConnector(ConnectorV2):
                     ),
                 }
                 for mid, module_batch in batch.items()
-                if (mid == SHARED_CRITIC_ID) or (vf_preds[mid] is not None)
+                if (mid == SHARED_CRITIC_ID) or (mid in vf_preds)
             },
             episodes=episodes,
         )

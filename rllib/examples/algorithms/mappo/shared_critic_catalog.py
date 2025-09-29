@@ -33,7 +33,6 @@ class SharedCriticCatalog(Catalog):
         # Adjust the input and output dimensions of the encoder.
         observation_spaces = self._model_config_dict["observation_spaces"]
         obs_size = 0
-        self.encoder_config.output_dim = len(observation_spaces)
         for agent, obs in observation_spaces.items():
             obs_size += obs.shape[0]  # Assume 1D observations
         self.encoder_config.input_dims = (obs_size,)
