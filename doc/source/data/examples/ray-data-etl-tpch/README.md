@@ -25,7 +25,8 @@ By completing this template, you will master:
 
 Let's start by importing the necessary libraries and setting up our environment for TPC-H processing.
 
-```python
+
+```
 import ray
 import pandas as pd
 import numpy as np
@@ -58,7 +59,8 @@ The **TPC-H benchmark** is the industry standard for testing database and data p
 
 The TPC-H benchmark consists of 8 interconnected tables representing a complete business ecosystem:
 
-```python
+
+```
 # TPC-H Schema Overview for ETL Processing
 tpch_tables = {
     "customer": "Customer master data with demographics and market segments",
@@ -82,7 +84,8 @@ The **Extract** phase involves reading TPC-H benchmark data from S3. Ray Data's 
 
 ### Loading TPC-H Benchmark Data
 
-```python
+
+```
 # TPC-H benchmark data location
 TPCH_S3_PATH = "s3://ray-benchmark-data/tpch/parquet/sf10"
 
@@ -115,7 +118,8 @@ customers_ds.limit(3).to_pandas()
 
 Ray Data provides powerful filtering capabilities for complex business logic:
 
-```python
+
+```
 # Business-focused filtering for customer segmentation
 print("Advanced Customer Filtering Techniques:")
 
@@ -165,7 +169,8 @@ The **Transform** phase applies business logic transformations to TPC-H data, de
 
 ### Customer Market Segment Analysis
 
-```python
+
+```
 # Analyze customer distribution across market segments
 from ray.data.aggregate import Count, Mean
 
@@ -180,7 +185,8 @@ segment_analysis.limit(10).to_pandas()
 
 ### Geographic Reference Data Integration
 
-```python
+
+```
 # Load and process geographic reference data
 print("Loading TPC-H Nations Reference Data:")
 
@@ -198,7 +204,8 @@ nation_ds.limit(5).to_pandas()
 
 ### Customer Demographics by Nation - Advanced Joins
 
-```python
+
+```
 # Join customer and nation data for geographic analysis
 print("Customer Demographics by Nation:")
 print("Joining customer and nation data for geographic analysis...")
@@ -222,7 +229,8 @@ customer_nation_analysis.sort("customer_count", descending=True).limit(10).to_pa
 
 ### Orders Data Processing
 
-```python
+
+```
 # Load TPC-H Orders table (transaction headers)
 orders_ds = ray.data.read_parquet(f"{TPCH_S3_PATH}/orders")
 
@@ -254,7 +262,8 @@ For even faster performance on large datasets, you can replace `pandas` with **N
 Simply replace `import pandas as pd` with `import cudf as pd` to leverage GPU acceleration for the pandas operations.
 :::
 
-```python
+
+```
 # Apply business transformations to order data
 def enrich_order_data(batch):
     """Apply business logic transformations to TPC-H orders."""
@@ -289,7 +298,8 @@ enriched_orders.limit(5).to_pandas()
 
 ### Advanced Filtering for Business Intelligence
 
-```python
+
+```
 # Advanced filtering techniques for business analysis
 print("Business Intelligence Filtering:")
 
@@ -341,7 +351,8 @@ peak_performance_orders.limit(10).to_pandas()
 
 ### Executive Dashboard Metrics
 
-```python
+
+```
 # Create executive summary dashboard using TPC-H data
 print("Executive Dashboard (Business Intelligence Metrics):")
 
@@ -366,7 +377,8 @@ executive_summary.limit(10).to_pandas()
 
 ### Operational Analytics
 
-```python
+
+```
 # Operational metrics for business process optimization
 print("Operational Analytics:")
 
@@ -412,7 +424,8 @@ priority_performance.sort("priority_revenue", descending=True).limit(10).to_pand
 
 ### Line Items Processing (High-Volume Data)
 
-```python
+
+```
 # Process TPC-H line items (largest table in benchmark)
 print("Processing TPC-H Line Items (High-Volume Transaction Data):")
 
@@ -447,7 +460,8 @@ lineitem_ds.limit(3).to_pandas()
 
 ### Revenue Analysis with Complex Filtering
 
-```python
+
+```
 # TPC-H Query 1: Revenue Analysis with advanced filtering
 print("TPC-H Query 1 - Revenue Analysis:")
 
@@ -479,7 +493,8 @@ revenue_analysis.limit(10).to_pandas()
 
 ### Customer Order Analysis with Joins
 
-```python
+
+```
 # Advanced customer analysis combining multiple tables
 print("Customer Order Analysis with Multi-Table Joins:")
 
@@ -526,7 +541,8 @@ top_customers.limit(10).to_pandas()
 
 The **Load** phase writes the processed TPC-H data to various destinations for business intelligence and analytics.
 
-```python
+
+```
 # Create output directory for processed TPC-H data
 import os
 OUTPUT_PATH = "/tmp/tpch_etl_output"
@@ -559,7 +575,9 @@ print(f"Processed data available in: {OUTPUT_PATH}")
 
 ### **Problem: "Memory pressure during large joins"**
 **Solution**:
-```python
+
+
+```
 # Use smaller batch sizes for memory-intensive operations
 large_join = customers_ds.join(orders_ds, 
     left_on="c_custkey", right_on="o_custkey"
@@ -568,7 +586,9 @@ large_join = customers_ds.join(orders_ds,
 
 ### **Problem: "Slow aggregation performance"**
 **Solution**:
-```python
+
+
+```
 # Use Ray Data native aggregations instead of pandas
 from ray.data.aggregate import Count, Sum, Mean
 result = dataset.groupby("category").aggregate(
@@ -578,7 +598,9 @@ result = dataset.groupby("category").aggregate(
 
 ### **Problem: "Column name errors"**
 **Solution**:
-```python
+
+
+```
 # Always check schema before processing
 print(f"Available columns: {dataset.schema().names}")
 # Use consistent column naming
