@@ -154,7 +154,6 @@ def plan_all_to_all_op(
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
-    print(f"op is {op}, {op._sub_progress_bar_names}")
     return AllToAllOperator(
         fn,
         input_physical_dag,
