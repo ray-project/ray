@@ -960,7 +960,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
-
         # Need a lock here because we are updating histogram metrics
         with self._histogram_thread_lock:
             task_time_delta = time.perf_counter() - task_info.start_time

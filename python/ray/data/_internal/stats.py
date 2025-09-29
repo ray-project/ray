@@ -420,9 +420,7 @@ class _StatsActor:
                             else prom_metric.boundaries[-1] + 100
                         )
                         boundary_lower_bound = (
-                            prom_metric.boundaries[i - 1]
-                            if i > 0
-                            else 0
+                            prom_metric.boundaries[i - 1] if i > 0 else 0
                         )
                         bucket_value = (boundary_upper_bound + boundary_lower_bound) / 2
                         for _ in range(value[i]):
