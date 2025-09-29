@@ -78,7 +78,10 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         sub_progress_bar_dict = task_ctx.sub_progress_bar_dict
         bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
-        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        assert bar_name in sub_progress_bar_dict, (
+            sub_progress_bar_dict,
+            f"bar_name is {bar_name}",
+        )
         map_bar = sub_progress_bar_dict[bar_name]
 
         if _debug_limit_execution_to_num_blocks is not None:

@@ -38,101 +38,88 @@ class ShuffleFusion(Rule):
 
     @classmethod
     def fuse_with_upstream(cls, op: LogicalOperator) -> LogicalOperator:
-        child_op = op
-        parent_ops = op.input_dependencies
-        if len(parent_ops) == 1:
+        prev_ops = op.input_dependencies
+        if len(prev_ops) == 1:
 
-            parent_op = parent_ops[0]
+            prev_op = prev_ops[0]
 
             # Simple disconnect cases - same operator types
             if (
-                (
-                    isinstance(parent_op, Repartition)
-                    and isinstance(child_op, Repartition)
+                (isinstance(prev_op, Repartition) and isinstance(op, Repartition))
+                or (
+                    isinstance(prev_op, StreamingRepartition)
+                    and isinstance(op, Repartition)
                 )
                 or (
-                    isinstance(parent_op, StreamingRepartition)
-                    and isinstance(child_op, Repartition)
+                    isinstance(prev_op, RandomShuffle) and isinstance(op, RandomShuffle)
                 )
-                or (
-                    isinstance(parent_op, RandomShuffle)
-                    and isinstance(child_op, RandomShuffle)
-                )
-                or (
-                    isinstance(parent_op, Repartition)
-                    and isinstance(child_op, RandomShuffle)
-                )
-                or (isinstance(parent_op, RandomShuffle) and isinstance(child_op, Sort))
+                or (isinstance(prev_op, Repartition) and isinstance(op, RandomShuffle))
+                or (isinstance(prev_op, RandomShuffle) and isinstance(op, Sort))
             ):
-                _disconnect_op(parent_op)
-                return child_op
+                _disconnect_op(prev_op)
+                return op
 
             # Special case: RandomShuffle -> Repartition with shuffle flag
-            elif isinstance(parent_op, RandomShuffle) and isinstance(
-                child_op, Repartition
-            ):
-                _disconnect_op(parent_op)
-                twin_op = cp.copy(child_op)
-                twin_op._shuffle = True
-                return twin_op
+            elif isinstance(prev_op, RandomShuffle) and isinstance(op, Repartition):
+                _disconnect_op(prev_op)
+                copy_op = cp.copy(op)
+                copy_op._shuffle = True
+                return copy_op
 
             # Key-based fusion cases - Repartition with Join
-            elif isinstance(parent_op, Repartition) and isinstance(child_op, Join):
+            elif isinstance(prev_op, Repartition) and isinstance(op, Join):
                 # For joins, both left and right keys must match parent keys,
                 # and they are guarenteed to be non-empty
                 join_keys_match = (
-                    parent_op.get_partition_keys()
-                    and child_op._left_key_columns
-                    and child_op._right_key_columns
-                    and set(parent_op.get_partition_keys())
-                    == set(child_op._left_key_columns)
-                    and set(parent_op.get_partition_keys())
-                    == set(child_op._right_key_columns)
+                    prev_op.get_partition_keys()
+                    and op._left_key_columns
+                    and op._right_key_columns
+                    and set(prev_op.get_partition_keys()) == set(op._left_key_columns)
+                    and set(prev_op.get_partition_keys()) == set(op._right_key_columns)
                 )
-                if parent_op._num_outputs == child_op._num_outputs and join_keys_match:
-                    _disconnect_op(parent_op)
-                    return child_op
+                if prev_op._num_outputs == op._num_outputs and join_keys_match:
+                    _disconnect_op(prev_op)
+                    return op
 
             # Key-based fusion cases - Repartition with Aggregate
-            elif isinstance(parent_op, Repartition) and isinstance(child_op, Aggregate):
-                if (
-                    parent_op._num_outputs == child_op._num_partitions
-                    and _keys_can_fuse(parent_op, child_op)
+            elif isinstance(prev_op, Repartition) and isinstance(op, Aggregate):
+                if prev_op._num_outputs == op._num_partitions and _keys_can_fuse(
+                    prev_op, op
                 ):
-                    _disconnect_op(parent_op)
-                    return child_op
+                    _disconnect_op(prev_op)
+                    return op
 
             # Aggregate -> Aggregate fusion
-            elif isinstance(parent_op, Aggregate) and isinstance(child_op, Aggregate):
-                if _keys_can_fuse(parent_op, child_op):
-                    _disconnect_op(parent_op)
-                    twin_op = cp.copy(child_op)
-                    twin_op._aggs.extend(parent_op._aggs)
-                    return twin_op
+            elif isinstance(prev_op, Aggregate) and isinstance(op, Aggregate):
+                if _keys_can_fuse(prev_op, op):
+                    _disconnect_op(prev_op)
+                    copy_op = cp.copy(op)
+                    copy_op._aggs.extend(prev_op._aggs)
+                    return copy_op
 
             # Sort -> Aggregate fusion (sort-based shuffle only)
-            elif isinstance(parent_op, Sort) and isinstance(child_op, Aggregate):
+            elif isinstance(prev_op, Sort) and isinstance(op, Aggregate):
                 ctx = DataContext.get_current()
-                if (
-                    _keys_can_fuse(parent_op, child_op)
-                    and ctx.shuffle_strategy.is_sort_based()
-                ):
-                    _disconnect_op(parent_op)
-                    return child_op
+                if _keys_can_fuse(prev_op, op) and ctx.shuffle_strategy.is_sort_based():
+                    _disconnect_op(prev_op)
+                    return op
 
             # Sort -> Sort fusion
-            elif isinstance(parent_op, Sort) and isinstance(child_op, Sort):
-                if parent_op._sort_key._descending == child_op._sort_key._descending:
-                    _disconnect_op(parent_op)
-                    twin_op = cp.copy(child_op)
-                    twin_op._sort_key._columns.extend(parent_op._sort_key._columns)
-                    return twin_op
+            elif isinstance(prev_op, Sort) and isinstance(op, Sort):
+                if (
+                    prev_op._sort_key._descending == op._sort_key._descending
+                    and prev_op._batch_format == op._batch_format
+                ):
+                    _disconnect_op(prev_op)
+                    copy_op = cp.copy(op)
+                    copy_op._sort_key._columns.extend(prev_op._sort_key._columns)
+                    return copy_op
 
         return op
 
 
 # TODO(justin): apply this to other Rules
-def _disconnect_op(child_op: Operator):
+def _disconnect_op(op: Operator):
     """Disconnect a child operator from the DAG by connecting its parents directly to its grandchildren.
 
     Visually this transforms:
@@ -142,16 +129,16 @@ def _disconnect_op(child_op: Operator):
     Args:
         child_op: The operator to remove from the DAG
     """
-    grandchild_ops = child_op.output_dependencies
-    parent_ops = child_op.input_dependencies
+    next_ops = op.output_dependencies
+    prev_ops = op.input_dependencies
 
-    for grandchild_op in grandchild_ops:
-        grandchild_op.input_dependencies.remove(child_op)
-        grandchild_op.input_dependencies.extend(parent_ops)
+    for next_op in next_ops:
+        next_op.input_dependencies.remove(op)
+        next_op.input_dependencies.extend(prev_ops)
 
-    for parent_op in parent_ops:
-        parent_op.output_dependencies.remove(child_op)
-        parent_op.output_dependencies.extend(grandchild_ops)
+    for prev_op in prev_ops:
+        prev_op.output_dependencies.remove(op)
+        prev_op.output_dependencies.extend(next_ops)
 
     # the child_op is now disconnected
 
