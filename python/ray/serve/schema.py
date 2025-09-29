@@ -1306,16 +1306,22 @@ class CeleryAdapterConfig(BaseModel):
     Celery adapter config. You can use it to configure the Celery task processor for your Serve application.
     """
 
+    app_custom_config: Optional[Dict[str, Any]] = Field(
+        default=None, description="The custom configurations to use for the Celery app."
+    )
+    task_custom_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="""
+        The custom configurations to use for the Celery task.
+        This custom configurations will get applied to all the celery tasks.
+        """,
+    )
     broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
     backend_url: str = Field(
         ..., description="The URL of the backend to use for Celery."
     )
     broker_transport_options: Optional[Dict[str, Any]] = Field(
         default=None, description="The broker transport options to use for Celery."
-    )
-    worker_concurrency: Optional[int] = Field(
-        default=10,
-        description="The number of concurrent worker threads for the task processor.",
     )
 
 
