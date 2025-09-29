@@ -1880,7 +1880,7 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_gpu_4x4_aws.yaml
+    cluster_compute: compute_gpu_2x4_aws.yaml
 
   run:
     timeout: 1800

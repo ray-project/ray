@@ -21,7 +21,7 @@ def _torch_run_launch(
     master_address: str,
     node_rank: int,
     absolute_path: str,
-    n_nodes: int = 4,
+    n_nodes: int = 2,
     n_processes_per_node: int = 4,
     master_port: int = 29500,
 ):
@@ -57,7 +57,7 @@ def torch_run_launch_on_nodes():
         node_id = node["NodeID"]
         node_id_ips.append((node_id, node_ip))
 
-    assert len(node_id_ips) == 4, f"Expected 4 nodes, got {len(node_id_ips)}"
+    assert len(node_id_ips) == 2, f"Expected 2 nodes, got {len(node_id_ips)}"
     master_address = node_id_ips[0][1]
     futures = []
     absolute_path = os.path.abspath("torch_local_mode_test.py")
