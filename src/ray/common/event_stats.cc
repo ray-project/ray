@@ -71,12 +71,13 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
                                                     event_context_name.value_or(name));
   }
 
-  return std::make_shared<StatsHandle>(std::move(name),
-                                       ray::current_time_ns() + expected_queueing_delay_ns,
-                                       std::move(stats),
-                                       global_stats_,
-                                       emit_metrics,
-                                       event_context_name);
+  return std::make_shared<StatsHandle>(
+      std::move(name),
+      ray::current_time_ns() + expected_queueing_delay_ns,
+      std::move(stats),
+      global_stats_,
+      emit_metrics,
+      event_context_name);
 }
 
 void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
