@@ -1432,7 +1432,16 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
     // Attempt per-worker process-group cleanup before removing the worker.
 #if !defined(_WIN32)
-    if (RayConfig::instance().process_group_cleanup_enabled()) {
+    const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
+    const bool subreaper_enabled =
+        RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
+    if (pg_enabled && subreaper_enabled) {
+      RAY_LOG_EVERY_MS(WARNING, 60000)
+          << "Both per-worker process groups and subreaper are enabled; "
+          << "using PGs for worker cleanup. "
+          << "Subreaper is deprecated and will be removed in a future release.";
+    }
+    if (pg_enabled) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
         ScheduleProcessGroupCleanup(io_service_,

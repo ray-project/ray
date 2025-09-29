@@ -895,7 +895,7 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, fals
 // Enable per-worker process-group-based cleanup. When enabled, workers are
 // placed into their own process groups and can be cleaned up via killpg on
 // worker death. Cross-platform semantics on POSIX (no-op on Windows).
-RAY_CONFIG(bool, process_group_cleanup_enabled, true)
+RAY_CONFIG(bool, process_group_cleanup_enabled, false)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)

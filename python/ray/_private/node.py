@@ -80,6 +80,7 @@ class Node:
                 new processes.
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
+            pipe_stdin_for_raylet: Whether to pipe stdin to the raylet process.
         """
         if shutdown_at_exit:
             if connect_only:

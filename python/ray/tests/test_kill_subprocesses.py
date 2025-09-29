@@ -8,6 +8,7 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 
 import psutil
 
@@ -15,7 +16,14 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def pg_cleanup_enabled():
+def enable_subreaper():
+    os.environ["RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper"] = "true"
+    yield
+    del os.environ["RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper"]
+
+
+@pytest.fixture
+def enable_pg_cleanup():
     os.environ["RAY_process_group_cleanup_enabled"] = "true"
     yield
     del os.environ["RAY_process_group_cleanup_enabled"]
@@ -58,7 +66,11 @@ class BedMaker:
         return os.getpid()
 
 
-def test_ray_kill_can_kill_subprocess(pg_cleanup_enabled, shutdown_only):
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_ray_kill_can_kill_subprocess(shutdown_only):
     """
     This works becuase of kill_child_processes_on_worker_exit.
     Even if kill_child_processes_on_worker_exit_with_raylet_subreaper
@@ -76,7 +88,105 @@ def test_ray_kill_can_kill_subprocess(pg_cleanup_enabled, shutdown_only):
         logger.info(get_process_info(pid))  # subprocess killed
 
 
-def test_sigkilled_worker_can_kill_subprocess(pg_cleanup_enabled, shutdown_only):
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_sigkilled_worker_can_kill_subprocess(enable_subreaper, shutdown_only):
+    ray.init()
+    # sigkill'd actor can't kill subprocesses
+    b = BedMaker.remote()
+    pid = ray.get(b.make_sleeper.remote())
+    actor_pid = ray.get(b.my_pid.remote())
+
+    logger.info(get_process_info(pid))  # shows the process
+    psutil.Process(actor_pid).kill()  # sigkill
+    time.sleep(11)  # unowned processes are killed every 10s.
+    with pytest.raises(psutil.NoSuchProcess):
+        logger.info(get_process_info(pid))  # subprocess killed
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_daemon_processes_not_killed_until_actor_dead(enable_subreaper, shutdown_only):
+    ray.init()
+    # sigkill'd actor can't kill subprocesses
+    b = BedMaker.remote()
+    daemon_pid = ray.get(b.spawn_daemon.remote())
+    actor_pid = ray.get(b.my_pid.remote())
+
+    # The pid refers to a daemon process that should not be killed, although
+    # it's already reparented to the core worker.
+    time.sleep(11)  # even after a cycle of killing...
+    assert psutil.Process(daemon_pid).ppid() == actor_pid
+
+    psutil.Process(actor_pid).kill()  # sigkill
+    time.sleep(11)  # unowned processes are killed every 10s.
+    with pytest.raises(psutil.NoSuchProcess):
+        logger.info(get_process_info(daemon_pid))  # subprocess killed
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_default_sigchld_handler(enable_subreaper, shutdown_only):
+    """
+    Core worker auto-reaps zombies via SIG_IGN. If the user wants to wait for subprocess
+    they can add it back.
+    """
+    ray.init()
+
+    @ray.remote
+    class A:
+        def auto_reap(self):
+            """
+            Auto subprocess management. Since the signal handler is set to SIG_IGN
+            by the flag, zombies are reaped automatically.
+            """
+            process = subprocess.Popen(["true"])
+            pid = process.pid
+            wait_for_condition(
+                lambda: not psutil.pid_exists(pid), retry_interval_ms=100
+            )
+
+        def manual_reap(self):
+            """
+            Manual subprocess management. Since the signal handler is set back to
+            default, user needs to call `process.wait()` on their own, or the zombie
+            process would persist.
+            """
+
+            import signal
+
+            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+
+            process = subprocess.Popen(["true"])
+            pid = process.pid
+            time.sleep(1)  # wait for the process to exit.
+
+            assert psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+
+            process.wait()
+            # after reaping, it's gone.
+            with pytest.raises(psutil.NoSuchProcess):
+                psutil.Process(pid)
+
+    a = A.remote()
+    # order matters, since `manual_reap` sets the signal handler.
+    ray.get(a.auto_reap.remote())
+    ray.get(a.manual_reap.remote())
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_sigkilled_worker_can_kill_subprocess_with_pg_cleanup(
+    enable_pg_cleanup, shutdown_only
+):
     ray.init()
     # sigkill'd actor can't kill subprocesses
     b = BedMaker.remote()
@@ -90,8 +200,12 @@ def test_sigkilled_worker_can_kill_subprocess(pg_cleanup_enabled, shutdown_only)
         logger.info(get_process_info(pid))  # subprocess killed
 
 
-def test_daemon_processes_not_killed_until_actor_dead(
-    pg_cleanup_enabled, shutdown_only
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_daemon_processes_not_killed_until_actor_dead_with_pg_cleanup(
+    enable_pg_cleanup, shutdown_only
 ):
     ray.init()
     # sigkill'd actor can't kill subprocesses
@@ -112,9 +226,10 @@ def test_daemon_processes_not_killed_until_actor_dead(
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="setsid/PG semantics are POSIX-only"
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
 )
-def test_detached_setsido_escape(pg_cleanup_enabled, shutdown_only):
+def test_detached_setsido_escape_with_pg_cleanup(enable_pg_cleanup, shutdown_only):
     ray.init()
 
     @ray.remote

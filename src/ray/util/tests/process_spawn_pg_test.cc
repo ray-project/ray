@@ -31,6 +31,7 @@ namespace ray {
 namespace {
 
 TEST(ProcessSpawnPGTest, NewGroupWhenRequested) {
+  setenv("RAY_process_group_cleanup_enabled", "true", 1);
   std::vector<std::string> args = {"/bin/sleep", "5"};
   auto [proc, ec] = Process::Spawn(args,
                                    /*decouple=*/false,
@@ -65,6 +66,7 @@ TEST(ProcessSpawnPGTest, NewGroupWhenRequested) {
 }
 
 TEST(ProcessSpawnPGTest, SameGroupWhenNotRequested) {
+  setenv("RAY_process_group_cleanup_enabled", "true", 1);
   std::vector<std::string> args = {"/bin/sleep", "5"};
   auto [proc, ec] = Process::Spawn(args,
                                    /*decouple=*/false,

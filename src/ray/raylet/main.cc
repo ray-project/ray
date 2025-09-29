@@ -423,6 +423,32 @@ int main(int argc, char *argv[]) {
   absl::flat_hash_map<ray::LeaseID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
 
+  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
+  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
+  // so we have to put it here.
+  auto enable_subreaper = [&]() {
+#ifdef __linux__
+    if (ray::SetThisProcessAsSubreaper()) {
+      ray::KnownChildrenTracker::instance().Enable();
+      ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
+      auto runner = ray::PeriodicalRunner::Create(main_service);
+      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
+                                /*period_ms=*/10000,
+                                "Raylet.KillUnknownChildren");
+      RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
+                       "10 seconds.";
+    } else {
+      RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
+                          "unknown children.";
+      ray::SetSigchldIgnore();
+    }
+#else
+    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
+                        "kill unknown children.";
+    ray::SetSigchldIgnore();
+#endif
+  };
+
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
   auto shutdown_raylet_after_unregistration = [&main_service,
@@ -483,23 +509,32 @@ int main(int argc, char *argv[]) {
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
-    // Subreaper is deprecated and ignored; per-worker process groups handle cleanup.
-    if (RayConfig::instance()
-            .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+    const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
+    const bool subreaper_enabled =
+        RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
+    if (pg_enabled && subreaper_enabled) {
       RAY_LOG(WARNING)
-          << "Subreaper-based orphan cleanup is deprecated and ignored. "
-          << "Ray uses per-worker process groups for cleanup. "
-          << "If you rely on subreaper semantics, consider using per-worker PGs "
-          << "or intentionally detaching with setsid().";
+          << "Both per-worker process groups and subreaper are enabled. "
+          << "Per-worker process groups will be used for worker cleanup. "
+          << "Subreaper is deprecated and will be removed in a future release.";
+    } else if (subreaper_enabled) {
+      RAY_LOG(WARNING)
+          << "Subreaper-based orphan cleanup is enabled. "
+          << "Subreaper is deprecated and will be removed in a future release. "
+          << "Prefer per-worker process groups.";
     }
 
 #if !defined(_WIN32)
     RAY_LOG(INFO) << "Per-worker process group cleanup is "
-                  << (RayConfig::instance().process_group_cleanup_enabled() ? "ENABLED"
-                                                                            : "DISABLED");
+                  << (pg_enabled ? "ENABLED" : "DISABLED") << ", subreaper is "
+                  << (subreaper_enabled ? "ENABLED" : "DISABLED");
 #else
     RAY_LOG(INFO) << "Per-worker process group cleanup is not supported on Windows.";
 #endif
+
+    if (subreaper_enabled && !pg_enabled) {
+      enable_subreaper();
+    }
 
     // Parse the worker port list.
     std::istringstream worker_port_list_string(worker_port_list);
@@ -1007,28 +1042,31 @@ int main(int argc, char *argv[]) {
     raylet->Start();
 
 #if !defined(_WIN32)
-    // Optionally watch stdin (pipe from parent). If it closes (EOF), trigger shutdown.
-    const char *pipe_stdin_env = std::getenv("RAY_ENABLE_RAYLET_PIPE_STDIN");
-    if (pipe_stdin_env != nullptr && std::string(pipe_stdin_env) == "1") {
-      std::thread([shutdown_raylet_gracefully]() {
-        char buffer[1024];
-        for (;;) {
-          ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
-          if (n == 0) {
-            break;  // EOF => parent likely exited
-          }
-          if (n < 0) {
-            if (errno == EINTR) {
-              continue;
+    // If stdin is a pipe (provided by launcher), watch it and trigger shutdown on EOF.
+    {
+      struct stat st;
+      const bool stdin_is_fifo = (fstat(STDIN_FILENO, &st) == 0) && S_ISFIFO(st.st_mode);
+      if (stdin_is_fifo) {
+        std::thread([shutdown_raylet_gracefully]() {
+          char buffer[1024];
+          for (;;) {
+            ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
+            if (n == 0) {
+              break;  // EOF => parent likely exited
             }
-            break;
+            if (n < 0) {
+              if (errno == EINTR) {
+                continue;
+              }
+              break;
+            }
           }
-        }
-        ray::rpc::NodeDeathInfo node_death_info;
-        node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-        node_death_info.set_reason_message("stdin closed (parent exited)");
-        shutdown_raylet_gracefully(node_death_info);
-      }).detach();
+          ray::rpc::NodeDeathInfo node_death_info;
+          node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+          node_death_info.set_reason_message("stdin closed (parent exited)");
+          shutdown_raylet_gracefully(node_death_info);
+        }).detach();
+      }
     }
 #endif
   });
