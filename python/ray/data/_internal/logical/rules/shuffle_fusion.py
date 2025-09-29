@@ -19,6 +19,7 @@ from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
     StreamingRepartition,
 )
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 
 logger = logging.getLogger(__name__)
 
@@ -44,30 +45,44 @@ class ShuffleFusion(Rule):
             prev_op = prev_ops[0]
 
             # Simple disconnect cases - same operator types
-            if (
-                (isinstance(prev_op, Repartition) and isinstance(op, Repartition))
-                or (
-                    isinstance(prev_op, StreamingRepartition)
-                    and isinstance(op, Repartition)
-                )
-                or (
-                    isinstance(prev_op, RandomShuffle) and isinstance(op, RandomShuffle)
-                )
-                or (isinstance(prev_op, Repartition) and isinstance(op, RandomShuffle))
-                or (isinstance(prev_op, RandomShuffle) and isinstance(op, Sort))
+
+            if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
+                _disconnect_op(prev_op)
+                return op
+
+            if isinstance(prev_op, StreamingRepartition) and isinstance(
+                op, Repartition
             ):
                 _disconnect_op(prev_op)
                 return op
 
-            # Special case: RandomShuffle -> Repartition with shuffle flag
-            elif isinstance(prev_op, RandomShuffle) and isinstance(op, Repartition):
+            if isinstance(prev_op, RandomShuffle) and isinstance(op, RandomShuffle):
+                _disconnect_op(prev_op)
+                return op
+
+            if isinstance(prev_op, Repartition) and isinstance(op, RandomShuffle):
                 _disconnect_op(prev_op)
                 copy_op = cp.copy(op)
-                copy_op._shuffle = True
+                copy_op._num_outputs = prev_op._num_outputs
                 return copy_op
 
-            # Key-based fusion cases - Repartition with Join
-            elif isinstance(prev_op, Repartition) and isinstance(op, Join):
+            if isinstance(prev_op, RandomShuffle) and isinstance(op, Sort):
+                _disconnect_op(prev_op)
+                return op
+
+            if isinstance(prev_op, RandomShuffle) and isinstance(op, Repartition):
+                _disconnect_op(prev_op)
+                copy_op = cp.copy(op)
+                copy_op._shuffle_blocks = True
+                copy_op._random_shuffle = True
+                # Update progress bar names to match shuffle configuration
+                copy_op._sub_progress_bar_names = [
+                    ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                    ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+                ]
+                return copy_op
+
+            if isinstance(prev_op, Repartition) and isinstance(op, Join):
                 # For joins, both left and right keys must match parent keys,
                 # and they are guarenteed to be non-empty
                 join_keys_match = (
@@ -81,31 +96,27 @@ class ShuffleFusion(Rule):
                     _disconnect_op(prev_op)
                     return op
 
-            # Key-based fusion cases - Repartition with Aggregate
-            elif isinstance(prev_op, Repartition) and isinstance(op, Aggregate):
+            if isinstance(prev_op, Repartition) and isinstance(op, Aggregate):
                 if prev_op._num_outputs == op._num_partitions and _keys_can_fuse(
                     prev_op, op
                 ):
                     _disconnect_op(prev_op)
                     return op
 
-            # Aggregate -> Aggregate fusion
-            elif isinstance(prev_op, Aggregate) and isinstance(op, Aggregate):
+            if isinstance(prev_op, Aggregate) and isinstance(op, Aggregate):
                 if _keys_can_fuse(prev_op, op):
                     _disconnect_op(prev_op)
                     copy_op = cp.copy(op)
                     copy_op._aggs.extend(prev_op._aggs)
                     return copy_op
 
-            # Sort -> Aggregate fusion (sort-based shuffle only)
-            elif isinstance(prev_op, Sort) and isinstance(op, Aggregate):
+            if isinstance(prev_op, Sort) and isinstance(op, Aggregate):
                 ctx = DataContext.get_current()
                 if _keys_can_fuse(prev_op, op) and ctx.shuffle_strategy.is_sort_based():
                     _disconnect_op(prev_op)
                     return op
 
-            # Sort -> Sort fusion
-            elif isinstance(prev_op, Sort) and isinstance(op, Sort):
+            if isinstance(prev_op, Sort) and isinstance(op, Sort):
                 if (
                     prev_op._sort_key._descending == op._sort_key._descending
                     and prev_op._batch_format == op._batch_format

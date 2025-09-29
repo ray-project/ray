@@ -130,7 +130,8 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
         )
-        self._shuffle = shuffle
+        self._shuffle_blocks = shuffle
+        self._random_shuffle = False
         self._keys = keys
         self._sort = sort
 

@@ -155,6 +155,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         if self._sub_progress_bar_names is not None:
             self._sub_progress_bar_dict = {}
             for name in self._sub_progress_bar_names:
+                print(f"name is {name}")
                 bar, position = _create_sub_pb(
                     name, self.num_output_rows_total(), position
                 )
