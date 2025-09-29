@@ -1094,14 +1094,16 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             raise ValueError("Creating empty ragged tensor arrays is not supported.")
 
         # Pre-allocate lists for better performance
-        shapes = [None] * len(arr)
-        raveled = [None] * len(arr)
+        raveled = np.empty(len(arr), dtype=np.object_)
+        shapes = np.empty(len(arr), dtype=np.object_)
 
         sizes = np.arange(len(arr), dtype=np.int64)
 
         ndim = None
+
         for i, a in enumerate(arr):
             a = np.asarray(a)
+
             if ndim is not None and a.ndim != ndim:
                 raise ValueError(
                     "ArrowVariableShapedTensorArray only supports tensor elements that "
