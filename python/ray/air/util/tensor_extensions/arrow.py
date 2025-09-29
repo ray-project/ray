@@ -916,6 +916,8 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
     """
 
+    OFFSET_DTYPE = pa.int64()
+
     def __init__(self, dtype: pa.DataType, ndim: int):
         """
         Construct the Arrow extension type for array of heterogeneous-shaped tensors.
@@ -927,7 +929,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         self._ndim = ndim
         super().__init__(
             pa.struct(
-                [("data", pa.large_list(dtype)), ("shape", pa.list_(pa.int64()))]
+                [("data", pa.large_list(dtype)), ("shape", pa.list_(self.OFFSET_DTYPE))]
             ),
             "ray.data.arrow_variable_shaped_tensor",
         )
