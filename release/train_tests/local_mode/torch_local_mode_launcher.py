@@ -25,7 +25,7 @@ def _torch_run_launch(
     n_processes_per_node: int = 4,
     master_port: int = 29500,
 ):
-    cmd_node1 = [
+    cmd = [
         "torchrun",
         f"--nnodes={n_nodes}",
         f"--nproc-per-node={n_processes_per_node}",
@@ -39,7 +39,7 @@ def _torch_run_launch(
     env = os.environ.copy()
     env["RAY_TRAIN_V2_ENABLED"] = "1"
 
-    subprocess.check_call(cmd_node1, env=env)
+    subprocess.check_call(cmd, env=env)
 
 
 def torch_run_launch_on_nodes():
