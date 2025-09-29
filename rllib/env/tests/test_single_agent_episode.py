@@ -37,7 +37,29 @@ class TestEnv(gym.Env):
         return self.t, self.t, is_terminated, False, {}
 
 
-class TestSingelAgentEpisode(unittest.TestCase):
+class DictTestEnv(gym.Env):
+    def __init__(
+        self,
+        obs_space=gym.spaces.Dict(
+            a=gym.spaces.Discrete(10), b=gym.spaces.Box(0, 1, shape=(1,))
+        ),
+    ):
+        self.observation_space = obs_space
+        self.action_space = gym.spaces.Discrete(10)
+
+    def reset(
+        self, *, seed: Optional[int] = None, options=Optional[Dict[str, Any]]
+    ) -> Tuple[ObsType, Dict[str, Any]]:
+        return self.observation_space.sample(), {}
+
+    def step(
+        self, action: ActType
+    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+
+        return self.observation_space.sample(), 0.0, False, False, {}
+
+
+class TestSingleAgentEpisode(unittest.TestCase):
     def test_init(self):
         """Tests initialization of `SingleAgentEpisode`.
 
@@ -636,6 +658,52 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # TODO (sven): Do we really need a deepcopy here?
         # self.assertNotEqual(id(episode_2.observations[5]),
         # id(episode_1.observations[105]))
+
+    def test_concat_episode_with_complex_obs(self):
+        """Tests if concatenation of two `SingleAgentEpisode`s works with complex observations (e.g. dict)."""
+
+        # Create test environment that utilises dictionary based observations
+        env = DictTestEnv()
+        init_obs, init_info = env.reset()
+
+        episode_1 = SingleAgentEpisode()
+        episode_1.add_env_reset(observation=init_obs, infos=init_info)
+
+        for i in range(4):
+            action = i
+            obs, reward, terminated, truncated, info = env.step(action)
+
+            episode_1.add_env_step(
+                observation=obs,
+                action=action,
+                reward=reward,
+                infos=info,
+                terminated=terminated,
+                truncated=truncated,
+            )
+        assert len(episode_1) == 4
+
+        # cut episode 1 to create episode 2
+        episode_2 = episode_1.cut()
+
+        # fill with data
+        for i in range(6):
+            action = i
+            obs, reward, terminated, truncated, info = env.step(action)
+
+            episode_2.add_env_step(
+                observation=obs,
+                action=action,
+                reward=reward,
+                infos=info,
+                terminated=terminated,
+                truncated=truncated,
+            )
+        assert len(episode_2) == 6
+
+        # concat the episodes and check that episode 1 contains episode 2 content
+        episode_1.concat_episode(episode_2)
+        assert len(episode_1) == 10
 
     def test_get_and_from_state(self):
         """Tests the `get_state` and `set_state` methods of `SingleAgentEpisode`.
