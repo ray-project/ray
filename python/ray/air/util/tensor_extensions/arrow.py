@@ -29,6 +29,13 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
 
 PYARROW_VERSION = get_pyarrow_version()
+MIN_SUPPORTED_PYARROW_VERSION = parse_version("9.0.0")
+
+
+if PYARROW_VERSION < MIN_SUPPORTED_PYARROW_VERSION:
+    raise ImportError(f"Found Pyarrow version of {PYARROW_VERSION}, minimum supported version is {MIN_SUPPORTED_PYARROW_VERSION}")
+
+
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
