@@ -24,7 +24,6 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -49,6 +48,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     BatchFormat,
@@ -60,6 +60,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import AliasExpr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -130,14 +131,15 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
-                    # Use expr.name if available, otherwise fall back to the dict key name
+                    # Always wrap in alias before evaluation
+                    # Use expr.name if available, otherwise use the dict key
                     actual_name = expr.name if expr.name is not None else name
-                    result = eval_expr(expr, result_block)
-                    result_block_accessor = BlockAccessor.for_block(result_block)
-                    # fill_column handles both scalars and arrays
-                    result_block = result_block_accessor.fill_column(
-                        actual_name, result
+                    aliased_expr = (
+                        expr if isinstance(expr, AliasExpr) else expr.alias(actual_name)
                     )
+                    # Evaluate the aliased expression
+                    result_column = eval_expr(aliased_expr, result_block)
+                    result_block = result_block.fill_column(actual_name, result_column)
                 block = result_block
 
             # 2. (optional) column projection
