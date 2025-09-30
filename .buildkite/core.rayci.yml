@@ -395,6 +395,18 @@ steps:
     depends_on: oss-ci-base_build
     job_env: oss-ci-base_build
 
+  - label: ":ray: core: java worker tests"
+    tags:
+      - java
+      - python
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --build-type java
+        --only-tags needs_java
+    depends_on: corebuild
+
   - label: ":ray: core: HA integration tests"
     tags:
       - python
