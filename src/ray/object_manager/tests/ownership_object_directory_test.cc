@@ -21,23 +21,24 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/pubsub/fake_subscriber.h"
 
 namespace ray {
 
 using ::testing::_;
 using ::testing::Return;
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     const auto &worker_id = WorkerID::FromBinary(request.intended_worker_id());
     const auto &object_location_updates = request.object_location_updates();

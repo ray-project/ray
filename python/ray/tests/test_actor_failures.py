@@ -1,5 +1,5 @@
-import atexit
 import asyncio
+import atexit
 import collections
 import os
 import signal
@@ -8,18 +8,18 @@ import tempfile
 import time
 from typing import Callable, Generator
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
-from ray.actor import exit_actor
-from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    wait_for_pid_to_exit,
     generate_system_config_map,
+    wait_for_pid_to_exit,
 )
+from ray.actor import exit_actor
+from ray.exceptions import AsyncioActorExit
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

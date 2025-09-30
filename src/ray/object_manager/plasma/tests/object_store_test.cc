@@ -129,8 +129,8 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(nullptr, store.SealObject(kId2));
 
     // delete sealed
-    EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation) {
-      EXPECT_EQ(alloc_str, Serialize(allocation));
+    EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation_arg) {
+      EXPECT_EQ(alloc_str, Serialize(allocation_arg));
     }));
 
     EXPECT_TRUE(store.DeleteObject(kId1));
@@ -175,8 +175,8 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_TRUE(entry->allocation_.fallback_allocated_);
 
     // delete unsealed
-    EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation) {
-      EXPECT_EQ(alloc_str, Serialize(allocation));
+    EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation_arg) {
+      EXPECT_EQ(alloc_str, Serialize(allocation_arg));
     }));
 
     EXPECT_TRUE(store.DeleteObject(kId2));

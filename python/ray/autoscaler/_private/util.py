@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,8 +13,8 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 import ray._private.services as services
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
     PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN,
@@ -192,6 +193,12 @@ def validate_config(config: Dict[str, Any]) -> None:
                 "The specified global `max_workers` is smaller than the "
                 "sum of `min_workers` of all the available node types."
             )
+
+    if sys.platform == "win32" and config.get("file_mounts_sync_continuously", False):
+        raise ValueError(
+            "`file_mounts_sync_continuously` is not supported on Windows. "
+            "Please set this to False when running on Windows."
+        )
 
 
 def check_legacy_fields(config: Dict[str, Any]) -> None:
@@ -749,7 +756,7 @@ def get_constraint_report(request_demand: List[DictCount]):
     if len(constraint_lines) > 0:
         constraints_report = "\n".join(constraint_lines)
     else:
-        constraints_report = " (no request_resources() constraints)"
+        constraints_report = " (none)"
     return constraints_report
 
 
@@ -941,9 +948,9 @@ Resources
 {separator}
 Total Usage:
 {usage_report}
-Total Constraints:
+From request_resources:
 {constraints_report}
-Total Demands:
+Pending Demands:
 {demand_report}"""
 
     if verbose:

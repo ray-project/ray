@@ -4,9 +4,9 @@ If you need a customized Ray instance (e.g., to change system config or env vars
 put the test in `test_reference_counting_standalone.py`.
 """
 # coding: utf-8
+import copy
 import logging
 import os
-import copy
 import pickle
 import signal
 import sys
@@ -17,14 +17,14 @@ import numpy as np
 import pytest
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-from ray._private.internal_api import memory_summary
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.internal_api import memory_summary
 from ray._private.test_utils import (
     put_object,
     wait_for_num_actors,
 )
-import ray._private.gcs_utils as gcs_utils
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -37,6 +37,8 @@ def one_cpu_100MiB_shared():
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
         "automatic_object_spilling_enabled": False,
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+        "core_worker_rpc_server_reconnect_timeout_s": 0,
     }
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config

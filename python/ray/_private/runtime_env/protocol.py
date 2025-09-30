@@ -1,7 +1,6 @@
 import enum
 import os
-
-from ray._private.runtime_env.default_impl import get_protocols_provider
+from urllib.parse import urlparse
 
 
 class ProtocolsProvider:
@@ -30,13 +29,15 @@ class ProtocolsProvider:
             "gs",
             # Remote azure blob storage path, assumes everything packed in one zip file.
             "azure",
+            # Remote Azure Blob File System Secure path, assumes everything packed in one zip file.
+            "abfss",
             # File storage path, assumes everything packed in one zip file.
             "file",
         }
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"https", "s3", "gs", "azure", "file"}
+        return {"https", "s3", "gs", "azure", "abfss", "file"}
 
     @classmethod
     def _handle_s3_protocol(cls):
@@ -57,7 +58,20 @@ class ProtocolsProvider:
                 "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
             )
 
-        transport_params = {"client": boto3.client("s3")}
+        # Create S3 client, falling back to unsigned for public buckets
+        session = boto3.Session()
+        # session.get_credentials() will return None if no credentials can be found.
+        if session.get_credentials():
+            # If credentials are found, use a standard signed client.
+            s3_client = session.client("s3")
+        else:
+            # No credentials found, fall back to an unsigned client for public buckets.
+            from botocore import UNSIGNED
+            from botocore.config import Config
+
+            s3_client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+
+        transport_params = {"client": s3_client}
         return open_file, transport_params
 
     @classmethod
@@ -123,6 +137,67 @@ class ProtocolsProvider:
         return open_file, transport_params
 
     @classmethod
+    def _handle_abfss_protocol(cls):
+        """Set up Azure Blob File System Secure (ABFSS) protocol handling.
+
+        Returns:
+            tuple: (open_file function, transport_params)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+            ValueError: If the ABFSS URI format is invalid.
+        """
+        try:
+            import adlfs
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise ImportError(
+                "You must `pip install adlfs azure-identity` "
+                "to fetch URIs in Azure Blob File System Secure. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            )
+
+        def open_file(uri, mode, *, transport_params=None):
+            # Parse and validate the ABFSS URI
+            parsed = urlparse(uri)
+
+            # Validate ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
+            if not parsed.netloc or "@" not in parsed.netloc:
+                raise ValueError(
+                    f"Invalid ABFSS URI format - missing container@account: {uri}"
+                )
+
+            container_part, hostname_part = parsed.netloc.split("@", 1)
+
+            # Validate container name (must be non-empty)
+            if not container_part:
+                raise ValueError(
+                    f"Invalid ABFSS URI format - empty container name: {uri}"
+                )
+
+            # Validate hostname format
+            if not hostname_part or not hostname_part.endswith(".dfs.core.windows.net"):
+                raise ValueError(
+                    f"Invalid ABFSS URI format - invalid hostname (must end with .dfs.core.windows.net): {uri}"
+                )
+
+            # Extract and validate account name
+            azure_storage_account_name = hostname_part.split(".")[0]
+            if not azure_storage_account_name:
+                raise ValueError(
+                    f"Invalid ABFSS URI format - empty account name: {uri}"
+                )
+
+            # Handle ABFSS URI with adlfs
+            filesystem = adlfs.AzureBlobFileSystem(
+                account_name=azure_storage_account_name,
+                credential=DefaultAzureCredential(),
+            )
+            return filesystem.open(uri, mode)
+
+        return open_file, None
+
+    @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
         """Download file from remote URI to destination file.
 
@@ -151,6 +226,8 @@ class ProtocolsProvider:
             open_file, tp = cls._handle_gs_protocol()
         elif protocol == "azure":
             open_file, tp = cls._handle_azure_protocol()
+        elif protocol == "abfss":
+            open_file, tp = cls._handle_abfss_protocol()
         else:
             try:
                 from smart_open import open as open_file
@@ -162,15 +239,13 @@ class ProtocolsProvider:
                 )
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
-            with open_file(dest_file, "wb") as fout:
+            with open(dest_file, "wb") as fout:
                 fout.write(fin.read())
 
 
-_protocols_provider = get_protocols_provider()
-
 Protocol = enum.Enum(
     "Protocol",
-    {protocol.upper(): protocol for protocol in _protocols_provider.get_protocols()},
+    {protocol.upper(): protocol for protocol in ProtocolsProvider.get_protocols()},
 )
 
 
@@ -179,7 +254,7 @@ def _remote_protocols(cls):
     # Returns a list of protocols that support remote storage
     # These protocols should only be used with paths that end in ".zip" or ".whl"
     return [
-        cls[protocol.upper()] for protocol in _protocols_provider.get_remote_protocols()
+        cls[protocol.upper()] for protocol in ProtocolsProvider.get_remote_protocols()
     ]
 
 
@@ -187,7 +262,7 @@ Protocol.remote_protocols = _remote_protocols
 
 
 def _download_remote_uri(self, source_uri, dest_file):
-    return _protocols_provider.download_remote_uri(self.value, source_uri, dest_file)
+    return ProtocolsProvider.download_remote_uri(self.value, source_uri, dest_file)
 
 
 Protocol.download_remote_uri = _download_remote_uri

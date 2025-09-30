@@ -11,6 +11,7 @@ from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+import torch
 from pydantic import BaseModel, Field, root_validator
 
 import ray
@@ -109,6 +110,11 @@ class vLLMOutputData(BaseModel):
             data.num_generated_tokens = len(output.outputs[0].token_ids)
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
+            if (
+                isinstance(data.embeddings, torch.Tensor)
+                and data.embeddings.dtype == torch.bfloat16
+            ):
+                data.embeddings = data.embeddings.to(torch.float32)
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -465,11 +471,20 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
+        exclude_safetensors = self.engine_kwargs.get("load_format") in [
+            "runai_streamer",
+            "tensorizer",
+        ]
+        if exclude_safetensors:
+            download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        else:
+            download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
+
         # Download the model if needed.
         model_source = download_model_files(
             model_id=self.model,
             mirror_config=None,
-            download_model=NodeModelDownloadable.MODEL_AND_TOKENIZER,
+            download_model=download_model,
             download_extra_files=False,
         )
 
@@ -478,7 +493,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model=self.model,
             model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            disable_log_requests=True,
+            enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,

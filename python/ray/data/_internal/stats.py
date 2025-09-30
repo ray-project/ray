@@ -163,7 +163,6 @@ class _StatsActor:
         self.last_time = {}
         self.start_time = {}
         self.max_stats = max_stats
-        self.fifo_queue = []
 
         # Assign dataset uuids with a global counter.
         self.next_dataset_id = 0
@@ -176,6 +175,10 @@ class _StatsActor:
         # Initialize the metadata exporter
         self._metadata_exporter = get_dataset_metadata_exporter()
         self.dataset_metadatas: Dict[str, DatasetMetadata] = {}
+
+        # A FIFO queue of dataset_tags for finished datasets. This is used to
+        # efficiently evict the oldest finished datasets when max_stats is reached.
+        self.finished_datasets_queue = collections.deque()
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -278,6 +281,12 @@ class _StatsActor:
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
             description="Seconds user thread is blocked by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.time_to_first_batch_s = Gauge(
+            "data_iter_time_to_first_batch_seconds",
+            description="Total time spent waiting for the first batch after starting iteration. "
+            "This includes the dataset pipeline warmup time. This metric is accumulated across different epochs.",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -469,6 +478,7 @@ class _StatsActor:
     ):
         tags = self._create_tags(dataset_tag)
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
@@ -562,6 +572,14 @@ class _StatsActor:
             operator_states[operator] = state_string
 
         self.update_dataset_metadata_operator_states(dataset_tag, operator_states)
+
+        # Evict the oldest finished datasets to ensure the `max_stats` limit is enforced.
+        if state["state"] in {DatasetState.FINISHED.name, DatasetState.FAILED.name}:
+            self.finished_datasets_queue.append(dataset_tag)
+            while len(self.datasets) > self.max_stats and self.finished_datasets_queue:
+                tag_to_evict = self.finished_datasets_queue.popleft()
+                self.datasets.pop(tag_to_evict, None)
+                self.dataset_metadatas.pop(tag_to_evict, None)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
@@ -948,6 +966,7 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
         self.iter_finalize_batch_s: Timer = Timer()
+        self.iter_time_to_first_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_initialize_s: Timer = Timer()
@@ -987,14 +1006,6 @@ class DatasetStats:
         object, which can be used to generate a summary string."""
         operators_stats = []
         is_sub_operator = len(self.metadata) > 1
-        for name, stats in self.metadata.items():
-            operators_stats.append(
-                OperatorStatsSummary.from_block_metadata(
-                    name,
-                    stats,
-                    is_sub_operator=is_sub_operator,
-                )
-            )
 
         iter_stats = IterStatsSummary(
             self.iter_wait_s,
@@ -1003,6 +1014,7 @@ class DatasetStats:
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
             self.iter_finalize_batch_s,
+            self.iter_time_to_first_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_initialize_s,
@@ -1012,9 +1024,56 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
         )
+
         stats_summary_parents = []
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
+
+        # Collect the sum of the final output row counts from all parent nodes
+        parent_total_output = 0
+        for i, parent_summary in enumerate(stats_summary_parents):
+            if parent_summary.operators_stats:
+                # Get the last operator stats from the current parent summary
+                last_parent_op = parent_summary.operators_stats[-1]
+                # Extract output row count (handle dict type with "sum" key)
+                op_output = (
+                    last_parent_op.output_num_rows.get("sum", 0)
+                    if isinstance(last_parent_op.output_num_rows, dict)
+                    else 0
+                )
+                logger.debug(
+                    f"Parent {i + 1} (operator: {last_parent_op.operator_name}) contributes {op_output} rows to input"
+                )
+                parent_total_output += op_output
+
+        # Create temporary operator stats objects from block metadata
+        op_stats = [
+            OperatorStatsSummary.from_block_metadata(
+                name, stats, is_sub_operator=is_sub_operator
+            )
+            for name, stats in self.metadata.items()
+        ]
+
+        for i, op_stat in enumerate(op_stats):
+            # For sub-operators: inherit input based on the order in the current list
+            if is_sub_operator:
+                if i == 0:
+                    # Input of the first sub-operator is the total output from parent nodes
+                    op_stat.total_input_num_rows = parent_total_output
+                else:
+                    # Input of subsequent sub-operators is the output of the previous sub-operator
+                    prev_op = op_stats[i - 1]
+                    op_stat.total_input_num_rows = (
+                        prev_op.output_num_rows["sum"]
+                        if (
+                            prev_op.output_num_rows and "sum" in prev_op.output_num_rows
+                        )
+                        else 0
+                    )
+            else:
+                # Single operator scenario: input rows = total output from all parent nodes
+                op_stat.total_input_num_rows = parent_total_output
+            operators_stats.append(op_stat)
         streaming_exec_schedule_s = (
             self.streaming_exec_schedule_s.get()
             if self.streaming_exec_schedule_s
@@ -1316,6 +1375,8 @@ class OperatorStatsSummary:
     udf_time: Optional[Dict[str, float]] = None
     # memory: no "sum" stat
     memory: Optional[Dict[str, float]] = None
+    # Use the output_num_rows of the parent Operator as output_num_rows
+    total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[Dict[str, float]] = None
     output_size_bytes: Optional[Dict[str, float]] = None
     # node_count: "count" stat instead of "sum"
@@ -1450,6 +1511,9 @@ class OperatorStatsSummary:
                 "count": len(node_counts),
             }
 
+        # Assign a value in to_summary and initialize it as None.
+        total_input_num_rows = None
+
         return OperatorStatsSummary(
             operator_name=operator_name,
             is_sub_operator=is_sub_operator,
@@ -1461,6 +1525,7 @@ class OperatorStatsSummary:
             cpu_time=cpu_stats,
             udf_time=udf_stats,
             memory=memory_stats,
+            total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
             node_count=node_counts_stats,
@@ -1574,9 +1639,18 @@ class OperatorStatsSummary:
             # total number of rows produced by the sum of the wall times across all
             # blocks of the operator. This assumes that on a single node the work done
             # would be equivalent, with no concurrency.
+            total_num_in_rows = (
+                self.total_input_num_rows if self.total_input_num_rows else 0
+            )
             total_num_out_rows = output_num_rows_stats["sum"]
             out += indent
             out += "* Operator throughput:\n"
+            out += (
+                indent + "\t* Total input num rows:" f" {total_num_in_rows} " "rows\n"
+            )
+            out += (
+                indent + "\t* Total output num rows:" f" {total_num_out_rows} " "rows\n"
+            )
             out += (
                 indent + "\t* Ray Data throughput:"
                 f" {total_num_out_rows / self.time_total_s} "
@@ -1642,6 +1716,8 @@ class IterStatsSummary:
     collate_time: Timer
     # Time spent in finalize_fn, in seconds
     finalize_batch_time: Timer
+    # Time user thread is blocked waiting for first batch
+    time_to_first_batch: Timer
     # Total time user thread is blocked by iter_batches
     block_time: Timer
     # Time spent in user code, in seconds
@@ -1665,6 +1741,7 @@ class IterStatsSummary:
         out = ""
         if (
             self.block_time.get()
+            or self.time_to_first_batch.get()
             or self.total_time.get()
             or self.get_time.get()
             or self.next_time.get()
@@ -1684,6 +1761,11 @@ class IterStatsSummary:
                 out += (
                     "    * Total time user thread is blocked by Ray Data iter_batches: "
                     "{}\n".format(fmt(self.block_time.get()))
+                )
+            if self.time_to_first_batch.get():
+                out += (
+                    "    * Total time spent waiting for the first batch after starting iteration: "
+                    "{}\n".format(fmt(self.time_to_first_batch.get()))
                 )
             if self.user_time.get():
                 out += "    * Total execution time for user thread: {}\n".format(

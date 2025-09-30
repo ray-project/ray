@@ -25,17 +25,17 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/accessor.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -104,10 +104,10 @@ class MockSubscriber : public pubsub::SubscriberInterface {
       callbacks;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     for (const auto &object_location_update : request.object_location_updates()) {
       ASSERT_TRUE(object_location_update.has_spilled_location_update());
@@ -133,7 +133,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       update_object_location_batch_callbacks;
 };
 
-class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockIOWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void SpillObjects(
       const rpc::SpillObjectsRequest &request,
@@ -229,11 +229,12 @@ class MockIOWorker : public MockWorker {
   MockIOWorker(WorkerID worker_id,
                int port,
                std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
-      : MockWorker(worker_id, port), io_worker(io_worker) {}
+      : MockWorker(worker_id, port), io_worker_(io_worker) {}
 
-  rpc::CoreWorkerClientInterface *rpc_client() { return io_worker.get(); }
+  rpc::CoreWorkerClientInterface *rpc_client() { return io_worker_.get(); }
 
-  std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker;
+ private:
+  std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker_;
 };
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {

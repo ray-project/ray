@@ -1,8 +1,8 @@
-import ray
 import cupy as cp
-
-import ray.util.collective as collective
 from cupy.cuda import Device
+
+import ray
+import ray.util.collective as collective
 
 
 @ray.remote(num_gpus=2)

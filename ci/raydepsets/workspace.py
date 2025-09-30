@@ -15,13 +15,15 @@ class BuildArgSet:
 class Depset:
     name: str
     operation: str
-    requirements: List[str]
-    constraints: List[str]
     output: str
-    override_flags: List[str]
-    append_flags: List[str]
+    constraints: Optional[List[str]] = None
+    override_flags: Optional[List[str]] = None
+    append_flags: Optional[List[str]] = None
+    requirements: Optional[List[str]] = None
+    packages: Optional[List[str]] = None
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
+    pre_hooks: Optional[List[str]] = None
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -49,6 +51,8 @@ def _dict_to_depset(depset: dict) -> Depset:
         depsets=depset.get("depsets", []),
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
+        pre_hooks=depset.get("pre_hooks", []),
+        packages=depset.get("packages", []),
     )
 
 

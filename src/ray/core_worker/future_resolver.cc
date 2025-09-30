@@ -15,6 +15,7 @@
 #include "ray/core_worker/future_resolver.h"
 
 #include <memory>
+#include <utility>
 
 namespace ray {
 namespace core {
@@ -32,7 +33,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
   request.set_object_id(object_id.Binary());
   request.set_owner_worker_id(owner_address.worker_id());
   conn->GetObjectStatus(
-      request,
+      std::move(request),
       [this, object_id, owner_address](const Status &status,
                                        const rpc::GetObjectStatusReply &reply) {
         ProcessResolvedObject(object_id, owner_address, status, reply);

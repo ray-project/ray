@@ -22,7 +22,6 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -130,6 +129,7 @@ struct ActorCreationOptions {
                        std::vector<ConcurrencyGroup> concurrency_groups_p = {},
                        bool allow_out_of_order_execution_p = false,
                        int32_t max_pending_calls_p = -1,
+                       bool enable_tensor_transport_p = false,
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
                        std::unordered_map<std::string, std::string> label_selector_p = {})
@@ -148,6 +148,7 @@ struct ActorCreationOptions {
         concurrency_groups(std::move(concurrency_groups_p)),
         allow_out_of_order_execution(allow_out_of_order_execution_p),
         max_pending_calls(max_pending_calls_p),
+        enable_tensor_transport(enable_tensor_transport_p),
         scheduling_strategy(std::move(scheduling_strategy_p)),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
@@ -201,6 +202,7 @@ struct ActorCreationOptions {
   const bool allow_out_of_order_execution = false;
   /// The maximum actor call pending count.
   const int max_pending_calls = -1;
+  const bool enable_tensor_transport = false;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
   /// True if task events (worker::TaskEvent) from this creation task should be reported
@@ -219,7 +221,6 @@ struct PlacementGroupCreationOptions {
       PlacementStrategy strategy,
       std::vector<std::unordered_map<std::string, double>> bundles,
       bool is_detached_p,
-      double max_cpu_fraction_per_node,
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
           {})
@@ -227,7 +228,6 @@ struct PlacementGroupCreationOptions {
         strategy_(strategy),
         bundles_(std::move(bundles)),
         is_detached_(is_detached_p),
-        max_cpu_fraction_per_node_(max_cpu_fraction_per_node),
         soft_target_node_id_(soft_target_node_id),
         bundle_label_selector_(std::move(bundle_label_selector)) {
     RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
@@ -242,8 +242,6 @@ struct PlacementGroupCreationOptions {
   const std::vector<std::unordered_map<std::string, double>> bundles_;
   /// Whether to keep the placement group persistent after its creator dead.
   const bool is_detached_ = false;
-  /// The maximum fraction of CPU cores this placement group can take up on each node.
-  const double max_cpu_fraction_per_node_;
   /// ID of the target node where bundles should be placed
   /// iff the target node has enough available resources and alive.
   /// Otherwise, the bundles can be placed elsewhere.

@@ -50,13 +50,14 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
             sorted.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              // First sort by retriable tasks and then by task time in descending order.
+              // First sort by retriable tasks and then by assigned time in descending
+              // order.
               int left_retriable =
-                  left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+                  left->GetGrantedLease().GetLeaseSpecification().IsRetriable() ? 0 : 1;
               int right_retriable =
-                  right->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+                  right->GetGrantedLease().GetLeaseSpecification().IsRetriable() ? 0 : 1;
               if (left_retriable == right_retriable) {
-                return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
+                return left->GetGrantedLeaseTime() > right->GetGrantedLeaseTime();
               }
               return left_retriable < right_retriable;
             });
@@ -84,11 +85,11 @@ std::string WorkerKillingPolicy::WorkersDebugString(
       RAY_LOG_EVERY_MS(INFO, 60000)
           << "Can't find memory usage for PID, reporting zero. PID: " << pid;
     }
-    result << "Worker " << index << ": task assigned time "
-           << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
+    result << "Worker " << index << ": lease granted time "
+           << absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone())
            << " worker id " << worker->WorkerId() << " memory used " << used_memory
-           << " task spec "
-           << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+           << " lease spec "
+           << worker->GetGrantedLease().GetLeaseSpecification().DebugString() << "\n";
 
     index += 1;
     if (index > num_workers) {

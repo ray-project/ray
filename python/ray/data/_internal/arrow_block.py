@@ -157,8 +157,11 @@ class ArrowBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List[Block]) -> Block:
-        return transform_pyarrow.concat(tables, promote_types=True)
+    def _combine_tables(tables: List[Block]) -> Block:
+        if len(tables) > 1:
+            return transform_pyarrow.concat(tables, promote_types=True)
+        else:
+            return tables[0]
 
     @staticmethod
     def _concat_would_copy() -> bool:
@@ -187,7 +190,7 @@ def _get_max_chunk_size(
     if table.nbytes == 0:
         return None
     else:
-        avg_row_size = int(table.nbytes / table.num_rows)
+        avg_row_size = table.nbytes / table.num_rows
         return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
@@ -203,18 +206,21 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.column_names
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.column_names
-
         import pyarrow.compute as pc
 
-        if isinstance(value, pyarrow.Scalar):
-            type = value.type
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pyarrow.Array, pyarrow.ChunkedArray)):
+            return self.upsert_column(name, value)
         else:
-            type = pyarrow.infer_type([value])
+            # Scalar value - use original fill_column logic
+            if isinstance(value, pyarrow.Scalar):
+                type = value.type
+            else:
+                type = pyarrow.infer_type([value])
 
-        array = pyarrow.nulls(len(self._table), type=type)
-        array = pc.fill_null(array, value)
-        return self._table.append_column(name, array)
+            array = pyarrow.nulls(len(self._table), type=type)
+            array = pc.fill_null(array, value)
+            return self._table.append_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -263,8 +269,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
-        df = self._table.to_pandas()
+        # We specify ignore_metadata=True because pyarrow will use the metadata
+        # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
+        df = self._table.to_pandas(ignore_metadata=ctx.pandas_block_ignore_metadata)
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df)
         return df
@@ -335,6 +343,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
             r = r.append_column(col_name, col)
         return r
 
+    def upsert_column(
+        self, column_name: str, column_data: BlockColumn
+    ) -> "pyarrow.Table":
+        assert isinstance(
+            column_data, (pyarrow.Array, pyarrow.ChunkedArray)
+        ), f"Expected either a pyarrow.Array or pyarrow.ChunkedArray, got: {type(column_data)}"
+
+        column_idx = self._table.schema.get_field_index(column_name)
+        if column_idx == -1:
+            return self._table.append_column(column_name, column_data)
+        else:
+            return self._table.set_column(column_idx, column_name, column_data)
+
     @staticmethod
     def builder() -> ArrowBlockBuilder:
         return ArrowBlockBuilder()
@@ -364,6 +385,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
         return self._table.rename_columns(columns_rename)
+
+    def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
+
+        result_table = self._table
+        for name, column in zip(other_block.column_names, other_block.columns):
+            result_table = result_table.append_column(name, column)
+
+        return result_table
 
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)

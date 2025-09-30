@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -28,6 +28,9 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.checkpoint.report_handler import (
     ReportCallbackHandler,
 )
+from ray.train.v2._internal.execution.checkpoint.validation_manager import (
+    ValidationManager,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
@@ -50,7 +53,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ResizeDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
@@ -66,6 +68,10 @@ from ray.train.v2.api.exceptions import (
     TrainingFailedError,
 )
 from ray.train.v2.api.result import Result
+
+if TYPE_CHECKING:
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
 
 logger = logging.getLogger(__name__)
 
@@ -122,27 +128,27 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
-        self._storage_context = StorageContext(
-            storage_path=self._run_config.storage_path,
-            experiment_dir_name=self._run_config.name,
-            storage_filesystem=self._run_config.storage_filesystem,
-        )
+        self._storage_context = self._train_run_context.run_config.storage_context
 
         self._checkpoint_manager = CheckpointManager(
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
+        self._validation_manager = ValidationManager(
+            checkpoint_manager=self._checkpoint_manager,
+        )
         report_handler = ReportCallbackHandler(
             report_callbacks=(
-                [self._checkpoint_manager]
+                [self._checkpoint_manager, self._validation_manager]
                 + [c for c in self._callbacks if isinstance(c, ReportCallback)]
             )
         )
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_callbacks = [self._scaling_policy] + [
-            c for c in self._callbacks if isinstance(c, ControllerCallback)
-        ]
+        self._controller_callbacks = [
+            self._scaling_policy,
+            self._validation_manager,
+        ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
@@ -274,6 +280,10 @@ class TrainController:
         self, num_workers: int, resources_per_worker: dict
     ) -> Optional[ControllerError]:
         """Start the worker group and launch the train function.
+
+        Args:
+            num_workers: The number of workers to start.
+            resources_per_worker: The resources per worker to start.
 
         Returns:
             None if the worker group was successfully started,
@@ -537,7 +547,6 @@ class TrainController:
             raise ValueError(
                 f"Cannot get result when controller is in state {controller_state}"
             )
-
         return self._build_result()
 
     def get_training_failed_error(self) -> Optional[TrainingFailedError]:
@@ -553,3 +562,10 @@ class TrainController:
             return controller_state.training_failed_error
 
         return None
+
+    async def get_all_reported_checkpoints(
+        self, current_report_index: int
+    ) -> List["ReportedCheckpoint"]:
+        return await self._checkpoint_manager.get_all_reported_checkpoints(
+            current_report_index
+        )
