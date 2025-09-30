@@ -13,7 +13,7 @@
 ## Checks
 
 - [ ] I've signed off every commit(by using the -s flag, i.e., `git commit -s`) in this PR.
-- [ ] I've run `scripts/format.sh` to lint the changes in this PR.
+- [ ] I've run pre-commit jobs to lint the changes in this PR. ([pre-commit setup](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#lint-and-formatting))
 - [ ] I've included any doc changes needed for https://docs.ray.io/en/master/.
     - [ ] I've added any new APIs to the API Reference. For example, if I added a
            method in Tune, I've added it in `doc/source/tune/api/` under the
