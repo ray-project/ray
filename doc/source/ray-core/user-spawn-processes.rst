@@ -11,7 +11,7 @@ Ray provides following mechanisms to handle subprocess killing on worker exit:
 
 - ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` (default ``false``): Only works on Linux greater than or equal to 3.4. If true, Raylet *recursively* kills any child processes and grandchild processes that were spawned by the worker after the worker exits. This works even if the worker crashed. The killing happens within 10 seconds after the worker death.
 
-- ``process_group_cleanup_enabled`` (default ``false``): If true (POSIX), Ray isolates each worker into its own process group at spawn and cleans up the worker’s process group on worker exit via `killpg`. Processes that intentionally call `setsid()` will detach and not be killed by this cleanup.
+- ``RAY_process_group_cleanup_enabled`` (default ``false``): If true (POSIX), Ray isolates each worker into its own process group at spawn and cleans up the worker’s process group on worker exit via `killpg`. Processes that intentionally call `setsid()` will detach and not be killed by this cleanup.
 
 On non-Linux platforms, subreaper is not available. Per‑worker process groups are supported on POSIX platforms; on Windows, neither subreaper nor PGs apply. Users should manage child processes explicitly on platforms without support.
 
