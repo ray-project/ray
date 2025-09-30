@@ -482,8 +482,9 @@ class JobSubmissionClient(SubmissionClient):
             The iterator.
 
         Raises:
-            RuntimeError: If the job does not exist or if the request to the
-                job server fails.
+            RuntimeError: If the job does not exist, if the request to the
+                job server fails, or if the connection closes unexpectedly
+                before the job reaches a terminal state.
         """
         async with aiohttp.ClientSession(
             cookies=self._cookies, headers=self._headers
@@ -495,9 +496,27 @@ class JobSubmissionClient(SubmissionClient):
             while True:
                 msg = await ws.receive()
 
+                # Query job status after receiving each message to track state
+                try:
+                    job_info = self.get_job_info(job_id)
+                    job_status = job_info.status
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to get job status for {job_id}."
+                    ) from e
+
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     yield msg.data
                 elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    # Check if job was in terminal state when connection closed
+                    if not job_status.is_terminal():
+                        raise RuntimeError(
+                            f"WebSocket connection closed unexpectedly while job "
+                            f"was in {job_status} state. The Ray head node may have "
+                            f"been terminated or restarted."
+                        )
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    pass
+                    raise RuntimeError(
+                        f"WebSocket error while tailing logs for job {job_id}."
+                    )
