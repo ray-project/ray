@@ -70,17 +70,13 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
   rpc::RegisterNodeReply register_reply;
-  std::atomic_int callbacks_remaining = 1;
-  auto send_register_reply_callback = [&callbacks_remaining](ray::Status status,
-                                                             std::function<void()> f1,
-                                                             std::function<void()> f2) {
-    callbacks_remaining--;
-  };
+  auto send_register_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
   // Add a node to the manager
   node_manager.HandleRegisterNode(
       register_request, &register_reply, send_register_reply_callback);
-  while (callbacks_remaining > 0) {
-    io_context_->run_one();
+  // Exhaust the event loop
+  while (io_context_->poll() > 0) {
   }
   auto register_events = fake_ray_event_recorder_->FlushBuffer();
 
@@ -118,16 +114,12 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
       rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
   rpc::UnregisterNodeReply unregister_reply;
-  callbacks_remaining = 1;
-  auto send_unregister_reply_callback = [&callbacks_remaining](ray::Status status,
-                                                               std::function<void()> f1,
-                                                               std::function<void()> f2) {
-    callbacks_remaining--;
-  };
+  auto send_unregister_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
   node_manager.HandleUnregisterNode(
       unregister_request, &unregister_reply, send_unregister_reply_callback);
-  while (callbacks_remaining > 0) {
-    io_context_->run_one();
+  // Exhaust the event loop
+  while (io_context_->poll() > 0) {
   }
 
   // Test the dead node lifecycle event
