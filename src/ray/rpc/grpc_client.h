@@ -136,14 +136,13 @@ class GrpcClient {
     testing::RpcFailure failure = testing::GetRpcFailure(call_name);
     if (failure != testing::RpcFailure::None &&
         RayConfig::instance().testing_rpc_failure_same_node_address_check()) {
-      // If server and client are on the same node, don't inject any failures.
-      RAY_LOG(INFO)
-          << "Server and client are on the same node, skipping RPC failure injection for "
-          << call_name;
-      failure = server_address_ == "127.0.0.1" ||
-                        server_address_ == client_call_manager_.GetLocalAddress()
-                    ? testing::RpcFailure::None
-                    : failure;
+      if (server_address_ == "127.0.0.1" ||
+          server_address_ == client_call_manager_.GetLocalAddress()) {
+        RAY_LOG(INFO) << "Server and client are on the same node, skipping RPC failure "
+                         "injection for "
+                      << call_name;
+        failure = testing::RpcFailure::None;
+      }
     }
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives

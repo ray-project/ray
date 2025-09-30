@@ -275,9 +275,8 @@ class ClientCallManager {
         callback, cluster_id_, std::move(stats_handle), record_stats_, method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
-    rr_index_ = (rr_index_ + 1) % num_threads_;
-    call->response_reader_ =
-        (stub.*prepare_async_function)(&call->context_, request, cqs_[rr_index_].get());
+    call->response_reader_ = (stub.*prepare_async_function)(
+        &call->context_, request, cqs_[rr_index_++ & num_threads_].get());
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -373,7 +372,7 @@ class ClientCallManager {
   std::atomic<bool> shutdown_;
 
   /// The index to send RPCs in a round-robin fashion
-  std::atomic<uint32_t> rr_index_ = 0;
+  std::atomic<uint64_t> rr_index_ = 0;
 
   /// The gRPC `CompletionQueue` object used to poll events.
   std::vector<std::unique_ptr<grpc::CompletionQueue>> cqs_;
