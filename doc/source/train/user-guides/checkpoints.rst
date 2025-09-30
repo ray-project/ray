@@ -1,7 +1,7 @@
 .. _train-checkpointing:
 
-Saving and Loading Checkpoints
-==============================
+Saving, Validating, and Loading Checkpoints
+===========================================
 
 Ray Train provides a way to snapshot training progress with :class:`Checkpoints <ray.train.Checkpoint>`.
 
@@ -256,11 +256,18 @@ the next training step can start in parallel. If so, you should use
 ``ray.train.CheckpointUploadMode.ASYNC``, which kicks off a new thread
 to upload the checkpoint. This is helpful for larger
 checkpoints that might take longer to upload, but might add unnecessary
-complexity if you want to immediately upload only a small checkpoint.
+complexity (see below) if you want to immediately upload only a small checkpoint.
 
 Each ``report`` blocks until the previous ``report``\'s checkpoint
 upload completes before starting a new checkpoint upload thread. Ray Train does this
 to avoid accumulating too many upload threads and potentially running out of memory.
+
+Because ``report`` returns without waiting for the checkpoint upload to complete,
+you must ensure that the local checkpoint directory stays alive until the checkpoint
+upload completes. This means you cannot ``report`` a checkpoint whose directory is
+from a ``tempfile.TemporaryDirectory`` context manager. ``report`` also exposes the
+``delete_local_checkpoint_after_upload`` parameter, which defaults to ``True`` if
+``checkpoint_upload_mode`` is ``ray.train.CheckpointUploadMode.ASYNC``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
@@ -309,6 +316,69 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
     please ensure that the metric is always reported together with the checkpoints.
 
 
+.. _train-validating-checkpoints:
+
+Validating checkpoints asynchronously
+-------------------------------------
+
+You can also asynchronously validate checkpoints that you :func:`~ray.train.report` as follows:
+* Define your own ``validation_fn`` whose inputs are the :class:`~ray.train.Checkpoint` to validate
+  and an optional config dict and whose output is a dict of metrics from the validation. We recommend
+  performing the validation with an eval-only :ref:`Trainer <train-overview-trainers>` or with
+  :func:`~ray.data.Dataset.map_batches` - see :ref:`train-validate-fn` for more details.
+* Call :func:`~ray.train.report` with your ``validation_fn`` and a ``validate_config`` dict.
+  Ray Train runs your ``validation_fn`` with the ``validation_config`` and ``checkpoint``
+  in a new Ray task. When that task completes, Ray Train associates the metrics returned by
+  ``validation_fn`` with that ``checkpoint``.
+
+The main benefits of validating with :func:`~ray.train.report` over performing the validation
+in the training loop include:
+* Running validation in parallel with the training loop
+* Running validation on different hardware than training
+* Leveraging :ref:`vms-autoscaling` to only use validation resources when needed
+
+.. _train-validate-fn:
+
+Writing your own validation function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here is an example ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
+to calculate average cross entropy loss on a validation set. Note that this ``report``s
+a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __validation_fn_torch_trainer_start__
+    :end-before: __validation_fn_torch_trainer_end__
+
+Here is an example ``validate_fn`` that uses :func:`~ray.data.Dataset.map_batches` to
+calculate average cross entropy loss on a validation set. To learn more about how to use
+``map_batches`` for batch inference, check out :ref:`batch_inference_home`.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __validation_fn_map_batches_start__
+    :end-before: __validation_fn_map_batches_end__
+
+You should use ``TorchTrainer`` if:
+* You don't want to add a dependency on Ray Data
+* You prefer Torch's metrics aggregation API to Ray Data's
+
+You should use ``map_batches`` if:
+* You care about validation performance. Preliminary benchmarks show that ``map_batches`` is
+  faster and the Ray Data team will continue to work on OSS and proprietary performance improvements.
+* You prefer Ray Data's metrics aggregation API to Torch's
+
+Reporting with your validation function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Once you've defined your ``validate_fn``, you can ``report`` it along with a ``validation_config``,
+which can contain information like the validation dataset.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __validation_fn_report_start__
+    :end-before: __validation_fn_report_end__
 
 Using checkpoints after training
 --------------------------------
