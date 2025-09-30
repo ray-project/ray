@@ -387,9 +387,13 @@ class RouterMetricsManager:
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_metrics_report(self) -> HandleMetricReport:
+        timestamp = time.time()
         running_requests = dict()
         avg_running_requests = dict()
-        timestamp = time.time()
+        avg_queued_requests = self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
+        queued_requests = self.metrics_store.data.get(
+            QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
+        )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
             self.metrics_store.prune_keys_and_compact_data(
@@ -413,9 +417,14 @@ class RouterMetricsManager:
             handle_id=self._handle_id,
             actor_id=self._self_actor_id,
             handle_source=self._handle_source,
-            queued_requests=self.num_queued_requests,
-            aggregated_metrics={RUNNING_REQUESTS_KEY: avg_running_requests},
-            metrics={RUNNING_REQUESTS_KEY: running_requests},
+            aggregated_queued_requests=avg_queued_requests,
+            queued_requests=queued_requests,
+            aggregated_metrics={
+                RUNNING_REQUESTS_KEY: avg_running_requests,
+            },
+            metrics={
+                RUNNING_REQUESTS_KEY: running_requests,
+            },
             timestamp=timestamp,
         )
 

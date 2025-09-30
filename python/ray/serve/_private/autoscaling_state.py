@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
+    ONGOING_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
@@ -19,6 +20,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.metrics_utils import (
+    QUEUED_REQUESTS_KEY,
     merge_timeseries_dicts,
     time_weighted_average,
 )
@@ -292,12 +294,14 @@ class AutoscalingState:
 
         return metrics_timeseries_dicts
 
-    def _collect_handle_queued_requests(self) -> float:
-        """Collect total queued requests from all handles."""
-        total_queued_requests = 0
+    def _collect_handle_queued_requests(self) -> List[Dict[str, List]]:
+        """Collect queued requests metrics from all handles."""
+        metrics_timeseries_dicts = []
         for handle_metric_report in self._handle_requests.values():
-            total_queued_requests += handle_metric_report.queued_requests
-        return total_queued_requests
+            metrics_timeseries_dicts.append(
+                {QUEUED_REQUESTS_KEY: handle_metric_report.queued_requests}
+            )
+        return metrics_timeseries_dicts
 
     def _collect_handle_running_requests(self) -> List[Dict[str, List]]:
         """Collect running requests metrics from handles when not collected on replicas.
@@ -359,31 +363,31 @@ class AutoscalingState:
 
         return metrics_timeseries_dicts
 
-    def _aggregate_running_requests(
+    def _aggregate_ongoing_requests(
         self, metrics_timeseries_dicts: List[Dict[str, List]]
     ) -> float:
-        """Aggregate and average running requests from timeseries data using instantaneous merge.
+        """Aggregate and average ongoing requests from timeseries data using instantaneous merge.
 
         Args:
             metrics_timeseries_dicts: A list of dictionaries, each containing a key-value pair:
-                - The key is the name of the metric (RUNNING_REQUESTS_KEY)
+                - The key is the name of the metric (ONGOING_REQUESTS_KEY)
                 - The value is a list of TimeStampedValue objects, each representing a single measurement of the metric
                 this list is sorted by timestamp ascending
 
         Returns:
-            The time-weighted average of the running requests
+            The time-weighted average of the ongoing requests
 
         Example:
             If the metrics_timeseries_dicts is:
             [
                 {
-                    "running_requests": [
+                    "ongoing_requests": [
                         TimeStampedValue(timestamp=0.1, value=5.0),
                         TimeStampedValue(timestamp=0.2, value=7.0),
                     ]
                 },
                 {
-                    "running_requests": [
+                    "ongoing_requests": [
                         TimeStampedValue(timestamp=0.2, value=3.0),
                         TimeStampedValue(timestamp=0.3, value=1.0),
                     ]
@@ -398,7 +402,7 @@ class AutoscalingState:
 
         # Use instantaneous merge approach - no arbitrary windowing needed
         aggregated_metrics = merge_timeseries_dicts(*metrics_timeseries_dicts)
-        running_requests_timeseries = aggregated_metrics.get(RUNNING_REQUESTS_KEY, [])
+        running_requests_timeseries = aggregated_metrics.get(ONGOING_REQUESTS_KEY, [])
         if running_requests_timeseries:
 
             # assume that the last recorded metric is valid for last_window_s seconds
@@ -486,7 +490,7 @@ class AutoscalingState:
         metrics_collected_on_replicas = len(replica_metrics) > 0
 
         # Collect queued requests from handles
-        total_requests = self._collect_handle_queued_requests()
+        queued_requests = self._collect_handle_queued_requests()
 
         if not metrics_collected_on_replicas:
             # Collect handle-based running requests if not collected on replicas
@@ -497,10 +501,18 @@ class AutoscalingState:
         # Combine all running requests metrics
         all_running_metrics = replica_metrics + handle_metrics
 
+        # map all_running_metrics key RUNNING_REQUESTS_KEY to ONGOING_REQUESTS_KEY
+        ongoing_requests_metrics = [
+            {ONGOING_REQUESTS_KEY: metric[RUNNING_REQUESTS_KEY]}
+            for metric in all_running_metrics
+        ] + [
+            {ONGOING_REQUESTS_KEY: queued_requests[QUEUED_REQUESTS_KEY]}
+            for queued_requests in queued_requests
+        ]
         # Aggregate and add running requests to total
-        total_requests += self._aggregate_running_requests(all_running_metrics)
+        ongoing_requests = self._aggregate_ongoing_requests(ongoing_requests_metrics)
 
-        return total_requests
+        return ongoing_requests
 
     def _calculate_total_requests_simple_mode(self) -> float:
         """Calculate total requests using simple aggregated metrics mode.
@@ -559,7 +571,7 @@ class AutoscalingState:
 
         # Add handle metrics
         for handle_metric in self._handle_requests.values():
-            total_requests += handle_metric.queued_requests
+            total_requests += handle_metric.aggregated_queued_requests
 
             # Add running requests from handles if not collected on replicas
             if not metrics_collected_on_replicas:

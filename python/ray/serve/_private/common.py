@@ -756,6 +756,7 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 )
 
 RUNNING_REQUESTS_KEY = "running_requests"
+ONGOING_REQUESTS_KEY = "ongoing_requests"
 
 
 @dataclass(order=True)
@@ -776,9 +777,11 @@ class HandleMetricReport:
         handle_source: Describes what kind of entity holds this
             deployment handle: a Serve proxy, a Serve replica, or
             unknown.
-        queued_requests: The current number of queued requests at the
-            handle, i.e. requests that haven't been assigned to any
-            replica yet.
+        aggregated_queued_requests: average number of queued requests at the
+            handle over the past look_back_period_s seconds.
+        queued_requests: list of values of queued requests at the
+            handle over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
         aggregated_metrics: A map of metric name to the aggregated value over the past
             look_back_period_s seconds at the handle for each replica.
         metrics: A map of metric name to the list of values running at that handle for each replica
@@ -791,7 +794,8 @@ class HandleMetricReport:
     handle_id: str
     actor_id: str
     handle_source: DeploymentHandleSource
-    queued_requests: float
+    aggregated_queued_requests: float
+    queued_requests: List[float]
     aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
     metrics: Dict[str, Dict[ReplicaID, List[float]]]
     timestamp: float
@@ -799,7 +803,7 @@ class HandleMetricReport:
     @property
     def total_requests(self) -> float:
         """Total number of queued and running requests."""
-        return self.queued_requests + sum(
+        return self.aggregated_queued_requests + sum(
             self.aggregated_metrics.get(RUNNING_REQUESTS_KEY, {}).values()
         )
 
