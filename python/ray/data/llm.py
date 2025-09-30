@@ -432,13 +432,21 @@ def build_llm_processor(
                 print(row)
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
+    from ray.llm._internal.batch.processor.base import OfflineProcessorConfig
 
-    return ProcessorBuilder.build(
-        config,
-        chat_template_kwargs=chat_template_kwargs,
-        preprocess=preprocess,
-        postprocess=postprocess,
-    )
+    if isinstance(config, OfflineProcessorConfig):
+        return ProcessorBuilder.build(
+            config,
+            chat_template_kwargs=chat_template_kwargs,
+            preprocess=preprocess,
+            postprocess=postprocess,
+        )
+    else:
+        return ProcessorBuilder.build(
+            config,
+            preprocess=preprocess,
+            postprocess=postprocess,
+        )
 
 
 __all__ = [
