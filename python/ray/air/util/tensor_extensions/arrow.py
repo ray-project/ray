@@ -1216,6 +1216,7 @@ AnyArrowExtTensorType = Union[
 ]
 
 
+@DeveloperAPI(stability="alpha")
 def unify_tensor_types(
     types: Collection[AnyArrowExtTensorType],
 ) -> AnyArrowExtTensorType:
@@ -1251,6 +1252,7 @@ def unify_tensor_types(
     )
 
 
+@DeveloperAPI(stability="alpha")
 def unify_tensor_arrays(
     arrs: List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]
 ) -> List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
@@ -1287,6 +1289,7 @@ def unify_tensor_arrays(
     return unified_arrs
 
 
+@DeveloperAPI(stability="alpha")
 def concat_tensor_arrays(
     arrays: List[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]],
     ensure_copy: bool = False,
