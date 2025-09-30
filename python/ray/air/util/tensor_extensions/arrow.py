@@ -14,9 +14,11 @@ from packaging.version import parse as parse_version
 import ray.cloudpickle as cloudpickle
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
-from ray.air.util.object_extensions.arrow import \
-    MIN_PYARROW_VERSION_SCALAR_SUBCLASS, _object_extension_type_allowed, \
-    ArrowPythonObjectArray
+from ray.air.util.object_extensions.arrow import (
+    MIN_PYARROW_VERSION_SCALAR_SUBCLASS,
+    ArrowPythonObjectArray,
+    _object_extension_type_allowed,
+)
 from ray.air.util.tensor_extensions.utils import (
     ArrayLike,
     _is_ndarray_variable_shaped_tensor,
