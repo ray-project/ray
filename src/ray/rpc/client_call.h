@@ -208,6 +208,7 @@ class ClientCallManager {
   ///
   explicit ClientCallManager(instrumented_io_context &main_service,
                              bool record_stats,
+                             std::string local_address,
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
@@ -215,8 +216,8 @@ class ClientCallManager {
         main_service_(main_service),
         num_threads_(num_threads),
         record_stats_(record_stats),
+        local_address_(std::move(local_address)),
         shutdown_(false),
-        rr_index_(std::rand() % num_threads_),
         call_timeout_ms_(call_timeout_ms) {
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -274,8 +275,9 @@ class ClientCallManager {
         callback, cluster_id_, std::move(stats_handle), record_stats_, method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
-    call->response_reader_ = (stub.*prepare_async_function)(
-        &call->context_, request, cqs_[rr_index_++ % num_threads_].get());
+    rr_index_ = (rr_index_ + 1) % num_threads_;
+    call->response_reader_ =
+        (stub.*prepare_async_function)(&call->context_, request, cqs_[rr_index_].get());
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -296,6 +298,8 @@ class ClientCallManager {
 
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }
+
+  const std::string &GetLocalAddress() const { return local_address_; }
 
  private:
   /// This function runs in a background thread. It keeps polling events from the
@@ -362,11 +366,14 @@ class ClientCallManager {
   /// Whether to record stats for these client calls.
   bool record_stats_;
 
+  /// The local address of the client.
+  std::string local_address_;
+
   /// Whether the client has shutdown.
   std::atomic<bool> shutdown_;
 
   /// The index to send RPCs in a round-robin fashion
-  std::atomic<unsigned int> rr_index_;
+  std::atomic<uint32_t> rr_index_ = 0;
 
   /// The gRPC `CompletionQueue` object used to poll events.
   std::vector<std::unique_ptr<grpc::CompletionQueue>> cqs_;

@@ -97,21 +97,20 @@ class GrpcClient {
  public:
   GrpcClient(std::shared_ptr<grpc::Channel> channel,
              ClientCallManager &call_manager,
-             bool use_tls = false)
+             std::string server_address)
       : client_call_manager_(call_manager),
         channel_(std::move(channel)),
         stub_(GrpcService::NewStub(channel_)),
-        use_tls_(use_tls) {}
+        server_address_(std::move(server_address)) {}
 
   GrpcClient(const std::string &address,
              const int port,
              ClientCallManager &call_manager,
-             bool use_tls = false,
              grpc::ChannelArguments channel_arguments = CreateDefaultChannelArguments())
       : client_call_manager_(call_manager),
         channel_(BuildChannel(address, port, std::move(channel_arguments))),
         stub_(GrpcService::NewStub(channel_)),
-        use_tls_(use_tls) {}
+        server_address_(address) {}
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -135,6 +134,17 @@ class GrpcClient {
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
     testing::RpcFailure failure = testing::GetRpcFailure(call_name);
+    if (failure != testing::RpcFailure::None &&
+        RayConfig::instance().testing_rpc_failure_same_node_address_check()) {
+      // If server and client are on the same node, don't inject any failures.
+      RAY_LOG(INFO)
+          << "Server and client are on the same node, skipping RPC failure injection for "
+          << call_name;
+      failure = server_address_ == "127.0.0.1" ||
+                        server_address_ == client_call_manager_.GetLocalAddress()
+                    ? testing::RpcFailure::None
+                    : failure;
+    }
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.
@@ -193,8 +203,7 @@ class GrpcClient {
   std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
-  /// Whether to use TLS.
-  bool use_tls_;
+  std::string server_address_;
 };
 
 }  // namespace rpc

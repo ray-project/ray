@@ -218,6 +218,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
                                                    false,
+                                                   /*local_address=*/"",
                                                    ClusterID::Nil(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
