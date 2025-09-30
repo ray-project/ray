@@ -795,9 +795,9 @@ class HandleMetricReport:
     actor_id: str
     handle_source: DeploymentHandleSource
     aggregated_queued_requests: float
-    queued_requests: List[float]
+    queued_requests: List[TimeStampedValue]
     aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    metrics: Dict[str, Dict[ReplicaID, List[float]]]
+    metrics: Dict[str, Dict[ReplicaID, List[TimeStampedValue]]]
     timestamp: float
 
     @property
@@ -838,5 +838,5 @@ class ReplicaMetricReport:
 
     replica_id: ReplicaID
     aggregated_metrics: Dict[str, float]
-    metrics: Dict[str, List[float]]
+    metrics: Dict[str, List[TimeStampedValue]]
     timestamp: float

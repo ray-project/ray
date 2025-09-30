@@ -390,7 +390,10 @@ class RouterMetricsManager:
         timestamp = time.time()
         running_requests = dict()
         avg_running_requests = dict()
-        avg_queued_requests = self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
+        avg_queued_requests = (
+            self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
+            or self.num_queued_requests
+        )
         queued_requests = self.metrics_store.data.get(
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )

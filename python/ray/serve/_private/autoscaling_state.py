@@ -506,8 +506,8 @@ class AutoscalingState:
             {ONGOING_REQUESTS_KEY: metric[RUNNING_REQUESTS_KEY]}
             for metric in all_running_metrics
         ] + [
-            {ONGOING_REQUESTS_KEY: queued_requests[QUEUED_REQUESTS_KEY]}
-            for queued_requests in queued_requests
+            {ONGOING_REQUESTS_KEY: queued_request[QUEUED_REQUESTS_KEY]}
+            for queued_request in queued_requests
         ]
         # Aggregate and add running requests to total
         ongoing_requests = self._aggregate_ongoing_requests(ongoing_requests_metrics)
