@@ -20,6 +20,7 @@ from ray.data._internal.logical.operators.map_operator import (
     StreamingRepartition,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,19 @@ class ShuffleFusion(Rule):
 
             if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
                 _disconnect_op(prev_op)
-                return op
+                copy_op = cp.copy(op)
+                copy_op._shuffle_blocks = op._shuffle_blocks or prev_op._shuffle_blocks
+                if copy_op._shuffle_blocks:
+                    copy_op._sub_progress_bar_names = [
+                        ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                        ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+                    ]
+                else:
+                    copy_op.sub_progress_bar_names = [
+                        ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
+                    ]
+
+                return copy_op
 
             if isinstance(prev_op, StreamingRepartition) and isinstance(
                 op, Repartition
