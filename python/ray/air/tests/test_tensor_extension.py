@@ -16,7 +16,6 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
     _are_contiguous_1d_views,
     _concat_ndarrays,
-    _get_buffer_address,
     concat_tensor_arrays,
     unify_tensor_arrays,
 )
@@ -961,11 +960,7 @@ def test_concat_ndarrays_zero_copy():
     # Case 1: Create a base array and contiguous views
     base = np.arange(100, dtype=np.int64)
 
-    arrs = [
-        base[0:20],
-        base[20:50],
-        base[50:100]
-    ]
+    arrs = [base[0:20], base[20:50], base[50:100]]
 
     result = _concat_ndarrays(arrs)
 
@@ -974,11 +969,7 @@ def test_concat_ndarrays_zero_copy():
     assert np.shares_memory(result, base)
 
     # Case 2: Verify empty views are skipped
-    arrs = [
-        base[0:10],
-        base[10:10],  # Empty array
-        base[10:20]
-    ]
+    arrs = [base[0:10], base[10:10], base[10:20]]  # Empty array
 
     result = _concat_ndarrays(arrs)
     expected = np.concatenate([base[0:10], base[10:20]])
@@ -1016,11 +1007,7 @@ def test_concat_ndarrays_non_contiguous_fallback():
     # Case 2: Non-contiguous arrays (take 2)
     base = np.arange(100, dtype=np.float64)
 
-    arrs = [
-        base[0:10],
-        base[20:30],  # Gap from 10-20
-        base[30:40]
-    ]
+    arrs = [base[0:10], base[20:30], base[30:40]]  # Gap from 10-20
 
     result = _concat_ndarrays(arrs)
     expected = np.concatenate(arrs)
@@ -1046,6 +1033,7 @@ def test_concat_ndarrays_diff_dtypes_fallback():
     np.testing.assert_array_equal(result, expected)
     assert result.dtype == expected.dtype
 
+
 def test_are_contiguous_1d_views_non_raveled():
     """Test that _are_contiguous_1d_views rejects non-1D arrays."""
     base = np.arange(100, dtype=np.int64).reshape(10, 10)
@@ -1064,10 +1052,7 @@ def test_are_contiguous_1d_views_non_c_contiguous():
     base = np.arange(100, dtype=np.int64).reshape(10, 10)
 
     # Column slices are not C-contiguous
-    arrs = [
-        base[:, 0],
-        base[:, 1]
-    ]
+    arrs = [base[:, 0], base[:, 1]]
 
     assert not _are_contiguous_1d_views(arrs)
 
@@ -1075,13 +1060,10 @@ def test_are_contiguous_1d_views_non_c_contiguous():
 def test_are_contiguous_1d_views_different_bases():
     """Test _are_contiguous_1d_views with views from different base arrays."""
     base1 = np.arange(50, dtype=np.int64)
-    _ = np.arange(1000, dtype=np.int64) # Create gap to prevent contiguity
+    _ = np.arange(1000, dtype=np.int64)  # Create gap to prevent contiguity
     base2 = np.arange(50, 100, dtype=np.int64)
 
-    arrs = [
-        base1,
-        base2
-    ]
+    arrs = [base1, base2]
 
     # Different base arrays
     assert not _are_contiguous_1d_views(arrs)
@@ -1091,10 +1073,7 @@ def test_are_contiguous_1d_views_overlapping():
     """Test _are_contiguous_1d_views with overlapping views."""
     base = np.arange(100, dtype=np.float64)
 
-    arrs = [
-        base[0:20],
-        base[10:30]  # Overlaps with first
-    ]
+    arrs = [base[0:20], base[10:30]]  # Overlaps with first
 
     # Overlapping views are not contiguous
     assert not _are_contiguous_1d_views(arrs)
@@ -1107,15 +1086,13 @@ def test_concat_ndarrays_complex_views():
     base = base_2d.ravel()  # Get 1D view
 
     # Take contiguous slices of the 1D view
-    arrs = [
-        base[0:30],
-        base[30:60],
-        base[60:100]
-    ]
+    arrs = [base[0:30], base[30:60], base[60:100]]
 
     result = _concat_ndarrays(arrs)
     np.testing.assert_array_equal(result, base)
-    assert np.shares_memory(result, base_2d)  # Should share memory with original 2D array
+    assert np.shares_memory(
+        result, base_2d
+    )  # Should share memory with original 2D array
 
 
 def test_concat_ndarrays_strided_views():
@@ -1123,10 +1100,7 @@ def test_concat_ndarrays_strided_views():
     base = np.arange(100, dtype=np.float64)
 
     # Every other element - these are strided views
-    arrs = [
-        base[::2],  # Even indices
-        base[1::2]  # Odd indices
-    ]
+    arrs = [base[::2], base[1::2]]  # Even indices  # Odd indices
 
     # Strided views are not C-contiguous
     result = _concat_ndarrays(arrs)
