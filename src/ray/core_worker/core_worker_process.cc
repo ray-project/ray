@@ -241,9 +241,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_node_id, options.node_ip_address, options.node_manager_port);
-  // NOTE: We cannot have transient network errors to the local raylet because its the
-  // same node. Hence we don't need to invoke the unavailable timeout callback apart from
-  // once immediately to check if the node is dead.
+  // NOTE: We cannot have transient network errors to the local raylet because it's
+  // located on same node. Hence we don't need to invoke the unavailable timeout callback
+  // apart from once immediately to check if the node is dead.
   auto local_raylet_rpc_client = std::make_shared<rpc::RayletClient>(
       std::move(raylet_address),
       *client_call_manager,
