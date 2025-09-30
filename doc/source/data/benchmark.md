@@ -108,22 +108,22 @@ The numbers below are taken from an average/std across 4 runs. We also ran 1 war
 
 ```{list-table} Video Object Detection Results
 :header-rows: 1
-:label: example-table
--   |
-    | g6.xlarge (4 CPUs)
-    | g6.2xlarge (8 CPUs)
-    | g6.4xlarge (16 CPUs)
-    | g6.8xlarge (32 CPUs)
+:name: video-object-detection-results
+-   -
+    - g6.xlarge (4 CPUs)
+    - g6.2xlarge (8 CPUs)
+    - g6.4xlarge (16 CPUs)
+    - g6.8xlarge (32 CPUs)
 -   **Ray Data (2.50.0)**
-    | 1590.5 +/- 116.67
-    | 908.75 +/- 13.7
-    | 663.5 +/- 23.67
-    | 644.5 +/- 24.34
+    - 1590.5 +/- 116.67
+    - 908.75 +/- 13.7
+    - 663.5 +/- 23.67
+    - 644.5 +/- 24.34
 -   **Daft (0.6.2)**
-    | 758.75 +/- 10.37
-    | 735.25 +/- 7.59
-    | 747.5 +/- 13.43
-    | 771.25 +/- 25.63
+    - 758.75 +/- 10.37
+    - 735.25 +/- 7.59
+    - 747.5 +/- 13.43
+    - 771.25 +/- 25.63
 ```
 
 ---
