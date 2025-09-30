@@ -268,6 +268,7 @@ void GcsAutoscalerStateManager::GetClusterResourceConstraints(
 }
 
 void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(node.node_id());
   if (node_resource_info_.contains(node_id)) {
     // early termination as we already know about this node
