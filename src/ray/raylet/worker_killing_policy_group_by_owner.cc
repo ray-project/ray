@@ -24,12 +24,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
@@ -38,7 +34,7 @@ namespace raylet {
 
 GroupByOwnerIdWorkerKillingPolicy::GroupByOwnerIdWorkerKillingPolicy() {}
 
-const std::pair<std::shared_ptr<WorkerInterface>, bool>
+std::pair<std::shared_ptr<WorkerInterface>, bool>
 GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemorySnapshot &system_memory) const {
