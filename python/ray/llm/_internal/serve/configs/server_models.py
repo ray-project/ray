@@ -494,38 +494,20 @@ class LLMConfig(BaseModelExtended):
 
         # Handle custom placement group configuration
         if self.placement_group_config:
-            if "bundles" not in self.placement_group_config:
-                raise ValueError("placement_group_config must contain 'bundles'")
-
-            # Default strategy to PACK if not specified
-            strategy = self.placement_group_config.get("strategy", "PACK")
-
-            # Process bundles with defaults
-            pg_bundles = []
-            for bundle in self.placement_group_config["bundles"]:
-                bundle = bundle.copy()
-                bundle.setdefault("CPU", 1)
-                bundle.setdefault("GPU", 1)
-
-                if self.accelerator_type:
-                    bundle.setdefault(
-                        f"accelerator_type:{self.accelerator_type}", 0.001
-                    )
-
-                pg_bundles.append(bundle)
+            # Use validated placement_bundles and placement_strategy from engine_config
+            pg_bundles = engine_config.placement_bundles
 
             # Merge replica actor resources with the first bundle
             if pg_bundles:
-                first_bundle = pg_bundles[0]
-                merged_first_bundle = self._merge_replica_actor_and_child_actor_bundles(
-                    [first_bundle], replica_actor_resources
-                )[0]
-                pg_bundles[0] = merged_first_bundle
+                merged_bundles = self._merge_replica_actor_and_child_actor_bundles(
+                    pg_bundles, replica_actor_resources
+                )
+                pg_bundles = merged_bundles
 
             deployment_config.update(
                 {
                     "placement_group_bundles": pg_bundles,
-                    "placement_group_strategy": strategy,
+                    "placement_group_strategy": engine_config.placement_strategy,
                 }
             )
         else:

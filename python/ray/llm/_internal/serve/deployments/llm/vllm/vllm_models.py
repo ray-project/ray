@@ -184,13 +184,13 @@ class VLLMEngineConfig(BaseModelExtended):
         # Convert placement_group_config from dict to schema if provided
         placement_group_config = None
         if llm_config.placement_group_config:
-            # Ensure strategy defaults to PACK if not specified and provide
-            # a clear error if bundles are missing before invoking schema validation.
-            pg_config = llm_config.placement_group_config.copy()
-            if "bundles" not in pg_config:
+            # Ensure bundles exist before schema validation
+            if "bundles" not in llm_config.placement_group_config:
                 raise ValueError("placement_group_config must contain 'bundles'")
-            pg_config.setdefault("strategy", "PACK")
-            placement_group_config = PlacementGroupSchema(**pg_config)
+            # PlacementGroupSchema handles strategy default
+            placement_group_config = PlacementGroupSchema(
+                **llm_config.placement_group_config
+            )
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
@@ -222,8 +222,11 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_strategy(self) -> str:
-        # Default to PACK to allow cross-node best-effort placement by default.
-        # DP deployments continue to override to STRICT_PACK in Serve config.
+        # Use custom strategy if placement_group_config is provided
+        if self.placement_group_config:
+            return self.placement_group_config.strategy
+        # Default to PACK  (cross-node best-effort placement)
+        # DP deployments overriden to STRICT_PACK in Serve config
         return "PACK"
 
     @property
@@ -234,7 +237,7 @@ class VLLMEngineConfig(BaseModelExtended):
             for bundle_schema in self.placement_group_config.bundles:
                 bundle = bundle_schema.dict()
                 if self.accelerator_type:
-                    bundle[self.ray_accelerator_type()] = 0.001
+                    bundle.setdefault(self.ray_accelerator_type(), 0.001)
                 bundles.append(bundle)
             return bundles
 
