@@ -33,7 +33,7 @@ message TaskDefinitionEvent {
   FunctionDescriptor task_func = 5;
   string task_name = 6;
   map<string, double> required_resources = 7;
-  RuntimeEnvInfo runtime_env_info = 8;
+  RuntimeEnvInfo runtime_env_info = 8 [deprecated = true];
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.
@@ -41,4 +41,5 @@ message TaskDefinitionEvent {
   bytes parent_task_id = 10;
   bytes placement_group_id = 11;
   map<string, bytes> ref_ids = 12;
+  string serialized_runtime_env = 13;
 }
