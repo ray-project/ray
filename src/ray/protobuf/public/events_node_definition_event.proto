@@ -27,8 +27,8 @@ message NodeDefinitionEvent {
   string node_ip_address = 2;
   map<string, string> labels = 3;
   google.protobuf.Timestamp start_timestamp = 4;
-  // The instance type name of the node if running on a cloud provider and
-  // set through ENV of src/ray/common/constants.h::kNodeCloudInstanceTypeNameEnv
-  // e.g. m4.16xlarge
+  // The instance type name of the node if running on a cloud provider.
+  // This is set via the `RAY_CLOUD_INSTANCE_TYPE_NAME` environment variable.
+  // e.g. "m4.16xlarge"
   string instance_type_name = 5;
 }
