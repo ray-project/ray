@@ -43,11 +43,23 @@ def test_ray_job_events(ray_start_cluster, httpserver):
 
     # Check that a driver job event with the correct job id is published.
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    wait_for_condition(lambda: len(httpserver.log) >= 1)
-    req, _ = httpserver.log[0]
-    req_json = json.loads(req.data)
+    # Wait until any request contains the driverJobDefinitionEvent.
+    wait_for_condition(
+        lambda: any(
+            "driverJobDefinitionEvent" in item
+            for req, _ in httpserver.log
+            for item in json.loads(req.data)
+        )
+    )
+    # Find the most recent matching item across all requests.
+    definition_event = next(
+        item
+        for req, _ in httpserver.log
+        for item in json.loads(req.data)
+        if "driverJobDefinitionEvent" in item
+    )
     assert (
-        base64.b64decode(req_json[0]["driverJobDefinitionEvent"]["jobId"]).hex()
+        base64.b64decode(definition_event["driverJobDefinitionEvent"]["jobId"]).hex()
         == ray.get_runtime_context().get_job_id()
     )
 
