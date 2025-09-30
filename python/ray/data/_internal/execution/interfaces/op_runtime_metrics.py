@@ -581,7 +581,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def get_metrics(self) -> List[MetricDefinition]:
         return list(_METRICS)
 
-    def as_dict(self, skip_internal_metrics: bool = False, reset_histogram_metrics: bool = False) -> Dict[str, Any]:
+    def as_dict(
+        self, skip_internal_metrics: bool = False, reset_histogram_metrics: bool = False
+    ) -> Dict[str, Any]:
         """
         Return a dict representation of the metrics.
 

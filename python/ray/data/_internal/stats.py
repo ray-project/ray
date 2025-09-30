@@ -802,7 +802,8 @@ class _StatsManager:
                                         per_node_metrics,
                                     ) in self._last_execution_stats.values():
                                         op_metrics_dicts = [
-                                            metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
+                                            metric.as_dict(reset_histogram_metrics=True)
+                                            for metric in op_metrics
                                         ]
                                         args = (
                                             dataset_tag,
@@ -877,7 +878,9 @@ class _StatsManager:
     ):
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
         if force_update:
-            op_metrics_dicts = [metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics]
+            op_metrics_dicts = [
+                metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
+            ]
             args = (
                 dataset_tag,
                 op_metrics_dicts,
