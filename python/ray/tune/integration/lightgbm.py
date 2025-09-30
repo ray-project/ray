@@ -34,7 +34,7 @@ class TuneReportCheckpointCallback(RayReportCallback):
     --------
 
     Reporting checkpoints and metrics to Ray Tune when running many
-    independent xgboost trials (without data parallelism within a trial).
+    independent LightGBM trials (without data parallelism within a trial).
 
     .. testcode::
         :skipif: True
