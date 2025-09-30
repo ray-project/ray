@@ -1,4 +1,5 @@
 import os
+import shutil
 from unittest.mock import create_autospec
 
 import pytest
@@ -6,6 +7,7 @@ import pytest
 import ray
 import ray.cloudpickle as ray_pickle
 from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.report_config import CheckpointUploadMode
@@ -215,6 +217,41 @@ def test_report_checkpoint_upload_error(ray_start_4_cpus, monkeypatch, tmp_path)
     with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+
+def test_report_checkpoint_upload_function(tmp_path):
+    def checkpoint_upload_function(checkpoint, checkpoint_dir_name):
+        full_checkpoint_path = (
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name(checkpoint_dir_name)
+        )
+        shutil.copytree(checkpoint.path, full_checkpoint_path)
+        return Checkpoint.from_directory(full_checkpoint_path)
+
+    def train_fn():
+        if ray.train.get_context().get_world_rank() == 0:
+            with create_dict_checkpoint(
+                {"checkpoint_key": "checkpoint_value"}
+            ) as checkpoint:
+                ray.train.report(
+                    metrics={},
+                    checkpoint=checkpoint,
+                    checkpoint_dir_name="my_checkpoint_dir_name",
+                    checkpoint_upload_function=checkpoint_upload_function,
+                )
+        else:
+            ray.train.report(metrics={}, checkpoint=None)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    result = trainer.fit()
+    assert load_dict_checkpoint(result.checkpoint) == {
+        "checkpoint_key": "checkpoint_value"
+    }
 
 
 if __name__ == "__main__":

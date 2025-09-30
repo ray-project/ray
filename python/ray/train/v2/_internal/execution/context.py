@@ -233,7 +233,8 @@ class TrainContext:
             checkpoint: The checkpoint to report.
             delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
             checkpoint_upload_function: A user defined function that will be called with the
-                checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
+                checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
+                utility for copying to the destination `storage_path`.
 
         Returns:
             The training result object containing the persisted checkpoint.
