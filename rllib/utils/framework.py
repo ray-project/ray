@@ -1,14 +1,14 @@
 import logging
-import numpy as np
 import os
 import sys
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
+import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray._common.deprecation import Deprecated
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.typing import (
     TensorShape,
     TensorStructType,
@@ -120,8 +120,8 @@ def try_import_jax(error: bool = False):
         return None, None
 
     try:
-        import jax
         import flax
+        import jax
     except ImportError:
         if error:
             raise ImportError(

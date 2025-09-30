@@ -1,16 +1,16 @@
-from typing import Any, Dict
 import random
+from typing import Any, Dict
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
-import psutil  # noqa E402
-
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.replay_buffers.replay_buffer import (
     ReplayBuffer,
     warn_replay_capacity,
 )
 from ray.rllib.utils.typing import SampleBatchType
+
+import psutil  # noqa E402
 
 
 # __sphinx_doc_reservoir_buffer__begin__

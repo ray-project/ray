@@ -1,10 +1,11 @@
-import pytest
-import time
-import numpy as np
 import re
+import time
 
-from ray.rllib.utils.metrics.stats import Stats, merge_stats
+import numpy as np
+import pytest
+
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.stats import Stats, merge_stats
 from ray.rllib.utils.test_utils import check
 
 # Default values used throughout the tests
