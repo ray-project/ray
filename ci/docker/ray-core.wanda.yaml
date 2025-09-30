@@ -1,5 +1,6 @@
-name: "ray_core_py$PYTHON_VERSION$ARCH_SUFFIX"
+name: "ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"
 froms: ["cr.ray.io/rayproject/manylinux"]
+dockerfile: ci/docker/ray-core.Dockerfile
 srcs:
   - .bazelversion
   - .bazelrc
@@ -24,4 +25,3 @@ build_args:
   - BUILDKITE_BAZEL_CACHE_URL
 build_hint_args:
   - BUILDKITE_CACHE_READONLY
-dockerfile: ci/docker/ray-core.Dockerfile

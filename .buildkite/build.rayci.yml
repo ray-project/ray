@@ -1,6 +1,6 @@
 group: build
 steps:
-  - name: wanda_ray_core
+  - name: ray-core-build
     label: "wanda: core binary parts py{{matrix}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
@@ -11,6 +11,23 @@ steps:
       - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    tags: release_wheels
+    depends_on: manylinux
+
+  - name: ray-dashboard-build
+    label: "wanda: dashboard"
+    wanda: ci/docker/ray-dashboard.wanda.yaml
+    tags: release_wheels
+    depends_on: manylinux
+
+  - name: ray-java-build
+    label: "wanda: java build (x86_64)"
+    wanda: ci/docker/ray-java.wanda.yaml
+    tags:
+      - release_wheels
+      - oss
+    env:
       ARCH_SUFFIX: ""
     depends_on: manylinux
 

@@ -114,7 +114,6 @@ py_test_module_list(
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
-        "test_target_capacity.py",
         "test_task_processor.py",
         "test_telemetry.py",
     ],
@@ -163,6 +162,7 @@ py_test_module_list(
         "test_logging.py",
         "test_standalone.py",
         "test_standalone_3.py",
+        "test_target_capacity.py",
         "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
@@ -321,30 +321,30 @@ py_test(
 py_test_module_list_with_env_variants(
     size = "large",
     env_variants = {
-        "with_metr_disab": {
+        "metr_disab": {
             "env": {
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
                 # Make sure queued metrics are cleared out quickly.
                 "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             },
-            "name_suffix": "_with_metr_disab",
+            "name_suffix": "_metr_disab",
         },
-        "with_metr_agg_at_controller": {
+        "metr_agg_at_controller": {
             "env": {
                 "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
                 # Make sure queued metrics are cleared out quickly.
                 "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             },
-            "name_suffix": "_with_metr_agg_at_controller",
+            "name_suffix": "_metr_agg_at_controller",
         },
-        "with_metr_agg_at_controller_and_metr_on_replicas": {
+        "metr_agg_at_controller_and_replicas": {
             "env": {
                 "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
                 # Make sure queued metrics are cleared out quickly.
                 "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             },
-            "name_suffix": "_with_metr_agg_at_controller_and_metr_on_replicas",
+            "name_suffix": "_metr_agg_at_controller_and_replicas",
         },
     },
     files = [
