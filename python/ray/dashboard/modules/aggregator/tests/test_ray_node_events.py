@@ -72,7 +72,9 @@ def test_ray_node_events(ray_start_cluster, httpserver):
         base64.b64decode(lifecycle_event["nodeLifecycleEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
     )
-    assert lifecycle_event["nodeLifecycleEvent"]["stateTransitions"][0]["state"] == "ALIVE"
+    assert (
+        lifecycle_event["nodeLifecycleEvent"]["stateTransitions"][0]["state"] == "ALIVE"
+    )
 
 
 if __name__ == "__main__":

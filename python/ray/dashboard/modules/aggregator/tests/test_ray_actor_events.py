@@ -111,7 +111,9 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
             ]
             if stateTransition["state"] == "ALIVE":
                 has_alive_state = True
-                assert base64.b64decode(stateTransition["nodeId"]).hex() in all_nodes_ids
+                assert (
+                    base64.b64decode(stateTransition["nodeId"]).hex() in all_nodes_ids
+                )
                 assert base64.b64decode(stateTransition["workerId"]).hex() != ""
     assert has_alive_state
 
