@@ -618,8 +618,14 @@ class SingleAgentEpisode:
 
         # Make sure, end matches other episode chunk's beginning.
         tree.assert_same_structure(other.observations[0], self.observations[-1])
+        # Use tree.map_structure with np.array_equal to check every leaf node are equivalent
+        #   then np.all on flatten to validate all are tree
         assert np.all(
-            tree.flatten(other.observations[0]) == tree.flatten(self.observations[-1])
+            tree.flatten(
+                tree.map_structure(
+                    np.array_equal, other.observations[0], self.observations[-1]
+                )
+            )
         )
 
         # Pop out our last observations and infos (as these are identical
