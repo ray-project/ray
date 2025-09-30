@@ -18,6 +18,7 @@ from pdb import Pdb
 from typing import Callable
 
 import ray
+from ray._common.network_utils import build_address
 from ray._common.network_utils import build_address, is_ipv6
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
@@ -252,7 +253,7 @@ def _connect_ray_pdb(
         quiet=quiet,
     )
     sockname = rdb._listen_socket.getsockname()
-    pdb_address = "{}:{}".format(ip_address, sockname[1])
+    pdb_address = build_address(ip_address, sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
         "proctitle": ray._raylet.getproctitle(),
