@@ -1854,6 +1854,12 @@ class CoreWorker {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
+  // Number of in flight argument pinning requests
+  std::atomic<int64_t> num_get_pin_args_in_flight;
+
+  // Number of failed argument pinning requests
+  std::atomic<int64_t> num_failed_get_pin_args;
+
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
