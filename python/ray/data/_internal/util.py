@@ -610,7 +610,14 @@ def get_compute_strategy(
                 "``fn_constructor_args`` can only be specified if providing a "
                 f"callable class instance for ``fn``, but got: {fn}."
             )
-
+    for name, val in [
+        ("initial_concurrency", initial_concurrency),
+        ("min_concurrency", min_concurrency),
+        ("max_concurrency", max_concurrency),
+        ("concurrency", concurrency),
+    ]:
+        if val is not None and (not isinstance(val, int) or val <= 0):
+            raise ValueError(f"`{name}` must be a positive integer, but got: {val}.")
     if compute is not None:
         # Legacy code path to support `compute` argument.
         logger.warning(
@@ -636,46 +643,63 @@ def get_compute_strategy(
                 "use the default ``compute`` strategy."
             )
         return compute
-    elif concurrency is not None:
-        if (
-            initial_concurrency is not None
-            or min_concurrency is not None
-            or max_concurrency is not None
-        ):
-            raise ValueError(
-                "`concurrency` cannot be used together with `initial_concurrency`, "
-                "`min_concurrency`, or `max_concurrency`."
-            )
-        if is_callable_class:
+
+    # From here on, branch by whether `fn` is a callable class (actors) or function (tasks).
+    if is_callable_class:
+        # Callable class (actors)
+        if concurrency is not None:
+            if (
+                initial_concurrency is not None
+                or min_concurrency is not None
+                or max_concurrency is not None
+            ):
+                raise ValueError(
+                    "`concurrency` cannot be used together with `initial_concurrency`, "
+                    "`min_concurrency`, or `max_concurrency`."
+                )
             return ActorPoolStrategy(size=concurrency)
-        else:
-            return TaskPoolStrategy(size=concurrency)
-    elif min_concurrency is not None and max_concurrency is not None:
-        if initial_concurrency is not None:
-            return ActorPoolStrategy(
-                min_size=min_concurrency,
-                max_size=max_concurrency,
-                initial_size=initial_concurrency,
-            )
-        else:
-            return ActorPoolStrategy(min_size=min_concurrency, max_size=max_concurrency)
-    else:
-        if min_concurrency is not None or max_concurrency is not None:
+
+        if (
+            min_concurrency is not None
+            or max_concurrency is not None
+            or initial_concurrency is not None
+        ):
+            # Autoscaling requires both min and max; initial is optional.
+            if min_concurrency is None or max_concurrency is None:
+                raise ValueError(
+                    "`min_concurrency` and `max_concurrency` must be specified together for autoscaling actor pools."
+                )
             if initial_concurrency is not None:
-                raise ValueError(
-                    "initial_concurrency` must be specified when `min_concurrency` and `max_concurrency` are specified."
+                return ActorPoolStrategy(
+                    min_size=min_concurrency,
+                    max_size=max_concurrency,
+                    initial_size=initial_concurrency,
                 )
-            else:
-                raise ValueError(
-                    "`min_concurrency`, `max_concurrency` must be specified together`."
-                )
-        if is_callable_class:
-            raise ValueError(
-                "``concurrency`` must be specified when using a callable class. "
-                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
-            )
-        else:
-            return TaskPoolStrategy()
+            return ActorPoolStrategy(min_size=min_concurrency, max_size=max_concurrency)
+
+        # Nothing specified for callable class
+        raise ValueError(
+            "`concurrency` must be specified when using a callable class. For example, "
+            "use `concurrency=n` for a pool of `n` workers."
+        )
+
+    # Function (tasks)
+    if concurrency is not None:
+        return TaskPoolStrategy(size=concurrency)
+
+    if (
+        min_concurrency is not None
+        or max_concurrency is not None
+        or initial_concurrency is not None
+    ):
+        # Autoscaling params are not valid for plain functions
+        raise ValueError(
+            "`min_concurrency`/`max_concurrency`/`initial_concurrency` are only supported "
+            "for callable classes (actors). Use `concurrency=n` for functions."
+        )
+
+    # Default: no concurrency specified, plain function uses tasks with implicit concurrency
+    return TaskPoolStrategy()
 
 
 def capfirst(s: str):
