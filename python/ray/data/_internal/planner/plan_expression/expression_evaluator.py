@@ -5,7 +5,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
-from ray.data.expressions import Expr
+from ray.data.expressions import ColumnExpr, Expr
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class ExpressionEvaluator:
             raise
 
     @staticmethod
-    def get_ray_data_expression(expression: str) -> "Expr":
+    def parse_native_expression(expression: str) -> "Expr":
         """Parse and evaluate the expression to generate a Ray Data expression.
 
         Args:
@@ -51,7 +51,7 @@ class ExpressionEvaluator:
         """
         try:
             tree = ast.parse(expression, mode="eval")
-            return _ConvertToRayDataExpressionVisitor().visit(tree.body)
+            return _ConvertToNativeExpressionVisitor().visit(tree.body)
         except SyntaxError as e:
             raise ValueError(f"Invalid syntax in the expression: {expression}") from e
         except Exception as e:
@@ -259,7 +259,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
             raise ValueError(f"Unsupported function: {func_name}")
 
 
-class _ConvertToRayDataExpressionVisitor(ast.NodeVisitor):
+class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
     """AST visitor that converts string expressions to Ray Data expressions."""
 
     def visit_Compare(self, node: ast.Compare) -> "Expr":
@@ -354,7 +354,7 @@ class _ConvertToRayDataExpressionVisitor(ast.NodeVisitor):
                 # but Ray Data expressions may have limitations here
                 raise ValueError(
                     "List contains non-constant expressions. Ray Data expressions "
-                    "currently only support lists of constant values for 'in' operations."
+                    "currently only support lists of constant values."
                 )
 
         return lit(elements)
@@ -369,7 +369,7 @@ class _ConvertToRayDataExpressionVisitor(ast.NodeVisitor):
         elif isinstance(node.value, ast.Attribute):
             # Recursively handle nested attributes
             left_expr = self.visit(node.value)
-            if hasattr(left_expr, "_name"):  # ColumnExpr
+            if isinstance(left_expr, ColumnExpr):
                 return col(f"{left_expr._name}.{node.attr}")
 
         raise ValueError(f"Unsupported attribute access: {node.attr}")
@@ -385,6 +385,7 @@ class _ConvertToRayDataExpressionVisitor(ast.NodeVisitor):
                 raise ValueError("is_null() expects exactly one argument")
             operand = self.visit(node.args[0])
             return UnaryExpr(Operation.IS_NULL, operand)
+        # Adding this conditional to keep it consistent with the existing implementation.
         elif func_name == "is_valid" or func_name == "is_not_null":
             if len(node.args) != 1:
                 raise ValueError(f"{func_name}() expects exactly one argument")

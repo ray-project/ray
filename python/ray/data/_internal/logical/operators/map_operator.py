@@ -245,7 +245,7 @@ class Filter(AbstractUDFMap):
         provided_params = sum([fn is not None, predicate_expr is not None])
         if provided_params != 1:
             raise ValueError(
-                "Exactly one of 'fn', or 'predicate_expr' must be provided"
+                f"Exactly one of 'fn', or 'predicate_expr' must be provided (received fn={fn}, predicate_expr={predicate_expr})"
             )
 
         self._predicate_expr = predicate_expr

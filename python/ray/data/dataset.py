@@ -1515,12 +1515,15 @@ class Dataset:
             ray_remote_args,
         )
 
-        # Prepare common Filter operator arguments
-        filter_kwargs = {
-            "input_op": self._logical_plan.dag,
-            "ray_remote_args_fn": ray_remote_args_fn,
-            "ray_remote_args": ray_remote_args,
-        }
+        # Initialize Filter operator arguments with proper types
+        input_op = self._logical_plan.dag
+        predicate_expr: Optional[Expr] = None
+        filter_fn: Optional[UserDefinedFunction] = None
+        filter_fn_args: Optional[Iterable[Any]] = None
+        filter_fn_kwargs: Optional[Dict[str, Any]] = None
+        filter_fn_constructor_args: Optional[Iterable[Any]] = None
+        filter_fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+        filter_compute: Optional[ComputeStrategy] = None
 
         if expr is not None:
             _check_fn_params_incompatible("expr")
@@ -1545,24 +1548,12 @@ class Dataset:
                 # If expr is a string, convert it to a pyarrow.dataset.Expression
                 # Initialize ExpressionEvaluator with valid columns, if available
                 # str -> Ray Data's Expression
-                resolved_expr = ExpressionEvaluator.get_ray_data_expression(expr)
-
-                compute = TaskPoolStrategy(size=concurrency)
-                filter_kwargs.update(
-                    {
-                        "predicate_expr": resolved_expr,
-                        "compute": compute,
-                    }
-                )
+                predicate_expr = ExpressionEvaluator.parse_native_expression(expr)
             else:
                 # expr is an Expr object (predicate expression)
-                compute = TaskPoolStrategy(size=concurrency)
-                filter_kwargs.update(
-                    {
-                        "predicate_expr": expr,
-                        "compute": compute,
-                    }
-                )
+                predicate_expr = expr
+
+            filter_compute = TaskPoolStrategy(size=concurrency)
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
@@ -1574,26 +1565,31 @@ class Dataset:
                     f"{type(fn).__name__} instead."
                 )
 
-            compute = get_compute_strategy(
+            filter_fn = fn
+            filter_fn_args = fn_args
+            filter_fn_kwargs = fn_kwargs
+            filter_fn_constructor_args = fn_constructor_args
+            filter_fn_constructor_kwargs = fn_constructor_kwargs
+            filter_compute = get_compute_strategy(
                 fn=fn,
                 fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 concurrency=concurrency,
             )
 
-            filter_kwargs.update(
-                {
-                    "fn": fn,
-                    "fn_args": fn_args,
-                    "fn_kwargs": fn_kwargs,
-                    "fn_constructor_args": fn_constructor_args,
-                    "fn_constructor_kwargs": fn_constructor_kwargs,
-                    "compute": compute,
-                }
-            )
-
-        # Create Filter operator with consolidated arguments
-        filter_op = Filter(**filter_kwargs)
+        # Create Filter operator with explicitly typed arguments
+        filter_op = Filter(
+            input_op=input_op,
+            predicate_expr=predicate_expr,
+            fn=filter_fn,
+            fn_args=filter_fn_args,
+            fn_kwargs=filter_fn_kwargs,
+            fn_constructor_args=filter_fn_constructor_args,
+            fn_constructor_kwargs=filter_fn_constructor_kwargs,
+            compute=filter_compute,
+            ray_remote_args_fn=ray_remote_args_fn,
+            ray_remote_args=ray_remote_args,
+        )
 
         plan = self._plan.copy()
         logical_plan = LogicalPlan(filter_op, self.context)
