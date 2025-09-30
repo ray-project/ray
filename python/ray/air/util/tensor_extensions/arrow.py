@@ -1093,14 +1093,10 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         size_offsets = np.cumsum(sizes)
         total_size = size_offsets[-1]
 
-        if len(raveled) > 0 and _are_contiguous_1d_views(raveled):
-            # An optimized zero-copy path if raveled tensor elements are already
-            # contiguous in memory, e.g. if this tensor array has already done a
-            # roundtrip through our Arrow representation.
-            data_buffer = _concat_1d_ndarrays_zero_copy(raveled)
-        else:
-            # Concatenate given ndarrays into a contiguous one.
-            data_buffer = np.concatenate(raveled)
+        # An optimized zero-copy path if raveled tensor elements are already
+        # contiguous in memory, e.g. if this tensor array has already done a
+        # roundtrip through our Arrow representation.
+        data_buffer = _concat_ndarrays(raveled)
 
         dtype = data_buffer.dtype
         pa_scalar_type = pa.from_numpy_dtype(dtype)
@@ -1353,7 +1349,8 @@ def _concat_ndarrays(arrs: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
     return out
 
 def _are_contiguous_1d_views(arrs: Union[np.ndarray, List[np.ndarray]]) -> bool:
-    assert len(arrs) > 0, "Provided collection of ndarrays may not be empty"
+    if len(arrs) == 0:
+        return False
 
     dtype = arrs[0].dtype
     base = _get_root_base(arrs[0])
