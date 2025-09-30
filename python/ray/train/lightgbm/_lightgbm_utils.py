@@ -93,7 +93,7 @@ class RayReportCallback:
         raise NotImplementedError
 
     @abstractmethod
-    def _save_and_report_checkpoint(self, report_dict: Dict, env: CallbackEnv):
+    def _save_and_report_checkpoint(self, report_dict: Dict, model: Booster):
         """Save checkpoint and report metrics corresonding to this checkpoint.
 
         This method needs to be implemented by subclasses.
@@ -187,22 +187,6 @@ class RayTrainReportCallback(RayReportCallback):
         booster = RayTrainReportCallback.get_model(result.checkpoint)
 
     """
-
-    CHECKPOINT_NAME = "model.txt"
-
-    def __init__(
-        self,
-        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        filename: str = CHECKPOINT_NAME,
-        frequency: int = 0,
-        checkpoint_at_end: bool = True,
-        results_postprocessing_fn: Optional[
-            Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
-        ] = None,
-    ):
-        super().__init__(
-            metrics, filename, frequency, checkpoint_at_end, results_postprocessing_fn
-        )
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:

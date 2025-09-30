@@ -1,7 +1,7 @@
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Dict, Optional
 
 from lightgbm.basic import Booster
 
@@ -70,24 +70,6 @@ class TuneReportCheckpointCallback(RayReportCallback):
         booster = TuneReportCheckpointCallback.get_model(result.checkpoint)
 
     """
-
-    def __init__(
-        self,
-        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        filename: str = RayReportCallback.CHECKPOINT_NAME,
-        frequency: int = 0,
-        checkpoint_at_end: bool = True,
-        results_postprocessing_fn: Optional[
-            Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
-        ] = None,
-    ):
-        super().__init__(
-            metrics=metrics,
-            filename=filename,
-            frequency=frequency,
-            checkpoint_at_end=checkpoint_at_end,
-            results_postprocessing_fn=results_postprocessing_fn,
-        )
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
