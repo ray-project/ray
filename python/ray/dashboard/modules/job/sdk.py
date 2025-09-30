@@ -501,9 +501,7 @@ class JobSubmissionClient(SubmissionClient):
                     job_info = self.get_job_info(job_id)
                     job_status = job_info.status
                 except Exception as e:
-                    raise RuntimeError(
-                        f"Failed to get job status for {job_id}."
-                    ) from e
+                    raise RuntimeError(f"Failed to get job status for {job_id}.") from e
 
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     yield msg.data
