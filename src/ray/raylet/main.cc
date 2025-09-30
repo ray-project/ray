@@ -55,7 +55,6 @@
 #include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
 #if !defined(_WIN32)
-#include <errno.h>
 #include <unistd.h>
 #endif
 
@@ -513,7 +512,7 @@ int main(int argc, char *argv[]) {
     const bool subreaper_enabled =
         RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
     if (pg_enabled && subreaper_enabled) {
-      RAY_LOG(WARNING)
+      RAY_LOG(ERROR)
           << "Both per-worker process groups and subreaper are enabled. "
           << "Per-worker process groups will be used for worker cleanup. "
           << "Subreaper is deprecated and will be removed in a future release.";
@@ -1045,35 +1044,6 @@ int main(int argc, char *argv[]) {
     };
 
     raylet->Start();
-
-#if !defined(_WIN32)
-    // If stdin is a pipe (provided by launcher), watch it and trigger shutdown on EOF.
-    {
-      struct stat st;
-      const bool stdin_is_fifo = (fstat(STDIN_FILENO, &st) == 0) && S_ISFIFO(st.st_mode);
-      if (stdin_is_fifo) {
-        std::thread([shutdown_raylet_gracefully]() {
-          char buffer[1024];
-          for (;;) {
-            ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
-            if (n == 0) {
-              break;  // EOF => parent likely exited
-            }
-            if (n < 0) {
-              if (errno == EINTR) {
-                continue;
-              }
-              break;
-            }
-          }
-          ray::rpc::NodeDeathInfo node_death_info;
-          node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-          node_death_info.set_reason_message("stdin closed (parent exited)");
-          shutdown_raylet_gracefully(node_death_info);
-        }).detach();
-      }
-    }
-#endif
   });
 
   auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
