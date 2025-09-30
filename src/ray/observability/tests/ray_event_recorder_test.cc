@@ -96,7 +96,8 @@ TEST_F(RayEventRecorderTest, TestMergeEvents) {
   ASSERT_EQ(recorded_events.size(), 1);
   ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(recorded_events[0].session_name(), "test_session_name");
-  auto state_transitions = recorded_events[0].driver_job_lifecycle_event().state_transitions();
+  auto state_transitions =
+      recorded_events[0].driver_job_lifecycle_event().state_transitions();
   ASSERT_EQ(state_transitions.size(), 2);
   ASSERT_EQ(state_transitions[0].state(), rpc::events::DriverJobLifecycleEvent::CREATED);
   ASSERT_EQ(state_transitions[1].state(), rpc::events::DriverJobLifecycleEvent::FINISHED);
