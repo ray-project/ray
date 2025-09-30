@@ -12,6 +12,7 @@ from ray._private.test_utils import (
 from ray.dashboard.tests.conftest import *  # noqa
 
 _RAY_EVENT_PORT = 12345
+_INSTANCE_TYPE_NAME = "m4.16xlarge"
 
 
 @pytest.fixture(scope="session")
@@ -25,6 +26,7 @@ def test_ray_node_events(ray_start_cluster, httpserver):
         env_vars={
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": f"http://127.0.0.1:{_RAY_EVENT_PORT}",
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT",
+            "RAY_CLOUD_INSTANCE_TYPE_NAME": _INSTANCE_TYPE_NAME,
         },
         _system_config={
             "enable_ray_event": True,
@@ -44,6 +46,7 @@ def test_ray_node_events(ray_start_cluster, httpserver):
         base64.b64decode(req_json[0]["nodeDefinitionEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
     )
+    assert req_json[0]["nodeDefinitionEvent"]["instanceTypeName"] == _INSTANCE_TYPE_NAME
     assert (
         base64.b64decode(req_json[1]["nodeLifecycleEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
