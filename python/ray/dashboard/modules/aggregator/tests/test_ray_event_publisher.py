@@ -17,6 +17,7 @@ from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     NoopPublisher,
     RayEventPublisher,
+    RayEventPublisherInterface,
 )
 
 
@@ -158,6 +159,36 @@ class TestNoopPublisher:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
+
+
+class _TestPublisher(RayEventPublisherInterface):
+    async def run_forever(self) -> None:
+        pass
+
+    async def wait_until_running(self, timeout=None) -> bool:
+        return True
+
+
+def test_compute_adaptive_interval():
+    p = _TestPublisher()
+    min_i = 0.1
+    max_i = 1.0
+
+    # capacity 0 => max interval
+    assert p._compute_adaptive_interval(0, 0, min_i, max_i) == pytest.approx(max_i)
+
+    # < 30% => max
+    assert p._compute_adaptive_interval(0, 10, min_i, max_i) == pytest.approx(max_i)
+    assert p._compute_adaptive_interval(2, 10, min_i, max_i) == pytest.approx(max_i)
+
+    # [30%, 50%) => midpoint
+    mid = (min_i + max_i) / 2.0
+    assert p._compute_adaptive_interval(3, 10, min_i, max_i) == pytest.approx(mid)
+    assert p._compute_adaptive_interval(4, 10, min_i, max_i) == pytest.approx(mid)
+
+    # >= 50% => min
+    assert p._compute_adaptive_interval(5, 10, min_i, max_i) == pytest.approx(min_i)
+    assert p._compute_adaptive_interval(10, 10, min_i, max_i) == pytest.approx(min_i)
 
 
 if __name__ == "__main__":
