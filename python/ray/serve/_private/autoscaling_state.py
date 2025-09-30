@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.metrics_utils import (
-    QUEUED_REQUESTS_KEY,
     merge_timeseries_dicts,
     time_weighted_average,
 )
@@ -274,9 +273,14 @@ class AutoscalingState:
 
         return self.apply_bounds(decision_num_replicas)
 
-    def _collect_replica_running_requests(self) -> List[Dict[str, List]]:
-        """Collect running requests metrics from replicas for aggregation."""
-        metrics_timeseries_dicts = []
+    def _collect_replica_running_requests(self) -> List[List]:
+        """Collect running requests timeseries from replicas for aggregation.
+
+        Returns:
+            List of timeseries data (List[TimeStampedValue]) directly,
+            avoiding intermediate dictionary creation.
+        """
+        timeseries_list = []
 
         for replica_id in self._running_replicas:
             replica_metric_report = self._replica_metrics.get(replica_id, None)
@@ -284,36 +288,30 @@ class AutoscalingState:
                 replica_metric_report is not None
                 and RUNNING_REQUESTS_KEY in replica_metric_report.metrics
             ):
-                metrics_timeseries_dicts.append(
-                    {
-                        RUNNING_REQUESTS_KEY: replica_metric_report.metrics[
-                            RUNNING_REQUESTS_KEY
-                        ]
-                    }
+                timeseries_list.append(
+                    replica_metric_report.metrics[RUNNING_REQUESTS_KEY]
                 )
 
-        return metrics_timeseries_dicts
+        return timeseries_list
 
-    def _collect_handle_queued_requests(self) -> List[Dict[str, List]]:
-        """Collect queued requests metrics from all handles."""
-        metrics_timeseries_dicts = []
-        for handle_metric_report in self._handle_requests.values():
-            metrics_timeseries_dicts.append(
-                {QUEUED_REQUESTS_KEY: handle_metric_report.queued_requests}
-            )
-        return metrics_timeseries_dicts
-
-    def _collect_handle_running_requests(self) -> List[Dict[str, List]]:
-        """Collect running requests metrics from handles when not collected on replicas.
+    def _collect_handle_queued_requests(self) -> List[List]:
+        """Collect queued requests timeseries from all handles.
 
         Returns:
-            A list of dictionaries, each containing a key-value pair:
-            - The key is the name of the metric (RUNNING_REQUESTS_KEY)
-            - The value is a list of TimeStampedValue objects, each representing a single measurement of the metric
-                this list is sorted by timestamp ascending
-            - The TimeStampedValue object contains a timestamp and a value
-            - The timestamp is the time at which the measurement was taken
-            - The value is the measurement of the metric
+            List of timeseries data (List[TimeStampedValue]) directly,
+            avoiding intermediate dictionary creation.
+        """
+        timeseries_list = []
+        for handle_metric_report in self._handle_requests.values():
+            timeseries_list.append(handle_metric_report.queued_requests)
+        return timeseries_list
+
+    def _collect_handle_running_requests(self) -> List[List]:
+        """Collect running requests timeseries from handles when not collected on replicas.
+
+        Returns:
+            List of timeseries data (List[TimeStampedValue]) directly,
+            avoiding intermediate dictionary creation.
 
         Example:
             If there are 2 handles, each managing 2 replicas, and the running requests metrics are:
@@ -322,29 +320,13 @@ class AutoscalingState:
             and the timestamp is 0.1 and 0.2 respectively
             Then the returned list will be:
             [
-                {
-                    "running_requests": [
-                        TimeStampedValue(timestamp=0.1, value=5.0),
-                    ]
-                },
-                {
-                    "running_requests": [
-                        TimeStampedValue(timestamp=0.2, value=7.0),
-                    ]
-                },
-                {
-                    "running_requests": [
-                        TimeStampedValue(timestamp=0.1, value=3.0),
-                    ]
-                },
-                {
-                    "running_requests": [
-                        TimeStampedValue(timestamp=0.2, value=1.0),
-                    ]
-                }
+                [TimeStampedValue(timestamp=0.1, value=5.0)],
+                [TimeStampedValue(timestamp=0.2, value=7.0)],
+                [TimeStampedValue(timestamp=0.1, value=3.0)],
+                [TimeStampedValue(timestamp=0.2, value=1.0)]
             ]
         """
-        metrics_timeseries_dicts = []
+        timeseries_list = []
 
         for handle_metric in self._handle_requests.values():
             for replica_id in self._running_replicas:
@@ -353,15 +335,11 @@ class AutoscalingState:
                     or replica_id not in handle_metric.metrics[RUNNING_REQUESTS_KEY]
                 ):
                     continue
-                metrics_timeseries_dicts.append(
-                    {
-                        RUNNING_REQUESTS_KEY: handle_metric.metrics[
-                            RUNNING_REQUESTS_KEY
-                        ][replica_id]
-                    }
+                timeseries_list.append(
+                    handle_metric.metrics[RUNNING_REQUESTS_KEY][replica_id]
                 )
 
-        return metrics_timeseries_dicts
+        return timeseries_list
 
     def _aggregate_ongoing_requests(
         self, metrics_timeseries_dicts: List[Dict[str, List]]
@@ -485,30 +463,34 @@ class AutoscalingState:
             Total number of requests (average running + queued) calculated from
             timeseries data aggregation.
         """
-        # Collect replica-based running requests
-        replica_metrics = self._collect_replica_running_requests()
-        metrics_collected_on_replicas = len(replica_metrics) > 0
+        # Collect replica-based running requests (now returns List[List] directly)
+        replica_timeseries = self._collect_replica_running_requests()
+        metrics_collected_on_replicas = len(replica_timeseries) > 0
 
-        # Collect queued requests from handles
-        queued_requests = self._collect_handle_queued_requests()
+        # Collect queued requests from handles (now returns List[List] directly)
+        queued_timeseries = self._collect_handle_queued_requests()
 
         if not metrics_collected_on_replicas:
             # Collect handle-based running requests if not collected on replicas
-            handle_metrics = self._collect_handle_running_requests()
+            handle_timeseries = self._collect_handle_running_requests()
         else:
-            handle_metrics = []
+            handle_timeseries = []
 
-        # Combine all running requests metrics
-        all_running_metrics = replica_metrics + handle_metrics
+        # Optimize: create minimal dictionary objects only when needed
+        ongoing_requests_metrics = []
 
-        # map all_running_metrics key RUNNING_REQUESTS_KEY to ONGOING_REQUESTS_KEY
-        ongoing_requests_metrics = [
-            {ONGOING_REQUESTS_KEY: metric[RUNNING_REQUESTS_KEY]}
-            for metric in all_running_metrics
-        ] + [
-            {ONGOING_REQUESTS_KEY: queued_request[QUEUED_REQUESTS_KEY]}
-            for queued_request in queued_requests
-        ]
+        # Add replica timeseries with minimal dict wrapping
+        for timeseries in replica_timeseries:
+            ongoing_requests_metrics.append({ONGOING_REQUESTS_KEY: timeseries})
+
+        # Add handle timeseries if replica metrics weren't collected
+        if not metrics_collected_on_replicas:
+            for timeseries in handle_timeseries:
+                ongoing_requests_metrics.append({ONGOING_REQUESTS_KEY: timeseries})
+
+        # Add queued timeseries with minimal dict wrapping
+        for timeseries in queued_timeseries:
+            ongoing_requests_metrics.append({ONGOING_REQUESTS_KEY: timeseries})
         # Aggregate and add running requests to total
         ongoing_requests = self._aggregate_ongoing_requests(ongoing_requests_metrics)
 
