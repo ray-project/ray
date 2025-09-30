@@ -151,7 +151,7 @@ class TestRun:
             ("Disabled", "Disabled"),
         ],
     )
-    def test_proxy_location(self, ray_stop, tmp_path, proxy_location, expected):
+    def test_proxy_location(self, ray_shutdown, tmp_path, proxy_location, expected):
         # when the `serve run` cli command is executed
         # without serve already running (for the first time)
         # `proxy_location` should be set from the config file
