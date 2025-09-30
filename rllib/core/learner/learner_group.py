@@ -301,6 +301,10 @@ class LearnerGroup(Checkpointable):
             )
         training_data.validate()
 
+        # NEW: allow caller to defer Ray.get()/materialization to the learner thread.
+        # TODO (simon): Set to `False` and create attribute in config.
+        defer_solve = kwargs.pop("defer_solve_refs_to_learner", False)
+
         # Local Learner instance.
         if self.is_local:
             if async_update:
@@ -309,8 +313,11 @@ class LearnerGroup(Checkpointable):
                     "`num_learners=0`! Set `config.num_learners > 0` to allow async "
                     "updates."
                 )
-            # Solve all ray refs locally already here.
-            training_data.solve_refs()
+            # Only solve refs here if NOT deferring. When deferring, the Learner/GPU
+            # loader thread will call `training_data.solve_refs()` and build the CPU MAB.
+            if not defer_solve:
+                training_data.solve_refs()
+
             if return_state:
                 kwargs["return_state"] = return_state
             # Return the single Learner's update results.

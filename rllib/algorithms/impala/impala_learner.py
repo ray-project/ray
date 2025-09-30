@@ -1,11 +1,8 @@
-from collections import deque
 import queue
 import threading
-import time
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
 import ray
-from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
@@ -38,7 +35,8 @@ QUEUE_SIZE_GPU_LOADER_QUEUE = "queue_size_gpu_loader_queue"
 QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
 QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
 
-_CURRENT_GLOBAL_TIMESTEPS = None
+# Aggregation cycle size.
+BATCHES_PER_AGGREGATION = 20
 
 
 class IMPALALearner(Learner):
@@ -46,17 +44,16 @@ class IMPALALearner(Learner):
     def build(self) -> None:
         super().build()
 
-        # TODO (sven): We replace the dummy RLock here for APPO/IMPALA, b/c these algos
-        #  require this for thread safety reasons.
-        #  An RLock breaks our current OfflineData and OfflinePreLearner logic, in which
-        #  the Learner (which contains a MetricsLogger) is serialized and deserialized.
-        #  We will have to fix this offline RL logic first, then can remove this hack
-        #  here and return to always using the RLock.
+        # APPO/IMPALA require RLock for thread safety around metrics.
         self.metrics._threading_lock = threading.RLock()
-        self._num_updates = 0
+
+        # Aggregation signaling (replaces condition-variable contention) ---
+        self._agg_event = threading.Event()
+        self._submitted_updates = 0  # producer-side counter (update thread(s))
+        self._num_updates = 0  # learner-side counter
         self._num_updates_lock = threading.Lock()
 
-        # Dict mapping module IDs to the respective entropy Scheduler instance.
+        # Dict mapping module IDs to entropy Scheduler instances.
         self.entropy_coeff_schedulers_per_module: Dict[
             ModuleID, Scheduler
         ] = LambdaDefaultDict(
@@ -69,22 +66,22 @@ class IMPALALearner(Learner):
             )
         )
 
-        # Create and start the GPU-loader thread. It picks up train-ready batches from
-        # the "GPU-loader queue" and loads them to the GPU, then places the GPU batches
-        # on the "update queue" for the actual RLModule forward pass and loss
-        # computations.
-        self._gpu_loader_in_queue = queue.Queue()
+        # Create queues as bounded queues to create real back-pressure & stabilize
+        # GPU memory usage.
 
-        # Default is to have a learner thread.
-        if not hasattr(self, "_learner_thread_in_queue"):
-            self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
+        # Small loader in-queue to keep threads busy without flooding.
+        loader_qsize = max(2, 2 * self.config.num_gpu_loader_threads)
+        # Note, we are passing now the timesteps dictionary through the queue.
+        self._gpu_loader_in_queue: "queue.Queue[tuple[TrainingData, Dict[str, Any]]]" = queue.Queue(
+            maxsize=loader_qsize
+        )
 
-        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-        #  metrics each 20 updates" logic right now.
-        # # Results queue for reduced Learner metrics.
-        # # self._learner_thread_out_queue = deque(maxlen=1)
+        # Learner in-queue must be tiny. 1 strictly serializes GPU-resident batches.
+        self._learner_thread_in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]" = (
+            queue.Queue(maxsize=2)
+        )
 
-        # Create and start the GPU loader thread(s).
+        # Create and start `_GPULoaderThread`(s).
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_threads = [
                 _GPULoaderThread(
@@ -98,13 +95,10 @@ class IMPALALearner(Learner):
             for t in self._gpu_loader_threads:
                 t.start()
 
-        # Create and start the Learner thread.
+        # Create and start the `_LearnerThread`.
         self._learner_thread = _LearnerThread(
             update_method=Learner.update,
             in_queue=self._learner_thread_in_queue,
-            # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-            #  metrics each 20 updates" logic right now.
-            # out_queue=self._learner_thread_out_queue,
             learner=self,
         )
         self._learner_thread.start()
@@ -118,61 +112,46 @@ class IMPALALearner(Learner):
         return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
-        """
-
-        Args:
-            batch:
-            timesteps:
-            return_state: Whether to include one of the Learner worker's state from
-                after the update step in the returned results dict (under the
-                `_rl_module_state_after_update` key). Note that after an update, all
-                Learner workers' states should be identical, so we use the first
-                Learner's state here. Useful for avoiding an extra `get_weights()` call,
-                e.g. for synchronizing EnvRunner weights.
-            **kwargs:
-
-        Returns:
-
-        """
-        global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
-
-        # Get the train batch from the object store.
+        # Resolve object refs and ensure we have a proper batch object.
+        # TODO (simon): Check, if we can resolve the object references and
+        # run the pipeline on the GPULoaderThreads.
         training_data.solve_refs()
-
         batch = self._make_batch_if_necessary(training_data=training_data)
         assert batch is not None
 
+        # Enqeue the batch (bounded backpressure).
         if self.config.num_gpus_per_learner > 0:
-            self._gpu_loader_in_queue.put(batch)
-            self.metrics.log_value(
-                (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
-                self._gpu_loader_in_queue.qsize(),
-            )
-        else:
-            if isinstance(self._learner_thread_in_queue, CircularBuffer):
-                ts_dropped = self._learner_thread_in_queue.add(batch)
+            # Pass timesteps alongside batch (no globals).
+            self._gpu_loader_in_queue.put((batch, timesteps))
+            # Only occasionally log loader queue size.
+            if (self._submitted_updates & 0x3FF) == 0:
                 self.metrics.log_value(
-                    (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
-                    ts_dropped,
-                    reduce="sum",
+                    (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
+                    self._gpu_loader_in_queue.qsize(),
+                    window=1,
                 )
-            else:
-                # Enqueue to Learner thread's in-queue.
-                _LearnerThread.enqueue(
-                    self._learner_thread_in_queue, batch, self.metrics
-                )
+        else:
+            # No GPU loader: directly enqueue to learner queue.
+            _LearnerThread.enqueue(
+                self._learner_thread_in_queue, (batch, timesteps), self.metrics
+            )
 
-        # TODO (sven): Find a better way to limit the number of (mostly) unnecessary
-        #  metrics reduces.
-        with self._num_updates_lock:
-            count = self._num_updates
-        result = {}
-        if count >= 20:
-            with self._num_updates_lock:
-                self._num_updates = 0
-            result = self.metrics.reduce()
+        # Every 20th block call we submit results. Otherwise we keep the
+        # thread running without interruption to avoid thread contention.
+        self._submitted_updates += 1
+        if (self._submitted_updates % BATCHES_PER_AGGREGATION) != 0:
+            return {}
 
+        # 20th submission: wait until learner finished 20 updates (blocking).
+        self._agg_event.wait()
+        # Reset the aggregation event to keep the `_LearnerThread` running.
+        self._agg_event.clear()
+
+        # Reduce metrics outside of any locks.
+        # TODO (simon): Check, if we need to call this before we call `clear`.
+        result = self.metrics.reduce()
+
+        # Return the module state, if requested.
         if return_state:
             learner_state = self.get_state(
                 # Only return the state of those RLModules that are trainable.
@@ -189,30 +168,6 @@ class IMPALALearner(Learner):
             result["_rl_module_state_after_update"] = learner_state
 
         return result
-
-        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-        #  metrics each 20 updates" logic right now.
-        # try:
-        #    result = self._learner_thread_out_queue.popleft()
-        # except IndexError:
-        #    result = {}
-
-        # if return_state:
-        #    learner_state = self.get_state(
-        #        # Only return the state of those RLModules that are trainable.
-        #        components=[
-        #            COMPONENT_RL_MODULE + "/" + mid
-        #            for mid in self.module.keys()
-        #            if self.should_module_be_updated(mid)
-        #        ],
-        #        inference_only=True,
-        #    )
-        #    learner_state[COMPONENT_RL_MODULE] = ray.put(
-        #        learner_state[COMPONENT_RL_MODULE]
-        #    )
-        #    result["_rl_module_state_after_update"] = learner_state
-
-        # return result
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -249,9 +204,9 @@ class _GPULoaderThread(threading.Thread):
     def __init__(
         self,
         *,
-        in_queue: queue.Queue,
-        out_queue: deque,
-        device: torch.device,
+        in_queue: "queue.Queue[tuple[TrainingData, Dict[str, Any]]]",
+        out_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]",
+        device: "torch.device",
         metrics_logger: MetricsLogger,
     ):
         super().__init__(name="_GPULoaderThread")
@@ -259,33 +214,59 @@ class _GPULoaderThread(threading.Thread):
 
         self._in_queue = in_queue
         self._out_queue = out_queue
-        self._ts_dropped = 0
         self._device = device
         self.metrics = metrics_logger
+
+        # Use a single CUDA stream for each loader thread.
+        self._use_cuda_stream = (
+            torch is not None
+            and hasattr(torch, "cuda")
+            and device is not None
+            and getattr(device, "type", None) == "cuda"
+        )
+        self._stream = (
+            torch.cuda.Stream(device=self._device) if self._use_cuda_stream else None
+        )
+
+    # Robust pinned-memory copy: fall back if batch contains CUDA tensors already.
+    # TODO (simon): Find a more compliant solution.
+    def _to_device_safe(self, batch):
+        try:
+            return batch.to_device(self._device, pin_memory=True)
+        except RuntimeError as e:
+            msg = str(e)
+            if "only dense CPU tensors can be pinned" in msg or "pin_memory" in msg:
+                return batch.to_device(self._device, pin_memory=False)
+            raise
 
     def run(self) -> None:
         while True:
             self._step()
 
     def _step(self) -> None:
-        # Get a new batch from the data (inqueue).
+        # Get a new batch (CPU) and the global timesteps from the loader in-queue (blocking).
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)):
-            ma_batch_on_cpu = self._in_queue.get()
+            ma_batch_on_cpu, timesteps = self._in_queue.get()
 
-        # Load the batch onto the GPU device.
+        # Load the batch onto the GPU device; enable pinned memory for async copies.
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
-            ma_batch_on_gpu = ma_batch_on_cpu.to_device(self._device, pin_memory=False)
+            if self._use_cuda_stream and self._stream is not None:
+                # Issue copies on a non-default stream so they can overlap with compute.
+                with torch.cuda.stream(self._stream):
+                    ma_batch_on_gpu = self._to_device_safe(ma_batch_on_cpu)
+                    # TODO (simon): Maybe use the `use_stream` in `convert_to_tensor`.
+                # No explicit synching here. Consumer will naturally serialize when needed.
+            else:
+                ma_batch_on_gpu = self._to_device_safe(ma_batch_on_cpu)
 
-        if isinstance(self._out_queue, CircularBuffer):
-            ts_dropped = self._out_queue.add(ma_batch_on_gpu)
-            self.metrics.log_value(
-                (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
-                ts_dropped,
-                reduce="sum",
-            )
-        else:
-            # Enqueue to Learner thread's in-queue.
-            _LearnerThread.enqueue(self._out_queue, ma_batch_on_gpu, self.metrics)
+        # Enqueue to Learner thread’s in-queue (GPU-resident batch and global timesteps).
+        _LearnerThread.enqueue(
+            self._out_queue, (ma_batch_on_gpu, timesteps), self.metrics
+        )
+
+
+# Put this once near the top of the file (module-level):
+_STOP_SENTINEL = object()
 
 
 class _LearnerThread(threading.Thread):
@@ -293,90 +274,101 @@ class _LearnerThread(threading.Thread):
         self,
         *,
         update_method,
-        in_queue: Union[deque, CircularBuffer],
-        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-        #  metrics each 20 updates" logic right now.
-        # out_queue: deque,
-        learner,
+        in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]",
+        learner: IMPALALearner,
     ):
         super().__init__(name="_LearnerThread")
         self.daemon = True
         self.learner = learner
-        self.stopped = False
-
         self._update_method = update_method
-        self._in_queue: Union[deque, CircularBuffer] = in_queue
-        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-        #  metrics each 20 updates" logic right now.
-        # self._out_queue: deque = out_queue
+        # Note, we pass now the timesteps dictionary through the queue.
+        self._in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]" = in_queue
+
+        self._stop_event = threading.Event()
+
+    # Keeps compatibility, but thread-safe.
+    @property
+    def stopped(self) -> bool:
+        return self._stop_event.is_set()
+
+    # Call this to stop the thread and wake it if it's blocked on .get()
+    def request_stop(self) -> None:
+        self._stop_event.set()
+        # Wake the consumer if it's blocked on an empty queue
+        try:
+            self._in_queue.put_nowait(_STOP_SENTINEL)
+        except queue.Full:
+            # If the queue is full, the consumer will wake soon anyway.
+            pass
 
     def run(self) -> None:
-        while not self.stopped:
-            self.step()
+        while True:
+            # Returns always `True` until stop-signal/sentinel is sent.
+            if not self.step():
+                break
 
-    def step(self):
-        global _CURRENT_GLOBAL_TIMESTEPS
-
-        # Get a new batch from the GPU-data (deque.pop -> newest item first).
+    def step(self) -> bool:
+        # Get a batch and wait, if the input queue is empty (blocking; no polling).
         with self.learner.metrics.log_time(
             (ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)
         ):
-            # Get a new batch from the GPU-data (learner queue OR circular buffer).
-            if isinstance(self._in_queue, CircularBuffer):
-                ma_batch_on_gpu = self._in_queue.sample()
-            else:
-                # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
-                while not self._in_queue:
-                    time.sleep(0.0001)
-                # Consume from the left (oldest batches first).
-                # If we consumed from the right, we would run into the danger of
-                # learning from newer batches (left side) most times, BUT sometimes
-                # grabbing older batches (right area of deque).
-                ma_batch_on_gpu = self._in_queue.popleft()
+            item = self._in_queue.get()
 
-        # Add this check here in case thread has been stopped while we were waiting for
-        # a batch from the queue/buffer.
-        if self.stopped:
-            return
+        # Handle the stop/sentinel signal(s).
+        # TODO (simon): Check, if we need `None` for belt-and-suspenders/comp.
+        if item is _STOP_SENTINEL or self.stopped:
+            try:
+                self._in_queue.task_done()
+            except Exception:
+                pass
+            # Signal `run` to exit.
+            return False
 
-        # Call the update method on the batch.
+        # Extract the multi-agent batch and the timesteps dictionary.
+        ma_batch_on_gpu, timesteps = item
+
+        # Update the `RLModule`, but do not reduce metrics.
         with self.learner.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
-            # TODO (sven): For multi-agent AND SGD iter > 1, we need to make sure
-            #  this thread has the information about the min minibatches necessary
-            #  (due to different agents taking different steps in the env, e.g.
-            #  MA-CartPole).
             self._update_method(
                 self=self.learner,
                 training_data=TrainingData(batch=ma_batch_on_gpu),
-                timesteps=_CURRENT_GLOBAL_TIMESTEPS,
+                timesteps=timesteps,
                 _no_metrics_reduce=True,
             )
-            # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-            #  metrics each 20 updates" logic right now.
-            # self._out_queue.append(results)
+
+        # Signal queue done (unblocks producer’s put when bounded)
+        try:
+            self._in_queue.task_done()
+        finally:
+            # Set the Aggregation counter and signal this event (atomic).
             with self.learner._num_updates_lock:
                 self.learner._num_updates += 1
+                if self.learner._num_updates == BATCHES_PER_AGGREGATION:
+                    self.learner._num_updates = 0
+                    self.learner._agg_event.set()
+
+        # Keep running (see `run` method).
+        return True
 
     @staticmethod
-    def enqueue(learner_queue: deque, batch, metrics):
-        # Right-append to learner queue (a deque). If full, drops the leftmost
-        # (oldest) item in the deque.
-        # Note that we consume from the left (oldest first), which is why the queue size
-        # should probably always be small'ish (<< 10), otherwise we run into the danger
-        # of training with very old samples.
-        # If we consumed from the right, we would run into the danger of learning
-        # from newer batches (left side) most times, BUT sometimes grabbing a
-        # really old batches (right area of deque).
-        if len(learner_queue) == learner_queue.maxlen:
-            metrics.log_value(
-                (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
-                learner_queue.popleft().env_steps(),
-                reduce="sum",
-            )
-        learner_queue.append(batch)
-
-        # Log current queue size.
-        metrics.log_value(
-            (ALL_MODULES, QUEUE_SIZE_LEARNER_THREAD_QUEUE),
-            len(learner_queue),
-        )
+    def enqueue(
+        learner_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]",
+        batch_with_ts,
+        metrics: MetricsLogger,
+    ):
+        try:
+            # Put the batch into the queue (blocking if thread is updating).
+            learner_queue.put(batch_with_ts, block=True)
+        except queue.Full:
+            # TODO (simon): Write mechanism to drop the oldest batch.
+            batch, _ts = batch_with_ts
+            try:
+                env_steps = batch.env_steps() if hasattr(batch, "env_steps") else 0
+                metrics.log_value(
+                    (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+                    env_steps,
+                    reduce="sum",
+                )
+            except Exception:
+                pass
+            return
