@@ -136,7 +136,7 @@ def build_sglang_engine_processor(
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
-                resources=config.resources_per_bundle,
+                # Note: resources_per_bundle has been deprecated.
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),

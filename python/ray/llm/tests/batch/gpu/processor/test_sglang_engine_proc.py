@@ -62,12 +62,12 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
     assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
     compute = stage.map_batches_kwargs.pop("compute")
     assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
+    # placement_group_config is None by default, so not included in map_batches_kwarg
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
-        "resources": None,
     }
 
 
