@@ -3251,6 +3251,7 @@
 ##################
 
 - name: chaos_many_tasks_kill_raylet
+  python: "3.10"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3276,6 +3277,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_tasks_terminate_instance
+  python: "3.10"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3296,6 +3298,7 @@
     - __suffix__: aws
 
 - name: chaos_many_actors_kill_raylet
+  python: "3.10"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3321,6 +3324,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_actors_terminate_instance
+  python: "3.10"
   group: core-nightly-test
   working_dir: nightly_tests
 
