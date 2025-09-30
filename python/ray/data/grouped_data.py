@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -108,7 +108,10 @@ class GroupedData:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        concurrency: Optional[int] = None,
+        min_concurrency: Optional[int] = None,
+        max_concurrency: Optional[int] = None,
+        initial_concurrency: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -186,26 +189,19 @@ class GroupedData:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
-            concurrency: The semantics of this argument depend on the type of ``fn``:
+            concurrency: The exact number of Ray workers to use concurrently. Cannot be
+                used with min_concurrency, max_concurrency, or initial_concurrency.
+                * If ``fn`` is a function and ``concurrency=n``, Ray Data launches at most n concurrent tasks.
 
-                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
-                  actual concurrency is implicitly determined by the available
-                  resources and number of input blocks.
+                * If ``fn`` is a class and ``concurrency=n``, Ray Data uses an actor pool with exactly n workers.
 
-                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
-                  launches *at most* ``n`` concurrent tasks.
+            min_concurrency: The minimum number of concurrent workers. Must be used together with max_concurrency. Only valid when ``fn`` is a callable class.
+            max_concurrency: The maximum number of concurrent workers. Must be used together with min_concurrency. Only valid when ``fn`` is a callable class.
+            initial_concurrency: The initial number of workers to start with. Only valid when min_concurrency and max_concurrency are specified; must satisfy
+                min_concurrency <= initial_concurrency <= max_concurrency.
+                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
 
-                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
-                  uses an actor  pool with *exactly* ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
-                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
-                  method raises an error.
+                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a class, this method raises an error.
 
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
@@ -308,6 +304,9 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            min_concurrency=min_concurrency,
+            max_concurrency=max_concurrency,
+            initial_concurrency=initial_concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
