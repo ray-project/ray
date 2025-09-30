@@ -565,7 +565,7 @@ class WorkerGroup:
                 error = WorkerHealthCheckTimeoutError(error_msg)
 
             poll_task_to_result[hanging_poll] = WorkerStatus(
-                running=True, error=error, training_result=None
+                running=True, error=error, training_report=None
             )
 
         for done_poll in done_polls:
@@ -584,7 +584,7 @@ class WorkerGroup:
                 poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),
-                    training_result=None,
+                    training_report=None,
                 )
 
             poll_task_to_result[done_poll] = poll_result

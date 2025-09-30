@@ -152,7 +152,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               FreeActorObject,
-              (const FreeActorObjectRequest &request,
+              (FreeActorObjectRequest && request,
                const ClientCallback<FreeActorObjectReply> &callback),
               (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
