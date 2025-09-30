@@ -434,19 +434,15 @@ def build_llm_processor(
     from ray.llm._internal.batch.processor import ProcessorBuilder
     from ray.llm._internal.batch.processor.base import OfflineProcessorConfig
 
+    build_kwargs = dict(
+        preprocess=preprocess,
+        postprocess=postprocess,
+    )
+
     if isinstance(config, OfflineProcessorConfig):
-        return ProcessorBuilder.build(
-            config,
-            chat_template_kwargs=chat_template_kwargs,
-            preprocess=preprocess,
-            postprocess=postprocess,
-        )
-    else:
-        return ProcessorBuilder.build(
-            config,
-            preprocess=preprocess,
-            postprocess=postprocess,
-        )
+        build_kwargs["chat_template_kwargs"] = chat_template_kwargs
+
+    return ProcessorBuilder.build(config, **build_kwargs)
 
 
 __all__ = [
