@@ -136,7 +136,6 @@ def test_make_hashable():
     )
 
 
-
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
     ctx = ray.data.context.DataContext.get_current()

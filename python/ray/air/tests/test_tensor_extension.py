@@ -973,7 +973,8 @@ def test_non_contiguous_views():
 
     # These should NOT be contiguous
     assert not _are_contiguous_1d_views(
-        raveled), "Non-contiguous views incorrectly detected as contiguous"
+        raveled
+    ), "Non-contiguous views incorrectly detected as contiguous"
 
 
 def test_different_memory_locations():

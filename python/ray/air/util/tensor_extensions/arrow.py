@@ -1321,6 +1321,7 @@ def concat_tensor_arrays(
     unified_array_type = unified_arrays[0].type
     return unified_array_type.wrap_array(storage)
 
+
 def _concat_ndarrays(arrs: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
     """Concatenates provided collection of ``np.ndarray``s in either of the following
     ways:
@@ -1338,15 +1339,16 @@ def _concat_ndarrays(arrs: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
     dtype = arrs[0].dtype
     base = _get_root_base(arrs[0])
 
-    base_ptr   = _get_buffer_address(base)
+    base_ptr = _get_buffer_address(base)
     start_byte = _get_buffer_address(arrs[0]) - base_ptr
-    end_byte   = start_byte + sum(a.nbytes for a in arrs)
+    end_byte = start_byte + sum(a.nbytes for a in arrs)
 
     # Build the view from the base, using byte offsets for generality
     byte_view = base.view(np.uint8).reshape(-1)
     out = byte_view[start_byte:end_byte].view(dtype)
 
     return out
+
 
 def _are_contiguous_1d_views(arrs: Union[np.ndarray, List[np.ndarray]]) -> bool:
     if len(arrs) == 0:
@@ -1364,7 +1366,12 @@ def _are_contiguous_1d_views(arrs: Union[np.ndarray, List[np.ndarray]]) -> bool:
         #   - Share the same `base` view (this is crucial to make sure
         #     that all provided ndarrays live w/in the same allocation and
         #     share its lifecycle)
-        if a.ndim != 1 or a.dtype != dtype or not a.flags.c_contiguous or _get_root_base(a) is not base:
+        if (
+            a.ndim != 1
+            or a.dtype != dtype
+            or not a.flags.c_contiguous
+            or _get_root_base(a) is not base
+        ):
             return False
         # Skip empty ndarrays
         if a.size == 0:
@@ -1378,9 +1385,11 @@ def _are_contiguous_1d_views(arrs: Union[np.ndarray, List[np.ndarray]]) -> bool:
 
     return True
 
+
 def _get_base_ptr(a: np.ndarray) -> int:
     # same as a.ctypes.data, but robust for views
     return _get_buffer_address(a)
+
 
 def _get_root_base(a: np.ndarray) -> np.ndarray:
     b = a

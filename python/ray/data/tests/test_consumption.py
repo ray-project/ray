@@ -1582,7 +1582,9 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
     def should_error():
         _check_pyarrow_version()
 
-    with pytest.raises(Exception, match="Dataset requires pyarrow >= 9.0.0, but 5.0.0 is installed."):
+    with pytest.raises(
+        Exception, match="Dataset requires pyarrow >= 9.0.0, but 5.0.0 is installed."
+    ):
         ray.get(should_error.remote())
 
 
