@@ -40,3 +40,10 @@ examples:
       - large language models
       - generative ai
     link: ../llm/examples/batch/vllm-with-structural-output
+  - title: ETL Beginner's Guide
+    skill_level: beginner
+    frameworks:
+      - pandas
+    use_cases:
+      - etl
+    link: examples/ray-data-etl-tpch/pytorch_resnet_batch_prediction
