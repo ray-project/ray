@@ -34,7 +34,6 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
 
-
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
 

@@ -7,10 +7,8 @@ from packaging.version import parse as parse_version
 
 import ray.air.util.object_extensions.pandas
 from ray._common.serialization import pickle_dumps
-from ray._private.arrow_utils import get_pyarrow_version, \
-    _check_pyarrow_version
+from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray.util.annotations import PublicAPI
-
 
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
