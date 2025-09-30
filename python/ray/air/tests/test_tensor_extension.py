@@ -15,6 +15,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
     _are_contiguous_1d_views,
+    _concat_ndarrays,
     _get_buffer_address,
     concat_tensor_arrays,
     unify_tensor_arrays,
@@ -942,63 +943,6 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
         assert result[i].shape == expected_shape
 
 
-def test_contiguous_views():
-    """Test that contiguous views of the same array are considered appropriately contiguous"""
-    # Create a large base array
-    base = np.arange(100, dtype=np.int64)
-
-    # Create contiguous views (slices that are adjacent in memory)
-    raveled = np.empty(4, dtype=np.object_)
-
-    raveled[0] = base[0:10].ravel()
-    raveled[1] = base[10:30].ravel()
-    raveled[2] = base[30:60].ravel()
-    raveled[3] = base[60:100].ravel()
-
-    # These should be contiguous
-    assert _are_contiguous_1d_views(raveled), "Contiguous views not detected"
-
-
-def test_non_contiguous_views():
-    """Test that non-contiguous views are detected correctly."""
-    # Create a large base array
-    base = np.arange(100, dtype=np.float64)
-
-    # Create non-contiguous views (with gaps)
-    raveled = np.empty(3, dtype=np.object_)
-    raveled[0] = base[0:10].ravel()
-    # Gap from 10-20
-    raveled[1] = base[20:30].ravel()
-    raveled[2] = base[30:40].ravel()
-
-    # These should NOT be contiguous
-    assert not _are_contiguous_1d_views(
-        raveled
-    ), "Non-contiguous views incorrectly detected as contiguous"
-
-
-def test_different_memory_locations():
-    """Test that arrays at different memory locations are not contiguous."""
-    # Create separate arrays at different memory locations
-    # Force them to be non-contiguous by creating a large gap
-    arr1 = np.arange(10, dtype=np.float64)
-    # Create a large array in between to ensure memory gap
-    _ = np.zeros(10000, dtype=np.float64)
-    arr2 = np.arange(10, 20, dtype=np.float64)
-
-    raveled = np.empty(2, dtype=np.object_)
-    raveled[0] = arr1
-    raveled[1] = arr2
-
-    # These should NOT be contiguous (different memory locations)
-    # NOTE:: In rare cases, arrays might still be allocated contiguously by chance
-    # but this is highly unlikely with the gap array in between
-    assert not _are_contiguous_1d_views(raveled) or (
-        _get_buffer_address(arr1) + arr1.size * arr1.dtype.itemsize
-        == _get_buffer_address(arr2)
-    )
-
-
 def test_reverse_order():
     """Test views in reverse order."""
     base = np.arange(100, dtype=np.float64)
@@ -1010,6 +954,187 @@ def test_reverse_order():
 
     # Reverse order views should NOT be contiguous
     assert not _are_contiguous_1d_views(raveled)
+
+
+def test_concat_ndarrays_zero_copy():
+    """Test that _concat_ndarrays performs zero-copy concatenation when possible."""
+    # Case 1: Create a base array and contiguous views
+    base = np.arange(100, dtype=np.int64)
+
+    arrs = [
+        base[0:20],
+        base[20:50],
+        base[50:100]
+    ]
+
+    result = _concat_ndarrays(arrs)
+
+    np.testing.assert_array_equal(result, base)
+    # Verify it's a zero-copy view (shares memory with base)
+    assert np.shares_memory(result, base)
+
+    # Case 2: Verify empty views are skipped
+    arrs = [
+        base[0:10],
+        base[10:10],  # Empty array
+        base[10:20]
+    ]
+
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate([base[0:10], base[10:20]])
+
+    np.testing.assert_array_equal(result, expected)
+    # Verify it's a zero-copy view (shares memory with base)
+    assert np.shares_memory(result, base)
+
+    # Case 3: Singleton ndarray is returned as is
+    result = _concat_ndarrays([base])
+
+    # Should return the same array or equivalent
+    assert result is base
+
+
+def test_concat_ndarrays_non_contiguous_fallback():
+    """Test that _concat_ndarrays falls back to np.concatenate when arrays aren't contiguous."""
+
+    # Case 1: Non-contiguous arrays
+    arr1 = np.arange(10, dtype=np.float32)
+    _ = np.arange(1000)  # Create gap to prevent contiguity
+    arr2 = np.arange(10, 20, dtype=np.float32)
+    _ = np.arange(1000)  # Create gap to prevent contiguity
+    arr3 = np.arange(20, 30, dtype=np.float32)
+
+    arrs = [arr1, arr2, arr3]
+
+    result = _concat_ndarrays(arrs)
+
+    expected = np.concatenate(arrs)
+    np.testing.assert_array_equal(result, expected)
+
+    assert all(not np.shares_memory(result, a) for a in arrs)
+
+    # Case 2: Non-contiguous arrays (take 2)
+    base = np.arange(100, dtype=np.float64)
+
+    arrs = [
+        base[0:10],
+        base[20:30],  # Gap from 10-20
+        base[30:40]
+    ]
+
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate(arrs)
+
+    np.testing.assert_array_equal(result, expected)
+    # Should have created a copy since there's a gap
+    assert not np.shares_memory(result, base)
+
+
+def test_concat_ndarrays_diff_dtypes_fallback():
+    """Different dtypes"""
+
+    base_int16 = np.arange(50, dtype=np.int16)
+    base_int32 = np.arange(50, dtype=np.int32)
+
+    # Different dtypes should use fallback
+    arrs = [base_int16, base_int32]
+
+    # This should use np.concatenate with type promotion
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate(arrs)
+
+    np.testing.assert_array_equal(result, expected)
+    assert result.dtype == expected.dtype
+
+def test_are_contiguous_1d_views_non_raveled():
+    """Test that _are_contiguous_1d_views rejects non-1D arrays."""
+    base = np.arange(100, dtype=np.int64).reshape(10, 10)
+
+    arrs = [
+        base[0:2].ravel(),  # 1D view
+        base[2:4],  # 2D array
+    ]
+
+    # Should reject because second array is not 1D
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_are_contiguous_1d_views_non_c_contiguous():
+    """Test _are_contiguous_1d_views with non-C-contiguous arrays."""
+    base = np.arange(100, dtype=np.int64).reshape(10, 10)
+
+    # Column slices are not C-contiguous
+    arrs = [
+        base[:, 0],
+        base[:, 1]
+    ]
+
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_are_contiguous_1d_views_different_bases():
+    """Test _are_contiguous_1d_views with views from different base arrays."""
+    base1 = np.arange(50, dtype=np.int64)
+    _ = np.arange(1000, dtype=np.int64) # Create gap to prevent contiguity
+    base2 = np.arange(50, 100, dtype=np.int64)
+
+    arrs = [
+        base1,
+        base2
+    ]
+
+    # Different base arrays
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_are_contiguous_1d_views_overlapping():
+    """Test _are_contiguous_1d_views with overlapping views."""
+    base = np.arange(100, dtype=np.float64)
+
+    arrs = [
+        base[0:20],
+        base[10:30]  # Overlaps with first
+    ]
+
+    # Overlapping views are not contiguous
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_concat_ndarrays_complex_views():
+    """Test _concat_ndarrays with complex view scenarios."""
+    # Create a 2D array and take contiguous row views
+    base_2d = np.arange(100, dtype=np.int64).reshape(10, 10)
+    base = base_2d.ravel()  # Get 1D view
+
+    # Take contiguous slices of the 1D view
+    arrs = [
+        base[0:30],
+        base[30:60],
+        base[60:100]
+    ]
+
+    result = _concat_ndarrays(arrs)
+    np.testing.assert_array_equal(result, base)
+    assert np.shares_memory(result, base_2d)  # Should share memory with original 2D array
+
+
+def test_concat_ndarrays_strided_views():
+    """Test _concat_ndarrays with strided (non-contiguous) views."""
+    base = np.arange(100, dtype=np.float64)
+
+    # Every other element - these are strided views
+    arrs = [
+        base[::2],  # Even indices
+        base[1::2]  # Odd indices
+    ]
+
+    # Strided views are not C-contiguous
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate(arrs)
+
+    np.testing.assert_array_equal(result, expected)
+    # Should have created a copy
+    assert not np.shares_memory(result, base)
 
 
 if __name__ == "__main__":
