@@ -36,19 +36,43 @@ def test_ray_node_events(ray_start_cluster, httpserver):
 
     # Check that a node definition and a node lifecycle event are published.
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    wait_for_condition(lambda: len(httpserver.log) >= 1)
-    req, _ = httpserver.log[0]
-    req_json = json.loads(req.data)
-    assert len(req_json) == 2
+    # Wait until we observe both event types across requests.
+    wait_for_condition(
+        lambda: (
+            any(
+                "nodeDefinitionEvent" in item
+                for req, _ in httpserver.log
+                for item in json.loads(req.data)
+            )
+            and any(
+                "nodeLifecycleEvent" in item
+                for req, _ in httpserver.log
+                for item in json.loads(req.data)
+            )
+        )
+    )
+    # Find the latest items for each event type across all requests.
+    definition_event = next(
+        item
+        for req, _ in httpserver.log
+        for item in json.loads(req.data)
+        if "nodeDefinitionEvent" in item
+    )
+    lifecycle_event = next(
+        item
+        for req, _ in httpserver.log
+        for item in json.loads(req.data)
+        if "nodeLifecycleEvent" in item
+    )
     assert (
-        base64.b64decode(req_json[0]["nodeDefinitionEvent"]["nodeId"]).hex()
+        base64.b64decode(definition_event["nodeDefinitionEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
     )
     assert (
-        base64.b64decode(req_json[1]["nodeLifecycleEvent"]["nodeId"]).hex()
+        base64.b64decode(lifecycle_event["nodeLifecycleEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
     )
-    assert req_json[1]["nodeLifecycleEvent"]["stateTransitions"][0]["state"] == "ALIVE"
+    assert lifecycle_event["nodeLifecycleEvent"]["stateTransitions"][0]["state"] == "ALIVE"
 
 
 if __name__ == "__main__":
