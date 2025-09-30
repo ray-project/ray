@@ -53,6 +53,7 @@ def main(args):
         DataContext.get_current().shuffle_strategy = ShuffleStrategy(
             args.shuffle_strategy
         )
+        # TODO: Don't override once we fix range-based shuffle
         override_num_blocks = (
             100
             if args.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED.value
