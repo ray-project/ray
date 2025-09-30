@@ -1093,11 +1093,11 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         size_offsets = np.cumsum(sizes)
         total_size = size_offsets[-1]
 
-        if len(raveled) > 0 and _is_contiguous(raveled):
+        if len(raveled) > 0 and _are_contiguous_1d_views(raveled):
             # An optimized zero-copy path if raveled tensor elements are already
             # contiguous in memory, e.g. if this tensor array has already done a
             # roundtrip through our Arrow representation.
-            data_buffer = raveled[0].base
+            data_buffer = _concat_1d_ndarrays_zero_copy(raveled)
         else:
             # Concatenate given ndarrays into a contiguous one.
             data_buffer = np.concatenate(raveled)
@@ -1325,35 +1325,71 @@ def concat_tensor_arrays(
     unified_array_type = unified_arrays[0].type
     return unified_array_type.wrap_array(storage)
 
+def _concat_ndarrays(arrs: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
+    """Concatenates provided collection of ``np.ndarray``s in either of the following
+    ways:
 
-def _is_contiguous(arrays: np.ndarray) -> bool:
-    """Check if all arrays in the object array form a contiguous block in memory.
+        - If provided ndarrays are contiguous, 1D views sharing the same dtype,
+        living w/in the same base view, these will be concatenated zero-copy
+        by reusing underlying view
 
-    Args:
-        arrays: Object array containing numpy arrays
-
-    Returns:
-        True if all arrays are contiguous in memory (can be zero-copy concatenated)
+        - Otherwise, ``np.concatenate(arrays)`` will be invoked
     """
-    assert len(arrays) > 0, "Passed ndarray may not be empty"
 
-    expected_addr = None
+    if not _are_contiguous_1d_views(arrs):
+        return np.concatenate(arrs)
 
-    for i, arr in enumerate(arrays):
-        # Check array is C-contiguous
-        if not arr.flags.c_contiguous:
+    dtype = arrs[0].dtype
+    base = _get_root_base(arrs[0])
+
+    base_ptr   = _get_buffer_address(base)
+    start_byte = _get_buffer_address(arrs[0]) - base_ptr
+    end_byte   = start_byte + sum(a.nbytes for a in arrs)
+
+    # Build the view from the base, using byte offsets for generality
+    byte_view = base.view(np.uint8).reshape(-1)
+    out = byte_view[start_byte:end_byte].view(dtype)
+
+    return out
+
+def _are_contiguous_1d_views(arrs: Union[np.ndarray, List[np.ndarray]]) -> bool:
+    assert len(arrs) > 0, "Provided collection of ndarrays may not be empty"
+
+    dtype = arrs[0].dtype
+    base = _get_root_base(arrs[0])
+    expected_addr = _get_base_ptr(arrs[0])
+
+    for a in arrs:
+        # Assert all provided arrays are
+        #   - Raveled (1D)
+        #   - Share dtype
+        #   - Contiguous
+        #   - Share the same `base` view (this is crucial to make sure
+        #     that all provided ndarrays live w/in the same allocation and
+        #     share its lifecycle)
+        if a.ndim != 1 or a.dtype != dtype or not a.flags.c_contiguous or _get_root_base(a) is not base:
+            return False
+        # Skip empty ndarrays
+        if a.size == 0:
+            continue
+
+        buffer_addr = _get_base_ptr(a)
+        if buffer_addr != expected_addr:
             return False
 
-        # For arrays after the first, check if address matches expected
-        if i > 0:
-            actual_addr = _get_buffer_address(arr)
-            if actual_addr != expected_addr:
-                return False
-
-        # Update expected address for next array
-        expected_addr = _get_buffer_address(arr) + arr.dtype.itemsize * arr.size
+        expected_addr = buffer_addr + a.size * dtype.itemsize
 
     return True
+
+def _get_base_ptr(a: np.ndarray) -> int:
+    # same as a.ctypes.data, but robust for views
+    return _get_buffer_address(a)
+
+def _get_root_base(a: np.ndarray) -> np.ndarray:
+    b = a
+    while isinstance(b.base, np.ndarray):
+        b = b.base
+    return b if b.base is not None else b  # owner if base is None
 
 
 def _get_buffer_address(arr: np.ndarray) -> int:
