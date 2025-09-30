@@ -912,13 +912,14 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
             dtype: pyarrow dtype of tensor elements.
             ndim: The number of dimensions in the tensor elements.
         """
+        self._ndim = ndim
+
         super().__init__(
             pa.struct(
                 [("data", pa.large_list(dtype)), ("shape", pa.list_(self.OFFSET_DTYPE))]
             ),
             "ray.data.arrow_variable_shaped_tensor",
         )
-        self._ndim = ndim
 
     def to_pandas_dtype(self):
         """
