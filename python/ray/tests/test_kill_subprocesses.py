@@ -62,6 +62,12 @@ class BedMaker:
         output = subprocess.check_output(command, shell=True, text=True)
         return int(output.strip())
 
+    def spawn_daemon_same_pgroup(self):
+        # Spawn a long-lived child in the SAME process group (no shell wrappers),
+        # so process group cleanup can terminate it when the actor dies.
+        p = subprocess.Popen(["sleep", "1000"])  # inherits PGID
+        return p.pid
+
     def my_pid(self):
         return os.getpid()
 
@@ -195,9 +201,9 @@ def test_sigkilled_worker_can_kill_subprocess_with_pg_cleanup(
 
     logger.info(get_process_info(pid))  # shows the process
     psutil.Process(actor_pid).kill()  # sigkill
-    time.sleep(3)  # process-group cleanup is immediate; small buffer
+    wait_for_condition(lambda: not psutil.pid_exists(pid), retry_interval_ms=100)
     with pytest.raises(psutil.NoSuchProcess):
-        logger.info(get_process_info(pid))  # subprocess killed
+        logger.info(get_process_info(pid))
 
 
 @pytest.mark.skipif(
@@ -210,7 +216,7 @@ def test_daemon_processes_not_killed_until_actor_dead_with_pg_cleanup(
     ray.init()
     # sigkill'd actor can't kill subprocesses
     b = BedMaker.remote()
-    daemon_pid = ray.get(b.spawn_daemon.remote())
+    daemon_pid = ray.get(b.spawn_daemon_same_pgroup.remote())
     actor_pid = ray.get(b.my_pid.remote())
 
     # The pid refers to a daemon process that should not be killed, although
@@ -220,9 +226,9 @@ def test_daemon_processes_not_killed_until_actor_dead_with_pg_cleanup(
     assert psutil.pid_exists(daemon_pid)
 
     psutil.Process(actor_pid).kill()  # sigkill
-    time.sleep(3)
+    wait_for_condition(lambda: not psutil.pid_exists(daemon_pid), retry_interval_ms=100)
     with pytest.raises(psutil.NoSuchProcess):
-        logger.info(get_process_info(daemon_pid))  # subprocess killed
+        logger.info(get_process_info(daemon_pid))
 
 
 @pytest.mark.skipif(

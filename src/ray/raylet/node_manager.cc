@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <csignal>
 #include <cstddef>
 #include <fstream>
@@ -91,58 +92,64 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 }
 
 #if !defined(_WIN32)
-// Shared helper to perform validated process group cleanup.
-static void ScheduleProcessGroupCleanup(instrumented_io_context &io_service,
-                                        pid_t worker_pid,
-                                        pid_t saved_pgid,
-                                        const WorkerID &wid,
-                                        const char *context) {
-  errno = 0;
-  pid_t current_pgid = getpgid(worker_pid);
-  if (current_pgid == -1 || current_pgid != saved_pgid) {
-    // PG changed or no longer valid; skip cleanup.
-    return;
-  }
+// Shared helper to perform validated process group cleanup. Sends SIGTERM first,
+// then escalates to SIGKILL either after a delay on the io_service, or immediately
+// if delay_ms <= 0 or io_service is null (e.g., during shutdown).
+static void CleanupProcessGroup(instrumented_io_context *io_service,
+                                pid_t worker_pid,
+                                pid_t saved_pgid,
+                                const WorkerID &wid,
+                                const char *context,
+                                int delay_ms) {
+  // Copy context into a safe, owned string for logging and async captures.
+  std::string ctx = context == nullptr ? std::string() : std::string(context);
 
   // Guard against targeting the raylet's own process group if isolation failed.
   pid_t raylet_pgid = getpgid(0);
   if (raylet_pgid == saved_pgid) {
     RAY_LOG(WARNING).WithField(wid)
-        << context
+        << ctx
         << ": skipping PG cleanup: worker pgid equals raylet pgid (isolation failed): "
         << saved_pgid;
     return;
   }
 
-  RAY_LOG(INFO).WithField(wid) << context
-                               << ": attempting process-group cleanup for worker pid="
-                               << worker_pid << ", pgid=" << saved_pgid;
+  RAY_LOG(INFO).WithField(wid) << ctx << ": process-group cleanup for pgid=" << saved_pgid
+                               << (worker_pid > 0 ? std::string(", worker pid=") +
+                                                        std::to_string(worker_pid)
+                                                  : std::string());
+
   auto err_term = KillProcessGroup(saved_pgid, SIGTERM);
   if (err_term && *err_term) {
     RAY_LOG(WARNING).WithField(wid)
-        << context << ": failed to SIGTERM process group " << saved_pgid << ": "
+        << ctx << ": failed to SIGTERM process group " << saved_pgid << ": "
         << err_term->message() << ", errno=" << err_term->value();
   }
 
-  // Schedule async SIGKILL after a grace period to avoid blocking the event loop.
-  auto timer = std::make_shared<boost::asio::deadline_timer>(
-      io_service, boost::posix_time::milliseconds(1000));
-  timer->async_wait([timer, worker_pid, saved = saved_pgid, wid, context](
-                        const boost::system::error_code &ec) mutable {
-    if (ec) {
-      return;
-    }
-    errno = 0;
-    pid_t pgid_now = getpgid(worker_pid);
-    if (pgid_now != -1 && pgid_now == saved) {
+  auto escalate = [saved = saved_pgid, wid, ctx]() mutable {
+    auto probe = KillProcessGroup(saved, 0);
+    const bool group_absent = (probe && probe->value() == ESRCH);
+    if (!group_absent) {
       auto err_kill = KillProcessGroup(saved, SIGKILL);
       if (err_kill && *err_kill) {
         RAY_LOG(WARNING).WithField(wid)
-            << context << ": failed to SIGKILL process group " << saved << ": "
+            << ctx << ": failed to SIGKILL process group " << saved << ": "
             << err_kill->message() << ", errno=" << err_kill->value();
       }
     }
-  });
+  };
+
+  if (io_service != nullptr && delay_ms > 0) {
+    auto timer = std::make_shared<boost::asio::deadline_timer>(
+        *io_service, boost::posix_time::milliseconds(delay_ms));
+    timer->async_wait([timer, escalate](const boost::system::error_code &ec) mutable {
+      if (!ec) {
+        escalate();
+      }
+    });
+  } else {
+    escalate();
+  }
 }
 #endif
 
@@ -1445,11 +1452,12 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if (pg_enabled) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        ScheduleProcessGroupCleanup(io_service_,
-                                    worker->GetProcess().GetId(),
-                                    *saved,
-                                    worker->WorkerId(),
-                                    "DisconnectClient");
+        CleanupProcessGroup(&io_service_,
+                            worker->GetProcess().GetId(),
+                            *saved,
+                            worker->WorkerId(),
+                            "DisconnectClient",
+                            /*delay_ms*/ 200);
       }
     }
 #endif
@@ -2814,8 +2822,14 @@ void NodeManager::Stop() {
     for (const auto &w : workers) {
       auto saved = w->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        ScheduleProcessGroupCleanup(
-            io_service_, w->GetProcess().GetId(), *saved, w->WorkerId(), "Stop");
+        // Use immediate cleanup during shutdown since timers may not fire after
+        // io_service begins stopping.
+        CleanupProcessGroup(/*io_service*/ nullptr,
+                            /*worker_pid*/ -1,
+                            *saved,
+                            w->WorkerId(),
+                            "Stop",
+                            /*delay_ms*/ 0);
       }
     }
   }
