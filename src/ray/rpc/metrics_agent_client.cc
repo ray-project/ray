@@ -37,13 +37,12 @@ void MetricsAgentClientImpl::WaitForServerReadyWithRetry(
     return;
   }
 
-  RAY_LOG(INFO) << "Initializing exporter ...";
   HealthCheck(rpc::HealthCheckRequest(),
-              [this, init_exporter_fn](auto &status, auto &&reply) {
+              [this, init_exporter_fn, retry_count, retry_interval_ms](auto &status, auto &&reply) {
                 if (status.ok() && !exporter_initialized_) {
                   init_exporter_fn(status);
                   exporter_initialized_ = true;
-                  RAY_LOG(INFO) << "Exporter initialized.";
+                  RAY_LOG(INFO) << "Exporter initialized after " << retry_count * retry_interval_ms / 1000 << " seconds.";
                 }
               });
   if (retry_count >= max_retry) {
