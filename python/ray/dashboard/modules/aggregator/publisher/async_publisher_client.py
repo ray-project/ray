@@ -56,8 +56,8 @@ class PublisherClientInterface(ABC):
     def __init__(self):
         self._exposable_event_types_list: List[str] = []
 
-    def _count_num_events_in_batch(self, batch: PublishBatch) -> int:
-        """Count the number of events in a given batch."""
+    def count_num_events_in_batch(self, batch: PublishBatch) -> int:
+        """Count the number of events in a given PublishBatch."""
         return len(batch.events)
 
     def _can_expose_event(self, event) -> bool:
@@ -99,7 +99,9 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._session = None
 
         self._exposable_event_types_list = [
-            event_type.strip() for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
+            event_type.strip()
+            for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
+            if event_type.strip()
         ]
 
     async def publish(self, batch: PublishBatch) -> PublishStats:

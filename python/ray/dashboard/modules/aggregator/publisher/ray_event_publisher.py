@@ -153,7 +153,7 @@ class RayEventPublisher(RayEventPublisherInterface):
 
         Will retry failed publishes up to max_retries times with increasing delays.
         """
-        num_events_in_batch = self._publish_client._count_num_events_in_batch(batch)
+        num_events_in_batch = self._publish_client.count_num_events_in_batch(batch)
         failed_attempts_since_last_success = 0
         while True:
             start = asyncio.get_running_loop().time()
