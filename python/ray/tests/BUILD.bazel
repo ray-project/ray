@@ -379,6 +379,23 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_logging_java.py",
+    ],
+    tags = [
+        "exclusive",
+        "medium_size_python_tests_k_to_z",
+        "needs_java",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    files = [
         "test_multi_node_3.py",
         "test_object_manager.py",
         "test_resource_demand_scheduler.py",
