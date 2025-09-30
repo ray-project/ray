@@ -144,7 +144,6 @@ Note these important points for RayJob custom resources:
 
 ```yaml
 kubectl create -f ray-job.kueue-toy-sample.yaml
-kubectl create -f ray-job.kueue-toy-sample.yaml
 ```
 
 Each RayJob custom resource requests 2 CPUs and 4G of memory in total.
