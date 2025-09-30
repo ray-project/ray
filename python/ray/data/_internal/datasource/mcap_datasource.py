@@ -80,9 +80,10 @@ class MCAPDatasource(FileBasedDatasource):
 
         Args:
             paths: Path or list of paths to MCAP files.
-            channels: Optional list/set of channel names to include. If specified,
-                only messages from these channels will be read. Mutually exclusive
-                with ``topics``.
+            channels: Optional list/set of channel names to include. In MCAP,
+                channels are identified by their topic names, so this parameter
+                filters by topic. If specified, only messages from these topics
+                will be read. Mutually exclusive with ``topics``.
             topics: Optional list/set of topic names to include. If specified,
                 only messages from these topics will be read. Mutually exclusive
                 with ``channels``.
@@ -144,8 +145,14 @@ class MCAPDatasource(FileBasedDatasource):
             # We don't need to validate the summary since it's not required
 
             # Determine which topics to filter on for MCAP's built-in filtering
-            # Use topics if specified, otherwise use channels (which map to topics)
-            filter_topics = list(self._topics) if self._topics else None
+            # In MCAP, channels are identified by topic names, so we can push down
+            # both topic and channel filters to the MCAP reader
+            filter_topics = None
+            if self._topics:
+                filter_topics = list(self._topics)
+            elif self._channels:
+                # Channels map to topics in MCAP, so we can use them for filtering
+                filter_topics = list(self._channels)
 
             # Use MCAP's built-in filtering for topics and time range
             messages = reader.iter_messages(
@@ -182,7 +189,8 @@ class MCAPDatasource(FileBasedDatasource):
         """Check if a message should be included based on filters.
 
         This method applies Python-level filtering that cannot be pushed down
-        to the MCAP library level.
+        to the MCAP library level. Topic and channel filters are already handled
+        by the MCAP reader, so only message_types filtering is needed here.
 
         Args:
             schema: MCAP schema object containing message type information.
@@ -192,13 +200,8 @@ class MCAPDatasource(FileBasedDatasource):
         Returns:
             True if the message should be included, False otherwise.
         """
-        # Message type filter
+        # Message type filter (cannot be pushed down to MCAP reader)
         if self._message_types and schema and schema.name not in self._message_types:
-            return False
-
-        # Channel filter (only apply if topics weren't used for MCAP filtering)
-        # In MCAP, channels are identified by their topic names
-        if self._channels and channel.topic not in self._channels:
             return False
 
         return True
