@@ -1333,7 +1333,12 @@ def _concat_ndarrays(arrs: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
         - Otherwise, ``np.concatenate(arrays)`` will be invoked
     """
 
-    if not _are_contiguous_1d_views(arrs):
+    assert len(arrs) > 0, "Provided collection of ndarrays may not be empty"
+
+    if len(arrs) == 1:
+        # Short-circuit
+        return arrs[0]
+    elif not _are_contiguous_1d_views(arrs):
         return np.concatenate(arrs)
 
     dtype = arrs[0].dtype
@@ -1351,9 +1356,6 @@ def _concat_ndarrays(arrs: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
 
 
 def _are_contiguous_1d_views(arrs: Union[np.ndarray, List[np.ndarray]]) -> bool:
-    if len(arrs) == 0:
-        return False
-
     dtype = arrs[0].dtype
     base = _get_root_base(arrs[0])
     expected_addr = _get_base_ptr(arrs[0])
