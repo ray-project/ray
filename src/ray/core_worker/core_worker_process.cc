@@ -241,12 +241,15 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_node_id, options.node_ip_address, options.node_manager_port);
+  // NOTE: We cannot have transient network errors to the local raylet because its the
+  // same node. Hence we don't need to invoke the unavailable timeout callback apart from
+  // once immediately to check if the node is dead.
   auto local_raylet_rpc_client = std::make_shared<rpc::RayletClient>(
       std::move(raylet_address),
       *client_call_manager,
       /*raylet_unavailable_timeout_callback=*/[] {},
-      -1,
-      true);
+      /*server_unavailable_timeout_seconds=*/-1,
+      /*server_call_unavailable_timeout_immediately=*/true);
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
@@ -283,7 +286,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // NOTE: The raylet client server_unavailable_timeout_seconds is set to -1 because the
   // core worker is notified when remote nodes have died from the GCS. Hence we only need
   // to call the unavailable timeout once immediately to handle the case where the dead
-  // node was evicted from the cache prior subscription.
+  // node was evicted from the cache prior to subscription.
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
@@ -294,8 +297,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 core_worker->gcs_client_.get(),
                 core_worker->raylet_client_pool_.get(),
                 addr),
-            -1,
-            true);
+            /*server_unavailable_timeout_seconds=*/-1,
+            /*server_call_unavailable_timeout_immediately=*/true);
       });
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
