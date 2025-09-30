@@ -54,17 +54,12 @@ class TestLearner(unittest.TestCase):
         self.assertLess(min_loss, 0.58)
 
         # Test that the metrics are correctly aggregated to the ALL_MODULES key.
-        sum_env_steps = 0
-        sum_env_steps_lifetime = 0
-        sum_env_steps += results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED].peek()
-        sum_env_steps_lifetime += results[DEFAULT_MODULE_ID][
-            NUM_MODULE_STEPS_TRAINED_LIFETIME
-        ].peek()
         self.assertEqual(
-            sum_env_steps, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
+            results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED].peek(),
+            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek(),
         )
         self.assertEqual(
-            sum_env_steps_lifetime,
+            results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED_LIFETIME].peek(),
             results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME].peek(),
         )
 
