@@ -1320,6 +1320,10 @@ def concat_tensor_arrays(
     Args:
         arrays: Tensor arrays to concat
         ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
+
+    Returns:
+        Either ``ArrowTensorArray`` or ``ArrowVariableShapedTensorArray`` holding
+        all of the given tensor arrays concatenated.
     """
 
     assert arrays, "List of tensor arrays may not be empty"
