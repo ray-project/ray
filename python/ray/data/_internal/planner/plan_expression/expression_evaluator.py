@@ -317,11 +317,8 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             operand = self.visit(node.operand)
             return UnaryExpr(Operation.NOT, operand)
         elif isinstance(node.op, ast.USub):
-            # For negative numbers, treat as literal
-            if isinstance(node.operand, ast.Constant):
-                return lit(-node.operand.value)
-            else:
-                raise ValueError("Unary minus only supported for constant values")
+            operand = self.visit(node.operand)
+            return operand * lit(-1)
         else:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
 
@@ -372,7 +369,9 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             if isinstance(left_expr, ColumnExpr):
                 return col(f"{left_expr._name}.{node.attr}")
 
-        raise ValueError(f"Unsupported attribute access: {node.attr}")
+        raise ValueError(
+            f"Unsupported attribute access: {node.attr}. Node details: {ast.dump(node)}"
+        )
 
     def visit_Call(self, node: ast.Call) -> "Expr":
         """Handle function calls for operations like is_null, is_not_null, is_nan."""
@@ -385,7 +384,8 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
                 raise ValueError("is_null() expects exactly one argument")
             operand = self.visit(node.args[0])
             return UnaryExpr(Operation.IS_NULL, operand)
-        # Adding this conditional to keep it consistent with the existing implementation.
+        # Adding this conditional to keep it consistent with the current implementation,
+        # of carrying Pyarrow's semantic of `is_valid`
         elif func_name == "is_valid" or func_name == "is_not_null":
             if len(node.args) != 1:
                 raise ValueError(f"{func_name}() expects exactly one argument")

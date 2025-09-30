@@ -1390,9 +1390,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def filter(
         self,
-        fn: Optional[
-            UserDefinedFunction[Dict[str, Any], bool]
-        ] = None,  # TODO: Deprecate this parameter in favor of expr
+        fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
         expr: Optional[Union[str, Expr]] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
