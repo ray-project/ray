@@ -14,6 +14,9 @@ from packaging.version import parse as parse_version
 import ray.cloudpickle as cloudpickle
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
+from ray.air.util.object_extensions.arrow import \
+    MIN_PYARROW_VERSION_SCALAR_SUBCLASS, _object_extension_type_allowed, \
+    ArrowPythonObjectArray
 from ray.air.util.tensor_extensions.utils import (
     ArrayLike,
     _is_ndarray_variable_shaped_tensor,
@@ -35,9 +38,6 @@ _check_pyarrow_version()
 PYARROW_VERSION = get_pyarrow_version()
 
 
-# Minimum version of Arrow that supports subclassable ExtensionScalars.
-# TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
-MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
@@ -89,20 +89,6 @@ class ArrowConversionError(Exception):
         super().__init__(message)
 
 
-def _arrow_extension_scalars_are_subclassable():
-    """
-    Whether Arrow ExtensionScalars support subclassing in the current pyarrow version.
-
-    This returns True if the pyarrow version is 9.0.0+, or if the pyarrow version is
-    unknown.
-    """
-    # TODO(Clark): Remove utility once we only support Arrow 9.0.0+.
-    return (
-        PYARROW_VERSION is None
-        or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
-    )
-
-
 @DeveloperAPI
 def pyarrow_table_from_pydict(
     pydict: Dict[str, Union[List[Any], pa.Array]],
@@ -150,11 +136,7 @@ def convert_to_pyarrow_array(
             return _convert_to_pyarrow_native_array(column_values, column_name)
 
     except ArrowConversionError as ace:
-        from ray.data import DataContext
-        from ray.data.extensions.object_extension import (
-            ArrowPythonObjectArray,
-            _object_extension_type_allowed,
-        )
+        from ray.data.context import DataContext
 
         enable_fallback_config: Optional[
             bool
