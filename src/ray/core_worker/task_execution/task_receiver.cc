@@ -168,8 +168,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         }
       }
     }
-    if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
-        status.IsCreationTaskError()) {
+    if (!status.ok()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
