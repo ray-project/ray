@@ -286,7 +286,6 @@ def build_single_serve_deployment_processor(
     )
     return build_llm_processor(
         config,
-        chat_template_kwargs=None,
         preprocess=lambda row: dict(
             method="completions",
             dtype="CompletionRequest",
@@ -319,7 +318,6 @@ def build_shared_serve_deployment_processor(
 
     processor1 = build_llm_processor(
         config,
-        chat_template_kwargs=None,
         preprocess=lambda row: dict(
             method="completions",
             dtype="CompletionRequest",
@@ -341,7 +339,6 @@ def build_shared_serve_deployment_processor(
 
     processor2 = build_llm_processor(
         config,
-        chat_template_kwargs=None,
         preprocess=lambda row: dict(
             method="completions",
             dtype="CompletionRequest",
