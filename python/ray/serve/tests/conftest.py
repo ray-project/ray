@@ -195,7 +195,7 @@ def check_ray_stop():
 
 
 @pytest.fixture(scope="function")
-def ray_start_stop(ray_stop):
+def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
     ray.shutdown()
     wait_for_condition(
