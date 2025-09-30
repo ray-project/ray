@@ -160,7 +160,6 @@ std::string Status::ToString() const {
   return result;
 }
 
-// TODO(irabbani): This supresses all errors.
 Status boost_to_ray_status(const boost::system::error_code &error) {
   switch (error.value()) {
   case boost::system::errc::success:
