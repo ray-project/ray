@@ -29,7 +29,6 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
 
-
 _check_pyarrow_version()
 
 
