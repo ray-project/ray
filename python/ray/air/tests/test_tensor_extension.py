@@ -14,8 +14,10 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    _get_buffer_address,
+    _is_contiguous,
     concat_tensor_arrays,
-    unify_tensor_arrays, _is_contiguous, _get_buffer_address,
+    unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -970,7 +972,9 @@ def test_non_contiguous_views():
     raveled[2] = base[30:40].ravel()
 
     # These should NOT be contiguous
-    assert not _is_contiguous(raveled), "Non-contiguous views incorrectly detected as contiguous"
+    assert not _is_contiguous(
+        raveled
+    ), "Non-contiguous views incorrectly detected as contiguous"
 
 
 def test_different_memory_locations():
@@ -989,7 +993,10 @@ def test_different_memory_locations():
     # These should NOT be contiguous (different memory locations)
     # NOTE:: In rare cases, arrays might still be allocated contiguously by chance
     # but this is highly unlikely with the gap array in between
-    assert not _is_contiguous(raveled) or (_get_buffer_address(arr1) + arr1.size * arr1.dtype.itemsize == _get_buffer_address(arr2))
+    assert not _is_contiguous(raveled) or (
+        _get_buffer_address(arr1) + arr1.size * arr1.dtype.itemsize
+        == _get_buffer_address(arr2)
+    )
 
 
 def test_reverse_order():

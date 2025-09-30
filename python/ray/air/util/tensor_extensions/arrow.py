@@ -746,10 +746,10 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         # Create offsets buffer
         offsets = np.arange(
-           0,
-           (outer_len + 1) * num_items_per_element,
-           num_items_per_element,
-           dtype=pa_type_.OFFSET_DTYPE.to_pandas_dtype()
+            0,
+            (outer_len + 1) * num_items_per_element,
+            num_items_per_element,
+            dtype=pa_type_.OFFSET_DTYPE.to_pandas_dtype(),
         )
         offset_buffer = pa.py_buffer(offsets)
 
@@ -1143,7 +1143,9 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         # Use foreign_buffer for better performance when possible
         data_buffer = pa.py_buffer(data_buffer)
         # Construct underlying data array.
-        data_array = pa.Array.from_buffers(pa_scalar_type, total_size, [None, data_buffer])
+        data_array = pa.Array.from_buffers(
+            pa_scalar_type, total_size, [None, data_buffer]
+        )
 
         # Construct array for offsets into the 1D data array, where each offset
         # corresponds to a tensor element.
@@ -1186,10 +1188,12 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         shapes = shapes_array.to_pylist()
         offsets = data_array.offsets.to_pylist()
 
-        return create_ragged_ndarray([
-            _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
-            for shape, offset in zip(shapes, offsets)
-        ])
+        return create_ragged_ndarray(
+            [
+                _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
+                for shape, offset in zip(shapes, offsets)
+            ]
+        )
 
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
         if ndim == self.type.ndim:
