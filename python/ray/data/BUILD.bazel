@@ -466,7 +466,7 @@ py_test(
 
 py_test(
     name = "test_consumption",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_consumption.py"],
     tags = [
         "exclusive",
