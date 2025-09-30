@@ -25,12 +25,12 @@ The numbers below are taken from an average/std across 4 runs. We also ran 1 war
     - g6.2xlarge (8 CPUs)
     - g6.4xlarge (16 CPUs)
     - g6.8xlarge (32 CPUs)
--   **Ray Data (2.50)**
+-   - **Ray Data (2.50)**
     - 456.23 +/- 39.92
     - 195.52 +/- 7.59
     - 144.83 +/- 1.92
     - 111.24 +/- 1.15
--   **Daft (0.6.2)**
+-   - **Daft (0.6.2)**
     - 314.97 +/- 31.16
     - 201.99 +/- 2.19
     - 195.00 +/- 6.64
@@ -59,9 +59,9 @@ The numbers below are taken from an average/std across 4 runs. We also ran 1 war
 :name: document-embedding-results
 -   -
     - Results (seconds)
--   **Daft (0.6.2)**
+-   - **Daft (0.6.2)**
     - 51.30 +/- 1.34
--   **Ray Data (2.50.0)**
+-   - **Ray Data (2.50.0)**
     - 31.45 +/- 4.54
 ```
 
@@ -82,9 +82,9 @@ The numbers below are taken from an average/std across 4 runs. We also ran 1 war
 :name: audio-transcription-results
 -   -
     - Results (seconds)
--   **Daft (0.6.2)**
+-   - **Daft (0.6.2)**
     - 510.5 +/- 10.38
--   **Ray Data (2.50)**
+-   - **Ray Data (2.50)**
     - 306.47 +/- 0.74
 ```
 
@@ -114,12 +114,12 @@ The numbers below are taken from an average/std across 4 runs. We also ran 1 war
     - g6.2xlarge (8 CPUs)
     - g6.4xlarge (16 CPUs)
     - g6.8xlarge (32 CPUs)
--   **Ray Data (2.50.0)**
+-   - **Ray Data (2.50.0)**
     - 1590.5 +/- 116.67
     - 908.75 +/- 13.7
     - 663.5 +/- 23.67
     - 644.5 +/- 24.34
--   **Daft (0.6.2)**
+-   - **Daft (0.6.2)**
     - 758.75 +/- 10.37
     - 735.25 +/- 7.59
     - 747.5 +/- 13.43
@@ -138,8 +138,8 @@ The numbers below are taken from an average/std across 4 runs. We also ran 1 war
 :name: large-scale-image-embedding-results
 -   -
     - Results (seconds)
--   **Ray Data (2.50)**
+-   - **Ray Data (2.50)**
     - 105.81 +/- 0.79
--   **Daft (0.6.2)**
+-   - **Daft (0.6.2)**
     - 752.75 +/- 5.52
 ```
