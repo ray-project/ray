@@ -52,14 +52,10 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/text",
         )
 
-    @routes.get("/api/healthz")
-    async def unified_health(self, req: Request) -> Response:
-        # Check Raylet health.
-        raylet_resp = await self.health_check(req)
-        if raylet_resp.status != 200:
-            return raylet_resp
-
-        # Check GCS health.
+    async def local_gcs_health(self) -> Response:
+        # Check GCS health, if we are the head node.
+        if not self._dashboard_agent.is_head:
+            return Response(status=200, text="not head; no local GCS")
         try:
             gcs_alive = await self._health_checker.check_gcs_liveness()
             if not gcs_alive:
@@ -67,9 +63,18 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
         except Exception as e:
             return Response(status=503, text=f"GCS health check failed: {e}")
 
+    @routes.get("/api/healthz")
+    async def unified_health(self, req: Request) -> Response:
+        async with asyncio.TaskGroup() as tg:
+            raylet_task = tg.create_task(self.health_check(req))
+            gcs_task = tg.create_task(self.local_gcs_health())
+
+        raylet_resp = raylet_task.result()
+        gcs_resp = gcs_task.result()
         return Response(
-            text="success",
-            content_type="application/text",
+                status=200 if all([ resp.status == 200 for resp in [raylet_resp, gcs_resp] ]) else 503,
+                text=f"raylet: {raylet_resp.text}\ngcs: {gcs_resp.text}"
+                content_type="application/text",
         )
 
     async def run(self, server):
