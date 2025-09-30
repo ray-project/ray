@@ -43,12 +43,19 @@ class RayletClient : public RayletClientInterface {
   /// Connect to the raylet.
   ///
   /// \param address The IP address of the worker.
-  /// \param port The port that the worker should listen on for gRPC requests. If
-  /// 0, the worker should choose a random port.
   /// \param client_call_manager The client call manager to use for the grpc connection.
+  /// \param raylet_unavailable_timeout_callback callback to be called when the raylet is
+  /// unavailable for a certain period of time.
   explicit RayletClient(const rpc::Address &address,
                         rpc::ClientCallManager &client_call_manager,
                         std::function<void()> raylet_unavailable_timeout_callback);
+
+  /// Connect to the raylet. only used for cython wrapper `CRayletClient`
+  /// `client_call_manager` will be created inside.
+  ///
+  /// \param ip_address The IP address of the worker.
+  /// \param port The port of the worker.
+  explicit RayletClient(const std::string &ip_address, int port);
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
@@ -163,6 +170,8 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
+  Status GetWorkerPIDs(std::vector<int32_t> &worker_pids, int64_t timeout_ms);
+
  private:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;
@@ -177,6 +186,12 @@ class RayletClient : public RayletClientInterface {
 
   /// The number of object ID pin RPCs currently in flight.
   std::atomic<int64_t> pins_in_flight_ = 0;
+
+ private:
+  /// if io context and client call manager are created inside the raylet client, they
+  /// should be kept active during the whole lifetime of client.
+  std::unique_ptr<instrumented_io_context> io_service_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 };
 
 }  // namespace rpc

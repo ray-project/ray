@@ -399,11 +399,11 @@ message IsLocalWorkerDeadReply {
   bool is_dead = 1;
 }
 
-message GetDriverAndWorkerPidsRequest {}
+message GetWorkerPIDsRequest {}
 
-message GetDriverAndWorkerPidsReply {
+message GetWorkerPIDsReply {
   // PIDs of all drivers and workers managed by the local raylet.
-  repeated uint32 pids = 1;
+  repeated int32 pids = 1;
 }
 
 // Service for inter-node-manager communication.
@@ -520,8 +520,8 @@ service NodeManagerService {
   // Failure: Is currently only used when grpc channel is unavailable for retryable core
   // worker clients. The unavailable callback will eventually be retried so if this fails.
   rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
-  // Get the worker managed by local raylet.
-  // Failure: Sends to local raylet, so should never fail.
-  rpc GetDriverAndWorkerPids(GetDriverAndWorkerPidsRequest)
-      returns (GetDriverAndWorkerPidsReply);
+  // Get the PIDs of all workers currently alive that are managed by the local Raylet.
+  // This includes connected driver processes.
+  // Failure: Will retry on failure with logging
+  rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
 }

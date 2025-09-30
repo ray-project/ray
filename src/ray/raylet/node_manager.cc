@@ -2723,14 +2723,15 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
-void NodeManager::HandleGetDriverAndWorkerPids(
-    rpc::GetDriverAndWorkerPidsRequest request,
-    rpc::GetDriverAndWorkerPidsReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
-  const auto &drivers =
-      worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true);
-  all_workers.insert(all_workers.end(), drivers.begin(), drivers.end());
+void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
+                                      rpc::GetWorkerPIDsReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                          /* filter_io_workers */ true);
+  auto drivers = worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true);
+  all_workers.insert(all_workers.end(),
+                     std::make_move_iterator(drivers.begin()),
+                     std::make_move_iterator(drivers.end()));
   for (const auto &worker : all_workers) {
     reply->add_pids(worker->GetProcess().GetId());
   }
