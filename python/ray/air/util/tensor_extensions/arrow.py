@@ -24,18 +24,16 @@ from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
     convert_to_numpy,
 )
+from ray.data._internal.util import _check_pyarrow_version
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
 
+
+_check_pyarrow_version()
+
+
 PYARROW_VERSION = get_pyarrow_version()
-MIN_SUPPORTED_PYARROW_VERSION = parse_version("9.0.0")
-
-
-if PYARROW_VERSION < MIN_SUPPORTED_PYARROW_VERSION:
-    raise ImportError(
-        f"Found Pyarrow version of {PYARROW_VERSION}, minimum supported version is {MIN_SUPPORTED_PYARROW_VERSION}"
-    )
 
 
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
