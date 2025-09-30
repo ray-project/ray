@@ -1571,12 +1571,12 @@ def test_pandas_block_select():
 @pytest.mark.skipif(
     sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
 )
-def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
+def test_unsupported_pyarrow_versions_check(shutdown_only):
     ray.shutdown()
 
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
+    ray.init(runtime_env={"pip": [f"pyarrow==8.0.0"]})
 
     @ray.remote
     def should_error():
