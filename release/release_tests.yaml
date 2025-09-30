@@ -116,6 +116,7 @@
   variations:
     - __suffix__: aws
 
+
 #######################
 # Cluster scaling tests
 #######################
