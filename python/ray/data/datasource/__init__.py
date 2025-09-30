@@ -1,3 +1,6 @@
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
 from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
 )
@@ -47,6 +50,7 @@ __all__ = [
     "Datasink",
     "Datasource",
     "DefaultFileMetadataProvider",
+    "DeltaSharingDatasource",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
