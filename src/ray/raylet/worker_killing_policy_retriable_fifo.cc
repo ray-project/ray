@@ -52,13 +52,13 @@ RetriableFIFOWorkerKillingPolicy::SelectWorkerToKill(
             sorted.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              // First sort by retriable tasks and then by task time in ascending order.
+              // First sort by retriable leases and then by lease time in ascending order.
               int left_retriable =
-                  left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+                  left->GetGrantedLease().GetLeaseSpecification().IsRetriable() ? 0 : 1;
               int right_retriable =
-                  right->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+                  right->GetGrantedLease().GetLeaseSpecification().IsRetriable() ? 0 : 1;
               if (left_retriable == right_retriable) {
-                return left->GetAssignedTaskTime() < right->GetAssignedTaskTime();
+                return left->GetGrantedLeaseTime() < right->GetGrantedLeaseTime();
               }
               return left_retriable < right_retriable;
             });

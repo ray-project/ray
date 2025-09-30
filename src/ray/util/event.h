@@ -150,7 +150,7 @@ class EventManager final {
 
   ~EventManager() = default;
 
-  bool IsEmpty();
+  bool IsEmpty() const;
 
   // We added `const json &custom_fields` here because we need to support typed custom
   // fields.
@@ -174,9 +174,11 @@ class EventManager final {
  private:
   EventManager();
 
-  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_
+      ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
-      export_log_reporter_map_;
+      export_log_reporter_map_ ABSL_GUARDED_BY(mutex_);
+  mutable absl::Mutex mutex_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -366,7 +368,6 @@ bool IsExportAPIEnabledSourceType(
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \param emit_event_to_log_file if True, it will emit the event to the process log file
 /// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
-/// \return void.
 void RayEventInit(const std::vector<SourceTypeVariant> &source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,

@@ -4,22 +4,21 @@ import time
 
 import grpc
 import numpy as np
-import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
-from ray.util.state import list_tasks
-from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
+from ray._common.network_utils import build_address
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
     kill_raylet,
+    run_string_as_driver,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import (
@@ -29,6 +28,9 @@ from ray.core.generated import (
     node_manager_pb2_grpc,
 )
 from ray.exceptions import LocalRayletDiedError
+from ray.util.state import list_tasks
+
+import psutil
 
 
 def search_raylet(cluster):
@@ -353,10 +355,10 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
 
     # Kill a raylet gracefully.
     def kill_raylet(ip, port, graceful=True):
-        raylet_address = f"{ip}:{port}"
+        raylet_address = build_address(ip, port)
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        print(f"Sending a shutdown request to {ip}:{port}")
+        print(f"Sending a shutdown request to {build_address(ip, port)}")
         try:
             stub.ShutdownRaylet(
                 node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
@@ -541,9 +543,20 @@ ray.get(task.remote(), timeout=3)
 
 def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     cluster = ray_start_cluster
-    head = cluster.add_node(num_cpus=4, resources={"foo": 1})
+    # Required for reducing the retry time of RequestWorkerLease
+    system_configs = {
+        "raylet_rpc_server_reconnect_timeout_s": 0,
+        "health_check_initial_delay_ms": 0,
+        "health_check_timeout_ms": 10,
+        "health_check_failure_threshold": 1,
+    }
+    head = cluster.add_node(
+        num_cpus=4,
+        resources={"foo": 1},
+        _system_config=system_configs,
+    )
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, include_dashboard=True)
 
     @ray.remote(resources={"foo": 1})
     def func():
@@ -687,7 +700,7 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
         time.sleep(3)
         os.kill(os.getpid(), 9)
 
-    with ray.init():
+    with ray.init(include_dashboard=True):
         ref = sleeper.remote()
 
         raylet = ray.nodes()[0]

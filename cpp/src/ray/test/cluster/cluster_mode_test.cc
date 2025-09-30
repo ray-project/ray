@@ -22,6 +22,7 @@
 #include "absl/flags/parse.h"
 #include "counter.h"
 #include "plus.h"
+#include "ray/util/network_util.h"
 
 int cmd_argc = 0;
 char **cmd_argv = nullptr;
@@ -73,7 +74,7 @@ TEST(RayClusterModeTest, FullTest) {
     std::string local_ip = ray::internal::GetNodeIpAddress();
     ray::internal::ProcessHelper::GetInstance().StartRayNode(
         local_ip, port, username, password);
-    config.address = local_ip + ":" + std::to_string(port);
+    config.address = ray::BuildAddress(local_ip, port);
     config.redis_username_ = username;
     config.redis_password_ = password;
   }
@@ -585,20 +586,20 @@ TEST(RayClusterModeTest, GetNamespaceApiTest) {
 
 class Pip {
  public:
-  std::vector<std::string> packages;
-  bool pip_check = false;
+  std::vector<std::string> packages_;
+  bool pip_check_ = false;
   Pip() = default;
   Pip(const std::vector<std::string> &packages, bool pip_check)
-      : packages(packages), pip_check(pip_check) {}
+      : packages_(packages), pip_check_(pip_check) {}
 };
 
 void to_json(nlohmann::json &j, const Pip &pip) {
-  j = nlohmann::json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
+  j = nlohmann::json{{"packages", pip.packages_}, {"pip_check", pip.pip_check_}};
 };
 
 void from_json(const nlohmann::json &j, Pip &pip) {
-  j.at("packages").get_to(pip.packages);
-  j.at("pip_check").get_to(pip.pip_check);
+  j.at("packages").get_to(pip.packages_);
+  j.at("pip_check").get_to(pip.pip_check_);
 };
 
 TEST(RayClusterModeTest, RuntimeEnvApiTest) {
@@ -617,8 +618,8 @@ TEST(RayClusterModeTest, RuntimeEnvApiTest) {
   // Deserialize
   auto runtime_env_2 = ray::RuntimeEnv::Deserialize(serialized_runtime_env);
   auto pip2 = runtime_env_2.Get<Pip>("pip");
-  EXPECT_EQ(pip2.packages, pip.packages);
-  EXPECT_EQ(pip2.pip_check, pip.pip_check);
+  EXPECT_EQ(pip2.packages_, pip.packages_);
+  EXPECT_EQ(pip2.pip_check_, pip.pip_check_);
   auto working_dir2 = runtime_env_2.Get<std::string>("working_dir");
   EXPECT_EQ(working_dir2, working_dir);
 

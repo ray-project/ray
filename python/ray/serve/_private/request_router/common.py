@@ -49,6 +49,9 @@ class PendingRequest:
     )
     """Context for request routing, used to track routing attempts and backoff."""
 
+    resolved: bool = False
+    """Whether the arguments have been resolved."""
+
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""
         self.future = asyncio.Future()

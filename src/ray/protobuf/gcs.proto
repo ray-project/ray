@@ -440,7 +440,7 @@ message WorkerTableData {
 
 // Fields to publish when worker fails.
 message WorkerDeltaData {
-  bytes raylet_id = 1;
+  bytes node_id = 1;
   bytes worker_id = 2;
 }
 
@@ -642,8 +642,6 @@ message PlacementGroupTableData {
   // The placement group's stats / information such as when it is created or
   // what's the current scheduling state.
   PlacementGroupStats stats = 12;
-  // The maximum fraction of CPU cores that this placement group can use on each node.
-  double max_cpu_fraction_per_node = 13;
   // Binary ID of the target node where bundles should be placed
   // iff the target node has enough available resources and alive.
   // Otherwise, the bundles can be placed elsewhere.

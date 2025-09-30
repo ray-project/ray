@@ -222,10 +222,6 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "theme=light&panelId=1",
       },
       {
-        title: "Bytes Allocated",
-        pathParams: "theme=light&panelId=2",
-      },
-      {
         title: "Bytes Freed",
         pathParams: "theme=light&panelId=3",
       },
@@ -329,20 +325,8 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "theme=light&panelId=37",
       },
       {
-        title: "(p50) Task Completion Time",
-        pathParams: "theme=light&panelId=40",
-      },
-      {
-        title: "(p75) Task Completion Time",
-        pathParams: "theme=light&panelId=41",
-      },
-      {
-        title: "(p99) Task Completion Time",
-        pathParams: "theme=light&panelId=44",
-      },
-      {
-        title: "(p100) Task Completion Time",
-        pathParams: "theme=light&panelId=45",
+        title: "Task Completion Time",
+        pathParams: "theme=light&panelId=38",
       },
     ],
   },

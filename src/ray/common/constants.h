@@ -14,8 +14,7 @@
 
 #pragma once
 
-#include <limits.h>
-#include <stdint.h>
+#include <climits>
 
 /// Default value for enable_task_events within core.
 constexpr bool kDefaultTaskEventEnabled = true;
@@ -55,6 +54,8 @@ constexpr int kPublicDNSServerPort = 53;
 
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
 constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
+
+constexpr char kEnvVarKeyGrpcThreadCount[] = "RAY_num_grpc_internal_threads";
 
 /// for cross-langueage serialization
 constexpr int kMessagePackOffset = 9;

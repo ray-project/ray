@@ -1,6 +1,6 @@
 import os
 
-from ci.ray_ci.windows_container import WindowsContainer, WORKDIR
+from ci.ray_ci.windows_container import WORKDIR, WindowsContainer
 
 
 class WindowsBuilderContainer(WindowsContainer):

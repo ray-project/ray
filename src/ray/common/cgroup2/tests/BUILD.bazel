@@ -1,0 +1,58 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "sysfs_cgroup_driver_test",
+    srcs = ["sysfs_cgroup_driver_test.cc"],
+    tags = [
+        "cgroup",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/common/cgroup2:sysfs_cgroup_driver",
+        "//src/ray/common/tests:testing",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "cgroup_manager_test",
+    srcs = ["cgroup_manager_test.cc"],
+    tags = [
+        "cgroup",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common/cgroup2:cgroup_driver_interface",
+        "//src/ray/common/cgroup2:cgroup_manager",
+        "//src/ray/common/cgroup2:fake_cgroup_driver",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# TODO(#54703): This target builds the noop implementations.
+# There's a corressponding test that runs on Linux and Non-Linux
+# CI so breakages are caught in premerge before these targets are
+# cleaned up at the end of the resource isolation milestone 1
+# project.
+ray_cc_test(
+    name = "noop_cgroup_test",
+    srcs = ["noop_cgroup_test.cc"],
+    tags = [
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common/cgroup2:noop_cgroup_targets",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

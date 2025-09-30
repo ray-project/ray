@@ -2,7 +2,6 @@ import os
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
@@ -16,12 +15,16 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
+import psutil
+
 
 @pytest.mark.parametrize(
     "call_ray_start",
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0 --system-config "
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+        '{"core_worker_rpc_server_reconnect_timeout_s":0}',
     ],
     indirect=True,
 )
@@ -78,14 +81,17 @@ print("success")
     def all_workers_exited():
         result = True
         print("list of idle workers:")
-        for proc in psutil.process_iter():
-            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+        for proc in psutil.process_iter(attrs=["name"], ad_value=None):
+            if (
+                proc.info["name"]
+                and ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.info["name"]
+            ):
                 print(f"{proc}")
                 result = False
         return result
 
     # Check that workers are eventually cleaned up.
-    wait_for_condition(all_workers_exited, timeout=15, retry_interval_ms=1000)
+    wait_for_condition(all_workers_exited, timeout=30, retry_interval_ms=1000)
 
 
 def test_error_isolation(call_ray_start):

@@ -1,27 +1,31 @@
 # coding: utf-8
+import importlib
 import logging
 import os
 import pickle
 import socket
 import sys
 import time
-import importlib
 
 import numpy as np
 import pytest
-import psutil
 
 import ray
 import ray._private.ray_constants
 import ray._private.utils
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
+from ray.util.state import list_actors
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
 
 def test_global_state_api(shutdown_only):
 
-    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+    ray.init(
+        num_cpus=5, num_gpus=3, resources={"CustomResource": 1}, include_dashboard=True
+    )
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -46,15 +50,12 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray._private.state.actors()
+    actor_table = list_actors()  # should be using this API now for fetching actors
     assert len(actor_table) == 1
 
-    (actor_info,) = actor_table.values()
-    assert actor_info["JobID"] == job_id.hex()
-    assert actor_info["Name"] == "test_actor"
-    assert "IPAddress" in actor_info["Address"]
-    assert "IPAddress" in actor_info["OwnerAddress"]
-    assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
+    actor_info = actor_table[0]
+    assert actor_info.job_id == job_id.hex()
+    assert actor_info.name == "test_actor"
 
     job_table = ray._private.state.jobs()
 

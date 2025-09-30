@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 
 from ray.util import accelerators

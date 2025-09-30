@@ -32,6 +32,7 @@ namespace ray {
 
 /// Wrap a protobuf message.
 template <class Message>
+// TODO(#55921): Remove MessageWrapper class and clean up LeaseSpec/TaskSpec classes
 class MessageWrapper {
  public:
   /// Construct an empty message wrapper. This should not be used directly.
@@ -241,6 +242,13 @@ inline google::protobuf::Timestamp AbslTimeNanosToProtoTimestamp(int64_t nanos) 
   timestamp.set_seconds(nanos / 1000000000);
   timestamp.set_nanos(nanos % 1000000000);
   return timestamp;
+}
+
+// Conver a protobuf timestamp to an epoch time in nanoseconds
+// Ref: https://protobuf.dev/reference/php/api-docs/Google/Protobuf/Timestamp.html
+inline int64_t ProtoTimestampToAbslTimeNanos(
+    const google::protobuf::Timestamp &timestamp) {
+  return timestamp.seconds() * 1000000000LL + timestamp.nanos();
 }
 
 }  // namespace ray

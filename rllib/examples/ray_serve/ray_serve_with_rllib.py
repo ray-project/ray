@@ -90,6 +90,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray._common.network_utils import build_address
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
@@ -166,7 +167,7 @@ if __name__ == "__main__":
             # print(f"-> Requesting action for obs={obs} ...", end="")
             # Send a request to serve.
             resp = requests.get(
-                f"http://localhost:{args.port}/rllib-rlmodule",
+                f"http://{build_address('localhost', args.port)}/rllib-rlmodule",
                 json={"observation": obs.tolist()},
             )
             response = resp.json()

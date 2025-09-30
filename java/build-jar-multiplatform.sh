@@ -38,7 +38,7 @@ build_jars() {
     bazel run ":gen_proto_files"
     if [[ $bazel_build == "true" ]]; then
       echo "Starting building java native dependencies for $p"
-      bazel build ":gen_maven_deps"
+      bazel run ":gen_maven_deps"
       echo "Finished building java native dependencies for $p"
     fi
     echo "Start building jars for $p"

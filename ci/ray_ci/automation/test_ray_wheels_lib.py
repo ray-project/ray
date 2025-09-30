@@ -1,20 +1,21 @@
-from unittest import mock
+import os
 import sys
 import tempfile
-import os
-from botocore.exceptions import ClientError
+from unittest import mock
+
 import pytest
+from botocore.exceptions import ClientError
 
 from ci.ray_ci.automation.ray_wheels_lib import (
-    _get_wheel_names,
-    download_wheel_from_s3,
-    download_ray_wheels_from_s3,
-    _check_downloaded_wheels,
-    PYTHON_VERSIONS,
     ALL_PLATFORMS,
+    PYTHON_VERSIONS,
     RAY_TYPES,
-    add_build_tag_to_wheels,
+    _check_downloaded_wheels,
+    _get_wheel_names,
     add_build_tag_to_wheel,
+    add_build_tag_to_wheels,
+    download_ray_wheels_from_s3,
+    download_wheel_from_s3,
 )
 
 SAMPLE_WHEELS = [

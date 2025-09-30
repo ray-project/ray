@@ -1,31 +1,34 @@
-import sys
 import os
+import sys
 
 import pytest
 
 import ray
-
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.test_utils import placement_group_assert_no_leak
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def test_bundle_label_selector_with_repeated_labels(ray_start_cluster):
     cluster = ray_start_cluster
-    num_nodes = 2
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4, labels={"ray.io/accelerator-type": "A100"})
+    cluster.add_node(num_cpus=4, labels={"ray.io/accelerator-type": "A100"})
+    node = cluster.add_node(num_cpus=4, labels={"ray.io/accelerator-type": "TPU"})
     ray.init(address=cluster.address)
 
     bundles = [{"CPU": 1}, {"CPU": 1}]
-    label_selector = [{"ray.io/accelerator-type": "A100"}] * 2
+    label_selector = [{"ray.io/accelerator-type": "TPU"}] * 2
 
     placement_group = ray.util.placement_group(
         name="repeated_labels_pg",
-        strategy="PACK",
         bundles=bundles,
         bundle_label_selector=label_selector,
     )
     ray.get(placement_group.ready())
+
+    bundles_to_node_id = ray.util.placement_group_table()[placement_group.id.hex()][
+        "bundles_to_node_id"
+    ]
+    assert bundles_to_node_id[0] == node.node_id
+    assert bundles_to_node_id[1] == node.node_id
 
     placement_group_assert_no_leak([placement_group])
 
@@ -42,7 +45,6 @@ def test_unschedulable_bundle_label_selector(ray_start_cluster):
 
     placement_group = ray.util.placement_group(
         name="unschedulable_labels_pg",
-        strategy="STRICT_PACK",
         bundles=bundles,
         bundle_label_selector=label_selector,
     )
@@ -53,7 +55,7 @@ def test_unschedulable_bundle_label_selector(ray_start_cluster):
     state = ray.util.placement_group_table()[placement_group.id.hex()]["stats"][
         "scheduling_state"
     ]
-    assert state == "INFEASIBLE"
+    assert state == "NO_RESOURCES"
 
 
 def test_bundle_label_selectors_match_bundle_resources(ray_start_cluster):
@@ -89,7 +91,6 @@ def test_bundle_label_selectors_match_bundle_resources(ray_start_cluster):
 
     pg = ray.util.placement_group(
         name="label_selectors_match_resources",
-        strategy="SPREAD",
         bundles=bundles,
         bundle_label_selector=bundle_label_selectors,
     )
