@@ -266,6 +266,7 @@ py_test_module_list(
         "test_runtime_env_2.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "post_wheel_build",
         "team:serve",
@@ -304,6 +305,7 @@ py_test(
     size = "medium",
     srcs = ["test_serve_ha.py"],
     tags = [
+        "custom_setup",
         "exclusive",
         "ha_integration",
         "team:serve",
