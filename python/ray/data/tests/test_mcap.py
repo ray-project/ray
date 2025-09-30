@@ -450,28 +450,20 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
         }
     ]
 
-    try:
-        create_test_mcap_file(path, messages)
-        assert os.path.exists(path), f"Test MCAP file was not created at {path}"
+    create_test_mcap_file(path, messages)
+    assert os.path.exists(path), f"Test MCAP file was not created at {path}"
 
-        ds = ray.data.read_mcap(path)
-        rows = ds.take_all()
+    ds = ray.data.read_mcap(path)
+    rows = ds.take_all()
 
-        assert len(rows) == 1, f"Expected 1 row, got {len(rows)}"
-        row = rows[0]
+    assert len(rows) == 1, f"Expected 1 row, got {len(rows)}"
+    row = rows[0]
 
-        # Verify the data field is properly decoded as a Python dict, not bytes
-        assert isinstance(row["data"], dict), f"Expected dict, got {type(row['data'])}"
-        assert row["data"]["sensor_data"]["temperature"] == 23.5
-        assert row["data"]["metadata"]["device_id"] == "sensor_001"
-        assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
-    finally:
-        # Ensure cleanup even if test fails
-        if os.path.exists(path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass  # Ignore cleanup errors
+    # Verify the data field is properly decoded as a Python dict, not bytes
+    assert isinstance(row["data"], dict), f"Expected dict, got {type(row['data'])}"
+    assert row["data"]["sensor_data"]["temperature"] == 23.5
+    assert row["data"]["metadata"]["device_id"] == "sensor_001"
+    assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
 
 
 if __name__ == "__main__":

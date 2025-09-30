@@ -7,7 +7,7 @@ time-series data.
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
@@ -17,6 +17,14 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+    try:
+        from mcap.reader import Channel, Message, Schema
+    except ImportError:
+        # Fallback to Any if mcap is not available during type checking
+        Schema = Any
+        Channel = Any
+        Message = Any
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +71,7 @@ class MCAPDatasource(FileBasedDatasource):
         paths: Union[str, List[str]],
         channels: Optional[Union[List[str], Set[str]]] = None,
         topics: Optional[Union[List[str], Set[str]]] = None,
-        time_range: Optional[tuple] = None,
+        time_range: Optional[Tuple[int, int]] = None,
         message_types: Optional[Union[List[str], Set[str]]] = None,
         include_metadata: bool = True,
         **file_based_datasource_kwargs,
@@ -95,12 +103,6 @@ class MCAPDatasource(FileBasedDatasource):
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="mcap", package="mcap")
-
-        # Validate mutually exclusive filters
-        if channels is not None and topics is not None:
-            raise ValueError(
-                "Cannot specify both 'channels' and 'topics' - they are mutually exclusive"
-            )
 
         # Convert to sets for faster lookup
         self._channels = set(channels) if channels else None
@@ -143,13 +145,7 @@ class MCAPDatasource(FileBasedDatasource):
 
             # Determine which topics to filter on for MCAP's built-in filtering
             # Use topics if specified, otherwise use channels (which map to topics)
-            filter_topics = None
-            if self._topics:
-                filter_topics = list(self._topics)
-            elif self._channels:
-                # For channels, we'll need to apply filtering after reading
-                # since MCAP filters by topic, not channel name
-                filter_topics = None
+            filter_topics = list(self._topics) if self._topics else None
 
             # Use MCAP's built-in filtering for topics and time range
             messages = reader.iter_messages(
@@ -180,7 +176,9 @@ class MCAPDatasource(FileBasedDatasource):
             logger.debug(f"MCAP file read error details: {type(e).__name__}: {e}")
             raise ValueError(f"Failed to read MCAP file {path}: {e}") from e
 
-    def _should_include_message(self, schema: Any, channel: Any, message: Any) -> bool:
+    def _should_include_message(
+        self, schema: "Schema", channel: "Channel", message: "Message"
+    ) -> bool:
         """Check if a message should be included based on filters.
 
         This method applies Python-level filtering that cannot be pushed down
@@ -200,13 +198,13 @@ class MCAPDatasource(FileBasedDatasource):
 
         # Channel filter (only apply if topics weren't used for MCAP filtering)
         # In MCAP, channels are identified by their topic names
-        if self._channels and not self._topics and channel.topic not in self._channels:
+        if self._channels and channel.topic not in self._channels:
             return False
 
         return True
 
     def _message_to_dict(
-        self, schema: Any, channel: Any, message: Any, path: str
+        self, schema: "Schema", channel: "Channel", message: "Message", path: str
     ) -> Dict[str, Any]:
         """Convert MCAP message to dictionary format.
 
