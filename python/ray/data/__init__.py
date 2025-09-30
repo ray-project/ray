@@ -17,8 +17,6 @@ from ray.data.context import DataContext, DatasetContext
 from ray.data._internal.cache import (
     clear_dataset_cache,
     get_cache_stats,
-    get_cache_health,
-    cleanup_cache,
     disable_dataset_caching,
 )
 from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
@@ -185,7 +183,5 @@ __all__ = [
     # Dataset caching API
     "clear_dataset_cache",
     "get_cache_stats",
-    "get_cache_health",
-    "cleanup_cache",
     "disable_dataset_caching",
 ]
