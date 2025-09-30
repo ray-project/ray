@@ -21,7 +21,6 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
-#include "ray/core_worker/task_event_buffer.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/mutex_protected.h"
 
@@ -150,8 +149,6 @@ class CoreWorkerProcessImpl {
   void ShutdownDriver();
 
  private:
-  /// Start the task event buffer if metrics agent is ready and buffer is constructed.
-  void StartTaskEventBufferIfReady();
   /// The various options.
   const CoreWorkerOptions options_;
 
@@ -188,10 +185,6 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
 
   ray::stats::Gauge task_by_state_counter_{GetTaskMetric()};
-
-  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_;
-  // Tracks metrics agent readiness to defer TaskEventBuffer::Start() if needed.
-  bool metrics_agent_ready_ = false;
 };
 }  // namespace core
 }  // namespace ray

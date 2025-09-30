@@ -47,8 +47,8 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     core_worker_->task_execution_service_.stop();
   }
 
-  core_worker_->task_event_buffer_.FlushEvents(/*forced=*/true);
-  core_worker_->task_event_buffer_.Stop();
+  core_worker_->task_event_buffer_->FlushEvents(/*forced=*/true);
+  core_worker_->task_event_buffer_->Stop();
 
   core_worker_->io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
@@ -243,7 +243,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
   core_worker_->RecordMetrics();
 
   if (core_worker_->options_.worker_type == WorkerType::DRIVER &&
-      core_worker_->task_event_buffer_.Enabled() &&
+      core_worker_->task_event_buffer_->Enabled() &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         core_worker_->worker_context_->GetCurrentTaskID(),
@@ -254,7 +254,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         /*is_actor_task_event=*/
         core_worker_->worker_context_->GetCurrentActorID().IsNil(),
         core_worker_->options_.session_name);
-    core_worker_->task_event_buffer_.AddTaskEvent(std::move(task_event));
+    core_worker_->task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
   opencensus::stats::StatsExporter::ExportNow();

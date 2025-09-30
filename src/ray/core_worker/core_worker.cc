@@ -301,7 +301,7 @@ CoreWorker::CoreWorker(
     std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
     std::unique_ptr<ActorManager> actor_manager,
     instrumented_io_context &task_execution_service,
-    worker::TaskEventBuffer &task_event_buffer,
+    std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_counter)
     : options_(std::move(options)),
@@ -343,7 +343,7 @@ CoreWorker::CoreWorker(
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_counter_(task_by_state_counter),
-      task_event_buffer_(task_event_buffer),
+      task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
@@ -366,7 +366,7 @@ CoreWorker::CoreWorker(
         });
     task_receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
-        task_event_buffer_,
+        *task_event_buffer_,
         execute_task,
         *task_argument_waiter_,
         options_.initialize_thread_callback,
@@ -398,7 +398,7 @@ CoreWorker::CoreWorker(
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
 
     // Add the driver task info.
-    if (task_event_buffer_.Enabled() &&
+    if (task_event_buffer_->Enabled() &&
         !RayConfig::instance().task_events_skip_driver_for_test()) {
       auto spec = std::move(builder).ConsumeAndBuild();
       auto job_id = spec.JobId();
@@ -411,7 +411,7 @@ CoreWorker::CoreWorker(
           /*is_actor_task_event=*/false,
           options_.session_name,
           std::make_shared<const TaskSpecification>(std::move(spec)));
-      task_event_buffer_.AddTaskEvent(std::move(task_event));
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
 
@@ -435,7 +435,7 @@ CoreWorker::CoreWorker(
                         << task_execution_service_.stats().StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task Event stats:\n"
-                        << task_event_buffer_.DebugString() << "\n";
+                        << task_event_buffer_->DebugString() << "\n";
         },
         event_stats_print_interval_ms,
         "CoreWorker.PrintEventStats");
@@ -542,7 +542,7 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Driver exiting.
-  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_.Enabled() &&
+  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled() &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_->GetCurrentTaskID(),
@@ -552,7 +552,7 @@ void CoreWorker::Disconnect(
         /*timestamp=*/absl::GetCurrentTimeNanos(),
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
         options_.session_name);
-    task_event_buffer_.AddTaskEvent(std::move(task_event));
+    task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
   opencensus::stats::StatsExporter::ExportNow();
@@ -2608,7 +2608,7 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_name) {
   return std::make_unique<worker::ProfileEvent>(
-      task_event_buffer_, *worker_context_, options_.node_ip_address, event_name);
+      *task_event_buffer_, *worker_context_, options_.node_ip_address, event_name);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
@@ -2727,13 +2727,13 @@ Status CoreWorker::ExecuteTask(
             ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_)
             : worker::TaskStatusEvent::TaskStateUpdate(pid_);
     RAY_UNUSED(
-        task_event_buffer_.RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
-                                                         task_spec.JobId(),
-                                                         task_spec.AttemptNumber(),
-                                                         task_spec,
-                                                         rpc::TaskStatus::RUNNING,
-                                                         /*include_task_info=*/false,
-                                                         update));
+        task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
+                                                          task_spec.JobId(),
+                                                          task_spec.AttemptNumber(),
+                                                          task_spec,
+                                                          rpc::TaskStatus::RUNNING,
+                                                          /*include_task_info=*/false,
+                                                          update));
 
     worker_context_->SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -4482,7 +4482,7 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
   auto current_task = worker_context_->GetCurrentTask();
   RAY_CHECK(current_task)
       << "We should have set the current task spec while executing the task.";
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_->GetCurrentJobID(),
       attempt_number,
@@ -4506,7 +4506,7 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
   auto current_task = worker_context_->GetCurrentTask();
   RAY_CHECK(current_task)
       << "We should have set the current task spec before executing the task.";
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_->GetCurrentJobID(),
       attempt_number,
@@ -4524,7 +4524,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       << "We should have set the running task spec before running the task.";
   RAY_LOG(DEBUG).WithField(running_task_it->second.TaskId())
       << "Task is paused by debugger set to " << is_debugger_paused;
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_->GetCurrentJobID(),
       running_task_it->second.AttemptNumber(),

@@ -303,12 +303,6 @@ class TaskEventBufferTestBatchSendDifferentDestination
         to_aggregator_str + R"(
 }
   )");
-
-    // Recreate buffer after config to ensure limits are applied.
-    task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name");
   }
 };
 
@@ -333,12 +327,6 @@ class TaskEventBufferTestLimitBufferDifferentDestination
         to_aggregator_str + R"(
 }
   )");
-
-    // Recreate buffer after config to ensure limits are applied.
-    task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name");
   }
 };
 
@@ -353,12 +341,6 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   "task_events_max_num_profile_events_buffer_on_worker": 20
 }
   )");
-
-    // Recreate buffer after config to ensure limits are applied.
-    task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name");
   }
 };
 
@@ -382,12 +364,6 @@ class TaskEventBufferTestDifferentDestination
         to_aggregator_str + R"(
 }
   )");
-
-    // Recreate buffer after config to ensure limits are applied.
-    task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name");
   }
 };
 

@@ -164,7 +164,7 @@ class CoreWorkerTest : public ::testing::Test {
         core_worker_client_pool,
         rpc_address_);
 
-    task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+    auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
         "test_session");
@@ -180,7 +180,7 @@ class CoreWorkerTest : public ::testing::Test {
            const std::string &error_message,
            double timestamp) { return Status::OK(); },
         RayConfig::instance().max_lineage_bytes(),
-        *task_event_buffer_,
+        *task_event_buffer,
         [](const ActorID &actor_id) {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
@@ -269,7 +269,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(object_recovery_manager),
                                                 std::move(actor_manager),
                                                 task_execution_service_,
-                                                *task_event_buffer_,
+                                                std::move(task_event_buffer),
                                                 getpid(),
                                                 fake_task_by_state_counter_);
   }
@@ -292,7 +292,6 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
-  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_;
 
   // Controllable time for testing publisher timeouts
   double current_time_ms_;

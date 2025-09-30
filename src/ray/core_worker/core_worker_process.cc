@@ -166,6 +166,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 #endif
   }
 
+  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
+      std::make_unique<gcs::GcsClient>(options.gcs_options),
+      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                       *client_call_manager),
+      options.session_name);
+
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
 #if defined(__APPLE__)
@@ -262,6 +268,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto gcs_client = std::make_shared<gcs::GcsClient>(options.gcs_options,
                                                      worker_context->GetWorkerID());
   RAY_CHECK_OK(gcs_client->Connect(io_service_));
+
+  if (RayConfig::instance().task_events_report_interval_ms() > 0) {
+    if (!task_event_buffer->Start().ok()) {
+      RAY_CHECK(!task_event_buffer->Enabled()) << "TaskEventBuffer should be disabled.";
+    }
+  }
 
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
@@ -410,16 +422,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     return core_worker->PushError(job_id, type, error_message, timestamp);
   };
 
-  // Initialize task event buffer before it is used by TaskManager.
-  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_unique<gcs::GcsClient>(options.gcs_options),
-      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager),
-      options.session_name);
-  // If metrics agent is already ready, start the task event buffer (Start() is
-  // idempotent).
-  StartTaskEventBufferIfReady();
-
   auto task_manager = std::make_shared<TaskManager>(
       *memory_store,
       *reference_counter,
@@ -459,7 +461,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      *task_event_buffer_,
+      *task_event_buffer,
       /*get_actor_rpc_client_callback=*/
       [this](const ActorID &actor_id)
           -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
@@ -674,20 +676,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(object_recovery_manager),
                                    std::move(actor_manager),
                                    task_execution_service_,
-                                   *task_event_buffer_,
+                                   std::move(task_event_buffer),
                                    pid,
                                    task_by_state_counter_);
   return core_worker;
-}
-
-void CoreWorkerProcessImpl::StartTaskEventBufferIfReady() {
-  if (metrics_agent_ready_ &&
-      RayConfig::instance().task_events_report_interval_ms() > 0) {
-    if (!this->task_event_buffer_->Start().ok()) {
-      RAY_CHECK(!this->task_event_buffer_->Enabled())
-          << "TaskEventBuffer should be disabled.";
-    }
-  }
 }
 
 CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
@@ -822,8 +814,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         *write_locked.Get()->client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       stats::InitOpenTelemetryExporter(options_.metrics_agent_port, server_status);
-      metrics_agent_ready_ = server_status.ok();
-      StartTaskEventBufferIfReady();
     });
   }
 }

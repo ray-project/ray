@@ -557,11 +557,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Client to the event aggregator used to push ray events to it.
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
 
-  /// True if the TaskEventBuffer is enabled (accepts buffering of events).
+  /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
-
-  /// True if the TaskEventBuffer has been started (periodic flushing + clients ready).
-  std::atomic<bool> started_ = false;
 
   /// Circular buffered task status events.
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_

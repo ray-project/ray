@@ -196,11 +196,7 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.mutable_runtime_env_info()->CopyFrom(
       task_spec_->RuntimeEnvInfo());
   definition_event_data.set_job_id(job_id_.Binary());
-  // NOTE: we set the parent task id of a task to the submitter
-  // The submitter task id is:
-  // - For concurrent actors: the actor creation task's task id.
-  // - Otherwise: the CoreWorker main thread's task id.
-  definition_event_data.set_parent_task_id(task_spec_->SubmitterTaskId().Binary());
+  definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
   definition_event_data.set_placement_group_id(
       task_spec_->PlacementGroupBundleId().first.Binary());
   const auto &labels = task_spec_->GetMessage().labels();
@@ -424,30 +420,12 @@ TaskEventBufferImpl::TaskEventBufferImpl(
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       event_aggregator_client_(std::move(event_aggregator_client)),
-      session_name_(session_name) {
-  // Determine if the buffer is enabled for accepting events based on config.
-  // When enabled, we buffer events even before Start() is called. Flushing only begins
-  // after Start() succeeds.
-  auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
-  enabled_ = report_interval_ms > 0;
-
-  if (enabled_) {
-    status_events_.set_capacity(
-        RayConfig::instance().task_events_max_num_status_events_buffer_on_worker());
-    status_events_for_export_.set_capacity(
-        RayConfig::instance()
-            .task_events_max_num_export_status_events_buffer_on_worker());
-  }
-}
+      session_name_(session_name) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
-  if (started_) {
-    // already started, return OK
-    return Status::OK();
-  }
   send_task_events_to_gcs_enabled_ =
       RayConfig::instance().enable_core_worker_task_event_to_gcs();
   send_ray_events_to_aggregator_enabled_ =
@@ -461,6 +439,11 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
+
+  status_events_.set_capacity(
+      RayConfig::instance().task_events_max_num_status_events_buffer_on_worker());
+  status_events_for_export_.set_capacity(
+      RayConfig::instance().task_events_max_num_export_status_events_buffer_on_worker());
 
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
@@ -488,8 +471,6 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     return status;
   }
 
-  // Mark started and enabled now that Start() has succeeded.
-  started_ = true;
   enabled_ = true;
 
   if (!auto_flush) {
@@ -504,7 +485,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
 }
 
 void TaskEventBufferImpl::Stop() {
-  if (!started_) {
+  if (!enabled_) {
     return;
   }
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
@@ -525,7 +506,6 @@ void TaskEventBufferImpl::Stop() {
       gcs_client_->Disconnect();
     }
   }
-  started_ = false;
 }
 
 bool TaskEventBufferImpl::Enabled() const { return enabled_; }
@@ -842,7 +822,7 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
-  if (!started_) {
+  if (!enabled_) {
     return;
   }
 
