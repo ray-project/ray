@@ -9,7 +9,7 @@ import sys
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import build_address, is_localhost, parse_address
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
@@ -174,6 +174,10 @@ class DashboardAgent:
 
     def get_node_id(self) -> str:
         return self.node_id
+
+    @property
+    def is_head(self) -> bool:
+        return self.ip == parse_address(self.gcs_address)[0]
 
     async def run(self):
         # Start a grpc asyncio server.
