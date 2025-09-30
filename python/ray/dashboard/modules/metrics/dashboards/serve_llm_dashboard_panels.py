@@ -8,8 +8,9 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
     TargetTemplate,
 )
-
-from ray.llm._internal.serve.builders.application_builders import RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX
+from ray.llm._internal.serve.builders.application_builders import (
+    RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX,
+)
 
 SERVE_LLM_GRAFANA_PANELS = [
     Panel(
@@ -19,11 +20,15 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"' + RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX + '.*"}}[$interval])) by (WorkerId)',
+                expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"'
+                + RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX
+                + '.*"}}[$interval])) by (WorkerId)',
                 legend="{{model_name}}, {{WorkerId}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"' + RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX + '.*"}}[$interval]))',
+                expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"'
+                + RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX
+                + '.*"}}[$interval]))',
                 legend="Total QPS",
             ),
         ],
@@ -139,15 +144,15 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="percent",
         targets=[
             Target(
-                expr='max(100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval]))))',
+                expr="max(100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval]))))",
                 legend="Max Hit Rate",
             ),
             Target(
-                expr='min(100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval]))))',
+                expr="min(100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval]))))",
                 legend="Min Hit Rate",
             ),
             Target(
-                expr='100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval])))',
+                expr="100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval])))",
                 legend="Hit Rate {{WorkerId}}",
             ),
         ],
