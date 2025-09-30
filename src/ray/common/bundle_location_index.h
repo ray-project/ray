@@ -44,11 +44,11 @@ class BundleLocationIndex {
   ///
   /// \param bundle_id
   /// \param node_id
-  /// \param bundle_specification
+  /// \param bundle_specialication
   void AddOrUpdateBundleLocation(
       const BundleID &bundle_id,
       const NodeID &node_id,
-      std::shared_ptr<const BundleSpecification> bundle_specification = nullptr);
+      std::shared_ptr<const BundleSpecification> bundle_specialication = nullptr);
 
   /// Erase bundle locations associated with a given node id.
   ///
@@ -80,10 +80,9 @@ class BundleLocationIndex {
   /// Update the index to contain new node information. Should be used only when new node
   /// is added to the cluster.
   ///
-  /// \param map of alive nodes.
+  /// \param alive_nodes map of alive nodes.
   void AddNodes(
-      const absl::flat_hash_map<NodeID, std::shared_ptr<const ray::rpc::GcsNodeInfo>>
-          &nodes);
+      const absl::flat_hash_map<NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>> &nodes);
 
   /// get bundle_locations debug string info
   std::string GetBundleLocationDebugString(const BundleLocations &bundle_locations) const;
