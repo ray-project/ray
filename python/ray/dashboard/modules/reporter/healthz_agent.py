@@ -74,12 +74,16 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             result = checks[name].result()
             checks[name] = result
             if result.status != 200:
-                logger.warning(f"health check {name} failed: {result.status} {result.text}")
+                logger.warning(
+                    f"health check {name} failed: {result.status} {result.text}"
+                )
 
         return Response(
-                status=200 if all([ resp.status == 200 for resp in checks.values() ]) else 503,
-                text='\n'.join([ f"{name}: {resp.text}" for name, resp in checks.items() ]),
-                content_type="application/text",
+            status=(
+                200 if all([resp.status == 200 for resp in checks.values()]) else 503
+            ),
+            text="\n".join([f"{name}: {resp.text}" for name, resp in checks.items()]),
+            content_type="application/text",
         )
 
     async def run(self, server):
