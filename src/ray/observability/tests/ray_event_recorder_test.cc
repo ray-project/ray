@@ -84,10 +84,10 @@ TEST_F(RayEventRecorderTest, TestMergeEvents) {
   data.set_job_id("test_job_id");
 
   std::vector<std::unique_ptr<RayEventInterface>> events;
-  events.push_back(std::make_unique<RayDriverJobExecutionEvent>(
-      data, rpc::events::DriverJobExecutionEvent::CREATED, "test_session_name"));
-  events.push_back(std::make_unique<RayDriverJobExecutionEvent>(
-      data, rpc::events::DriverJobExecutionEvent::FINISHED, "test_session_name"));
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::CREATED, "test_session_name"));
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name"));
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
 
@@ -96,10 +96,10 @@ TEST_F(RayEventRecorderTest, TestMergeEvents) {
   ASSERT_EQ(recorded_events.size(), 1);
   ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(recorded_events[0].session_name(), "test_session_name");
-  auto states = recorded_events[0].driver_job_execution_event().states();
+  auto states = recorded_events[0].driver_job_lifecycle_event().state_transitions();
   ASSERT_EQ(states.size(), 2);
-  ASSERT_EQ(states[0].state(), rpc::events::DriverJobExecutionEvent::CREATED);
-  ASSERT_EQ(states[1].state(), rpc::events::DriverJobExecutionEvent::FINISHED);
+  ASSERT_EQ(states[0].state(), rpc::events::DriverJobLifecycleEvent::CREATED);
+  ASSERT_EQ(states[1].state(), rpc::events::DriverJobLifecycleEvent::FINISHED);
 }
 
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
@@ -149,6 +149,12 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   io_service_.run_one();
 
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  std::sort(recorded_events.begin(),
+            recorded_events.end(),
+            [](const rpc::events::RayEvent &a, const rpc::events::RayEvent &b) {
+              return a.session_name() < b.session_name();
+            });
+
   // Verify events
   ASSERT_EQ(recorded_events.size(), 4);
   ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
