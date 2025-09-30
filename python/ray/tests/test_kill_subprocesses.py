@@ -1,5 +1,4 @@
 import logging
-import multiprocessing
 import os
 import subprocess
 import sys
@@ -49,8 +48,7 @@ def get_process_info(pid):
 @ray.remote
 class BedMaker:
     def make_sleeper(self):
-        p = multiprocessing.Process(target=sleep_forever)
-        p.start()
+        p = subprocess.Popen(["sleep", "1000"])  # inherits PGID
         return p.pid
 
     def spawn_daemon(self):
