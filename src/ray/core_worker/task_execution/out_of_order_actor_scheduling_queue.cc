@@ -257,11 +257,11 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
 
 void OutOfOrderActorSchedulingQueue::CancelAllPending(const Status &status) {
   absl::MutexLock lock(&mu_);
-  for (auto it = queued_actor_tasks_.begin(); it != queued_actor_tasks_.end();) {
+  while (!queued_actor_tasks_.empty()) {
+    auto it = queued_actor_tasks_.begin();
     it->second.Cancel(status);
     pending_task_id_to_is_canceled.erase(it->first);
-    auto to_erase = it++;
-    queued_actor_tasks_.erase(to_erase);
+    queued_actor_tasks_.erase(it);
   }
 }
 

@@ -183,7 +183,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       return;
     }
 
-    // Safe to decode and enqueue while holding the lock; avoid heavy work.
     task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
 
     if (task_spec.IsActorCreationTask()) {
@@ -192,8 +191,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                  task_spec.AllowOutOfOrderExecution());
     }
 
-    // Only assign resources for non-actor tasks. Actor tasks inherit the resources
-    // assigned at initial actor creation time.
     if (!task_spec.IsActorTask()) {
       resource_ids = ResourceMappingType{};
       for (const auto &mapping : request.resource_mapping()) {

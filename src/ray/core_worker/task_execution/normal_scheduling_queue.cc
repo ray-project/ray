@@ -94,9 +94,10 @@ void NormalSchedulingQueue::ScheduleRequests() {
 
 void NormalSchedulingQueue::CancelAllPending(const Status &status) {
   absl::MutexLock lock(&mu_);
-  for (auto it = pending_normal_tasks_.begin(); it != pending_normal_tasks_.end();) {
+  while (!pending_normal_tasks_.empty()) {
+    auto it = pending_normal_tasks_.begin();
     it->Cancel(status);
-    it = pending_normal_tasks_.erase(it);
+    pending_normal_tasks_.erase(it);
   }
 }
 
