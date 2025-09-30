@@ -1,6 +1,7 @@
 """The stage that runs vLLM engine."""
 
 import asyncio
+import copy
 import dataclasses
 import logging
 import math
@@ -624,6 +625,8 @@ def _ray_scheduling_strategy_fn(
         return bundle
 
     if placement_group_config:
+        placement_group_config = copy.deepcopy(placement_group_config)
+
         if accelerator_type:
             for bundle in placement_group_config["bundles"]:
                 bundle[f"accelerator_type:{accelerator_type}"] = 0.001
