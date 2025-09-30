@@ -389,6 +389,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
+        "extra_setup",
         "medium_size_python_tests_k_to_z",
         "needs_java",
         "team:core",
