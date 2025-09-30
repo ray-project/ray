@@ -14,9 +14,10 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    _are_contiguous_1d_views,
     _get_buffer_address,
     concat_tensor_arrays,
-    unify_tensor_arrays, _are_contiguous_1d_views,
+    unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray

@@ -23,7 +23,6 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    _check_pyarrow_version,
     find_partition_index,
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
