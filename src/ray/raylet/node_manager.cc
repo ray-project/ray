@@ -92,18 +92,11 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 }
 
 #if !defined(_WIN32)
-// Shared helper to perform validated process group cleanup. Sends SIGTERM first,
-// then escalates to SIGKILL either after a delay on the io_service, or immediately
-// if delay_ms <= 0 or io_service is null (e.g., during shutdown).
-static void CleanupProcessGroup(instrumented_io_context *io_service,
-                                pid_t worker_pid,
-                                pid_t saved_pgid,
-                                const WorkerID &wid,
-                                const char *context,
-                                int delay_ms) {
-  // Copy context into a safe, owned string for logging and async captures.
-  std::string ctx = context == nullptr ? std::string() : std::string(context);
-
+// Send a signal to the worker's saved process group with safety guards and logging.
+static void CleanupProcessGroupSend(pid_t saved_pgid,
+                                    const WorkerID &wid,
+                                    const std::string &ctx,
+                                    int sig) {
   // Guard against targeting the raylet's own process group if isolation failed.
   pid_t raylet_pgid = getpgid(0);
   if (raylet_pgid == saved_pgid) {
@@ -113,42 +106,15 @@ static void CleanupProcessGroup(instrumented_io_context *io_service,
         << saved_pgid;
     return;
   }
-
-  RAY_LOG(INFO).WithField(wid) << ctx << ": process-group cleanup for pgid=" << saved_pgid
-                               << (worker_pid > 0 ? std::string(", worker pid=") +
-                                                        std::to_string(worker_pid)
-                                                  : std::string());
-
-  auto err_term = KillProcessGroup(saved_pgid, SIGTERM);
-  if (err_term && *err_term) {
+  RAY_LOG(INFO).WithField(wid) << ctx << ": sending "
+                               << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+                               << " to pgid=" << saved_pgid;
+  auto err = KillProcessGroup(saved_pgid, sig);
+  if (err && *err) {
     RAY_LOG(WARNING).WithField(wid)
-        << ctx << ": failed to SIGTERM process group " << saved_pgid << ": "
-        << err_term->message() << ", errno=" << err_term->value();
-  }
-
-  auto escalate = [saved = saved_pgid, wid, ctx]() mutable {
-    auto probe = KillProcessGroup(saved, 0);
-    const bool group_absent = (probe && probe->value() == ESRCH);
-    if (!group_absent) {
-      auto err_kill = KillProcessGroup(saved, SIGKILL);
-      if (err_kill && *err_kill) {
-        RAY_LOG(WARNING).WithField(wid)
-            << ctx << ": failed to SIGKILL process group " << saved << ": "
-            << err_kill->message() << ", errno=" << err_kill->value();
-      }
-    }
-  };
-
-  if (io_service != nullptr && delay_ms > 0) {
-    auto timer = std::make_shared<boost::asio::deadline_timer>(
-        *io_service, boost::posix_time::milliseconds(delay_ms));
-    timer->async_wait([timer, escalate](const boost::system::error_code &ec) mutable {
-      if (!ec) {
-        escalate();
-      }
-    });
-  } else {
-    escalate();
+        << ctx << ": failed to send " << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+        << " to process group " << saved_pgid << ": " << err->message()
+        << ", errno=" << err->value();
   }
 }
 #endif
@@ -1452,12 +1418,23 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if (pg_enabled) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        CleanupProcessGroup(&io_service_,
-                            worker->GetProcess().GetId(),
-                            *saved,
-                            worker->WorkerId(),
-                            "DisconnectClient",
-                            /*delay_ms*/ 200);
+        // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
+        CleanupProcessGroupSend(*saved, worker->WorkerId(), "DisconnectClient", SIGTERM);
+        auto timer = std::make_shared<boost::asio::deadline_timer>(
+            io_service_, boost::posix_time::milliseconds(200));
+        auto wid = worker->WorkerId();
+        auto pgid = *saved;
+        timer->async_wait(
+            [timer, wid, pgid](const boost::system::error_code &ec) mutable {
+              if (!ec) {
+                // Probe with signal 0; if group plausibly exists, send SIGKILL.
+                auto probe = KillProcessGroup(pgid, 0);
+                const bool group_absent = (probe && probe->value() == ESRCH);
+                if (!group_absent) {
+                  CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+                }
+              }
+            });
       }
     }
 #endif
@@ -2822,14 +2799,13 @@ void NodeManager::Stop() {
     for (const auto &w : workers) {
       auto saved = w->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        // Use immediate cleanup during shutdown since timers may not fire after
-        // io_service begins stopping.
-        CleanupProcessGroup(/*io_service*/ nullptr,
-                            /*worker_pid*/ -1,
-                            *saved,
-                            w->WorkerId(),
-                            "Stop",
-                            /*delay_ms*/ 0);
+        // During shutdown, escalate immediately to avoid relying on timers.
+        CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGTERM);
+        auto probe = KillProcessGroup(*saved, 0);
+        const bool group_absent = (probe && probe->value() == ESRCH);
+        if (!group_absent) {
+          CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGKILL);
+        }
       }
     }
   }

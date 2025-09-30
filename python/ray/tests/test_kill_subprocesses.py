@@ -60,12 +60,6 @@ class BedMaker:
         output = subprocess.check_output(command, shell=True, text=True)
         return int(output.strip())
 
-    def spawn_daemon_same_pgroup(self):
-        # Spawn a long-lived child in the SAME process group (no shell wrappers),
-        # so process group cleanup can terminate it when the actor dies.
-        p = subprocess.Popen(["sleep", "1000"])  # inherits PGID
-        return p.pid
-
     def my_pid(self):
         return os.getpid()
 
@@ -188,45 +182,42 @@ def test_default_sigchld_handler(enable_subreaper, shutdown_only):
     sys.platform != "linux",
     reason="Orphan process killing only works on Linux.",
 )
-def test_sigkilled_worker_can_kill_subprocess_with_pg_cleanup(
-    enable_pg_cleanup, shutdown_only
-):
+def test_sigkilled_worker_child_process_cleaned_up(enable_pg_cleanup, shutdown_only):
     ray.init()
-    # sigkill'd actor can't kill subprocesses
+    # SIGKILL the actor; PG cleanup should terminate the background child.
     b = BedMaker.remote()
-    pid = ray.get(b.make_sleeper.remote())
+    child_pid = ray.get(b.make_sleeper.remote())
     actor_pid = ray.get(b.my_pid.remote())
 
-    logger.info(get_process_info(pid))  # shows the process
+    logger.info(get_process_info(child_pid))  # shows the process
     psutil.Process(actor_pid).kill()  # sigkill
-    wait_for_condition(lambda: not psutil.pid_exists(pid), retry_interval_ms=100)
+    wait_for_condition(lambda: not psutil.pid_exists(child_pid), retry_interval_ms=100)
     with pytest.raises(psutil.NoSuchProcess):
-        logger.info(get_process_info(pid))
+        logger.info(get_process_info(child_pid))
 
 
 @pytest.mark.skipif(
     sys.platform != "linux",
     reason="Orphan process killing only works on Linux.",
 )
-def test_daemon_processes_not_killed_until_actor_dead_with_pg_cleanup(
+def test_background_child_survives_while_actor_alive_then_killed_with_pg_cleanup(
     enable_pg_cleanup, shutdown_only
 ):
     ray.init()
-    # sigkill'd actor can't kill subprocesses
+    # Spawn a background child that remains in the same PG as the actor.
     b = BedMaker.remote()
-    daemon_pid = ray.get(b.spawn_daemon_same_pgroup.remote())
+    child_pid = ray.get(b.make_sleeper.remote())
     actor_pid = ray.get(b.my_pid.remote())
 
-    # The pid refers to a daemon process that should not be killed, although
-    # it's already reparented to the core worker.
+    # The background child remains alive while the actor is alive.
     time.sleep(1)
-    # Daemon is still a child of the actor until it exits; verify it's alive.
-    assert psutil.pid_exists(daemon_pid)
+    assert psutil.pid_exists(child_pid)
 
-    psutil.Process(actor_pid).kill()  # sigkill
-    wait_for_condition(lambda: not psutil.pid_exists(daemon_pid), retry_interval_ms=100)
+    # After the actor is killed, PG cleanup should terminate the background child.
+    psutil.Process(actor_pid).kill()
+    wait_for_condition(lambda: not psutil.pid_exists(child_pid), retry_interval_ms=100)
     with pytest.raises(psutil.NoSuchProcess):
-        logger.info(get_process_info(daemon_pid))
+        logger.info(get_process_info(child_pid))
 
 
 @pytest.mark.skipif(
@@ -250,9 +241,8 @@ def test_detached_setsido_escape_with_pg_cleanup(enable_pg_cleanup, shutdown_onl
     a = A.remote()
     child_pid = ray.get(a.spawn_detached.remote())
     actor_pid = ray.get(a.pid.remote())
-    # Crash the actor.
     psutil.Process(actor_pid).kill()
-    time.sleep(3)
+    time.sleep(1)
     # Detached child should still be alive (escaped PG cleanup).
     assert psutil.pid_exists(child_pid)
 
