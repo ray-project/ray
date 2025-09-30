@@ -573,7 +573,10 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+    concurrency: Optional[int] = None,
+    initial_concurrency: Optional[int] = None,
+    min_concurrency: Optional[int] = None,
+    max_concurrency: Optional[int] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -584,7 +587,10 @@ def get_compute_strategy(
         fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
         compute: Either "tasks" (default) to use Ray Tasks or an
                 :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
-        concurrency: The number of Ray workers to use concurrently.
+        concurrency: The exact number of Ray workers to use concurrently.
+        initial_concurrency: The initial number of Ray workers to use concurrently.
+        min_concurrency: The minimum number of Ray workers to use concurrently.
+        max_concurrency: The maximum number of Ray workers to use concurrently.
 
     Returns:
        The `ComputeStrategy` for execution.
@@ -631,46 +637,38 @@ def get_compute_strategy(
             )
         return compute
     elif concurrency is not None:
-        if isinstance(concurrency, tuple):
-            # Validate tuple length and that all elements are integers
-            if len(concurrency) not in (2, 3) or not all(
-                isinstance(c, int) for c in concurrency
-            ):
-                raise ValueError(
-                    "``concurrency`` is expected to be set as a tuple of "
-                    f"integers, but got: {concurrency}."
-                )
-
-            # Check if function is callable class (common validation)
-            if not is_callable_class:
-                raise ValueError(
-                    "``concurrency`` is set as a tuple of integers, but ``fn`` "
-                    f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                    "control maximum number of workers to use."
-                )
-
-            # Create ActorPoolStrategy based on tuple length
-            if len(concurrency) == 2:
-                return ActorPoolStrategy(
-                    min_size=concurrency[0], max_size=concurrency[1]
-                )
-            else:  # len(concurrency) == 3
-                return ActorPoolStrategy(
-                    min_size=concurrency[0],
-                    max_size=concurrency[1],
-                    initial_size=concurrency[2],
-                )
-        elif isinstance(concurrency, int):
-            if is_callable_class:
-                return ActorPoolStrategy(size=concurrency)
-            else:
-                return TaskPoolStrategy(size=concurrency)
-        else:
+        if (
+            initial_concurrency is not None
+            or min_concurrency is not None
+            or max_concurrency is not None
+        ):
             raise ValueError(
-                "``concurrency`` is expected to be set as an integer or a "
-                f"tuple of integers, but got: {concurrency}."
+                "`concurrency` cannot be used together with `initial_concurrency`, "
+                "`min_concurrency`, or `max_concurrency`."
             )
+        if is_callable_class:
+            return ActorPoolStrategy(size=concurrency)
+        else:
+            return TaskPoolStrategy(size=concurrency)
+    elif min_concurrency is not None and max_concurrency is not None:
+        if initial_concurrency is not None:
+            return ActorPoolStrategy(
+                min_size=min_concurrency,
+                max_size=max_concurrency,
+                initial_size=initial_concurrency,
+            )
+        else:
+            return ActorPoolStrategy(min_size=min_concurrency, max_size=max_concurrency)
     else:
+        if min_concurrency is not None or max_concurrency is not None:
+            if initial_concurrency is not None:
+                raise ValueError(
+                    "initial_concurrency` must be specified when `min_concurrency` and `max_concurrency` are specified."
+                )
+            else:
+                raise ValueError(
+                    "`min_concurrency`, `max_concurrency` must be specified together`."
+                )
         if is_callable_class:
             raise ValueError(
                 "``concurrency`` must be specified when using a callable class. "
