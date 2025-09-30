@@ -253,11 +253,13 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
 
   bool IsRegistered() override { return rpc_client_ != nullptr; }
 
-  bool IsAvailableForScheduling() const override {
-    return !IsDead()                        // Not dead
-           && !GetGrantedLeaseId().IsNil()  // Has assigned lease
-           && !IsBlocked()                  // Not blocked
-           && GetActorId().IsNil();         // No assigned actor
+  bool IsAvailableForScheduling() const {
+    return !IsDead()  // Not dead
+           && !GetGrantedLeaseId()
+                   .IsNil()  // Has assigned lease. This is intentionally incorrect since
+                             // Ray Data relies on this for GC #56155
+           && !IsBlocked()   // Not blocked
+           && GetActorId().IsNil();  // No assigned actor
   }
 
   rpc::CoreWorkerClientInterface *rpc_client() override {
