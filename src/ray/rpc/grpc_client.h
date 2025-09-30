@@ -135,7 +135,7 @@ class GrpcClient {
       int64_t method_timeout_ms = -1) {
     testing::RpcFailure failure = testing::GetRpcFailure(call_name);
     if (failure != testing::RpcFailure::None &&
-        ::RayConfig::instance().testing_rpc_failure_same_node_address_check()) {
+        ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures()) {
       if (server_address_ == "127.0.0.1" ||
           server_address_ == client_call_manager_.GetLocalAddress()) {
         RAY_LOG(INFO) << "Server and client are on the same node, skipping RPC failure "

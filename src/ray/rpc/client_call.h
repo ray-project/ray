@@ -276,7 +276,7 @@ class ClientCallManager {
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
-        &call->context_, request, cqs_[rr_index_++ & num_threads_].get());
+        &call->context_, request, cqs_[rr_index_++ % num_threads_].get());
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
