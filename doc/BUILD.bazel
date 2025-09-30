@@ -691,3 +691,9 @@ filegroup(
     srcs = glob(["source/serve/tutorials/deployment-serve-llm/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )
+
+filegroup(
+    name = "ray_data_example_configs",
+    srcs = glob(["source/data/examples/ray-data-etl-tpch/**/*.yaml"]),
+    visibility = ["//release:__pkg__"],
+)
