@@ -24,9 +24,6 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/cgroup/cgroup_context.h"
-#include "ray/common/cgroup/cgroup_manager.h"
-#include "ray/common/cgroup/constants.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -414,13 +411,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   };
 
   // Initialize task event buffer before it is used by TaskManager.
-  // Store a raw pointer so we can start it later after metrics agent is ready.
-  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
+  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options),
       std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
                                                        *client_call_manager),
       options.session_name);
-  this->task_event_buffer_raw_ = task_event_buffer.get();
   // If metrics agent is already ready, start the task event buffer (Start() is
   // idempotent).
   StartTaskEventBufferIfReady();
@@ -464,7 +459,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      *task_event_buffer,
+      *task_event_buffer_,
       /*get_actor_rpc_client_callback=*/
       [this](const ActorID &actor_id)
           -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
@@ -679,7 +674,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(object_recovery_manager),
                                    std::move(actor_manager),
                                    task_execution_service_,
-                                   std::move(task_event_buffer),
+                                   *task_event_buffer_,
                                    pid,
                                    task_by_state_counter_);
   return core_worker;
@@ -688,8 +683,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 void CoreWorkerProcessImpl::StartTaskEventBufferIfReady() {
   if (metrics_agent_ready_ &&
       RayConfig::instance().task_events_report_interval_ms() > 0) {
-    if (!this->task_event_buffer_raw_->Start().ok()) {
-      RAY_CHECK(!this->task_event_buffer_raw_->Enabled())
+    if (!this->task_event_buffer_->Start().ok()) {
+      RAY_CHECK(!this->task_event_buffer_->Enabled())
           << "TaskEventBuffer should be disabled.";
     }
   }

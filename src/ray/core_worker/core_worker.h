@@ -197,7 +197,7 @@ class CoreWorker {
              std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
              std::unique_ptr<ActorManager> actor_manager,
              instrumented_io_context &task_execution_service,
-             std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+             worker::TaskEventBuffer &task_event_buffer,
              uint32_t pid,
              ray::observability::MetricInterface &task_by_state_counter);
 
@@ -1907,7 +1907,7 @@ class CoreWorker {
 
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
-  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
+  worker::TaskEventBuffer &task_event_buffer_;
 
   /// Worker's PID
   uint32_t pid_;

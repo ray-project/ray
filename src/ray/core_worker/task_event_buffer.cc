@@ -430,7 +430,6 @@ TaskEventBufferImpl::TaskEventBufferImpl(
   // after Start() succeeds.
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   enabled_ = report_interval_ms > 0;
-  RAY_LOG(INFO) << "[DEBUG] task_event_buffer enables: " + std::to_string(enabled_);
 
   if (enabled_) {
     status_events_.set_capacity(
