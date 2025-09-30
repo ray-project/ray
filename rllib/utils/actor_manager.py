@@ -856,13 +856,16 @@ class FaultTolerantActorManager:
         if remote_actor_ids is None:
             remote_actor_ids = self.actor_ids()
 
+        calls = []
         if isinstance(func, list):
             assert len(remote_actor_ids) == len(
                 func
             ), "Funcs must have the same number of callables as actor indices."
 
-        calls = []
-        if isinstance(func, list):
+            assert isinstance(
+                kwargs, list
+            ), "If func is a list of functions, kwargs has to be a list of kwargs."
+
             for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
                     calls.append(
