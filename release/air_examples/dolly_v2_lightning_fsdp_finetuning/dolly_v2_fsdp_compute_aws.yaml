@@ -7,9 +7,9 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node
-      instance_type: g4dn.4xlarge
-      min_workers: 16
-      max_workers: 16
+      instance_type: g4dn.12xlarge
+      min_workers: 4
+      max_workers: 4
       use_spot: false
 
 advanced_configurations_json:

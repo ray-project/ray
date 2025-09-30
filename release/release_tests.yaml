@@ -344,7 +344,7 @@
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-  frequency: weekly
+  frequency: manual
   team: ml
   cluster:
     byod:
