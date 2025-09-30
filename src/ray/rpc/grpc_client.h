@@ -97,11 +97,15 @@ class GrpcClient {
  public:
   GrpcClient(std::shared_ptr<grpc::Channel> channel,
              ClientCallManager &call_manager,
-             std::string server_address)
+             const std::string &server_address)
       : client_call_manager_(call_manager),
         channel_(std::move(channel)),
         stub_(GrpcService::NewStub(channel_)),
-        server_address_(std::move(server_address)) {}
+        server_address_(
+            // Only need to store server address for testing purposes.
+            ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures()
+                ? server_address
+                : "") {}
 
   GrpcClient(const std::string &address,
              const int port,
