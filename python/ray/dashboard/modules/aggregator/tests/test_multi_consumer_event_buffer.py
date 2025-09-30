@@ -40,12 +40,12 @@ class TestMultiConsumerEventBuffer:
         buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=5)
         consumer_name = "test_consumer"
         await buffer.register_consumer(consumer_name)
-        assert await buffer.size() == 0
+        assert buffer.size() == 0
 
         event = _create_test_event(b"event1")
         await buffer.add_event(event)
 
-        assert await buffer.size() == 1
+        assert buffer.size() == 1
 
         batch = await buffer.wait_for_batch(consumer_name, timeout_seconds=0)
         assert len(batch) == 1
@@ -70,7 +70,7 @@ class TestMultiConsumerEventBuffer:
             events.append(event)
             await buffer.add_event(event)
 
-        assert await buffer.size() == 3
+        assert buffer.size() == 3
 
         # Add one more event to trigger eviction
         overflow_event = _create_test_event(
@@ -78,7 +78,7 @@ class TestMultiConsumerEventBuffer:
         )
         await buffer.add_event(overflow_event)
 
-        assert await buffer.size() == 3  # Still max size
+        assert buffer.size() == 3  # Still max size
 
     @pytest.mark.asyncio
     async def test_wait_for_batch_multiple_events(self):
@@ -159,7 +159,7 @@ class TestMultiConsumerEventBuffer:
             await buffer.add_event(event)
 
         # Just ensure buffer remains at max size
-        assert await buffer.size() == 10
+        assert buffer.size() == 10
 
         # consumer 1 will read the next 2 events, not affected by the evictions
         # consumer 1's cursor is adjusted internally to account for the evicted events
@@ -233,6 +233,76 @@ class TestMultiConsumerEventBuffer:
 
         assert len(consumed_events) == total_events
         assert consumed_events == produced_events
+
+    @pytest.mark.asyncio
+    async def test_events_are_evicted_once_consumed_by_all_consumers(self):
+        """Test events are evicted from the buffer once they are consumed by all consumers"""
+        buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=2)
+        consumer_name_1 = "test_consumer_1"
+        consumer_name_2 = "test_consumer_2"
+        await buffer.register_consumer(consumer_name_1)
+        await buffer.register_consumer(consumer_name_2)
+
+        # Add events
+        events = []
+        for i in range(10):
+            event = _create_test_event(f"event{i}".encode())
+            events.append(event)
+            await buffer.add_event(event)
+
+        assert buffer.size() == 10
+        # Consumer 1 reads first batch
+        batch1 = await buffer.wait_for_batch(consumer_name_1, timeout_seconds=0.1)
+        assert batch1 == events[:2]
+
+        # buffer size does not change as consumer 2 is yet to consume these events
+        assert buffer.size() == 10
+
+        # Consumer 2 reads from beginning
+        batch2 = await buffer.wait_for_batch(consumer_name_2, timeout_seconds=0.1)
+        assert batch2 == events[:2]
+
+        # size reduces by 2 as both consumers have consumed 2 events
+        assert buffer.size() == 8
+
+    @pytest.mark.asyncio
+    async def test_size_for_consumer_and_capacity(self):
+        buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=3)
+        consumer_a = "consumer_a"
+        consumer_b = "consumer_b"
+        await buffer.register_consumer(consumer_a)
+        await buffer.register_consumer(consumer_b)
+
+        # Initially no pending items
+        assert await buffer.size_for_consumer(consumer_a) == 0
+        assert await buffer.size_for_consumer(consumer_b) == 0
+        assert buffer.capacity() == 10
+
+        # Add 5 events
+        events = []
+        for i in range(5):
+            e = _create_test_event(f"ea{i}".encode())
+            events.append(e)
+            await buffer.add_event(e)
+
+        assert await buffer.size_for_consumer(consumer_a) == 5
+        assert await buffer.size_for_consumer(consumer_b) == 5
+
+        # Consumer A consumes a batch of 3
+        batch_a = await buffer.wait_for_batch(consumer_a, timeout_seconds=0.01)
+        assert len(batch_a) == 3
+        assert await buffer.size_for_consumer(consumer_a) == 2
+        # Consumer B unaffected
+        assert await buffer.size_for_consumer(consumer_b) == 5
+
+        # Consumer B consumes a batch of 3
+        batch_b = await buffer.wait_for_batch(consumer_b, timeout_seconds=0.01)
+        assert len(batch_b) == 3
+        assert await buffer.size_for_consumer(consumer_b) == 2
+
+        # Unknown consumer raises
+        with pytest.raises(KeyError, match="unknown consumer"):
+            await buffer.size_for_consumer("does_not_exist")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from ray.dashboard.modules.aggregator.publisher.configs import (
     PUBLISHER_MAX_BACKOFF_SECONDS,
     PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
     PUBLISHER_MAX_RETRIES,
+    PUBLISHER_MIN_BUFFER_SEND_INTERVAL_SECONDS,
 )
 from ray.dashboard.modules.aggregator.publisher.metrics import (
     consecutive_failures_gauge_name,
@@ -47,6 +48,44 @@ class RayEventPublisherInterface(ABC):
         """Wait until the publisher has started."""
         pass
 
+    def _compute_adaptive_interval(
+        self,
+        pending_items: int,
+        capacity: int,
+        min_interval_s: float = PUBLISHER_MIN_BUFFER_SEND_INTERVAL_SECONDS,
+        max_interval_s: float = PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
+    ) -> float:
+        """Pick an adaptive interval based on buffer fullness.
+
+        Policy:
+        - fullness < 0.3 -> max interval
+        - 0.3 <= fullness < 0.5 -> halfway between min and max
+        - fullness >= 0.5 -> min interval
+
+        Returns max interval if capacity is 0 to avoid busy loops.
+        """
+        if capacity <= 0:
+            return max(0.0, float(max_interval_s))
+
+        # Clamp values
+        min_i = max(0.0, float(min_interval_s))
+        max_i = max(0.0, float(max_interval_s))
+        if min_i > max_i:
+            # swap to ensure ordering
+            min_i, max_i = max_i, min_i
+
+        fullness = 0.0
+        try:
+            fullness = max(0.0, min(1.0, float(pending_items) / float(capacity)))
+        except Exception:
+            return max_i
+
+        if fullness < 0.3:
+            return max_i
+        if fullness < 0.5:
+            return (min_i + max_i) / 2.0
+        return min_i
+
 
 class RayEventPublisher(RayEventPublisherInterface):
     """RayEvents publisher that publishes batches of events to a destination by running a worker loop.
@@ -64,6 +103,8 @@ class RayEventPublisher(RayEventPublisherInterface):
         initial_backoff: float = PUBLISHER_INITIAL_BACKOFF_SECONDS,
         max_backoff: float = PUBLISHER_MAX_BACKOFF_SECONDS,
         jitter_ratio: float = PUBLISHER_JITTER_RATIO,
+        min_buffer_send_interval_seconds: float = PUBLISHER_MIN_BUFFER_SEND_INTERVAL_SECONDS,
+        max_buffer_send_interval_seconds: float = PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
     ) -> None:
         """Initialize a RayEventsPublisher.
 
@@ -76,6 +117,8 @@ class RayEventPublisher(RayEventPublisherInterface):
             initial_backoff: Initial backoff time between retries in seconds
             max_backoff: Maximum backoff time between retries in seconds
             jitter_ratio: Random jitter ratio to add to backoff times
+            min_buffer_send_interval_seconds: Minimum interval between sending batches of events to the destination
+            max_buffer_send_interval_seconds: Maximum interval between sending batches of events to the destination
         """
         self._name = name
         self._common_metric_tags = dict(common_metric_tags or {})
@@ -86,6 +129,9 @@ class RayEventPublisher(RayEventPublisherInterface):
         self._jitter_ratio = float(jitter_ratio)
         self._publish_client = publish_client
         self._event_buffer = event_buffer
+        self._min_send_interval = float(min_buffer_send_interval_seconds)
+        self._max_send_interval = float(max_buffer_send_interval_seconds)
+        self.event_buffer_capacity = self._event_buffer.capacity()
 
         # Event set once the publisher has registered as a consumer and is ready to publish events
         self._started_event: asyncio.Event = asyncio.Event()
@@ -103,9 +149,18 @@ class RayEventPublisher(RayEventPublisherInterface):
         try:
             logger.info(f"Starting publisher {self._name}")
             while True:
+                # Determine adaptive interval based on this consumer's pending items
+                pending = await self._event_buffer.size_for_consumer(self._name)
+                interval = self._compute_adaptive_interval(
+                    pending,
+                    self.event_buffer_capacity,
+                    self._min_send_interval,
+                    self._max_send_interval,
+                )
+
                 batch = await self._event_buffer.wait_for_batch(
                     self._name,
-                    PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
+                    interval,
                 )
                 publish_batch = PublishBatch(events=batch)
                 await self._async_publish_with_retries(publish_batch)

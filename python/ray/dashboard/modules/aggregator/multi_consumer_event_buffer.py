@@ -187,6 +187,28 @@ class MultiConsumerEventBuffer:
 
             self._consumers[consumer_name] = _ConsumerState(cursor_index=0)
 
-    async def size(self) -> int:
+    def size(self) -> int:
         """Get total number of events in the buffer. Does not take consumer cursors into account."""
         return len(self._buffer)
+
+    async def size_for_consumer(self, consumer_name: str) -> int:
+        """Get the number of pending events for a specific consumer.
+
+        This reflects how many events remain to be consumed by the consumer
+        based on its cursor position.
+
+        Args:
+            consumer_name: The registered consumer's name.
+
+        Returns:
+            The count of events pending consumption for the consumer.
+        """
+        async with self._lock:
+            consumer_state = self._consumers.get(consumer_name)
+            if consumer_state is None:
+                raise KeyError(f"unknown consumer '{consumer_name}'")
+            return max(0, len(self._buffer) - consumer_state.cursor_index)
+
+    def capacity(self) -> int:
+        """Get the maximum capacity of the buffer in number of events."""
+        return self._max_size
