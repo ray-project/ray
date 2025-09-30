@@ -18,7 +18,6 @@ from pdb import Pdb
 from typing import Callable
 
 import ray
-from ray._common.network_utils import build_address
 from ray._common.network_utils import build_address, is_ipv6
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
