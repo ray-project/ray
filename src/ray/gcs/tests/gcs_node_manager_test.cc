@@ -61,7 +61,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
 )");
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   *io_context_.get(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
@@ -358,7 +358,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
 TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
@@ -388,7 +388,7 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
   // Remove the node and verify it's no longer accessible
   rpc::NodeDeathInfo death_info;
   death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-  node_manager.RemoveNode(node_id, death_info);
+  node_manager.RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
 
   auto removed_result = node_manager.GetAliveNodeAddress(node_id);
   EXPECT_FALSE(removed_result.has_value());
@@ -397,7 +397,7 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
 TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
@@ -419,9 +419,21 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
     node->set_node_name("dead_node_" + std::to_string(i));
     dead_nodes.push_back(node);
     node_manager.AddNode(node);
-    rpc::NodeDeathInfo death_info;
-    death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    node_manager.RemoveNode(NodeID::FromBinary(node->node_id()), death_info);
+    rpc::UnregisterNodeRequest unregister_request;
+    unregister_request.set_node_id(node->node_id());
+    unregister_request.mutable_node_death_info()->set_reason(
+        rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    rpc::UnregisterNodeReply unregister_reply;
+    unregister_request.mutable_node_death_info()->set_reason_message(
+        "mock reason message");
+    auto send_unregister_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {
+          // NoOp
+        };
+    node_manager.HandleUnregisterNode(
+        unregister_request, &unregister_reply, send_unregister_reply_callback);
+    while (io_context_->poll() > 0)
+      ;
   }
 
   // Test 1: Get all nodes without filter
