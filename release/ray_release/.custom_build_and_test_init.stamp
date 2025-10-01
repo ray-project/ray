@@ -1,0 +1,2 @@
+This stamp file, if exists, indicates that custom BYOD image builds for release have been decoupled from test_init, allowing each image to be built independently.
+The job generation process for building these custom images is now handled during the init step of the build.

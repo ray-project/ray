@@ -42,6 +42,8 @@ class TrainFnUtils(ABC):
         checkpoint_upload_function: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+        validate_config: Optional[Dict] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -59,6 +61,10 @@ class TrainFnUtils(ABC):
             checkpoint_upload_function: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
+            validate_fn: If provided, Ray Train will validate the checkpoint using
+                this function.
+            validate_config: Configuration passed to the validate_fn. Can contain info
+                like the validation dataset.
         """
         pass
 
@@ -139,6 +145,8 @@ class DistributedTrainFnUtils(TrainFnUtils):
         checkpoint_upload_function: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+        validate_config: Optional[Dict] = None,
     ) -> None:
         return get_internal_train_context().report(
             metrics,
@@ -147,6 +155,8 @@ class DistributedTrainFnUtils(TrainFnUtils):
             checkpoint_upload_mode,
             delete_local_checkpoint_after_upload,
             checkpoint_upload_function,
+            validate_fn,
+            validate_config,
         )
 
     def get_checkpoint(self):
@@ -176,9 +186,19 @@ class LocalTrainFnUtils(TrainFnUtils):
         self,
         experiment_name: str,
         dataset_shards: Optional[Dict[str, DataIterator]] = None,
+        world_size: int = 1,
+        world_rank: int = 0,
+        local_rank: int = 0,
+        local_world_size: int = 1,
+        node_rank: int = 0,
     ):
         self._context = LocalTrainContext(
             experiment_name=experiment_name,
+            world_size=world_size,
+            world_rank=world_rank,
+            local_rank=local_rank,
+            local_world_size=local_world_size,
+            node_rank=node_rank,
         )
         self._dataset_shards = dataset_shards
         self._last_metrics = None
@@ -194,6 +214,8 @@ class LocalTrainFnUtils(TrainFnUtils):
         checkpoint_upload_function: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+        validate_config: Optional[Dict] = None,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint

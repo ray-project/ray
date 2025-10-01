@@ -39,6 +39,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
+from ray.data.expressions import Expr
 
 try:
     import pyarrow
@@ -157,8 +158,11 @@ class ArrowBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List[Block]) -> Block:
-        return transform_pyarrow.concat(tables, promote_types=True)
+    def _combine_tables(tables: List[Block]) -> Block:
+        if len(tables) > 1:
+            return transform_pyarrow.concat(tables, promote_types=True)
+        else:
+            return tables[0]
 
     @staticmethod
     def _concat_would_copy() -> bool:
@@ -203,18 +207,21 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.column_names
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.column_names
-
         import pyarrow.compute as pc
 
-        if isinstance(value, pyarrow.Scalar):
-            type = value.type
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pyarrow.Array, pyarrow.ChunkedArray)):
+            return self.upsert_column(name, value)
         else:
-            type = pyarrow.infer_type([value])
+            # Scalar value - use original fill_column logic
+            if isinstance(value, pyarrow.Scalar):
+                type = value.type
+            else:
+                type = pyarrow.infer_type([value])
 
-        array = pyarrow.nulls(len(self._table), type=type)
-        array = pc.fill_null(array, value)
-        return self._table.append_column(name, array)
+            array = pyarrow.nulls(len(self._table), type=type)
+            array = pc.fill_null(array, value)
+            return self._table.append_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -380,6 +387,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
         return self._table.rename_columns(columns_rename)
 
+    def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
+
+        result_table = self._table
+        for name, column in zip(other_block.column_names, other_block.columns):
+            result_table = result_table.append_column(name, column)
+
+        return result_table
+
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
         table = self._table.select(sort_key.get_columns())
@@ -448,6 +463,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
         else:
             for i in range(self.num_rows()):
                 yield self._get_row(i)
+
+    def filter(self, predicate_expr: "Expr") -> "pyarrow.Table":
+        """Filter rows based on a predicate expression."""
+        if self._table.num_rows == 0:
+            return self._table
+
+        from ray.data._expression_evaluator import eval_expr
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use PyArrow's built-in filter method
+        return self._table.filter(mask)
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
