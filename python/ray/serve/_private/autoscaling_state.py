@@ -12,6 +12,7 @@ from ray.serve._private.common import (
     ReplicaID,
     ReplicaMetricReport,
     TargetCapacityDirection,
+    TimeStampedValue,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
@@ -273,12 +274,11 @@ class AutoscalingState:
 
         return self.apply_bounds(decision_num_replicas)
 
-    def _collect_replica_running_requests(self) -> List[List]:
+    def _collect_replica_running_requests(self) -> List[List[TimeStampedValue]]:
         """Collect running requests timeseries from replicas for aggregation.
 
         Returns:
-            List of timeseries data (List[TimeStampedValue]) directly,
-            avoiding intermediate dictionary creation.
+            List of timeseries data (List[TimeStampedValue]).
         """
         timeseries_list = []
 
@@ -294,24 +294,22 @@ class AutoscalingState:
 
         return timeseries_list
 
-    def _collect_handle_queued_requests(self) -> List[List]:
+    def _collect_handle_queued_requests(self) -> List[List[TimeStampedValue]]:
         """Collect queued requests timeseries from all handles.
 
         Returns:
-            List of timeseries data (List[TimeStampedValue]) directly,
-            avoiding intermediate dictionary creation.
+            List of timeseries data (List[TimeStampedValue]).
         """
         timeseries_list = []
         for handle_metric_report in self._handle_requests.values():
             timeseries_list.append(handle_metric_report.queued_requests)
         return timeseries_list
 
-    def _collect_handle_running_requests(self) -> List[List]:
+    def _collect_handle_running_requests(self) -> List[List[TimeStampedValue]]:
         """Collect running requests timeseries from handles when not collected on replicas.
 
         Returns:
-            List of timeseries data (List[TimeStampedValue]) directly,
-            avoiding intermediate dictionary creation.
+            List of timeseries data (List[TimeStampedValue]).
 
         Example:
             If there are 2 handles, each managing 2 replicas, and the running requests metrics are:
@@ -463,11 +461,11 @@ class AutoscalingState:
             Total number of requests (average running + queued) calculated from
             timeseries data aggregation.
         """
-        # Collect replica-based running requests (now returns List[List] directly)
+        # Collect replica-based running requests (returns List[List[TimeStampedValue]])
         replica_timeseries = self._collect_replica_running_requests()
         metrics_collected_on_replicas = len(replica_timeseries) > 0
 
-        # Collect queued requests from handles (now returns List[List] directly)
+        # Collect queued requests from handles (returns List[List[TimeStampedValue]])
         queued_timeseries = self._collect_handle_queued_requests()
 
         if not metrics_collected_on_replicas:
@@ -476,7 +474,7 @@ class AutoscalingState:
         else:
             handle_timeseries = []
 
-        # Optimize: create minimal dictionary objects only when needed
+        # Create minimal dictionary objects only when needed
         ongoing_requests_metrics = []
 
         # Add replica timeseries with minimal dict wrapping
