@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <csignal>
 #include <cstddef>
 #include <fstream>
@@ -89,6 +90,34 @@ std::vector<ObjectID> FlatbufferToObjectIds(
   }
   return ids;
 }
+
+#if !defined(_WIN32)
+// Send a signal to the worker's saved process group with safety guards and logging.
+static void CleanupProcessGroupSend(pid_t saved_pgid,
+                                    const WorkerID &wid,
+                                    const std::string &ctx,
+                                    int sig) {
+  // Guard against targeting the raylet's own process group if isolation failed.
+  pid_t raylet_pgid = getpgid(0);
+  if (raylet_pgid == saved_pgid) {
+    RAY_LOG(WARNING).WithField(wid)
+        << ctx
+        << ": skipping PG cleanup: worker pgid equals raylet pgid (isolation failed): "
+        << saved_pgid;
+    return;
+  }
+  RAY_LOG(INFO).WithField(wid) << ctx << ": sending "
+                               << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+                               << " to pgid=" << saved_pgid;
+  auto err = KillProcessGroup(saved_pgid, sig);
+  if (err && *err) {
+    RAY_LOG(WARNING).WithField(wid)
+        << ctx << ": failed to send " << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+        << " to process group " << saved_pgid << ": " << err->message()
+        << ", errno=" << err->value();
+  }
+}
+#endif
 
 }  // namespace
 
@@ -1373,6 +1402,41 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
       }
     }
+
+    // Attempt per-worker process-group cleanup before removing the worker.
+#if !defined(_WIN32)
+    const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
+    const bool subreaper_enabled =
+        RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
+    if (pg_enabled && subreaper_enabled) {
+      RAY_LOG_EVERY_MS(WARNING, 60000)
+          << "Both per-worker process groups and subreaper are enabled; "
+          << "using PGs for worker cleanup. "
+          << "Subreaper is deprecated and will be removed in a future release.";
+    }
+    if (pg_enabled) {
+      auto saved = worker->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
+        CleanupProcessGroupSend(*saved, worker->WorkerId(), "DisconnectClient", SIGTERM);
+        auto timer = std::make_shared<boost::asio::deadline_timer>(
+            io_service_, boost::posix_time::milliseconds(200));
+        auto wid = worker->WorkerId();
+        auto pgid = *saved;
+        timer->async_wait(
+            [timer, wid, pgid](const boost::system::error_code &ec) mutable {
+              if (!ec) {
+                // Probe with signal 0; if group plausibly exists, send SIGKILL.
+                auto probe = KillProcessGroup(pgid, 0);
+                const bool group_absent = (probe && probe->value() == ESRCH);
+                if (!group_absent) {
+                  CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+                }
+              }
+            });
+      }
+    }
+#endif
 
     // Remove the dead client from the pool and stop listening for messages.
     worker_pool_.DisconnectWorker(worker, disconnect_type);
@@ -2726,6 +2790,25 @@ void NodeManager::TriggerGlobalGC() {
 void NodeManager::Stop() {
   // This never fails.
   RAY_CHECK_OK(store_client_.Disconnect());
+#if !defined(_WIN32)
+  // Best-effort process-group cleanup for any remaining workers before shutdown.
+  if (RayConfig::instance().process_group_cleanup_enabled()) {
+    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                        /* filter_io_workers */ false);
+    for (const auto &w : workers) {
+      auto saved = w->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        // During shutdown, escalate immediately to avoid relying on timers.
+        CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGTERM);
+        auto probe = KillProcessGroup(*saved, 0);
+        const bool group_absent = (probe && probe->value() == ESRCH);
+        if (!group_absent) {
+          CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGKILL);
+        }
+      }
+    }
+  }
+#endif
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
