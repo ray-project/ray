@@ -1,26 +1,25 @@
 import unittest
+
 import numpy as np
 
 import ray
-from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
-from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.examples.envs.classes.debug_counter_env import DebugCounterEnv
-from ray.rllib.examples.envs.classes.multi_agent import GuessTheNumberGame
-from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
-from ray.rllib.policy.policy import PolicySpec
-from ray.tune import register_env
-from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
 # The new RLModule / Learner API
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
+from ray.rllib.evaluation.metrics import RolloutMetrics
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
+from ray.rllib.examples.envs.classes.debug_counter_env import DebugCounterEnv
+from ray.rllib.examples.envs.classes.multi_agent import GuessTheNumberGame
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
-
+from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import check
-
+from ray.tune import register_env
 
 register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
 
