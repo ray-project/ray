@@ -451,9 +451,7 @@ steps:
         --build-type debug
         --test-env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
         --test-env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
-        --parallelism-per-worker 3
         --only-tags spark_on_ray
-        --except-tags kubernetes
     depends_on:
       - corebuild
 
