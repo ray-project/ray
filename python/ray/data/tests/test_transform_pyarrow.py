@@ -1018,7 +1018,7 @@ def test_mixed_tensor_types_variable_shaped(
 
 @pytest.mark.skipif(
     not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_mixed_tensor_types_in_struct(
     struct_with_mixed_tensor_types_blocks, struct_with_mixed_tensor_types_expected
@@ -1053,7 +1053,7 @@ def test_mixed_tensor_types_in_struct(
 
 @pytest.mark.skipif(
     not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_nested_struct_with_mixed_tensor_types(
     nested_struct_with_mixed_tensor_types_blocks,
@@ -1088,7 +1088,7 @@ def test_nested_struct_with_mixed_tensor_types(
 
 @pytest.mark.skipif(
     not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_multiple_tensor_fields_in_struct(
     multiple_tensor_fields_struct_blocks, multiple_tensor_fields_struct_expected
@@ -1149,7 +1149,7 @@ def test_struct_with_incompatible_tensor_dtypes_fails():
 
 @pytest.mark.skipif(
     not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_struct_with_additional_fields(
     struct_with_additional_fields_blocks, struct_with_additional_fields_expected
@@ -1186,7 +1186,7 @@ def test_struct_with_additional_fields(
 
 @pytest.mark.skipif(
     not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_struct_with_null_tensor_values(
     struct_with_null_tensor_values_blocks, struct_with_null_tensor_values_expected
