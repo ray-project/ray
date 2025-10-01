@@ -609,8 +609,8 @@ StatusSet<StatusT::NotFound> ReferenceCounter::HasOwner(
     }
   }
   if (missing_owner) {
-    return StatusT::NotFound(
-        absl::StrFormat("Owners Not found objects [%s].", objects_missing_owners.str()));
+    return StatusT::NotFound(absl::StrFormat("Owners not found for objects [%s].",
+                                             objects_missing_owners.str()));
   }
   return StatusT::OK();
 }
