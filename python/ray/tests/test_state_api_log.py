@@ -1284,6 +1284,37 @@ def test_log_get(ray_start_cluster):
         return True
 
     wait_for_condition(verify)
+
+    """
+    Test ANSI escape codes are filtered in logs
+    """
+    NO_COLOR_MESSAGE = "test message: no color"
+    UNCOLORED_MESSAGE = "test message: red green blue"
+    COLORED_MESSAGE = (
+        UNCOLORED_MESSAGE.replace("red", "\033[0;31mred\033[0m")
+        .replace("green", "\033[0;32mgreen\033[0m")
+        .replace("blue", "\033[0;34mblue\033[0m")
+    )
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            print(NO_COLOR_MESSAGE)
+            print(COLORED_MESSAGE)
+
+    actor = Actor.remote()
+    actor_id = actor._actor_id.hex()
+
+    def verify():
+        lines = get_log(actor_id=actor_id, suffix="out")
+        joined_lines = "".join(lines)
+        assert NO_COLOR_MESSAGE in joined_lines
+        assert UNCOLORED_MESSAGE in joined_lines
+
+        return True
+
+    wait_for_condition(verify)
+
     ##############################
     # Test binary files and encodings.
     ##############################
