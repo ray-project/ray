@@ -478,7 +478,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       gcs_client,
       task_by_state_counter_,
       /*free_actor_object_callback=*/
-      options.free_actor_object_callback);
+      [this](const ObjectID &object_id) {
+        auto core_worker = GetCoreWorker();
+        core_worker->free_actor_object_callback_(object_id);
+      });
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
