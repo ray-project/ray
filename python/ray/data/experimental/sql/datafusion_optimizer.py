@@ -182,46 +182,142 @@ class DataFusionOptimizer:
     def _register_datasets(self, datasets: Dict[str, Dataset]) -> None:
         """Register Ray Datasets with DataFusion for optimization planning.
 
-        Uses intelligent sampling strategy based on dataset characteristics:
-        - Gets schema WITHOUT materialization (Ray Data's schema() is lazy)
-        - Uses adaptive sampling based on dataset size hints
-        - Leverages metadata when available
-        - Falls back to small sample only when needed
+        CRITICAL: Maintains RELATIVE sizes across tables for accurate CBO.
+
+        DataFusion's cost-based optimizer makes join ordering decisions based on
+        table sizes. If Table A (1M rows) and Table B (1K rows) are sampled to
+        10K and 5K, DataFusion thinks they're 2:1 when they're actually 1000:1!
+
+        Strategy:
+        1. Estimate size of ALL tables first (without materialization)
+        2. Calculate proportional sampling to maintain relative sizes
+        3. Cap absolute sample sizes for memory efficiency
+        4. Preserve size ratios for accurate join cost estimation
 
         Args:
             datasets: Dictionary mapping table names to Ray Datasets.
         """
+        # Phase 1: Estimate sizes of all tables WITHOUT materialization
+        table_size_estimates = {}
+        for name, ray_ds in datasets.items():
+            estimated_rows = self._estimate_dataset_size(ray_ds, name)
+            table_size_estimates[name] = estimated_rows
+
+        # Phase 2: Calculate proportional sampling strategy
+        # Find the largest table to use as baseline
+        if not table_size_estimates:
+            return
+
+        max_table_size = max(table_size_estimates.values())
+
+        # Determine global sampling strategy that maintains proportions
+        # If largest table is 1M rows, we sample it at 10K (1%)
+        # Then smaller tables get proportionally smaller samples
+        if max_table_size <= TINY_DATASET_THRESHOLD:
+            # All tables tiny - use all rows
+            base_sample_fraction = TINY_DATASET_SAMPLE_FRACTION
+        elif max_table_size <= SMALL_DATASET_THRESHOLD:
+            base_sample_fraction = SMALL_DATASET_SAMPLE_FRACTION
+        elif max_table_size <= MEDIUM_DATASET_THRESHOLD:
+            base_sample_fraction = MEDIUM_DATASET_SAMPLE_FRACTION
+        elif max_table_size <= LARGE_DATASET_THRESHOLD:
+            base_sample_fraction = LARGE_DATASET_SAMPLE_FRACTION
+        else:
+            # Very large datasets - use fraction that gives max_sample for largest table
+            base_sample_fraction = DEFAULT_MAX_SAMPLE_SIZE / max_table_size
+
+        self._logger.info(
+            f"Sampling {len(datasets)} tables with {base_sample_fraction:.2%} fraction "
+            f"(largest table: ~{max_table_size} rows)"
+        )
+
+        # Phase 3: Register each table with proportional sample
         for name, ray_ds in datasets.items():
             try:
-                # Strategy 1: Get schema without materialization
-                # Ray Data's schema() doesn't force execution
+                estimated_rows = table_size_estimates.get(name, DEFAULT_SAMPLE_SIZE)
+
+                # Calculate proportional sample size
+                sample_size = int(estimated_rows * base_sample_fraction)
+
+                # Apply bounds
+                sample_size = max(
+                    DEFAULT_MIN_SAMPLE_SIZE, min(DEFAULT_MAX_SAMPLE_SIZE, sample_size)
+                )
+
+                # Get schema without materialization
                 schema = None
                 try:
                     schema = ray_ds.schema()
                 except Exception:
                     pass
 
-                # Strategy 2: Determine smart sample size
-                sample_size = self._calculate_smart_sample_size(ray_ds, name)
-
-                # Strategy 3: Get sample for DataFusion
-                # Only materializes the sample, not the full dataset
+                # Get sample for DataFusion (maintains relative size)
                 sample_arrow = ray_ds.limit(sample_size).to_arrow()
 
                 # Register with DataFusion
                 self.df_ctx.register_table(name, sample_arrow)
 
                 self._logger.debug(
-                    f"Registered table '{name}' with DataFusion "
-                    f"(sample: {len(sample_arrow)} rows, "
-                    f"{len(sample_arrow.schema)} columns, "
-                    f"schema_available: {schema is not None})"
+                    f"Registered table '{name}' with DataFusion: "
+                    f"{len(sample_arrow)} rows ({sample_size}/{estimated_rows} = "
+                    f"{sample_size/max(estimated_rows,1):.1%}), "
+                    f"{len(sample_arrow.schema)} columns"
                 )
 
             except Exception as e:
                 self._logger.warning(
                     f"Failed to register table '{name}' with DataFusion: {e}"
                 )
+
+    def _estimate_dataset_size(self, dataset: Dataset, table_name: str) -> int:
+        """
+        Estimate dataset size WITHOUT materialization.
+
+        Uses metadata and hints to estimate row count without reading data.
+        Critical for maintaining relative table sizes in sampling.
+
+        Args:
+            dataset: Ray Dataset to estimate.
+            table_name: Table name for logging.
+
+        Returns:
+            Estimated number of rows.
+        """
+        try:
+            # Strategy 1: Check read operation metadata
+            if hasattr(dataset, "_plan") and hasattr(
+                dataset._plan, "_dataset_stats_summary"
+            ):
+                try:
+                    stats = dataset._plan._dataset_stats_summary
+                    if hasattr(stats, "num_rows") and stats.num_rows:
+                        self._logger.debug(
+                            f"Table '{table_name}': Estimated {stats.num_rows} rows from metadata"
+                        )
+                        return stats.num_rows
+                except Exception:
+                    pass
+
+            # Strategy 2: Heuristic based on dataset type
+            # Read operations from large files likely have more data
+            dataset_str = str(type(dataset))
+            if "read_parquet" in dataset_str:
+                # Parquet reads often indicate larger datasets
+                return MEDIUM_DATASET_THRESHOLD  # Assume medium size
+            elif "read_csv" in dataset_str:
+                return SMALL_DATASET_THRESHOLD  # CSV often smaller
+            elif "from_items" in dataset_str:
+                return TINY_DATASET_THRESHOLD  # from_items usually small
+
+            # Fallback: Assume default size
+            self._logger.debug(
+                f"Table '{table_name}': No metadata, assuming {DEFAULT_SAMPLE_SIZE} rows"
+            )
+            return DEFAULT_SAMPLE_SIZE
+
+        except Exception as e:
+            self._logger.debug(f"Could not estimate size for '{table_name}': {e}")
+            return DEFAULT_SAMPLE_SIZE
 
     def _calculate_smart_sample_size(self, dataset: Dataset, table_name: str) -> int:
         """
