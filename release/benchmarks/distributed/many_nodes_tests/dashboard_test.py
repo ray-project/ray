@@ -10,7 +10,7 @@ import logging
 
 from collections import defaultdict
 from ray.util.state import list_nodes
-from ray._private.test_utils import fetch_prometheus_metrics
+from ray._private.prometheus_utils import fetch_prometheus_metrics
 from ray._common.network_utils import build_address
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel

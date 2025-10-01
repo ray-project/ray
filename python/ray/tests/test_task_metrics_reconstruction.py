@@ -7,9 +7,7 @@ import ray
 from ray._common.test_utils import (
     wait_for_condition,
 )
-from ray._private.test_utils import (
-    PrometheusTimeseries,
-)
+from ray._private.prometheus_utils import PrometheusTimeseries
 from ray.tests.test_task_metrics import METRIC_CONFIG, tasks_by_all
 
 

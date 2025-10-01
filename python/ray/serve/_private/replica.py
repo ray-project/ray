@@ -26,7 +26,6 @@ from typing import (
     Union,
 )
 
-import aiohttp
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
@@ -394,89 +393,47 @@ class ReplicaMetricsManager:
         """
         Fetch metrics from the prometheus exporter endpoint, given a list of str metric_names
         """
+        from ray._private.prometheus_utils import (
+            extract_metric_values,
+            fetch_prometheus_metrics_async,
+            filter_samples_by_label,
+            parse_prometheus_metrics_text,
+        )
 
-        metrics_result = {}
         logger.info(
             f"Fetching prometheus metrics {prometheus_metrics}",
             extra={"log_to_stderr": False},
         )
 
-        def filter_samples_by_replica_id(samples: List[Dict], replica_id: str):
-            return [
-                sample for sample in samples if sample.labels["replica"] == replica_id
-            ]
-
         try:
             prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
-
             logger.debug(f"Fetching metrics from prometheus exporter at {prom_addr}")
 
-            timeout = aiohttp.ClientTimeout(
-                total=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
+            metrics_text = await fetch_prometheus_metrics_async(
+                prom_addr, timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
             )
 
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(f"{prom_addr}/metrics") as response:
-                    if response.status == 200:
-                        metrics_text = await response.text()
+            if metrics_text is None:
+                return None
 
-                        # Parse the prometheus metrics text format
-                        try:
-                            from prometheus_client.parser import (
-                                text_string_to_metric_families,
-                            )
+            metric_samples_by_name = parse_prometheus_metrics_text(metrics_text)
+            if not metric_samples_by_name:
+                return None
 
-                            # Parse metrics and create a lookup by metric name
-                            metric_samples_by_name = {}
-                            for metric in text_string_to_metric_families(metrics_text):
-                                for sample in metric.samples:
-                                    if sample.name not in metric_samples_by_name:
-                                        metric_samples_by_name[sample.name] = []
-                                    metric_samples_by_name[sample.name].append(sample)
+            def filter_by_replica_id(samples):
+                return filter_samples_by_label(
+                    samples, "replica", self._replica_id.unique_id
+                )
 
-                            # Extract requested metrics
-                            for metric_name in prometheus_metrics:
-                                if metric_name in metric_samples_by_name:
-                                    # Get the latest sample for this metric
-                                    samples = metric_samples_by_name[metric_name]
-                                    if samples:
-                                        metrics_result[
-                                            metric_name
-                                        ] = filter_samples_by_replica_id(
-                                            samples, self._replica_id.unique_id
-                                        )
-                                        # # Use the last sample's value
-                                        # latest_sample = samples[-1]
-                                        # metrics_result[metric_name] = float(
-                                        #     latest_sample.value
-                                        # )
-                                    else:
-                                        metrics_result[metric_name] = 0.0
-                                else:
-                                    logger.warning(
-                                        f"Metric {metric_name} not found in exporter response"
-                                    )
-                                    metrics_result[metric_name] = 0.0
+            metrics_result = extract_metric_values(
+                metric_samples_by_name, prometheus_metrics, filter_by_replica_id
+            )
 
-                        except ImportError:
-                            logger.error(
-                                "prometheus_client not available for parsing metrics"
-                            )
-                            return None
-                        except Exception as e:
-                            logger.error(f"Error parsing prometheus metrics: {e}")
-                            return None
-                    else:
-                        logger.error(
-                            f"Failed to fetch metrics from prometheus exporter: HTTP {response.status}"
-                        )
-                        return None
+            return metrics_result
 
         except Exception as e:
             logger.error(f"Error fetching prometheus metrics: {e}")
             return None
-
-        return metrics_result
 
     async def _fetch_custom_autoscaling_metrics(
         self,

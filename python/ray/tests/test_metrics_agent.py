@@ -22,11 +22,13 @@ from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
     PrometheusServiceDiscoveryWriter,
 )
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray._private.test_utils import (
+from ray._private.prometheus_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
+)
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._private.test_utils import (
     find_free_port,
     get_log_batch,
     raw_metric_timeseries,
