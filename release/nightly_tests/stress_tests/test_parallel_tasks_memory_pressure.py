@@ -64,10 +64,13 @@ def allocate_memory(
 
 
 def main(*, num_tasks: int, mem_pct_per_task: float):
+    ray.init()
+
     # First run some warmup tasks before estimating the steady state memory consumption.
+    warm_up_start = time.time()
     print(f"Running {num_tasks} warm up tasks, each allocating 100 MiB.")
     ray.get([allocate_memory.remote(100 * 1024**2, num_chunks=1) for _ in range(num_tasks)])
-    print("Warm up tasks finished.")
+    print(f"Warm up tasks finished in {time.time()-warm_up_start:.2f}s.")
 
     total_bytes, used_bytes = get_system_memory(), get_used_memory()
     bytes_per_task = int((total_bytes - used_bytes) * mem_pct_per_task)
