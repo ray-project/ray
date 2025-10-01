@@ -330,6 +330,8 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     Checks that the physical plan is properly generated for the Project operator from
     select columns.
     """
+    from ray.data.expressions import col
+
     path = "example://iris.parquet"
     ds = ray.data.read_parquet(path)
     ds = ds.map_batches(lambda d: d)
@@ -339,7 +341,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     logical_plan = ds._plan._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
-    assert op.cols == cols
+    assert op.exprs == [col("sepal.length"), col("petal.width")]
 
     physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)

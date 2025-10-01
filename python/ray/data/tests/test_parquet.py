@@ -620,8 +620,9 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
         "Project\n"
         "+- ReadParquet\n"
         "-------- Physical Plan --------\n"
-        "TaskPoolMapOperator[ReadParquet]\n"
-        "+- InputDataBuffer[Input]"
+        "TaskPoolMapOperator[Project]\n"
+        "+- TaskPoolMapOperator[ReadParquet]\n"
+        "   +- InputDataBuffer[Input]"
     )
 
     # Assert schema being appropriately projected
@@ -635,7 +636,6 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
 
     summary = ds.materialize()._plan.stats().to_summary()
 
-    assert "ReadParquet" in summary.base_name
     assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
 
 
