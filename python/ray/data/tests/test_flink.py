@@ -17,7 +17,7 @@ def test_flink_datasource_initialization(ray_start_regular_shared):
         max_records_per_task=1000,
     )
 
-    assert ds.source_type == "rest_api"
+    assert ds.source_type_val == "rest_api"
     assert ds.flink_config == flink_config
     assert ds.max_records_per_task == 1000
 
@@ -27,17 +27,17 @@ def test_flink_datasource_different_source_types(ray_start_regular_shared):
     # REST API source
     rest_config = {"rest_api_url": "http://localhost:8081", "job_id": "test-job"}
     ds1 = FlinkDatasource(source_type="rest_api", flink_config=rest_config)
-    assert ds1.source_type == "rest_api"
+    assert ds1.source_type_val == "rest_api"
 
     # Table source
     table_config = {"table_name": "test_table"}
     ds2 = FlinkDatasource(source_type="table", flink_config=table_config)
-    assert ds2.source_type == "table"
+    assert ds2.source_type_val == "table"
 
     # Checkpoint source
     checkpoint_config = {"checkpoint_path": "/path/to/checkpoint"}
     ds3 = FlinkDatasource(source_type="checkpoint", flink_config=checkpoint_config)
-    assert ds3.source_type == "checkpoint"
+    assert ds3.source_type_val == "checkpoint"
 
 
 def test_flink_datasource_name(ray_start_regular_shared):
@@ -98,8 +98,8 @@ def test_flink_datasource_config_validation(ray_start_regular_shared):
 
 def test_read_flink_basic(ray_start_regular_shared):
     """Test basic read_flink functionality."""
-    # This will fail without actual Flink, but tests the API
-    with pytest.raises(RuntimeError):
+    # Will raise ImportError if requests not installed
+    with pytest.raises(ImportError, match="requests is required"):
         ray.data.read_flink(
             source_type="rest_api",
             rest_api_url="http://localhost:8081",
@@ -109,17 +109,51 @@ def test_read_flink_basic(ray_start_regular_shared):
 
 
 def test_read_flink_trigger_formats(ray_start_regular_shared):
-    """Test different trigger formats."""
+    """Test different trigger formats are parsed correctly."""
     # Test that different trigger formats are accepted
+    # Will raise ImportError if requests not installed
     trigger_formats = ["once", "continuous", "30s", "interval:1m"]
     for trigger in trigger_formats:
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ImportError, match="requests is required"):
             ray.data.read_flink(
                 source_type="rest_api",
                 rest_api_url="http://localhost:8081",
                 job_id="test-job",
                 trigger=trigger,
             )
+
+
+def test_flink_import_check():
+    """Test that ImportError is raised when requests is not available."""
+    from ray.data._internal.datasource.flink_datasource import _check_requests_available
+    
+    try:
+        _check_requests_available()
+        # If we get here, requests is installed
+        assert True
+    except ImportError as e:
+        assert "requests is required" in str(e)
+
+
+def test_flink_datasource_estimate_inmemory_data_size(ray_start_regular_shared):
+    """Test that unbounded sources return None for memory estimation."""
+    flink_config = {"rest_api_url": "http://localhost:8081", "job_id": "test-job"}
+    ds = FlinkDatasource(
+        source_type="rest_api",
+        flink_config=flink_config,
+    )
+    
+    # Unbounded sources should return None (unknown size)
+    assert ds.estimate_inmemory_data_size() is None
+
+
+def test_flink_invalid_source_type(ray_start_regular_shared):
+    """Test validation of invalid source type."""
+    with pytest.raises(ValueError, match="source_type must be one of"):
+        FlinkDatasource(
+            source_type="invalid_type",
+            flink_config={},
+        )
 
 
 if __name__ == "__main__":

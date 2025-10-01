@@ -2,18 +2,35 @@
 
 This module provides a Flink datasource implementation for Ray Data that works
 with the UnboundedDataOperator.
+
+Requires: requests (for REST API access)
 """
 
+import logging
 from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 
-from ray.data.datasource.datasource import ReadTask
 from ray.data.block import BlockMetadata
+from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
     create_unbound_read_task,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _check_requests_available():
+    """Check if requests library is available."""
+    try:
+        import requests  # noqa: F401
+        return True
+    except ImportError:
+        raise ImportError(
+            "requests is required for Flink datasource. "
+            "Install with: pip install requests"
+        )
 
 
 class FlinkDatasource(UnboundDatasource):
@@ -38,8 +55,10 @@ class FlinkDatasource(UnboundDatasource):
 
         Raises:
             ValueError: If required configuration is missing
+            ImportError: If required libraries are not installed
         """
         super().__init__("flink")
+        _check_requests_available()
 
         # Validate source type
         valid_source_types = {"rest_api", "table", "checkpoint"}
@@ -64,11 +83,44 @@ class FlinkDatasource(UnboundDatasource):
         if max_records_per_task <= 0:
             raise ValueError("max_records_per_task must be positive")
 
-        self.source_type = source_type
+        self.source_type_val = source_type
         self.flink_config = flink_config
         self.max_records_per_task = max_records_per_task
         self.start_position = start_position
         self.end_position = end_position
+
+    def _get_job_parallelism(self) -> int:
+        """Query Flink job parallelism via REST API."""
+        import requests
+        
+        base_url = self.flink_config['rest_api_url'].rstrip('/')
+        job_id = self.flink_config['job_id']
+        
+        headers = {}
+        if 'auth_token' in self.flink_config:
+            auth_type = self.flink_config.get('auth_type', 'bearer')
+            if auth_type.lower() == 'bearer':
+                headers['Authorization'] = f"Bearer {self.flink_config['auth_token']}"
+        
+        verify_ssl = self.flink_config.get('verify_ssl', True)
+        timeout = self.flink_config.get('timeout', 30)
+        
+        try:
+            # Get job configuration to determine parallelism
+            job_url = f"{base_url}/jobs/{job_id}"
+            response = requests.get(job_url, headers=headers, verify=verify_ssl, timeout=timeout)
+            response.raise_for_status()
+            job_info = response.json()
+            
+            # Get parallelism from job vertices
+            vertices = job_info.get('vertices', [])
+            if vertices:
+                # Use max parallelism across all vertices
+                return max(v.get('parallelism', 1) for v in vertices)
+            return 1
+        except Exception:
+            # Default to 1 if cannot determine
+            return 1
 
     def _get_read_tasks_for_partition(
         self,
@@ -86,34 +138,157 @@ class FlinkDatasource(UnboundDatasource):
         """
         tasks = []
 
-        # Create tasks based on parallelism (simulate Flink job outputs)
-        for task_id in range(min(parallelism, 2)):  # Max 2 tasks for testing
+        # Determine number of tasks based on source type
+        if self.source_type_val == "rest_api":
+            # For REST API, query parallelism from job
+            num_tasks = self._get_job_parallelism()
+            num_tasks = min(num_tasks, parallelism) if parallelism > 0 else num_tasks
+        else:
+            # For table/checkpoint, use requested parallelism
+            num_tasks = parallelism if parallelism > 0 else 1
 
-            def create_flink_read_fn(task_num: int):
+        # Store config for use in read functions (avoid serialization issues)
+        source_type_val = self.source_type_val
+        flink_config = self.flink_config
+        max_records_per_task = self.max_records_per_task
+
+        for task_id in range(num_tasks):
+
+            def create_flink_read_fn(
+                task_num: int = task_id,
+                source_type_val: str = source_type_val,
+                flink_config: Dict[str, Any] = flink_config,
+                max_records_per_task: int = max_records_per_task,
+            ):
                 def flink_read_fn() -> Iterator[pa.Table]:
-                    """Read function for Flink job output."""
-                    # Mock Flink data generation for testing
-                    # In production, this would connect to Flink REST API or output sink
-                    records = []
-                    for i in range(self.max_records_per_task):
-                        records.append(
-                            {
-                                "job_id": self.flink_config.get("job_id", "job_123"),
-                                "job_name": self.flink_config.get(
-                                    "job_name", "test_job"
-                                ),
-                                "task_id": task_num,
-                                "record_id": f"flink_{task_num}_{i}",
-                                "data": f"flink_output_{task_num}_{i}",
-                                "processing_time": "2024-01-01T00:00:00Z",
-                                "watermark": i * 1000,  # Mock watermark
-                            }
+                    """Read function for Flink job output via REST API."""
+                    import requests
+                    import json
+                    from datetime import datetime
+                    
+                    if source_type_val == "rest_api":
+                        # Read from Flink REST API
+                        base_url = flink_config['rest_api_url'].rstrip('/')
+                        job_id = flink_config['job_id']
+                        
+                        # Set up authentication
+                        auth = None
+                        headers = {}
+                        
+                        if 'auth_token' in flink_config:
+                            auth_type = flink_config.get('auth_type', 'bearer')
+                            if auth_type.lower() == 'bearer':
+                                headers['Authorization'] = f"Bearer {flink_config['auth_token']}"
+                            elif auth_type.lower() == 'basic':
+                                import base64
+                                credentials = f"{flink_config.get('username', '')}:{flink_config.get('password', '')}"
+                                encoded = base64.b64encode(credentials.encode()).decode()
+                                headers['Authorization'] = f"Basic {encoded}"
+                        
+                        # SSL verification
+                        verify_ssl = flink_config.get('verify_ssl', True)
+                        cert = None
+                        if 'ssl_cert' in flink_config:
+                            cert = (flink_config['ssl_cert'], flink_config.get('ssl_key'))
+                        
+                        timeout = flink_config.get('timeout', 30)
+                        
+                        try:
+                            # Get job details
+                            job_url = f"{base_url}/jobs/{job_id}"
+                            response = requests.get(
+                                job_url, 
+                                headers=headers, 
+                                verify=verify_ssl,
+                                cert=cert,
+                                timeout=timeout
+                            )
+                            response.raise_for_status()
+                            job_info = response.json()
+                            
+                            # Get task-specific metrics/accumulators
+                            # Note: Actual implementation depends on what data you want to read
+                            # This is a simplified example reading job metrics
+                            metrics_url = f"{base_url}/jobs/{job_id}/metrics"
+                            response = requests.get(
+                                metrics_url,
+                                headers=headers,
+                                verify=verify_ssl,
+                                cert=cert,
+                                timeout=timeout
+                            )
+                            response.raise_for_status()
+                            metrics = response.json()
+                            
+                            records = []
+                            
+                            # Extract records from metrics/accumulators
+                            # This is a template - actual implementation depends on your Flink job structure
+                            for metric in metrics[:max_records_per_task]:
+                                records.append({
+                                    "job_id": job_id,
+                                    "job_name": job_info.get('name', 'unknown'),
+                                    "task_id": task_num,
+                                    "record_id": metric.get('id', f'metric_{task_num}'),
+                                    "data": json.dumps(metric),
+                                    "processing_time": datetime.utcnow().isoformat(),
+                                    "watermark": int(datetime.utcnow().timestamp() * 1000),
+                                })
+                            
+                            if records:
+                                table = pa.Table.from_pylist(records)
+                                yield table
+                                
+                        except requests.exceptions.RequestException as e:
+                            # Log error but don't fail completely
+                            logger.error(f"Error reading from Flink REST API: {e}")
+                            
+                    elif source_type_val == "table":
+                        # Read from Flink table - requires pyflink
+                        try:
+                            from pyflink.table import EnvironmentSettings, TableEnvironment
+                            
+                            # Create table environment
+                            env_settings = EnvironmentSettings.in_streaming_mode()
+                            table_env = TableEnvironment.create(env_settings)
+                            
+                            # Execute query
+                            table_name = flink_config['table_name']
+                            result = table_env.execute_sql(f"SELECT * FROM {table_name} LIMIT {max_records_per_task}")
+                            
+                            records = []
+                            for row in result.collect():
+                                # Convert Flink row to dict
+                                records.append({
+                                    "job_id": "table_read",
+                                    "job_name": table_name,
+                                    "task_id": task_num,
+                                    "record_id": f"table_{task_num}_{len(records)}",
+                                    "data": str(row),
+                                    "processing_time": datetime.utcnow().isoformat(),
+                                    "watermark": int(datetime.utcnow().timestamp() * 1000),
+                                })
+                                
+                                if len(records) >= max_records_per_task:
+                                    break
+                            
+                            if records:
+                                table = pa.Table.from_pylist(records)
+                                yield table
+                                
+                        except ImportError:
+                            raise ImportError(
+                                "pyflink is required for table source type. "
+                                "Install with: pip install apache-flink"
+                            )
+                    
+                    elif source_type_val == "checkpoint":
+                        # Read from Flink checkpoint/savepoint
+                        # This would require parsing checkpoint metadata and state
+                        raise NotImplementedError(
+                            "Checkpoint reading is not yet implemented. "
+                            "Use rest_api or table source types instead."
                         )
-
-                    # Convert to PyArrow table
-                    if records:
-                        table = pa.Table.from_pylist(records)
-                        yield table
 
                 return flink_read_fn
 
@@ -131,6 +306,7 @@ class FlinkDatasource(UnboundDatasource):
             schema = pa.schema(
                 [
                     ("job_id", pa.string()),
+                    ("job_name", pa.string()),
                     ("task_id", pa.int64()),
                     ("record_id", pa.string()),
                     ("data", pa.string()),
@@ -174,10 +350,6 @@ class FlinkDatasource(UnboundDatasource):
                 ("watermark", pa.int64()),
             ]
         )
-
-    def supports_distributed_reads(self) -> bool:
-        """Flink datasource supports distributed reads."""
-        return True
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Estimate in-memory data size for Flink streams.

@@ -4432,17 +4432,14 @@ def read_kafka(
 
     Returns:
         Dataset containing Kafka records. Each record contains:
-        - topic: Topic name
-        - partition: Partition ID
-        - offset: Message offset
-        - key: Message key (decoded string)
-        - value: Message value (decoded string)
-        - timestamp: Message timestamp
-        - timestamp_type: Timestamp type
-        - headers: Message headers (dict)
-        - partition_id: Combined topic-partition identifier
-        - read_timestamp: When the record was read
-        - current_position: Current offset position
+        - offset: Message offset (int64)
+        - key: Message key (string, deserialized)
+        - value: Message value (string or JSON object, deserialized)
+        - topic: Topic name (string)
+        - partition: Partition ID (int32)
+        - timestamp: Message timestamp in milliseconds since epoch (int64)
+        - timestamp_type: Timestamp type - 0=CreateTime, 1=LogAppendTime (int32)
+        - headers: Message headers as key-value pairs (map of string to string)
 
     Raises:
         ValueError: If configuration is invalid or required parameters are missing.
@@ -4523,38 +4520,25 @@ def read_kafka(
     # For streaming triggers, use the new streaming operator
     if streaming_trigger.trigger_type != "once":
         # Create streaming logical operator
+        from ray.data._internal.logical.operators.unbound_data_operator import (
+            UnboundedData,
+        )
+
         streaming_logical_op = UnboundedData(
             datasource=datasource,
             trigger=streaming_trigger,
             parallelism=parallelism,
         )
 
-        # Create logical plan
+        # Create logical plan - the planner will convert to physical operator
         ctx = DataContext.get_current()
         logical_plan = LogicalPlan(streaming_logical_op, ctx)
 
-        # Create physical operator for streaming execution
-        from ray.data._internal.execution.operators.unbounded_data_operator import (
-            UnboundedDataOperator,
-        )
-
-        streaming_physical_op = UnboundedDataOperator(
-            data_context=ctx,
-            datasource=datasource,
-            trigger=streaming_trigger,
-            parallelism=parallelism,
-            ray_remote_args=ray_remote_args,
-        )
-
-        # Create execution plan with the physical operator
+        # Create execution plan (planner will create physical operators)
         execution_plan = ExecutionPlan(
             DatasetStats(metadata={}, parent=None),
             ctx.copy(),
         )
-
-        # Set the physical operator in the execution plan
-        execution_plan._logical_plan = logical_plan
-        execution_plan._physical_plan = streaming_physical_op
 
         return Dataset(
             plan=execution_plan,
@@ -4768,17 +4752,21 @@ def read_kinesis(
     # For streaming triggers, use the new streaming operator
     if streaming_trigger.trigger_type != "once":
         # Create streaming logical operator
+        from ray.data._internal.logical.operators.unbound_data_operator import (
+            UnboundedData,
+        )
+
         streaming_op = UnboundedData(
             datasource=datasource,
             trigger=streaming_trigger,
             parallelism=parallelism,
         )
 
-        # Create logical plan
+        # Create logical plan - the planner will convert to physical operator
         ctx = DataContext.get_current()
         logical_plan = LogicalPlan(streaming_op, ctx)
 
-        # Create execution plan
+        # Create execution plan (planner will create physical operators)
         execution_plan = ExecutionPlan(
             DatasetStats(metadata={}, parent=None),
             ctx.copy(),
@@ -5001,17 +4989,21 @@ def read_flink(
     # For streaming triggers, use the new streaming operator
     if streaming_trigger.trigger_type != "once":
         # Create streaming logical operator
+        from ray.data._internal.logical.operators.unbound_data_operator import (
+            UnboundedData,
+        )
+
         streaming_op = UnboundedData(
             datasource=datasource,
             trigger=streaming_trigger,
             parallelism=parallelism,
         )
 
-        # Create logical plan
+        # Create logical plan - the planner will convert to physical operator
         ctx = DataContext.get_current()
         logical_plan = LogicalPlan(streaming_op, ctx)
 
-        # Create execution plan
+        # Create execution plan (planner will create physical operators)
         execution_plan = ExecutionPlan(
             DatasetStats(metadata={}, parent=None),
             ctx.copy(),

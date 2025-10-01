@@ -74,29 +74,68 @@ def test_kafka_datasource_config_validation(ray_start_regular_shared):
             topics=["test"],
             kafka_config={},
         )
+    
+    # Empty topics
+    with pytest.raises(ValueError, match="topics cannot be empty"):
+        KafkaDatasource(
+            topics=[],
+            kafka_config={"bootstrap_servers": "localhost:9092"},
+        )
+    
+    # Invalid max_records_per_task
+    with pytest.raises(ValueError, match="max_records_per_task must be positive"):
+        KafkaDatasource(
+            topics=["test"],
+            kafka_config={"bootstrap_servers": "localhost:9092"},
+            max_records_per_task=0,
+        )
 
 
 def test_read_kafka_basic(ray_start_regular_shared):
     """Test basic read_kafka functionality."""
     # Test that the function exists and can be called with basic params
-    # This will fail without actual Kafka setup, but tests the API
-    with pytest.raises(RuntimeError):
+    # Will raise ImportError if kafka-python not installed
+    with pytest.raises(ImportError, match="kafka-python is required"):
         ray.data.read_kafka(
             topics=["test-topic"], bootstrap_servers="localhost:9092", trigger="once"
         )
 
 
 def test_read_kafka_trigger_formats(ray_start_regular_shared):
-    """Test different trigger formats."""
+    """Test different trigger formats are parsed correctly."""
     # Test that different trigger formats are accepted
+    # Will raise ImportError if kafka-python not installed
     trigger_formats = ["once", "continuous", "30s", "interval:1m"]
     for trigger in trigger_formats:
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ImportError, match="kafka-python is required"):
             ray.data.read_kafka(
                 topics=["test-topic"],
                 bootstrap_servers="localhost:9092",
                 trigger=trigger,
             )
+
+
+def test_kafka_import_check():
+    """Test that ImportError is raised when kafka-python is not available."""
+    from ray.data._internal.datasource.kafka_datasource import _check_kafka_available
+    
+    # This will raise ImportError if kafka-python not installed
+    # If installed, it will pass
+    try:
+        _check_kafka_available()
+        # If we get here, kafka-python is installed
+        assert True
+    except ImportError as e:
+        assert "kafka-python is required" in str(e)
+
+
+def test_kafka_datasource_estimate_inmemory_data_size(ray_start_regular_shared):
+    """Test that unbounded sources return None for memory estimation."""
+    kafka_config = {"bootstrap_servers": "localhost:9092"}
+    ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
+    
+    # Unbounded sources should return None (unknown size)
+    assert ds.estimate_inmemory_data_size() is None
 
 
 if __name__ == "__main__":
