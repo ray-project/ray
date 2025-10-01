@@ -84,7 +84,8 @@ def mock_pyav_open():
     with (
         patch("ray.llm.example.data.video_processing.video_processor._av_mod", _AV),
         patch(
-            "ray.llm.example.data.video_processing.video_processor._PIL_Image", _PILImage
+            "ray.llm.example.data.video_processing.video_processor._PIL_Image",
+            _PILImage,
         ),
     ):
         yield
@@ -469,7 +470,9 @@ async def test_bytesio_format_guess_fallback(mock_http_connection_bytes):
             BILINEAR = 2
 
     with (
-        patch("ray.llm.example.data.video_processing.video_processor._av_mod", _ErrOnAuto),
+        patch(
+            "ray.llm.example.data.video_processing.video_processor._av_mod", _ErrOnAuto
+        ),
         patch("ray.llm.example.data.video_processing.video_processor._PIL_Image", _P),
     ):
         udf = PrepareVideoUDF(
