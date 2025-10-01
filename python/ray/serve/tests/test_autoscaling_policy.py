@@ -174,8 +174,12 @@ class TestAutoscalingMetrics:
         tlog("Confirmed all requests are assigned to replicas.")
 
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # when running requests are collected at handle, then there is guaranteed over counting
-            # resulting in the number of replicas being greater than desired value.
+            # When running requests are counted at the handle, overcounting is inevitable.
+            # This inflates the calculated number of replicas beyond the desired value.
+            # One might assume the replica count would eventually converge to the expected value,
+            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
+            # that already has active requests. This causes the in-flight request count to drop
+            # below the target, resulting in fewer replicas than expected.
             wait_for_condition(check_num_replicas_gte, name="A", target=5)
         else:
             wait_for_condition(check_num_replicas_eq, name="A", target=5)
@@ -241,8 +245,12 @@ class TestAutoscalingMetrics:
         print("Confirmed many queries are inflight.")
 
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # when running requests are collected at handle, then there is guaranteed over counting
-            # resulting in the number of replicas being greater than desired value.
+            # When running requests are counted at the handle, overcounting is inevitable.
+            # This inflates the calculated number of replicas beyond the desired value.
+            # One might assume the replica count would eventually converge to the expected value,
+            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
+            # that already has active requests. This causes the in-flight request count to drop
+            # below the target, resulting in fewer replicas than expected.
             wait_for_condition(
                 check_num_replicas_gte, name="A", target=5, app_name="app1"
             )
@@ -295,8 +303,10 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                # keep this less than the wait_for_condition timeout because we want the
-                # autoscaler to be responsive to changes in metrics.
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
                 "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
@@ -324,8 +334,12 @@ class TestAutoscalingMetrics:
         [handle.remote() for _ in range(20)]
 
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # when running requests are collected at handle, then there is guaranteed over counting
-            # resulting in the number of replicas being greater than desired value.
+            # When running requests are counted at the handle, overcounting is inevitable.
+            # This inflates the calculated number of replicas beyond the desired value.
+            # One might assume the replica count would eventually converge to the expected value,
+            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
+            # that already has active requests. This causes the in-flight request count to drop
+            # below the target, resulting in fewer replicas than expected.
             wait_for_condition(check_num_replicas_gte, name="A", target=5)
             # Wait for deployment A to scale up
             wait_for_condition(
@@ -383,8 +397,10 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                # keep this less than the wait_for_condition timeout because we want the
-                # autoscaler to be responsive to changes in metrics.
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
                 "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
@@ -410,8 +426,12 @@ class TestAutoscalingMetrics:
 
         # Wait for deployment A to scale up
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # when running requests are collected at handle, then there is guaranteed over counting
-            # resulting in the number of replicas being greater than desired value.
+            # When running requests are counted at the handle, overcounting is inevitable.
+            # This inflates the calculated number of replicas beyond the desired value.
+            # One might assume the replica count would eventually converge to the expected value,
+            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
+            # that already has active requests. This causes the in-flight request count to drop
+            # below the target, resulting in fewer replicas than expected.
             wait_for_condition(check_num_replicas_gte, name="A", target=5)
             wait_for_condition(
                 check_num_requests_ge, client=client, id=dep_id, expected=20
