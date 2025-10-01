@@ -163,7 +163,7 @@ class FootsiesBinary:
 
         lock_path = self.full_download_path.parent / ".footsies-download.lock"
         with FileLock(lock_path, timeout=300):
-            if Path(self.full_download_path).exists():
+            if self.full_download_path.exists():
                 logger.info(
                     f"Game binary already exists at {self.full_download_path}, skipping download."
                 )
@@ -188,9 +188,8 @@ class FootsiesBinary:
         # As multiple actors might try to unzip or rename the paths at the same time.
         # The file lock should force this function to be sequential
         lock_path = self.full_download_path.parent / ".footsies-unzip.lock"
-
         with FileLock(lock_path, timeout=300):
-            if Path(self.renamed_path).exists():
+            if self.renamed_path.exists():
                 logger.info(
                     f"Game binary already extracted at {self.renamed_path}, skipping extraction."
                 )
