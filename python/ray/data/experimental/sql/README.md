@@ -1,29 +1,46 @@
 # Ray Data SQL API
 
-**Status:** Experimental (Alpha)
+:::note
+This API is experimental and may change in future releases.
+:::
 
-Execute SQL queries on Ray Datasets using standard SQL syntax with advanced query optimization.
+## What is the Ray Data SQL API?
 
-## Features
+The Ray Data SQL API provides SQL query execution on Ray Datasets using standard SQL syntax. You can query distributed datasets with familiar SQL while leveraging Ray Data's distributed execution, resource management, and backpressure control.
 
-### Multi-Engine Architecture
+The API uses a pluggable optimizer architecture that supports multiple query engines:
+- SQLGlot for multi-dialect SQL parsing
+- Apache DataFusion for advanced cost-based optimization
+
+All queries execute using Ray Dataset native operations (filter, join, groupby, aggregate) with automatic distribution across your cluster.
+
+## When to use the SQL API
+
+Use the SQL API when you:
+- Want to query Ray Datasets using familiar SQL syntax
+- Need multi-dialect SQL support (MySQL, PostgreSQL, Spark SQL, BigQuery)
+- Have complex join queries that benefit from cost-based optimization
+- Want to migrate SQL workloads to Ray Data with minimal code changes
+- Prefer declarative SQL over imperative Ray Data operations
+
+## Optimizer engines
 
 The SQL API supports two pluggable optimizer engines:
 
-**1. SQLGlot (Default Fallback)**
-- Supports 20+ SQL dialects (MySQL, PostgreSQL, Spark SQL, BigQuery, etc.)
+**SQLGlot engine (fallback):**
+- Supports 20+ SQL dialects including MySQL, PostgreSQL, Spark SQL, BigQuery, and Snowflake
 - Fast pure-Python implementation
 - Rule-based query optimization
-- Always available (required dependency)
+- Always available as required dependency
 
-**2. Apache DataFusion (Default)**
-- Advanced cost-based query optimizer (CBO)
-- Intelligent join reordering based on table statistics
+**Apache DataFusion engine (default):**
+- Advanced cost-based query optimizer with table statistics
+- Intelligent join reordering based on cardinality estimates
 - Predicate and projection pushdown optimization
-- Proportional sampling maintains table size ratios for accurate optimization
+- Proportional sampling that maintains table size ratios for accurate optimization
 - Executes with Ray Data for distributed processing
 
-### Hybrid Execution Model
+## How the SQL API works
 
 ```
 User SQL Query
@@ -38,7 +55,9 @@ Ray Dataset Operations (filter, join, groupby, aggregate, sort, limit)
 Distributed Execution + Resource Management + Backpressure Control
 ```
 
-## Quick Start
+## Get started with the SQL API
+
+This example shows basic SQL query execution on Ray Datasets:
 
 ```python
 import ray.data
@@ -54,7 +73,7 @@ orders = ray.data.from_items([
     {"user_id": 2, "amount": 200}
 ])
 
-# Execute SQL - automatically uses best available optimizer
+# Execute SQL query
 result = ray.data.sql("""
     SELECT u.name, o.amount
     FROM users u
@@ -63,11 +82,14 @@ result = ray.data.sql("""
 """)
 
 rows = result.take_all()
+# Returns: [{'name': 'Alice', 'amount': 100}]
 ```
 
-## Configuration
+The SQL API automatically selects the best available optimizer engine based on your configuration.
 
-### Via DataContext (Recommended)
+## Configure the SQL API
+
+You can configure SQL behavior through Ray Data's DataContext:
 
 ```python
 from ray.data import DataContext
@@ -92,7 +114,7 @@ ctx.sql_case_sensitive = True
 ctx.sql_max_join_partitions = 20
 ```
 
-### Via SQL API
+You can also use convenience functions:
 
 ```python
 import ray.data
@@ -104,34 +126,36 @@ ray.data.sql.configure(
     enable_sqlglot_optimizer=True
 )
 
-# Check configuration
+# View current configuration
 config = ray.data.sql.get_config_summary()
 print(config)
 ```
 
-## Supported SQL Features
+## Supported SQL features
 
-### Basic Operations
-- `SELECT` - Column projection
-- `FROM` - Table references
-- `WHERE` - Row filtering
-- `JOIN` (INNER, LEFT, RIGHT, FULL OUTER)
-- `GROUP BY` - Aggregation grouping
-- `HAVING` - Post-aggregation filtering
-- `ORDER BY` - Sorting
-- `LIMIT` - Result limiting
+The SQL API supports standard SQL operations:
 
-### Aggregations
-- `COUNT(*)`, `COUNT(column)`
-- `SUM(column)`
-- `AVG(column)`, `MEAN(column)`
-- `MIN(column)`, `MAX(column)`
-- `STD(column)`, `STDDEV(column)`
+**Query operations:**
+- SELECT for column projection
+- FROM for table references
+- WHERE for row filtering
+- JOIN operations including INNER, LEFT, RIGHT, and FULL OUTER
+- GROUP BY for aggregation grouping
+- HAVING for post-aggregation filtering
+- ORDER BY for sorting
+- LIMIT for result limiting
 
-### Functions
-- String: `UPPER`, `LOWER`, `LENGTH`, `SUBSTRING`, `TRIM`, `CONCAT`
-- Math: `ABS`, `ROUND`, `CEIL`, `FLOOR`, `SQRT`, `LOG`, `EXP`
-- Conditional: `CASE WHEN`, `COALESCE`, `NULLIF`
+**Aggregate functions:**
+- COUNT(*) and COUNT(column)
+- SUM(column)
+- AVG(column) and MEAN(column)
+- MIN(column) and MAX(column)
+- STD(column) and STDDEV(column)
+
+**Scalar functions:**
+- String functions including UPPER, LOWER, LENGTH, SUBSTRING, TRIM, and CONCAT
+- Math functions including ABS, ROUND, CEIL, FLOOR, SQRT, LOG, and EXP
+- Conditional functions including CASE WHEN, COALESCE, and NULLIF
 
 ## Architecture
 
