@@ -1,35 +1,15 @@
-"""Video Preparation Stage
-
-A production-grade video preprocessing stage for Ray LLM batch pipelines.
-
-Responsibilities:
-- Parse video sources in OpenAI-style chat messages ("video", "video_url").
-- Resolve sources (HTTP, data URI, local path) with stream-first I/O and optional caching.
-- Decode via PyAV (FFmpeg) and sample frames by fps or by a fixed number.
-- Return frames (PIL or NumPy) and per-video metadata.
-
-Design notes:
-- Optional dependencies (PyAV, Pillow, NumPy) are imported optionally at module load.
-- CPU-bound decode runs in a thread; async orchestration preserves order and concurrency limits.
-"""
+"""Prepare Video Stage"""
 
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
-import importlib
 import io
 import os
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from ray.llm._internal.batch.envs import (
-    RAY_LLM_BATCH_MAX_DECODE_FRAMES,
-    RAY_LLM_BATCH_MAX_TARGETS,
-)
 from ray.llm._internal.batch.stages._util import HTTPConnection
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
@@ -43,583 +23,212 @@ try:  # pragma: no cover
 except Exception:  # pragma: no cover
     _PIL_Image = None  # type: ignore
 
-FrameType = Any  # PIL.Image.Image or numpy.ndarray
+FrameType = Any
 
 
 def _is_http(url: str) -> bool:
     try:
-        scheme = urlparse(url).scheme
-        return scheme in ("http", "https")
+        return urlparse(url).scheme in ("http", "https")
     except Exception:
         return False
 
 
-def _is_data_uri(url: str) -> bool:
-    return isinstance(url, str) and url.startswith("data:")
-
-
-def _sha256_16(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
-
-
-@dataclass
-class Sampling:
-    fps: Optional[float] = None
-    """The frames-per-second sampling rate.
-
-    If provided, frames are sampled on a timeline at this FPS.
-    """
-    num_frames: Optional[int] = None
-    """The number of frames to take deterministically from the start."""
-
-    @classmethod
-    def from_user(cls, cfg: Optional[Dict[str, Any]] = None) -> "Sampling":
-        """Create Sampling from user config.
-
-        Args:
-            cfg: Either {"fps": float} or {"num_frames": int}. If None, defaults to fps=3.0.
-        """
-        if not cfg:
-            return cls(fps=3.0)
-        if "fps" in cfg:
-            fps = float(cfg["fps"])
-            if fps <= 0:
-                raise ValueError("sampling.fps must be > 0")
-            return cls(fps=fps)
-        if "num_frames" in cfg:
-            n = int(cfg["num_frames"])
-            if n <= 0:
-                raise ValueError("sampling.num_frames must be >= 1")
-            return cls(num_frames=n)
-        return cls(fps=3.0)
+def _sha256_16(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 class VideoProcessor:
-    """Decode and sample frames from video sources.
-
-    - Uses PyAV for decoding.
-    - Network fetch/caching via HTTPConnection.
-    - CPU-heavy work done in a thread to avoid blocking the event loop.
-
-    Args:
-        sampling: {"fps": k} or {"num_frames": n}. Default fps=3.0.
-        cache_dir: Optional directory for disk cache.
-        cache_mode: One of "auto", "disk", or "memory".
-        output_format: "pil" or "numpy".
-        channels_first: When numpy, output (C, H, W) if True else (H, W, C).
-        timeout_s: HTTP timeout for downloads.
-        max_concurrency: Semaphore limit for parallel processing.
-        retries: Number of retry attempts on retriable errors (default 2).
-        retry_backoff_base: Base seconds for exponential backoff.
-        bypass_if_frames_present: Reserved for future use.
-        pack_for_model: Reserved for future use.
-        keep_downloaded: If using disk cache, keep cached file after processing.
-        preprocess: PIL preprocessing dict {resize, crop, convert}.
-        max_sampled_frames: Optional cap for number of sampled frames.
-    """
-
     def __init__(
-        self,
-        *,
-        sampling: Optional[Dict[str, Any]] = None,
-        cache_dir: Optional[str] = None,
-        cache_mode: str = "auto",
-        output_format: str = "pil",
-        channels_first: bool = False,
-        timeout_s: float = 30.0,
-        max_concurrency: int = 8,
-        retries: int = 2,
-        retry_backoff_base: float = 0.5,
-        bypass_if_frames_present: bool = False,
-        pack_for_model: bool = False,
-        keep_downloaded: bool = False,
-        preprocess: Optional[Dict[str, Any]] = None,
-        max_sampled_frames: Optional[int] = None,
+        self, *, sampling_fps: float = 3.0, cache_dir: Optional[str] = None
     ) -> None:
-        self._sampling = Sampling.from_user(sampling)
+        if sampling_fps <= 0:
+            raise ValueError("sampling_fps must be positive")
+        self._fps = float(sampling_fps)
         self._cache_dir = Path(cache_dir) if cache_dir else None
-        self._cache_mode = cache_mode
-        self._output_format = output_format
-        self._channels_first = channels_first
-        self._timeout_s = timeout_s
-        self._retries = int(retries)
-        self._retry_backoff_base = float(retry_backoff_base)
-        self._bypass_if_frames_present = bypass_if_frames_present
-        self._pack_for_model = pack_for_model
-        self._keep_downloaded = keep_downloaded
-        self._preprocess = preprocess or {}
-        self._max_sampled_frames = (
-            int(max_sampled_frames) if max_sampled_frames is not None else None
-        )
-
         self._http = HTTPConnection()
-        self._sem = asyncio.Semaphore(max_concurrency)
+        self._sem = asyncio.Semaphore(4)
 
     async def process(self, sources: List[str]) -> List[Dict[str, Any]]:
         if not sources:
             return []
-        tasks = [self._process_one_safe(src) for src in sources]
+        tasks = [self._process_one_safe(url) for url in sources]
         return await asyncio.gather(*tasks)
 
-    async def _process_one_safe(self, source: str) -> Dict[str, Any]:
+    async def _process_one_safe(self, url: str) -> Dict[str, Any]:
         async with self._sem:
             attempt = 0
-            backoff = self._retry_backoff_base
-            while attempt <= self._retries:
+            backoff = 0.5
+            while attempt <= 2:
                 try:
-                    return await asyncio.to_thread(self._process_one_sync, source)
-                except Exception as e:
-                    if not self._should_retry(e) or attempt == self._retries:
+                    return await asyncio.to_thread(self._process_one_sync, url)
+                except Exception as exc:
+                    if attempt == 2 or isinstance(exc, (ImportError, ValueError)):
                         return {
                             "frames": [],
                             "meta": {
                                 "failed": True,
-                                "error_type": type(e).__name__,
-                                "error": str(e),
+                                "error_type": type(exc).__name__,
+                                "error": str(exc),
                                 "attempts": attempt + 1,
                                 "retried": attempt > 0,
-                                "source": str(source),
+                                "source": url,
                                 "video_num_frames": 0,
                                 "frame_timestamps": [],
                             },
                         }
-                    await asyncio.sleep(max(backoff, 0))
+                    await asyncio.sleep(backoff)
                     backoff *= 2
                     attempt += 1
 
-    def _should_retry(self, e: Exception) -> bool:
-        non_retriable = (ImportError, ValueError)
-        return not isinstance(e, non_retriable)
-
-    def _process_one_sync(self, source: str) -> Dict[str, Any]:
+    def _process_one_sync(self, url: str) -> Dict[str, Any]:
         if _av_mod is None:
-            raise ImportError(
-                "PyAV is required for PrepareVideoStage. Install with `pip install av`."
-            )
+            raise ImportError("PyAV is required. Install with `pip install av`.")
         if _PIL_Image is None:
-            raise ImportError(
-                "Pillow is required for PrepareVideoStage. Install with `pip install pillow`."
-            )
+            raise ImportError("Pillow is required. Install with `pip install pillow`.")
+        if not _is_http(url):
+            raise ValueError("VideoProcessor only supports HTTP(S) URLs.")
 
-        resolved, is_memory, cleanup_path = self._resolve_source_for_decode(source)
-
+        resolved, cleanup_path = self._resolve_source(url)
         container = None
         try:
-            if is_memory:
-                try:
-                    container = _av_mod.open(resolved)
-                except Exception:
-                    fmt_guess = self._guess_format_from_source(source) or "mp4"
-                    container = _av_mod.open(resolved, format=fmt_guess)
-            else:
-                container = _av_mod.open(resolved)
-
-            try:
-                vstream = next(
-                    s for s in container.streams if getattr(s, "type", None) == "video"
-                )
-            except StopIteration:
-                raise ValueError("No video stream found in source")
-
-            frames: List[FrameType] = []
-            timestamps: List[float] = []
-            allow_zero_samples = False
-
-            s = self._sampling
-            if s.num_frames is not None:
-                n = max(int(s.num_frames), 1)
-                if (
-                    self._max_sampled_frames is not None
-                    and self._max_sampled_frames >= 0
-                ):
-                    n = min(n, self._max_sampled_frames)
-                if n == 0:
-                    allow_zero_samples = True
-                else:
-                    decoded = 0
-                    for frame in container.decode(video=vstream.index):
-                        decoded += 1
-                        if getattr(frame, "pts", None) is None:
-                            fps_guess = None
-                            try:
-                                fps_guess = (
-                                    float(getattr(vstream, "average_rate", 0)) or None
-                                )
-                            except Exception:
-                                fps_guess = None
-                            current_ts = (
-                                len(timestamps) / fps_guess
-                                if fps_guess
-                                else float(len(timestamps))
-                            )
-                        else:
-                            current_ts = float(frame.pts * vstream.time_base)
-                        frames.append(self._format_frame(frame))
-                        timestamps.append(current_ts)
-                        if len(frames) >= n:
-                            break
-                        if decoded >= RAY_LLM_BATCH_MAX_DECODE_FRAMES():
-                            break
-            else:
-                targets = self._build_targets(container, vstream)
-                if (
-                    self._max_sampled_frames is not None
-                    and self._max_sampled_frames >= 0
-                ):
-                    targets = targets[: self._max_sampled_frames]
-
-                if not targets:
-                    allow_zero_samples = True
-                else:
-                    target_idx = 0
-                    next_target = targets[target_idx]
-
-                    decoded = 0
-                    for frame in container.decode(video=vstream.index):
-                        decoded += 1
-                        if getattr(frame, "pts", None) is None:
-                            current_ts = len(timestamps) / ((s.fps or 30.0))
-                        else:
-                            current_ts = float(frame.pts * vstream.time_base)
-
-                        if current_ts + 1e-6 >= next_target:
-                            frames.append(self._format_frame(frame))
-                            timestamps.append(current_ts)
-                            target_idx += 1
-                            if target_idx >= len(targets):
-                                break
-                            next_target = targets[target_idx]
-
-                        if decoded >= RAY_LLM_BATCH_MAX_DECODE_FRAMES():
-                            break
+            container = self._open_container(resolved)
+            stream = self._first_video_stream(container)
+            frames, timestamps = self._decode_frames(container, stream)
         finally:
-            try:
-                if container is not None:
-                    container.close()
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to close PyAV container for source {self._source_repr(source, resolved, is_memory)}: {e}"
-                ) from e
+            if container is not None:
+                container.close()
+            if cleanup_path is not None and os.path.exists(cleanup_path):
+                os.remove(cleanup_path)
 
-        if not frames and not allow_zero_samples:
+        if not frames:
             raise ValueError("No frames sampled")
 
-        w = h = None
-        if frames:
-            if self._output_format == "pil":
-                try:
-                    w, h = frames[0].width, frames[0].height
-                except Exception:
-                    w = h = None
-            else:
-                arr0 = frames[0]
-                try:
-                    shape = getattr(arr0, "shape", None)
-                    if shape is None:
-                        raise ValueError("invalid numpy frame")
-                    if self._channels_first:
-                        _, h, w = shape
-                    else:
-                        h, w, _ = shape
-                except Exception:
-                    w = h = None
-
-        result = {
+        size = self._extract_size(frames)
+        return {
             "frames": frames,
             "meta": {
-                "video_size": [w, h] if (w and h) else None,
+                "failed": False,
+                "source": url,
                 "video_num_frames": len(frames),
                 "frame_timestamps": timestamps,
-                "source": self._source_repr(source, resolved, is_memory),
-                "failed": False,
+                "video_size": size,
             },
         }
 
-        if cleanup_path is not None and not self._keep_downloaded:
-            try:
-                os.remove(cleanup_path)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to remove cached file at {cleanup_path}: {e}"
-                ) from e
+    def _resolve_source(self, url: str) -> Tuple[Any, Optional[str]]:
+        if self._cache_dir is None:
+            data = self._http.download_bytes_chunked(url, timeout=30.0)
+            return io.BytesIO(data), None
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        target = self._cache_dir / f"video-{_sha256_16(url)}.mp4"
+        if target.exists():
+            return str(target), None
+        tmp_path = target.with_suffix(".tmp")
+        self._http.download_file(url, tmp_path, timeout=30.0)
+        os.replace(tmp_path, target)
+        return str(target), str(target)
 
-        return result
-
-    def _guess_format_from_source(self, source: str) -> Optional[str]:
+    def _open_container(self, resolved: Any) -> Any:
         try:
-            if _is_data_uri(source):
-                header = source.split(",", 1)[0]
-                if "video/" in header:
-                    mime = header.split("video/")[1].split(";")[0].strip()
-                    return {
-                        "mp4": "mp4",
-                        "webm": "webm",
-                        "ogg": "ogg",
-                        "quicktime": "mov",
-                        "x-matroska": "matroska",
-                    }.get(mime, None)
-            parsed = urlparse(source)
-            ext = os.path.splitext(parsed.path or source)[1].lower().lstrip(".")
-            return {
-                "mp4": "mp4",
-                "m4v": "mp4",
-                "mov": "mov",
-                "webm": "webm",
-                "mkv": "matroska",
-                "ogg": "ogg",
-            }.get(ext, None)
+            return _av_mod.open(resolved)
         except Exception:
-            return None
+            return _av_mod.open(resolved, format="mp4")
 
-    def _source_repr(self, original: str, resolved: Any, is_memory: bool) -> str:
-        try:
-            if is_memory:
-                return f"memory://{len(resolved.getbuffer())}b"
-            return str(resolved)
-        except Exception:
-            return str(original)
+    def _first_video_stream(self, container: Any) -> Any:
+        for stream in container.streams:
+            if getattr(stream, "type", None) == "video":
+                return stream
+        raise ValueError("No video stream found")
 
-    def _build_targets(self, container: Any, vstream: Any) -> List[float]:
+    def _decode_frames(
+        self, container: Any, stream: Any
+    ) -> Tuple[List[FrameType], List[float]]:
+        targets = self._build_targets(container, stream)
+        if not targets:
+            return [], []
+        frames: List[FrameType] = []
+        timestamps: List[float] = []
+        target_idx = 0
+        next_target = targets[target_idx]
+        for frame in container.decode(video=stream.index):
+            current_ts = self._timestamp_from_frame(frame, stream, len(timestamps))
+            if current_ts + 1e-6 < next_target:
+                continue
+            image = frame.to_image()
+            frames.append(image)
+            timestamps.append(current_ts)
+            target_idx += 1
+            if target_idx >= len(targets):
+                break
+            next_target = targets[target_idx]
+        return frames, timestamps
+
+    def _build_targets(self, container: Any, stream: Any) -> List[float]:
         duration_s: Optional[float] = None
-        try:
-            if getattr(container, "duration", None) is not None and _av_mod is not None:
-                duration_s = float(container.duration * _av_mod.time_base)
-        except Exception:
-            duration_s = None
-
+        duration_attr = getattr(container, "duration", None)
+        if (
+            duration_attr is not None
+            and getattr(_av_mod, "time_base", None) is not None
+        ):
+            duration_s = float(duration_attr * _av_mod.time_base)
+        if duration_s is None and getattr(stream, "duration", None) is not None:
+            duration_s = float(stream.duration * float(stream.time_base))
         if duration_s is None:
-            try:
-                if getattr(vstream, "duration", None) is not None:
-                    duration_s = float(vstream.duration * float(vstream.time_base))
-            except Exception:
-                duration_s = None
+            limit = max(int(self._fps * 2), 1)
+            return [i / self._fps for i in range(limit)]
+        total = max(int(duration_s * self._fps) + 1, 1)
+        return [i / self._fps for i in range(total)]
 
-        s = self._sampling
-        targets: List[float] = []
-        if s.fps is not None:
-            if duration_s is None:
-                limit = max(int(s.fps * 2), 1)
-                limit = min(limit, RAY_LLM_BATCH_MAX_TARGETS())
-                targets = [i / s.fps for i in range(limit)]
-            else:
-                n = int(max(duration_s, 0.0) * s.fps) + 1
-                n = max(1, min(n, RAY_LLM_BATCH_MAX_TARGETS()))
-                targets = [i / s.fps for i in range(n)]
-        return targets
+    def _timestamp_from_frame(self, frame: Any, stream: Any, index: int) -> float:
+        if getattr(frame, "pts", None) is None:
+            return index / self._fps
+        return float(frame.pts * stream.time_base)
 
-    def _apply_preprocess_pil(self, img: Any) -> Any:
-        if not self._preprocess:
-            return img
-        r = self._preprocess.get("resize")
-        if r and isinstance(r, dict) and "size" in r:
-            resample_name = r.get("resample", "BILINEAR")
-            method = None
-            try:
-                method = (
-                    getattr(_PIL_Image, resample_name, None) if _PIL_Image else None
-                )
-                if method is None and _PIL_Image is not None:
-                    Resampling = getattr(_PIL_Image, "Resampling", None)
-                    if Resampling is not None:
-                        method = getattr(Resampling, resample_name, None)
-            except Exception:
-                method = None
-            if method is None:
-                method = 2  # PIL.Image.BILINEAR numeric fallback
-            img = img.resize(tuple(r["size"]), method)
-        c = self._preprocess.get("crop")
-        if c and isinstance(c, dict) and "box" in c:
-            img = img.crop(tuple(c["box"]))
-        conv = self._preprocess.get("convert")
-        if isinstance(conv, str):
-            img = img.convert(conv)
-        return img
-
-    def _format_frame(self, frame: Any) -> FrameType:
-        if self._output_format == "pil":
-            img = frame.to_image()
-            img = self._apply_preprocess_pil(img)
-            return img
-        else:
-            try:
-                np = importlib.import_module("numpy")
-            except Exception as e:
-                raise ImportError(
-                    "NumPy is required for numpy output_format. Install with `pip install numpy`."
-                ) from e
-
-            if self._preprocess:
-                img = frame.to_image()
-                img = self._apply_preprocess_pil(img)
-                arr = np.array(img)
-                if getattr(arr, "ndim", 0) < 2 or arr.size == 0:
-                    raise ValueError(
-                        "Failed to convert preprocessed PIL image to a valid numpy array"
-                    )
-            else:
-                arr = frame.to_ndarray(format="rgb24")
-                if not hasattr(arr, "shape"):
-                    raise ValueError("invalid numpy frame")
-                if getattr(arr, "ndim", 0) == 2:
-                    arr = np.expand_dims(arr, -1)
-
-            if self._channels_first:
-                return arr.transpose(2, 0, 1)
-            return arr
-
-    def _resolve_source_for_decode(
-        self, source: str
-    ) -> Tuple[Union[str, io.BytesIO], bool, Optional[str]]:
-        """Return (resolved, is_memory, cleanup_path).
-
-        cache_mode:
-          - "auto": download to disk if uniform sampling (num_frames) likely needs seek; otherwise stream.
-          - "disk": always download to disk when http/https.
-          - "memory": fetch into BytesIO when http/https or data URI.
-        """
-        if _is_data_uri(source):
-            try:
-                header, b64 = source.split(",", 1)
-                raw = base64.b64decode(b64)
-                return io.BytesIO(raw), True, None
-            except Exception as e:
-                raise ValueError(f"Invalid data URI: {e}") from e
-
-        parsed = urlparse(source)
-        if parsed.scheme in ("file", "") and os.path.exists(parsed.path or source):
-            return (parsed.path or source), False, None
-
-        if _is_http(source):
-            use_disk = self._cache_dir is not None and (
-                self._cache_mode == "disk"
-                or (
-                    self._cache_mode == "auto" and self._sampling.num_frames is not None
-                )
-            )
-            use_memory = self._cache_mode == "memory"
-
-            if use_memory:
-                data = self._http.download_bytes_chunked(
-                    source, timeout=self._timeout_s
-                )
-                return io.BytesIO(data), True, None
-
-            if use_disk:
-                self._cache_dir.mkdir(parents=True, exist_ok=True)
-                fname = f"video-{_sha256_16(source)}.bin"
-                tmp = self._cache_dir / f".{fname}.tmp"
-                final = self._cache_dir / fname
-                self._http.download_file(source, tmp, timeout=self._timeout_s)
-                os.replace(tmp, final)
-                return (
-                    str(final),
-                    False,
-                    (None if self._keep_downloaded else str(final)),
-                )
-
-            return source, False, None
-
-        return source, False, None
+    def _extract_size(self, frames: List[FrameType]) -> Optional[List[int]]:
+        if not frames:
+            return None
+        first = frames[0]
+        width = getattr(first, "width", None)
+        height = getattr(first, "height", None)
+        if width is None or height is None:
+            return None
+        return [width, height]
 
 
 class PrepareVideoUDF(StatefulStageUDF):
-    """UDF for PrepareVideoStage.
-
-    Extract video sources from messages, process via VideoProcessor,
-    and emit frames and metadata aligned with PrepareImageStage conventions.
-    """
-
     def __init__(
         self,
         data_column: str,
         expected_input_keys: List[str],
         *,
-        sampling: Optional[Dict[str, Any]] = None,
+        sampling_fps: float = 3.0,
         cache_dir: Optional[str] = None,
-        cache_mode: str = "auto",
-        output_format: str = "pil",
-        channels_first: bool = False,
-        timeout_s: float = 30.0,
-        max_concurrency: int = 8,
-        retries: int = 2,
-        retry_backoff_base: float = 0.5,
-        bypass_if_frames_present: bool = False,
-        pack_for_model: bool = False,
-        max_sampled_frames: Optional[int] = None,
     ) -> None:
         super().__init__(data_column, expected_input_keys)
-        self._video = VideoProcessor(
-            sampling=sampling,
-            cache_dir=cache_dir,
-            cache_mode=cache_mode,
-            output_format=output_format,
-            channels_first=channels_first,
-            timeout_s=timeout_s,
-            max_concurrency=max_concurrency,
-            retries=retries,
-            retry_backoff_base=retry_backoff_base,
-            bypass_if_frames_present=bypass_if_frames_present,
-            pack_for_model=pack_for_model,
-            max_sampled_frames=max_sampled_frames,
-        )
+        self._video = VideoProcessor(sampling_fps=sampling_fps, cache_dir=cache_dir)
 
-    def extract_video_sources(self, messages: List[Dict]) -> List[str]:
-        sources: List[str] = []
-        content = None
-        for message in messages:
-            content = message.get("content")
-            if hasattr(content, "tolist"):
-                content = content.tolist()
-            if not isinstance(content, list):
-                continue
-            for item in content:
-                media_type = item.get("type")
-                if media_type not in ("video", "video_url"):
-                    continue
-                url = (
-                    item.get("video")
-                    if media_type == "video"
-                    else item.get("video_url")
-                )
-                if isinstance(url, dict):
-                    url = url.get("url")
-                if not isinstance(url, str):
-                    raise ValueError(f"Cannot handle video url of type {type(url)}")
-                sources.append(url)
-        return sources
+    def extract_video_sources(self, urls: List[str]) -> List[str]:
+        return urls
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        async def process_row(
-            idx: int, row: Dict[str, Any]
-        ) -> Tuple[int, Dict[str, Any]]:
-            sources = self.extract_video_sources(row.get("messages", []))
+        async def handle_row(index: int, row: Dict[str, Any]) -> Dict[str, Any]:
+            sources = self.extract_video_sources(row["video_urls"])
             if not sources:
-                return idx, {self.IDX_IN_BATCH_COLUMN: idx}
+                return {self.IDX_IN_BATCH_COLUMN: index}
             results = await self._video.process(sources)
-            return idx, {
-                self.IDX_IN_BATCH_COLUMN: idx,
-                "video": [r["frames"] for r in results],
-                "video_meta": [r["meta"] for r in results],
+            return {
+                self.IDX_IN_BATCH_COLUMN: index,
+                "video": [item["frames"] for item in results],
+                "video_meta": [item["meta"] for item in results],
             }
 
-        tasks = [process_row(i, row) for i, row in enumerate(batch)]
+        tasks = [handle_row(i, row) for i, row in enumerate(batch)]
         for coro in asyncio.as_completed(tasks):
-            idx, ret = await coro
-            yield ret
+            yield await coro
 
 
 class PrepareVideoStage(StatefulStage):
-    """A stage to prepare videos from OpenAI chat template messages.
-
-    Required input key: messages (OpenAI chat format).
-    Outputs per row:
-      - video: List[List[FrameType]] frames per video in the request order.
-      - video_meta: List[Dict] per video with size/num_frames/timestamps/source/failed.
-    """
-
     fn: StatefulStageUDF = PrepareVideoUDF
 
     def get_required_input_keys(self) -> Dict[str, str]:
-        return {
-            "messages": "A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create",
-        }
+        return {"video_urls": "List[str] of HTTP(S) video URLs."}
