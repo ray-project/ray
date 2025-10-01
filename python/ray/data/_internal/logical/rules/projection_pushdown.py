@@ -1,6 +1,5 @@
 import logging
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -9,304 +8,227 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.operators.map_operator import Project
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data.expressions import Expr
+from ray.data.expressions import ColumnExpr, Expr
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class _ProjectSpec:
-    cols: Optional[List[str]]
-    cols_remap: Optional[Dict[str, str]]
-    exprs: Optional[Dict[str, Expr]]
+def _expr_output_name(expr: Expr) -> str:
+    name = getattr(expr, "name", None)
+    if name is None:
+        raise ValueError(
+            "Project expressions must be named; use .alias(name) or col(name)."
+        )
+    return name
+
+
+def _collect_input_columns_from_exprs(exprs: List[Expr]) -> Set[str]:
+    from ray.data.expressions import (
+        AliasExpr,
+        BinaryExpr,
+        LiteralExpr,
+        UDFExpr,
+        UnaryExpr,
+    )
+
+    cols: Set[str] = set()
+
+    def visit(e: Expr) -> None:
+        if isinstance(e, ColumnExpr):
+            cols.add(e.name)
+        elif isinstance(e, AliasExpr):
+            visit(e.expr)
+        elif isinstance(e, BinaryExpr):
+            visit(e.left)
+            visit(e.right)
+        elif isinstance(e, UnaryExpr):
+            visit(e.operand)
+        elif isinstance(e, UDFExpr):
+            for a in e.args:
+                visit(a)
+            for v in e.kwargs.values():
+                visit(v)
+        elif isinstance(e, LiteralExpr):
+            # literal: no columns
+            pass
+
+    for ex in exprs or []:
+        visit(ex)
+    return cols
+
+
+def _substitute_column_refs(expr: Expr, col_mapping: Dict[str, Expr]) -> Expr:
+    """Recursively substitute ColumnExpr references based on col_mapping."""
+    from ray.data.expressions import (
+        AliasExpr,
+        BinaryExpr,
+        LiteralExpr,
+        UDFExpr,
+        UnaryExpr,
+    )
+
+    if isinstance(expr, ColumnExpr):
+        # If this column has a mapped expression, return it (without alias)
+        if expr.name in col_mapping:
+            mapped = col_mapping[expr.name]
+            # Unwrap alias to get base expression
+            if isinstance(mapped, AliasExpr):
+                return mapped.expr
+            return mapped
+        return expr
+    elif isinstance(expr, AliasExpr):
+        # Recursively substitute in the inner expression, keep the alias name
+        return _substitute_column_refs(expr.expr, col_mapping).alias(expr.name)
+    elif isinstance(expr, BinaryExpr):
+        return type(expr)(
+            expr.op,
+            _substitute_column_refs(expr.left, col_mapping),
+            _substitute_column_refs(expr.right, col_mapping),
+        )
+    elif isinstance(expr, UnaryExpr):
+        return type(expr)(
+            expr.op,
+            _substitute_column_refs(expr.operand, col_mapping),
+        )
+    elif isinstance(expr, UDFExpr):
+        new_args = [_substitute_column_refs(a, col_mapping) for a in expr.args]
+        new_kwargs = {
+            k: _substitute_column_refs(v, col_mapping) for k, v in expr.kwargs.items()
+        }
+        return type(expr)(
+            fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
+        )
+    elif isinstance(expr, LiteralExpr):
+        return expr
+    else:
+        # Unknown expression type, return as-is
+        return expr
+
+
+def _gather_project_chain(op: Project) -> Tuple[LogicalOperator, List[Project]]:
+    """Return (first_non_project_ancestor, projects_chain) where projects_chain is from
+    farthest upstream Project to the given op (inclusive order)."""
+    chain: List[Project] = []
+    cur = op
+    while isinstance(cur, Project):
+        chain.append(cur)
+        parent = cur.input_dependency
+        if not isinstance(parent, Project):
+            return parent, list(reversed(chain))
+        cur = parent
+    return cur, [op]
 
 
 class ProjectionPushdown(Rule):
-    """Optimization rule that pushes down projections across the graph.
-
-    This rule looks for `Project` operators that are immediately
-    preceded by a `Read` operator and sets the
-    projected columns on the `Read` operator.
-
-    If there are redundant Project operators, it removes the `Project` operator from
-    the graph.
-    """
-
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         dag = plan.dag
         new_dag = dag._apply_transform(self._pushdown_project)
-
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
     def _pushdown_project(cls, op: LogicalOperator) -> LogicalOperator:
         if isinstance(op, Project):
-            # Push-down projections into read op
-            if cls._supports_projection_pushdown(op):
-                project_op: Project = op
-                target_op: LogicalOperatorSupportsProjectionPushdown = (
-                    op.input_dependency
-                )
-
-                return cls._try_combine(target_op, project_op)
-
-            # Otherwise, fuse projections into a single op
-            elif isinstance(op.input_dependency, Project):
-                outer_op: Project = op
-                inner_op: Project = op.input_dependency
-
-                return cls._fuse(inner_op, outer_op)
-
+            return cls._fuse(op)
         return op
 
     @classmethod
     def _supports_projection_pushdown(cls, op: Project) -> bool:
-        # NOTE: Currently only projecting into Parquet is supported
-        input_op = op.input_dependency
+        # Only safe when we don't need to preserve unspecified columns.
+        if op.preserve_existing:
+            return False
+        inp = op.input_dependency
         return (
-            isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
-            and input_op.supports_projection_pushdown()
+            isinstance(inp, LogicalOperatorSupportsProjectionPushdown)
+            and inp.supports_projection_pushdown()
         )
 
     @staticmethod
-    def _fuse(inner_op: Project, outer_op: Project) -> Project:
-        # Combine expressions from both operators
-        combined_exprs = _combine_expressions(inner_op.exprs, outer_op.exprs)
+    def _fuse(op: Project) -> LogicalOperator:
+        from ray.data.expressions import AliasExpr
 
-        # Only combine projection specs if there are no expressions
-        # When expressions are present, they take precedence
-        if combined_exprs:
-            # When expressions are present, preserve column operations from outer operation
-            # The logical order is: expressions first, then column operations
-            outer_cols = outer_op.cols
-            outer_cols_rename = outer_op.cols_rename
+        # Fuse the entire Project chain into one Project with correct semantics.
+        ancestor, chain = _gather_project_chain(op)
 
-            # If outer operation has no column operations, fall back to inner operation
-            if outer_cols is None and outer_cols_rename is None:
-                outer_cols = inner_op.cols
-                outer_cols_rename = inner_op.cols_rename
+        # defs: name -> Expr producing that name
+        # order: final output order (names)
+        defs: dict[str, Expr] = {}
+        order: List[str] = []
+        saw_selection = False
 
-            return Project(
-                inner_op.input_dependency,
-                cols=outer_cols,
-                cols_rename=outer_cols_rename,
-                exprs=combined_exprs,
-                # Give precedence to outer operator's ray_remote_args
-                ray_remote_args={
-                    **inner_op._ray_remote_args,
-                    **outer_op._ray_remote_args,
-                },
-            )
-        else:
-            # Fall back to original behavior for column-only projections
-            inner_op_spec = _get_projection_spec(inner_op)
-            outer_op_spec = _get_projection_spec(outer_op)
+        def ensure_named(expr: Expr, name: str) -> Expr:
+            """Ensure expression is aliased with the given name, unwrapping existing aliases."""
+            if getattr(expr, "name", None) == name:
+                return expr
+            # Unwrap AliasExpr to avoid double-aliasing
+            if isinstance(expr, AliasExpr):
+                return expr.expr.alias(name)
+            return expr.alias(name)
 
-            new_spec = _combine_projection_specs(
-                prev_spec=inner_op_spec, new_spec=outer_op_spec
-            )
+        for p in chain:
+            if not p.preserve_existing:
+                # Selection: reset to exactly requested outputs, resolved from previous defs.
+                saw_selection = True
+                new_defs: dict[str, Expr] = {}
+                new_order: List[str] = []
+                for e in p.exprs:
+                    name = _expr_output_name(e)
+                    # Substitute column references, then check if this column is already defined
+                    e_subst = _substitute_column_refs(e, defs)
+                    resolved = defs.get(name, e_subst)
+                    new_defs[name] = ensure_named(resolved, name)
+                    new_order.append(name)
+                defs = new_defs
+                order = new_order
+                continue
 
-            return Project(
-                inner_op.input_dependency,
-                cols=new_spec.cols,
-                cols_rename=new_spec.cols_remap,
-                exprs=None,
-                ray_remote_args={
-                    **inner_op._ray_remote_args,
-                    **outer_op._ray_remote_args,
-                },
-            )
+            # Preserve-existing step: apply renames and adds without losing ordering.
+            # Snapshot current defs to handle column swaps correctly
+            snapshot_defs = defs.copy()
+            snapshot_order = order.copy()
 
-    @staticmethod
-    def _try_combine(
-        target_op: LogicalOperatorSupportsProjectionPushdown,
-        project_op: Project,
-    ) -> LogicalOperator:
-        # For now, don't push down expressions into `Read` operators
-        # Only handle traditional column projections
-        if project_op.exprs:
-            # Cannot push expressions into `Read`, return unchanged
-            return project_op
+            # Track output names from this Project to avoid replacing them in order
+            current_output_names = {_expr_output_name(e) for e in p.exprs}
 
-        target_op_spec = _get_projection_spec(target_op)
-        project_op_spec = _get_projection_spec(project_op)
+            for e in p.exprs:
+                name = _expr_output_name(e)
+                # Detect simple rename: alias(ColumnExpr(src), name) with src != name
+                inner = getattr(e, "expr", None)
+                if isinstance(inner, ColumnExpr) and inner.name != name:
+                    src = inner.name
+                    # Resolve definition from snapshot, not current defs
+                    resolved = snapshot_defs.get(src, e)
+                    # Update mapping: name <- src
+                    defs[name] = ensure_named(resolved, name)
+                    # Update order: replace src with name ONLY if src is not also an output of this Project
+                    if src in snapshot_order and src not in current_output_names:
+                        idx = snapshot_order.index(src)
+                        order[idx] = name
+                    elif name not in order:
+                        order.append(name)
+                else:
+                    # For non-rename expressions, substitute column references
+                    e_subst = _substitute_column_refs(e, snapshot_defs)
+                    defs[name] = ensure_named(e_subst, name)
+                    if name not in order:
+                        order.append(name)
 
-        new_spec = _combine_projection_specs(
-            prev_spec=target_op_spec, new_spec=project_op_spec
+        # Build final expr list in order; decide preservation.
+        final_exprs = [defs[n] for n in order]
+        final_preserve = not saw_selection
+
+        # Optional pushdown for selection-only final.
+        if (
+            not final_preserve
+            and isinstance(ancestor, LogicalOperatorSupportsProjectionPushdown)
+            and ancestor.supports_projection_pushdown()
+        ):
+            required = _collect_input_columns_from_exprs(final_exprs)
+            if required:
+                ancestor = ancestor.apply_projection(sorted(required))
+
+        return Project(
+            ancestor,
+            exprs=final_exprs,
+            preserve_existing=final_preserve,
+            ray_remote_args=chain[-1]._ray_remote_args,
         )
-
-        logger.debug(
-            f"Pushing projection down into read operation "
-            f"projection columns = {new_spec.cols} (before: {target_op_spec.cols}), "
-            f"remap = {new_spec.cols_remap} (before: {target_op_spec.cols_remap})"
-        )
-
-        return target_op.apply_projection(new_spec.cols)
-
-
-def _combine_expressions(
-    inner_exprs: Optional[Dict[str, Expr]], outer_exprs: Optional[Dict[str, Expr]]
-) -> Optional[Dict[str, Expr]]:
-    """Combine expressions from two Project operators.
-
-    Args:
-        inner_exprs: Expressions from the inner (upstream) Project operator
-        outer_exprs: Expressions from the outer (downstream) Project operator
-
-    Returns:
-        Combined dictionary of expressions, or None if no expressions
-    """
-    if not inner_exprs and not outer_exprs:
-        return None
-
-    combined = {}
-
-    # Add expressions from inner operator
-    if inner_exprs:
-        combined.update(inner_exprs)
-
-    # Add expressions from outer operator
-    if outer_exprs:
-        combined.update(outer_exprs)
-
-    return combined if combined else None
-
-
-def _get_projection_spec(op: Union[Project, Read]) -> _ProjectSpec:
-    assert op is not None
-
-    if isinstance(op, Project):
-        return _ProjectSpec(
-            cols=op.cols,
-            cols_remap=op.cols_rename,
-            exprs=op.exprs,
-        )
-    elif isinstance(op, Read):
-        assert op.supports_projection_pushdown()
-
-        return _ProjectSpec(
-            cols=op.get_current_projection(),
-            cols_remap=None,
-            exprs=None,
-        )
-    else:
-        raise ValueError(
-            f"Operation doesn't have projection spec (supported Project, "
-            f"Read, got: {op.__class__})"
-        )
-
-
-def _combine_projection_specs(
-    prev_spec: _ProjectSpec, new_spec: _ProjectSpec
-) -> _ProjectSpec:
-    combined_cols_remap = _combine_columns_remap(
-        prev_spec.cols_remap,
-        new_spec.cols_remap,
-    )
-
-    # Validate resulting remapping against existing projection (if any)
-    _validate(combined_cols_remap, prev_spec.cols)
-
-    new_projection_cols: Optional[List[str]]
-
-    if prev_spec.cols is None and new_spec.cols is None:
-        # If both projections are unset, resulting is unset
-        new_projection_cols = None
-    elif prev_spec.cols is not None and new_spec.cols is None:
-        # If previous projection is set, but the new unset -- fallback to
-        # existing projection
-        new_projection_cols = prev_spec.cols
-    else:
-        # If new is set (and previous is either set or not)
-        #   - Reconcile new projection
-        #   - Project combined column remapping
-        assert new_spec.cols is not None
-
-        new_projection_cols = new_spec.cols
-
-        # Remap new projected columns into the schema before remapping (from the
-        # previous spec)
-        if prev_spec.cols_remap and new_projection_cols:
-            # Inverse remapping
-            inv_cols_remap = {v: k for k, v in prev_spec.cols_remap.items()}
-            new_projection_cols = [
-                inv_cols_remap.get(col, col) for col in new_projection_cols
-            ]
-
-        prev_cols_set = set(prev_spec.cols or [])
-        new_cols_set = set(new_projection_cols or [])
-
-        # Validate new projection is a proper subset of the previous one
-        if prev_cols_set and new_cols_set and not new_cols_set.issubset(prev_cols_set):
-            raise ValueError(
-                f"Selected columns '{new_cols_set}' needs to be a subset of "
-                f"'{prev_cols_set}'"
-            )
-
-    # Project remaps to only map relevant columns
-    if new_projection_cols is not None and combined_cols_remap is not None:
-        projected_cols_remap = {
-            k: v for k, v in combined_cols_remap.items() if k in new_projection_cols
-        }
-    else:
-        projected_cols_remap = combined_cols_remap
-
-    # Combine expressions from both specs
-    combined_exprs = _combine_expressions(prev_spec.exprs, new_spec.exprs)
-
-    return _ProjectSpec(
-        cols=new_projection_cols, cols_remap=projected_cols_remap, exprs=combined_exprs
-    )
-
-
-def _combine_columns_remap(
-    prev_remap: Optional[Dict[str, str]], new_remap: Optional[Dict[str, str]]
-) -> Optional[Dict[str, str]]:
-
-    if not new_remap and not prev_remap:
-        return None
-
-    new_remap = new_remap or {}
-    base_remap = prev_remap or {}
-
-    filtered_new_remap = dict(new_remap)
-    # Apply new remapping to the base remap
-    updated_base_remap = {
-        # NOTE: We're removing corresponding chained mapping from the remap
-        k: filtered_new_remap.pop(v, v)
-        for k, v in base_remap.items()
-    }
-
-    resolved_remap = dict(updated_base_remap)
-    resolved_remap.update(filtered_new_remap)
-
-    return resolved_remap
-
-
-def _validate(remap: Optional[Dict[str, str]], projection_cols: Optional[List[str]]):
-    if not remap:
-        return
-
-    # Verify that the remapping is a proper bijection (ie no
-    # columns are renamed into the same new name)
-    prev_names_map = {}
-    for prev_name, new_name in remap.items():
-        if new_name in prev_names_map:
-            raise ValueError(
-                f"Identified projections with conflict in renaming: '{new_name}' "
-                f"is mapped from multiple sources: '{prev_names_map[new_name]}' "
-                f"and '{prev_name}'."
-            )
-
-        prev_names_map[new_name] = prev_name
-
-    # Verify that remapping only references columns available in the projection
-    if projection_cols is not None:
-        invalid_cols = [key for key in remap.keys() if key not in projection_cols]
-
-        if invalid_cols:
-            raise ValueError(
-                f"Identified projections with invalid rename "
-                f"columns: {', '.join(invalid_cols)}"
-            )

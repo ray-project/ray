@@ -54,13 +54,14 @@ from ray.data.block import (
     BatchFormat,
     Block,
     BlockAccessor,
+    BlockColumn,
     CallableClass,
     DataBatch,
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
-from ray.data.expressions import AliasExpr
+from ray.data.expressions import AliasExpr, ColumnExpr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -115,55 +116,80 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    columns = op.cols
-    columns_rename = op.cols_rename
-    exprs = op.exprs
+    expr_list = op.exprs
 
     def _project_block(block: Block) -> Block:
         try:
             block_accessor = BlockAccessor.for_block(block)
-            if not block_accessor.num_rows():
+            if not block_accessor.num_rows() or not expr_list:
                 return block
 
-            # 1. evaluate / add expressions
-            if exprs:
-                block_accessor = BlockAccessor.for_block(block)
-                # Add/update with expression results
-                result_block = block
-                for name, expr in exprs.items():
-                    # Always wrap in alias before evaluation
-                    # Use expr.name if available, otherwise use the dict key
-                    actual_name = expr.name if expr.name is not None else name
-                    aliased_expr = (
-                        expr if isinstance(expr, AliasExpr) else expr.alias(actual_name)
-                    )
-                    # Evaluate the aliased expression
-                    result_column = eval_expr(aliased_expr, result_block)
-                    result_block = result_block.fill_column(actual_name, result_column)
-                block = result_block
+            # Snapshot original columns; evaluate all exprs against original block.
+            orig_cols = list(block_accessor.column_names())
+            rename_map = {}
+            out_names_in_order: List[str] = []
 
-            # 2. (optional) column projection
-            if columns:
-                block = BlockAccessor.for_block(block).select(columns)
+            source_block = block
+            computed: Dict[str, "BlockColumn"] = {}
 
-            # 3. (optional) rename
-            if columns_rename:
-                block = block.rename_columns(
-                    [columns_rename.get(col, col) for col in block.schema.names]
+            # Phase 1: compute all outputs from the same input snapshot
+            for expr in expr_list:
+                out_name = expr.name
+                aliased_expr = (
+                    expr if isinstance(expr, AliasExpr) else expr.alias(out_name)
                 )
 
-            return block
+                inner = getattr(aliased_expr, "expr", None)
+                if isinstance(inner, ColumnExpr) and inner.name != out_name:
+                    rename_map[inner.name] = out_name
+
+                computed[out_name] = eval_expr(aliased_expr, source_block)
+                if out_name not in out_names_in_order:
+                    out_names_in_order.append(out_name)
+
+            # Phase 2: commit outputs
+            cur_block = block
+            for out_name in out_names_in_order:
+                cur_block = BlockAccessor.for_block(cur_block).fill_column(
+                    out_name, computed[out_name]
+                )
+
+            # Finalize schema
+            if op.preserve_existing:
+                # Resolve chained renames (e.g., a->x, x->y => final 'y').
+                def resolve(name: str) -> str:
+                    seen = set()
+                    cur = name
+                    while cur in rename_map and rename_map[cur] not in seen:
+                        seen.add(cur)
+                        cur = rename_map[cur]
+                    return cur
+
+                final_cols: List[str] = []
+                seen_final = set()
+
+                for c in orig_cols:
+                    out_c = resolve(c)
+                    if out_c not in seen_final:
+                        final_cols.append(out_c)
+                        seen_final.add(out_c)
+
+                for name in out_names_in_order:
+                    if name not in seen_final:
+                        final_cols.append(name)
+                        seen_final.add(name)
+            else:
+                # Exact select: only expr outputs (in order).
+                final_cols = out_names_in_order
+
+            return BlockAccessor.for_block(cur_block).select(final_cols)
         except Exception as e:
             _try_wrap_udf_exception(e)
 
     compute = get_compute(op._compute)
-
     map_transformer = MapTransformer(
-        [
-            BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block)),
-        ]
+        [BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block))]
     )
-
     return MapOperator.create(
         map_transformer,
         input_physical_dag,

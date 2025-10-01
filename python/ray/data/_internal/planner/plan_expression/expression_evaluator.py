@@ -362,7 +362,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
             raise ValueError(f"Unsupported function: {func_name}")
 
 
-class RayDataExpressionEvaluator:
+class NativeExpressionEvaluator:
     """Visitor-based expression evaluator that uses Block and BlockColumns
 
     This evaluator implements the visitor pattern to traverse expression trees
@@ -506,5 +506,5 @@ def eval_expr(expr: Expr, block: Block) -> BlockColumn:
     Returns:
         The evaluated result as a BlockColumn.
     """
-    evaluator = RayDataExpressionEvaluator(block)
+    evaluator = NativeExpressionEvaluator(block)
     return evaluator.visit(expr)

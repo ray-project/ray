@@ -852,10 +852,9 @@ class Dataset:
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                cols=None,
-                cols_rename=None,
-                exprs={column_name: expr},
+                exprs=[expr.alias(column_name)],
                 ray_remote_args=ray_remote_args,
+                preserve_existing=True,
             )
             logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1081,13 +1080,16 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """  # noqa: E501
+        from ray.data.expressions import col
+
         if isinstance(cols, str):
-            cols = [cols]
+            exprs = [col(cols)]
         elif isinstance(cols, list):
             if not all(isinstance(col, str) for col in cols):
                 raise ValueError(
                     "select_columns requires all elements of 'cols' to be strings."
                 )
+            exprs = [col(c) for c in cols]
         else:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
@@ -1107,10 +1109,10 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            cols=cols,
-            cols_rename=None,
+            exprs=exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
+            preserve_existing=False,
         )
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1170,7 +1172,9 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """  # noqa: E501
+        from ray.data.expressions import col
 
+        exprs = []
         if isinstance(names, dict):
             if not names:
                 raise ValueError("rename_columns received 'names' with no entries.")
@@ -1188,7 +1192,7 @@ class Dataset:
                     "to be strings."
                 )
 
-            cols_rename = names
+            exprs = [col(old).alias(new) for old, new in names.items()]
         elif isinstance(names, list):
             if not names:
                 raise ValueError(
@@ -1212,7 +1216,10 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            cols_rename = dict(zip(current_names, names))
+            exprs = [
+                col(old).alias(new)
+                for old, new in dict(zip(current_names, names)).items()
+            ]
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -1233,10 +1240,10 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            cols=None,
-            cols_rename=cols_rename,
+            exprs=exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
+            preserve_existing=True,
         )
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)

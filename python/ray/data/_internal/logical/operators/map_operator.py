@@ -268,16 +268,13 @@ class Filter(AbstractUDFMap):
 
 
 class Project(AbstractMap):
-    """Logical operator for select_columns."""
+    """Logical operator for select_columns, with_column, rename_columns."""
 
     def __init__(
         self,
         input_op: LogicalOperator,
-        cols: Optional[List[str]] = None,
-        cols_rename: Optional[Dict[str, str]] = None,
-        exprs: Optional[
-            Dict[str, "Expr"]
-        ] = None,  # TODO Remove cols and cols_rename and replace them with corresponding exprs
+        exprs: List["Expr"],
+        preserve_existing: bool = False,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -288,30 +285,25 @@ class Project(AbstractMap):
             compute=compute,
         )
         self._batch_size = None
-        self._cols = cols
-        self._cols_rename = cols_rename
         self._exprs = exprs
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
+        self._preserve_existing = preserve_existing
 
-        if exprs is not None:
-            # Validate that all values are expressions
-            for name, expr in exprs.items():
-                if not isinstance(expr, Expr):
-                    raise TypeError(
-                        f"Expected Expr for column '{name}', got {type(expr)}"
-                    )
-
-    @property
-    def cols(self) -> Optional[List[str]]:
-        return self._cols
+        for expr in self._exprs:
+            if not isinstance(expr, Expr):
+                raise TypeError(f"Expected Expr got {expr} with type: {type(expr)}")
+            if getattr(expr, "name", None) is None:
+                raise TypeError(
+                    "All Project expressions must be named; use .alias(name) or col(name)."
+                )
 
     @property
-    def cols_rename(self) -> Optional[Dict[str, str]]:
-        return self._cols_rename
+    def preserve_existing(self) -> bool:
+        return self._preserve_existing
 
     @property
-    def exprs(self) -> Optional[Dict[str, "Expr"]]:
+    def exprs(self) -> List["Expr"]:
         return self._exprs
 
     def can_modify_num_rows(self) -> bool:
