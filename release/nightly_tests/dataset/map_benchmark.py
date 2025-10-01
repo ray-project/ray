@@ -100,8 +100,8 @@ def main(args: argparse.Namespace) -> None:
                 fn_constructor_args=[model_ref, args.map_batches_sleep_ms],
                 batch_format=args.batch_format,
                 batch_size=args.batch_size,
-                min_concurrency=1,
-                max_concurrency=1024,
+                min_op_concurrency=1,
+                max_op_concurrency=1024,
             )
 
     def benchmark_fn():

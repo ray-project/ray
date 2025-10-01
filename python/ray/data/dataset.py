@@ -286,9 +286,9 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
-        min_concurrency: Optional[int] = None,
-        max_concurrency: Optional[int] = None,
-        initial_concurrency: Optional[int] = None,
+        min_op_concurrency: Optional[int] = None,
+        max_op_concurrency: Optional[int] = None,
+        initial_op_concurrency: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -361,18 +361,18 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The exact number of Ray workers to use concurrently. Cannot be
-                used with min_concurrency, max_concurrency, or initial_concurrency.
+                used with min_op_concurrency, max_op_concurrency, or initial_op_concurrency.
                 * If ``fn`` is a function and ``concurrency=n``, Ray Data launches at most n concurrent tasks.
 
                 * If ``fn`` is a class and ``concurrency=n``, Ray Data uses an actor pool with exactly n workers.
 
-            min_concurrency: The minimum number of concurrent workers. Must be used together with max_concurrency. Only valid when ``fn`` is a callable class.
-            max_concurrency: The maximum number of concurrent workers. Must be used together with min_concurrency. Only valid when ``fn`` is a callable class.
-            initial_concurrency: The initial number of workers to start with. Only valid when min_concurrency and max_concurrency are specified; must satisfy
-                min_concurrency <= initial_concurrency <= max_concurrency.
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
+            min_op_concurrency: The minimum number of concurrent workers. Must be used together with max_op_concurrency. Only valid when ``fn`` is a callable class.
+            max_op_concurrency: The maximum number of concurrent workers. Must be used together with min_op_concurrency. Only valid when ``fn`` is a callable class.
+            initial_op_concurrency: The initial number of workers to start with. Only valid when min_op_concurrency and max_op_concurrency are specified; must satisfy
+                min_op_concurrency <= initial_op_concurrency <= max_op_concurrency.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
 
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a class, this method raises an error.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a class, this method raises an error.
 
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -398,9 +398,9 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
-            min_concurrency=min_concurrency,
-            max_concurrency=max_concurrency,
-            initial_concurrency=initial_concurrency,
+            min_op_concurrency=min_op_concurrency,
+            max_op_concurrency=max_op_concurrency,
+            initial_op_concurrency=initial_op_concurrency,
         )
 
         ray_remote_args = merge_resources_to_ray_remote_args(
@@ -469,9 +469,9 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
-        min_concurrency: Optional[int] = None,
-        max_concurrency: Optional[int] = None,
-        initial_concurrency: Optional[int] = None,
+        min_op_concurrency: Optional[int] = None,
+        max_op_concurrency: Optional[int] = None,
+        initial_op_concurrency: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -623,18 +623,18 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The exact number of Ray workers to use concurrently. Cannot be
-                used with min_concurrency, max_concurrency, or initial_concurrency.
+                used with min_op_concurrency, max_op_concurrency, or initial_op_concurrency.
                 * If ``fn`` is a function and ``concurrency=n``, Ray Data launches at most n concurrent tasks.
 
                 * If ``fn`` is a class and ``concurrency=n``, Ray Data uses an actor pool with exactly n workers.
 
-            min_concurrency: The minimum number of concurrent workers. Must be used together with max_concurrency. Only valid when ``fn`` is a callable class.
-            max_concurrency: The maximum number of concurrent workers. Must be used together with min_concurrency. Only valid when ``fn`` is a callable class.
-            initial_concurrency: The initial number of workers to start with. Only valid when min_concurrency and max_concurrency are specified; must satisfy
-                min_concurrency <= initial_concurrency <= max_concurrency.
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
+            min_op_concurrency: The minimum number of concurrent workers. Must be used together with max_op_concurrency. Only valid when ``fn`` is a callable class.
+            max_op_concurrency: The maximum number of concurrent workers. Must be used together with min_op_concurrency. Only valid when ``fn`` is a callable class.
+            initial_op_concurrency: The initial number of workers to start with. Only valid when min_op_concurrency and max_op_concurrency are specified; must satisfy
+                min_op_concurrency <= initial_op_concurrency <= max_op_concurrency.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
 
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a class, this method raises an error.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a class, this method raises an error.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -703,9 +703,9 @@ class Dataset:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
-            min_concurrency=min_concurrency,
-            max_concurrency=max_concurrency,
-            initial_concurrency=initial_concurrency,
+            min_op_concurrency=min_op_concurrency,
+            max_op_concurrency=max_op_concurrency,
+            initial_op_concurrency=initial_op_concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -726,9 +726,9 @@ class Dataset:
         num_gpus: Optional[float],
         memory: Optional[float],
         concurrency: Optional[int],
-        min_concurrency: Optional[int],
-        max_concurrency: Optional[int],
-        initial_concurrency: Optional[int],
+        min_op_concurrency: Optional[int],
+        max_op_concurrency: Optional[int],
+        initial_op_concurrency: Optional[int],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -751,9 +751,9 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
-            initial_concurrency=initial_concurrency,
-            min_concurrency=min_concurrency,
-            max_concurrency=max_concurrency,
+            initial_op_concurrency=initial_op_concurrency,
+            min_op_concurrency=min_op_concurrency,
+            max_op_concurrency=max_op_concurrency,
         )
 
         if num_cpus is not None:
@@ -1258,9 +1258,9 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
-        min_concurrency: Optional[int] = None,
-        max_concurrency: Optional[int] = None,
-        initial_concurrency: Optional[int] = None,
+        min_op_concurrency: Optional[int] = None,
+        max_op_concurrency: Optional[int] = None,
+        initial_op_concurrency: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1327,18 +1327,18 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The exact number of Ray workers to use concurrently. Cannot be
-                used with min_concurrency, max_concurrency, or initial_concurrency.
+                used with min_op_concurrency, max_op_concurrency, or initial_op_concurrency.
                 * If ``fn`` is a function and ``concurrency=n``, Ray Data launches at most n concurrent tasks.
 
                 * If ``fn`` is a class and ``concurrency=n``, Ray Data uses an actor pool with exactly n workers.
 
-            min_concurrency: The minimum number of concurrent workers. Must be used together with max_concurrency. Only valid when ``fn`` is a callable class.
-            max_concurrency: The maximum number of concurrent workers. Must be used together with min_concurrency. Only valid when ``fn`` is a callable class.
-            initial_concurrency: The initial number of workers to start with. Only valid when min_concurrency and max_concurrency are specified; must satisfy
-                min_concurrency <= initial_concurrency <= max_concurrency.
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
+            min_op_concurrency: The minimum number of concurrent workers. Must be used together with max_op_concurrency. Only valid when ``fn`` is a callable class.
+            max_op_concurrency: The maximum number of concurrent workers. Must be used together with min_op_concurrency. Only valid when ``fn`` is a callable class.
+            initial_op_concurrency: The initial number of workers to start with. Only valid when min_op_concurrency and max_op_concurrency are specified; must satisfy
+                min_op_concurrency <= initial_op_concurrency <= max_op_concurrency.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
 
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a class, this method raises an error.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a class, this method raises an error.
 
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -1362,9 +1362,9 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
-            min_concurrency=min_concurrency,
-            max_concurrency=max_concurrency,
-            initial_concurrency=initial_concurrency,
+            min_op_concurrency=min_op_concurrency,
+            max_op_concurrency=max_op_concurrency,
+            initial_op_concurrency=initial_op_concurrency,
         )
 
         ray_remote_args = merge_resources_to_ray_remote_args(
@@ -1404,9 +1404,9 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
-        min_concurrency: Optional[int] = None,
-        max_concurrency: Optional[int] = None,
-        initial_concurrency: Optional[int] = None,
+        min_op_concurrency: Optional[int] = None,
+        max_op_concurrency: Optional[int] = None,
+        initial_op_concurrency: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1463,18 +1463,18 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The exact number of Ray workers to use concurrently. Cannot be
-                used with min_concurrency, max_concurrency, or initial_concurrency.
+                used with min_op_concurrency, max_op_concurrency, or initial_op_concurrency.
                 * If ``fn`` is a function and ``concurrency=n``, Ray Data launches at most n concurrent tasks.
 
                 * If ``fn`` is a class and ``concurrency=n``, Ray Data uses an actor pool with exactly n workers.
 
-            min_concurrency: The minimum number of concurrent workers. Must be used together with max_concurrency. Only valid when ``fn`` is a callable class.
-            max_concurrency: The maximum number of concurrent workers. Must be used together with min_concurrency. Only valid when ``fn`` is a callable class.
-            initial_concurrency: The initial number of workers to start with. Only valid when min_concurrency and max_concurrency are specified; must satisfy
-                min_concurrency <= initial_concurrency <= max_concurrency.
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
+            min_op_concurrency: The minimum number of concurrent workers. Must be used together with max_op_concurrency. Only valid when ``fn`` is a callable class.
+            max_op_concurrency: The maximum number of concurrent workers. Must be used together with min_op_concurrency. Only valid when ``fn`` is a callable class.
+            initial_op_concurrency: The initial number of workers to start with. Only valid when min_op_concurrency and max_op_concurrency are specified; must satisfy
+                min_op_concurrency <= initial_op_concurrency <= max_op_concurrency.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a function, concurrency is determined by resources and input blocks.
 
-                * If no concurrency parameters(concurrency, min_concurrency, max_concurrency, initial_concurrency) are specified and ``fn`` is a class, this method raises an error.
+                * If no concurrency parameters(concurrency, min_op_concurrency, max_op_concurrency, initial_op_concurrency) are specified and ``fn`` is a class, this method raises an error.
 
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -1571,9 +1571,9 @@ class Dataset:
                 fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 concurrency=concurrency,
-                min_concurrency=min_concurrency,
-                max_concurrency=max_concurrency,
-                initial_concurrency=initial_concurrency,
+                min_op_concurrency=min_op_concurrency,
+                max_op_concurrency=max_op_concurrency,
+                initial_op_concurrency=initial_op_concurrency,
             )
 
         # Create Filter operator with explicitly typed arguments

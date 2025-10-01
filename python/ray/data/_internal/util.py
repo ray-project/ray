@@ -574,9 +574,9 @@ def get_compute_strategy(
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
     concurrency: Optional[int] = None,
-    initial_concurrency: Optional[int] = None,
-    min_concurrency: Optional[int] = None,
-    max_concurrency: Optional[int] = None,
+    initial_op_concurrency: Optional[int] = None,
+    min_op_concurrency: Optional[int] = None,
+    max_op_concurrency: Optional[int] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -588,9 +588,9 @@ def get_compute_strategy(
         compute: Either "tasks" (default) to use Ray Tasks or an
                 :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
         concurrency: The exact number of Ray workers to use concurrently.
-        initial_concurrency: The initial number of Ray workers to use concurrently.
-        min_concurrency: The minimum number of Ray workers to use concurrently.
-        max_concurrency: The maximum number of Ray workers to use concurrently.
+        initial_op_concurrency: The initial number of Ray workers to use concurrently.
+        min_op_concurrency: The minimum number of Ray workers to use concurrently.
+        max_op_concurrency: The maximum number of Ray workers to use concurrently.
 
     Returns:
        The `ComputeStrategy` for execution.
@@ -611,9 +611,9 @@ def get_compute_strategy(
                 f"callable class instance for ``fn``, but got: {fn}."
             )
     for name, val in [
-        ("initial_concurrency", initial_concurrency),
-        ("min_concurrency", min_concurrency),
-        ("max_concurrency", max_concurrency),
+        ("initial_op_concurrency", initial_op_concurrency),
+        ("min_op_concurrency", min_op_concurrency),
+        ("max_op_concurrency", max_op_concurrency),
         ("concurrency", concurrency),
     ]:
         if val is not None and (not isinstance(val, int) or val <= 0):
@@ -649,33 +649,35 @@ def get_compute_strategy(
         # Callable class (actors)
         if concurrency is not None:
             if (
-                initial_concurrency is not None
-                or min_concurrency is not None
-                or max_concurrency is not None
+                initial_op_concurrency is not None
+                or min_op_concurrency is not None
+                or max_op_concurrency is not None
             ):
                 raise ValueError(
-                    "`concurrency` cannot be used together with `initial_concurrency`, "
-                    "`min_concurrency`, or `max_concurrency`."
+                    "`concurrency` cannot be used together with `initial_op_concurrency`, "
+                    "`min_op_concurrency`, or `max_op_concurrency`."
                 )
             return ActorPoolStrategy(size=concurrency)
 
         if (
-            min_concurrency is not None
-            or max_concurrency is not None
-            or initial_concurrency is not None
+            min_op_concurrency is not None
+            or max_op_concurrency is not None
+            or initial_op_concurrency is not None
         ):
             # Autoscaling requires both min and max; initial is optional.
-            if min_concurrency is None or max_concurrency is None:
+            if min_op_concurrency is None or max_op_concurrency is None:
                 raise ValueError(
-                    "`min_concurrency` and `max_concurrency` must be specified together for autoscaling actor pools."
+                    "`min_op_concurrency` and `max_op_concurrency` must be specified together for autoscaling actor pools."
                 )
-            if initial_concurrency is not None:
+            if initial_op_concurrency is not None:
                 return ActorPoolStrategy(
-                    min_size=min_concurrency,
-                    max_size=max_concurrency,
-                    initial_size=initial_concurrency,
+                    min_size=min_op_concurrency,
+                    max_size=max_op_concurrency,
+                    initial_size=initial_op_concurrency,
                 )
-            return ActorPoolStrategy(min_size=min_concurrency, max_size=max_concurrency)
+            return ActorPoolStrategy(
+                min_size=min_op_concurrency, max_size=max_op_concurrency
+            )
 
         # Nothing specified for callable class
         raise ValueError(
@@ -688,13 +690,13 @@ def get_compute_strategy(
         return TaskPoolStrategy(size=concurrency)
 
     if (
-        min_concurrency is not None
-        or max_concurrency is not None
-        or initial_concurrency is not None
+        min_op_concurrency is not None
+        or max_op_concurrency is not None
+        or initial_op_concurrency is not None
     ):
         # Autoscaling params are not valid for plain functions
         raise ValueError(
-            "`min_concurrency`/`max_concurrency`/`initial_concurrency` are only supported "
+            "`min_op_concurrency`/`max_op_concurrency`/`initial_op_concurrency` are only supported "
             "for callable classes (actors). Use `concurrency=n` for functions."
         )
 

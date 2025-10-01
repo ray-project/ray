@@ -2177,8 +2177,8 @@ def test_stats_manager_stale_actor_handle(ray_start_cluster):
 
     ray.data.range(1000).map_batches(
         F,
-        min_concurrency=1,
-        max_concurrency=4,
+        min_op_concurrency=1,
+        max_op_concurrency=4,
         num_cpus=1,
     ).take_all()
 
@@ -2189,8 +2189,8 @@ def test_stats_manager_stale_actor_handle(ray_start_cluster):
 
     ray.data.range(1000).map_batches(
         F,
-        min_concurrency=1,
-        max_concurrency=4,
+        min_op_concurrency=1,
+        max_op_concurrency=4,
         num_cpus=1,
     ).take_all()
 
