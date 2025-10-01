@@ -594,7 +594,7 @@ class PrepareVideoUDF(StatefulStageUDF):
         ) -> Tuple[int, Dict[str, Any]]:
             sources = self.extract_video_sources(row.get("messages", []))
             if not sources:
-                return idx, {self
+                return idx, {self.IDX_IN_BATCH_COLUMN: idx}
             results = await self._video.process(sources)
             return idx, {
                 self.IDX_IN_BATCH_COLUMN: idx,
