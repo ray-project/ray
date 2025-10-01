@@ -102,9 +102,9 @@ class GrpcClient {
       : client_call_manager_(call_manager),
         channel_(std::move(channel)),
         stub_(GrpcService::NewStub(channel_)),
-        testing_rpc_failure_avoid_intra_node_failures_(
-            TestingRpcFailureAvoidIntraNodeFailures(server_address,
-                                                    call_manager.GetLocalAddress())) {}
+        skip_testing_intra_node_rpc_failure_(
+            ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
+            IsLocalHost(server_address, call_manager.GetLocalAddress())) {}
 
   GrpcClient(const std::string &address,
              const int port,
@@ -113,9 +113,9 @@ class GrpcClient {
       : client_call_manager_(call_manager),
         channel_(BuildChannel(address, port, std::move(channel_arguments))),
         stub_(GrpcService::NewStub(channel_)),
-        testing_rpc_failure_avoid_intra_node_failures_(
-            TestingRpcFailureAvoidIntraNodeFailures(address,
-                                                    call_manager.GetLocalAddress())) {}
+        skip_testing_intra_node_rpc_failure_(
+            ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
+            IsLocalHost(address, call_manager.GetLocalAddress())) {}
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -138,14 +138,9 @@ class GrpcClient {
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    testing::RpcFailure failure = testing::GetRpcFailure(call_name);
-    if (failure != testing::RpcFailure::None &&
-        testing_rpc_failure_avoid_intra_node_failures_) {
-      RAY_LOG(INFO) << "Server and client are on the same node, skipping RPC failure "
-                       "injection for "
-                    << call_name;
-      failure = testing::RpcFailure::None;
-    }
+    testing::RpcFailure failure = skip_testing_intra_node_rpc_failure_
+                                      ? testing::RpcFailure::None
+                                      : testing::GetRpcFailure(call_name);
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.
@@ -197,12 +192,6 @@ class GrpcClient {
   }
 
  private:
-  static bool TestingRpcFailureAvoidIntraNodeFailures(std::string_view server_address,
-                                                      std::string_view local_address) {
-    return ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
-           (server_address == "127.0.0.1" || server_address == local_address);
-  }
-
   ClientCallManager &client_call_manager_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
@@ -210,7 +199,7 @@ class GrpcClient {
   std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
-  bool testing_rpc_failure_avoid_intra_node_failures_ = false;
+  bool skip_testing_intra_node_rpc_failure_ = false;
 };
 
 }  // namespace rpc
