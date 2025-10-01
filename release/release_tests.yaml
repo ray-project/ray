@@ -777,6 +777,7 @@
 
   variations:
     - __suffix__: aws
+      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -902,6 +903,7 @@
 
   variations:
     - __suffix__: aws
+      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -913,6 +915,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_drivers
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1032,6 +1035,7 @@
 
   variations:
     - __suffix__: aws
+      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1114,6 +1118,7 @@
 
   variations:
     - __suffix__: aws
+      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
