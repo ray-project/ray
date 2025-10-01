@@ -331,8 +331,8 @@ def test_report_validate_fn_error():
     assert len(result.best_checkpoints) == 2
 
 
-def test_report_checkpoint_upload_function(tmp_path):
-    def checkpoint_upload_function(checkpoint, checkpoint_dir_name):
+def test_report_checkpoint_upload_fn(tmp_path):
+    def checkpoint_upload_fn(checkpoint, checkpoint_dir_name):
         full_checkpoint_path = (
             ray.train.get_context()
             .get_storage()
@@ -350,7 +350,7 @@ def test_report_checkpoint_upload_function(tmp_path):
                     metrics={},
                     checkpoint=checkpoint,
                     checkpoint_dir_name="my_checkpoint_dir_name",
-                    checkpoint_upload_function=checkpoint_upload_function,
+                    checkpoint_upload_fn=checkpoint_upload_fn,
                 )
         else:
             ray.train.report(metrics={}, checkpoint=None)
