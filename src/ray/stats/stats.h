@@ -101,7 +101,6 @@ static inline void Init(
         StatsConfig::instance().GetHarvestInterval());
     OpenCensusProtoExporter::Register(metrics_agent_port,
                                       (*metrics_io_service),
-                                      "127.0.0.1",
                                       worker_id,
                                       metrics_report_batch_size,
                                       max_grpc_payload_size);
@@ -130,9 +129,10 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-      /*timeout=*/
+      /*timeout=, set the timeout to be half of the interval to avoid potential request
+         queueing.*/
       std::chrono::milliseconds(
-          absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
+          absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
 }
 
 /// Shutdown the initialized stats library.

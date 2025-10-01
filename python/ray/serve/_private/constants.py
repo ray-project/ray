@@ -284,6 +284,11 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = get_env_str(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
 
+# Maximum timeout allowed for record_autoscaling_stats to run.
+RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
+    "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
+)
+
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
@@ -437,7 +442,7 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
 )
 
 # Used for gc.set_threshold() when proxy GC optimizations are enabled.
-RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 10_000)
+RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 700)
 
 # Interval at which cached metrics will be exported using the Ray metric API.
 # Set to `0` to disable caching entirely.
@@ -501,3 +506,8 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
 # This is used to detect and warn about long RPC latencies
 # between the controller and the replicas.
 RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
+
+# Feature flag to aggregate metrics at the controller instead of the replicas or handles.
+RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
+    "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
+)

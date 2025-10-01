@@ -48,11 +48,11 @@
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
@@ -516,6 +516,7 @@ class CoreWorker {
   /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
+  /// \param[in] tensor_transport The tensor transport to use for the object.
   /// \return Status.
   Status CreateOwnedAndIncrementLocalRef(
       bool is_experimental_mutable_object,
@@ -525,7 +526,8 @@ class CoreWorker {
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-      bool inline_small_object = true);
+      bool inline_small_object = true,
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
