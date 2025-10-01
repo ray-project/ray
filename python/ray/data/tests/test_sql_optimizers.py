@@ -8,7 +8,7 @@ while ensuring all underlying execution uses Ray Dataset native operations.
 import pytest
 
 import ray
-from ray.data.sql import (
+from ray.data.experimental.sql import (
     clear_tables,
     register_table,
     sql,
@@ -16,7 +16,7 @@ from ray.data.sql import (
 
 # Test optimizer integration if available
 try:
-    from ray.data.sql import (
+    from ray.data.experimental.sql import (
         execute_optimized_sql,
         get_ray_executor,
         get_unified_optimizer,

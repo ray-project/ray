@@ -73,9 +73,9 @@ from ray.data.read_api import (  # noqa: F401
     read_webdataset,
 )
 
-# Import clean SQL API
+# Import experimental SQL API
 try:
-    from ray.data.sql_api import (
+    from ray.data.experimental.sql_api import (
         clear_tables,
         config as sql_config,
         list_tables,
@@ -84,7 +84,7 @@ try:
     )
 
     # Import essential exceptions
-    from ray.data.sql import (
+    from ray.data.experimental.sql import (
         SQLError,
         SQLExecutionError,
         SQLParseError,
