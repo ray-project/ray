@@ -23,6 +23,23 @@ from ray.data.experimental.sql.execution.executor import QueryExecutor
 from ray.data.experimental.sql.registry.base import TableRegistry
 from ray.data.experimental.sql.utils import setup_logger
 
+
+class DataFusionExecutor:
+    """
+    Thin wrapper that applies DataFusion optimization hints using existing QueryExecutor.
+
+    DESIGN: Reuse all existing SQL execution logic, don't duplicate!
+    """
+
+    def __init__(self, registry: TableRegistry):
+        """Initialize DataFusion executor.
+
+        Args:
+            registry: Table registry with registered Ray Datasets.
+        """
+        self.registry = registry
+        self._logger = setup_logger("DataFusionExecutor")
+
     def execute_with_optimizations(
         self, ast: exp.Select, optimizations: DataFusionOptimizations, config: SQLConfig
     ) -> Dataset:
