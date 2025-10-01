@@ -116,7 +116,6 @@ py_test_module_list(
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
-        "test_target_capacity.py",
         "test_task_processor.py",
         "test_telemetry.py",
     ],
@@ -165,6 +164,7 @@ py_test_module_list(
         "test_logging.py",
         "test_standalone.py",
         "test_standalone_3.py",
+        "test_target_capacity.py",
         "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
@@ -268,6 +268,7 @@ py_test_module_list(
         "test_runtime_env_2.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "post_wheel_build",
         "team:serve",
@@ -306,6 +307,7 @@ py_test(
     size = "medium",
     srcs = ["test_serve_ha.py"],
     tags = [
+        "custom_setup",
         "exclusive",
         "ha_integration",
         "team:serve",
