@@ -9,11 +9,6 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     TargetTemplate,
 )
 
-# from ray.llm._internal.serve.builders.application_builders import (
-#     RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX,
-# )
-RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX = "LLMServer:"
-
 SERVE_LLM_GRAFANA_PANELS = [
     Panel(
         id=29,
@@ -22,15 +17,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (model_name, WorkerId) (rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"'
-                + RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX
-                + '.*"}}[$interval]))',
+                expr='sum by (model_name, WorkerId) (rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"}}[$interval]))',
                 legend="{{model_name}}, {{WorkerId}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"'
-                + RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX
-                + '.*"}}[$interval]))',
+                expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"}}[$interval]))',
                 legend="Total QPS",
             ),
         ],

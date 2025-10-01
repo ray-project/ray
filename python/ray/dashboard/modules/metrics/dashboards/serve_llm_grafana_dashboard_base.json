@@ -91,6 +91,24 @@
         }
       },
       {
+        "name": "deployment",
+        "label": "Deployment",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
+        "query": {
+          "query": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "selected": false
+        }
+      },
+      {
         "name": "interval",
         "label": "Interval",
         "type": "custom",
