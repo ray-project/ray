@@ -90,12 +90,6 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, -1)
 
-/// The worker killing policy to use, available options are
-/// group_by_owner
-/// retriable_lifo
-/// retriable_fifo
-RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
-
 /// Whether to report placement or regular resource usage for an actor.
 /// Reporting placement may cause the autoscaler to overestimate the resources
 /// required of the cluster, but reporting regular resource may lead to no
@@ -897,6 +891,11 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 // Only works on Linux>=3.4. On other platforms, this flag is ignored.
 // See https://github.com/ray-project/ray/pull/42992 for more info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
+
+// Enable per-worker process-group-based cleanup. When enabled, workers are
+// placed into their own process groups and can be cleaned up via killpg on
+// worker death. Cross-platform semantics on POSIX (no-op on Windows).
+RAY_CONFIG(bool, process_group_cleanup_enabled, false)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
