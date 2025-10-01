@@ -6412,9 +6412,15 @@ class Schema:
 
         For non-Arrow compatible types, we return "object".
         """
+        import pandas as pd
         import pyarrow as pa
 
         from ray.data.extensions import ArrowTensorType, TensorDtype
+
+        def _convert_to_pa_type(dtype: Union[np.dtype, pd.ArrowDtype]) -> pa.DataType:
+            if isinstance(dtype, pd.ArrowDtype):
+                return dtype.pyarrow_dtype
+            return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
             return list(self.base_schema.types)
@@ -6430,13 +6436,13 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
+                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
                     )
                 )
 
             else:
                 try:
-                    arrow_types.append(pa.from_numpy_dtype(dtype))
+                    arrow_types.append(_convert_to_pa_type(dtype))
                 except pa.ArrowNotImplementedError:
                     arrow_types.append(object)
                 except Exception:
