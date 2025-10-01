@@ -13,8 +13,6 @@ from ray.data.experimental.sql.engines.base import OptimizerBackend, QueryOptimi
 try:
     from ray.data.experimental.sql.engines.datafusion.datafusion_optimizer import (
         DataFusionOptimizer,
-        DataFusionOptimizations,
-        is_datafusion_available,
     )
 
     DATAFUSION_AVAILABLE = True

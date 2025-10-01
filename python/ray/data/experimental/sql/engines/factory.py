@@ -4,8 +4,6 @@ Engine factory for selecting SQL optimizer backends.
 Provides automatic engine selection based on configuration and availability.
 """
 
-from typing import Optional
-
 from ray.data import DataContext
 from ray.data.experimental.sql.engines.base import OptimizerBackend
 from ray.data.experimental.sql.engines.datafusion import DataFusionBackend
