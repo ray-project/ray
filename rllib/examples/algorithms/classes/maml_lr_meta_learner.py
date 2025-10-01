@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
 from ray.rllib.utils.annotations import override

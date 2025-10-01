@@ -73,18 +73,17 @@ non-Markovian one.
 """
 import gymnasium as gym
 import numpy as np
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 from ray.rllib.connectors.env_to_module.observation_preprocessor import (
     SingleAgentObservationPreprocessor,
 )
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls
-
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=200.0)

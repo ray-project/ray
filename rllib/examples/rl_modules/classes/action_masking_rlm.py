@@ -1,5 +1,6 @@
-import gymnasium as gym
 from typing import Dict, Optional, Tuple, Union
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.columns import Columns

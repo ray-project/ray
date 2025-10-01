@@ -84,8 +84,8 @@ from ray.rllib.connectors.env_to_module import (
     PrevActionsPrevRewards,
 )
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,

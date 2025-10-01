@@ -3,9 +3,9 @@ from typing import Any, Dict, Optional
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.rl_module.apis import (
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
     TargetNetworkAPI,
     ValueFunctionAPI,
-    TARGET_NETWORK_ACTION_DIST_INPUTS,
 )
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.misc import (
