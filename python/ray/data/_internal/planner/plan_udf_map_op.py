@@ -127,14 +127,14 @@ def plan_project_op(
                 return block
 
             # Preserve original input column order for preserve_existing semantics.
-            input_cols = list(block_accessor.column_names())
+            existing_cols = list(block_accessor.column_names())
 
             # Outputs to compute (in order) and their computed data.
-            output_names_in_order: List[str] = []
+            new_output_cols: List[str] = []
             seen_output_names = set()
 
             # Track direct renames from input schema only:
-            # src_col -> dest_col for alias(ColumnExpr(src), dest) where src is in input_cols.
+            # src_col -> dest_col for col(src).alias(dest) where src is in input_cols.
             rename_map: Dict[str, str] = {}
 
             computed_outputs: Dict[str, Any] = {}
@@ -148,18 +148,18 @@ def plan_project_op(
                     isinstance(expr, AliasExpr)
                     and isinstance(expr.expr, ColumnExpr)
                     and expr.expr.name != output_name
-                    and expr.expr.name in input_cols
+                    and expr.expr.name in existing_cols
                 ):
                     rename_map[expr.expr.name] = output_name
 
                 computed_outputs[output_name] = eval_expr(expr, block)
                 if output_name not in seen_output_names:
-                    output_names_in_order.append(output_name)
+                    new_output_cols.append(output_name)
                     seen_output_names.add(output_name)
 
             # Phase 2: materialize outputs onto the block.
             cur_block = block
-            for output_name in output_names_in_order:
+            for output_name in new_output_cols:
                 cur_block = BlockAccessor.for_block(cur_block).fill_column(
                     output_name, computed_outputs[output_name]
                 )
@@ -169,21 +169,21 @@ def plan_project_op(
                 # Start from the input column order, applying only direct renames from input,
                 # then append any new output columns not already included.
                 final_cols: List[str] = []
-                seen_final = set()
+                final_seen = set()
 
-                for col in input_cols:
-                    dest = rename_map.get(col, col)
-                    if dest not in seen_final:
-                        final_cols.append(dest)
-                        seen_final.add(dest)
+                for col in existing_cols:
+                    renamed_col = rename_map.get(col, col)
+                    if renamed_col not in final_seen:
+                        final_cols.append(renamed_col)
+                        final_seen.add(renamed_col)
 
-                for name in output_names_in_order:
-                    if name not in seen_final:
-                        final_cols.append(name)
-                        seen_final.add(name)
+                for col in new_output_cols:
+                    if col not in final_seen:
+                        final_cols.append(col)
+                        final_seen.add(col)
             else:
                 # Exact select: only requested outputs (in order).
-                final_cols = output_names_in_order
+                final_cols = new_output_cols
 
             return BlockAccessor.for_block(cur_block).select(final_cols)
         except Exception as e:

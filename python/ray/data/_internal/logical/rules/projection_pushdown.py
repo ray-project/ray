@@ -18,14 +18,6 @@ from ray.data.expressions import (
 )
 
 
-def _expr_output_name(expr: Expr) -> str:
-    if expr.name is None:
-        raise ValueError(
-            "Project expressions must be named; use .alias(name) or col(name)."
-        )
-    return expr.name
-
-
 def _collect_input_columns_from_exprs(exprs: List[Expr]) -> Set[str]:
     """Collect all input column names referenced by the given expressions."""
     cols: Set[str] = set()
@@ -107,9 +99,9 @@ def _ensure_named(expr: Expr, name: str) -> Expr:
 
 
 def _is_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
-    """Detect expressions of the form alias(ColumnExpr(src), dest) where src != dest."""
+    """Detect expressions of the form col(src).alias(dest) where src != dest."""
     if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
-        dest = _expr_output_name(expr)
+        dest = expr.name
         src = expr.expr.name
         if src != dest:
             return src, dest
@@ -123,7 +115,7 @@ def _apply_selection_step(
     new_defs: dict[str, Expr] = {}
     new_order: List[str] = []
     for expr in project.exprs:
-        name = _expr_output_name(expr)
+        name = expr.name
         resolved = _substitute_column_refs(expr, prev_defs)
         new_defs[name] = _ensure_named(resolved, name)
         new_order.append(name)
@@ -141,13 +133,13 @@ def _apply_preserve_step(
     """
     snapshot_defs = prev_defs.copy()
     snapshot_order = prev_order.copy()
-    current_output_names = {_expr_output_name(e) for e in project.exprs}
+    current_output_names = {e.name for e in project.exprs}
 
     defs = prev_defs.copy()
     order = prev_order.copy()
 
     for expr in project.exprs:
-        name = _expr_output_name(expr)
+        name = expr.name
         rename = _is_simple_rename(expr)
 
         if rename is not None:
@@ -163,8 +155,8 @@ def _apply_preserve_step(
             continue
 
         # Non-rename: substitute column references through snapshot_defs
-        resolved = _substitute_column_refs(expr, snapshot_defs)
-        defs[name] = _ensure_named(resolved, name)
+        substituted = _substitute_column_refs(expr, snapshot_defs)
+        defs[name] = _ensure_named(substituted, name)
         if name not in order:
             order.append(name)
 
@@ -203,11 +195,10 @@ class ProjectionPushdown(Rule):
 
         # Build final expr list in order; decide preservation.
         final_exprs = [defs[n] for n in order]
-        final_preserve = not is_selection_op
 
         # Optional pushdown for selection-only final.
         if (
-            not final_preserve
+            is_selection_op
             and isinstance(ancestor, LogicalOperatorSupportsProjectionPushdown)
             and ancestor.supports_projection_pushdown()
         ):
@@ -218,6 +209,6 @@ class ProjectionPushdown(Rule):
         return Project(
             ancestor,
             exprs=final_exprs,
-            preserve_existing=final_preserve,
+            preserve_existing=not is_selection_op,
             ray_remote_args=chain[-1]._ray_remote_args,
         )
