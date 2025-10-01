@@ -82,7 +82,7 @@ depsets:
       - python/requirements_compiled.txt
     depsets:
       - ray_img_depset_py${PYTHON_SHORT}
-    output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_SHORT}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
