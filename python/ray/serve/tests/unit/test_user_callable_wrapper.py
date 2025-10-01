@@ -157,7 +157,7 @@ async def test_calling_methods_before_initialize(
         await user_callable_wrapper.call_user_health_check()
 
     with pytest.raises(RuntimeError):
-        await user_callable_wrapper.call_reconfigure(None)
+        await user_callable_wrapper.call_reconfigure(None, rank=0)
 
 
 @pytest.mark.parametrize("run_user_code_in_separate_thread", [False, True])
