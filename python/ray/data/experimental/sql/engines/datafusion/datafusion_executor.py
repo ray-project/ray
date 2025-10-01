@@ -64,6 +64,9 @@ class DataFusionExecutor:
             executor = QueryExecutor(self.registry, config)
 
             # Log DataFusion optimizations being applied
+            self._logger.info(
+                f"Executing with DataFusion hints: "
+                f"{len(optimizations.filter_placement)} filters, "
                 f"{len(optimizations.projection_columns)} projections, "
                 f"{len(optimizations.join_order)} joins"
             )
@@ -84,6 +87,7 @@ class DataFusionExecutor:
 
             result = executor.execute(ast)
 
+            self._logger.debug(
                 "Query executed using existing QueryExecutor with DataFusion hints"
             )
 
