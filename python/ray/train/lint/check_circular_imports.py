@@ -60,20 +60,27 @@ class ImportCollector(ast.NodeVisitor):
         self._module_name = module_name
         self._is_package = is_package
         self.imports: Set[Import] = set()
+        self.type_checking_imported = False
 
     # --- private helpers ---
 
     def _is_type_checking_test(self, expr: ast.AST) -> bool:
         """Return True for `if TYPE_CHECKING` or `if typing.TYPE_CHECKING`."""
-        if isinstance(expr, ast.Name) and expr.id == "TYPE_CHECKING":
-            return True
+
         if (
+            self.type_checking_imported
+            and isinstance(expr, ast.Name)
+            and expr.id == "TYPE_CHECKING"
+        ):
+            return True
+        elif (
             isinstance(expr, ast.Attribute)
             and isinstance(expr.value, ast.Name)
             and expr.value.id == "typing"
             and expr.attr == "TYPE_CHECKING"
         ):
             return True
+
         return False
 
     def _get_package_parts(self) -> List[str]:
@@ -135,6 +142,8 @@ class ImportCollector(ast.NodeVisitor):
         self.imports.add(
             Import(module=import_str, is_package=is_package(import_str), names=names)
         )
+        if "TYPE_CHECKING" in names and import_str == "typing":
+            self.type_checking_imported = True
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Skip function contents

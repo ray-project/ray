@@ -10,10 +10,11 @@ def test_import_collector_excludes_non_module_level_and_type_checking():
     source = textwrap.dedent(
         """
         import os
+        from typing import TYPE_CHECKING
         from .submod import thing
 
         if TYPE_CHECKING:
-            import typing
+            import foo
 
         def f():
             import json
@@ -29,8 +30,27 @@ def test_import_collector_excludes_non_module_level_and_type_checking():
     imports = [imp.module for imp in imports]
     assert "os" in imports
     assert any(mod == "submod" or mod.endswith(".submod") for mod in imports)
-    assert "typing" not in imports
+    assert "foo" not in imports
     assert "json" not in imports
+
+
+def test_import_collector_excludes_type_checking_without_from_import():
+    source = textwrap.dedent(
+        """
+        import os
+        import typing
+
+        if typing.TYPE_CHECKING:
+            import foo
+        """
+    )
+
+    imports = cci.collect_imports(
+        module_name="pkg.module", is_package=False, source_text=source
+    )
+    imports = [imp.module for imp in imports]
+    assert "os" in imports
+    assert "foo" not in imports
 
 
 def test_to_module_name_and_is_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
