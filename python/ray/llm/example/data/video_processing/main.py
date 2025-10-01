@@ -21,7 +21,6 @@ from typing import Dict, Optional
 
 from video_processor import VideoProcessor
 
-
 DEFAULT_SOURCE = (
     "https://storage.googleapis.com/ray-demo-assets/video/ray-demo-video.mp4"
 )
