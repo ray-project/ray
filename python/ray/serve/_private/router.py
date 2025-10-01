@@ -37,7 +37,6 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
@@ -263,29 +262,22 @@ class RouterMetricsManager:
             if self.should_send_scaled_to_zero_optimized_push(curr_num_replicas):
                 self.push_autoscaling_metrics_to_controller()
 
-            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                # Record number of queued + ongoing requests at regular
-                # intervals into the in-memory metrics store
-                self.metrics_pusher.register_or_update_task(
-                    self.RECORD_METRICS_TASK_NAME,
-                    self._add_autoscaling_metrics_point,
-                    min(
-                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                        autoscaling_config.metrics_interval_s,
-                    ),
-                )
-                # Push metrics to the controller periodically.
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
+            # Record number of queued + ongoing requests at regular
+            # intervals into the in-memory metrics store
+            self.metrics_pusher.register_or_update_task(
+                self.RECORD_METRICS_TASK_NAME,
+                self._add_autoscaling_metrics_point,
+                min(
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                     autoscaling_config.metrics_interval_s,
-                )
-            else:
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
-                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
-                )
+                ),
+            )
+            # Push metrics to the controller periodically.
+            self.metrics_pusher.register_or_update_task(
+                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+                self.push_autoscaling_metrics_to_controller,
+                autoscaling_config.metrics_interval_s,
+            )
 
         else:
             if self.metrics_pusher:
@@ -390,6 +382,8 @@ class RouterMetricsManager:
         timestamp = time.time()
         running_requests = dict()
         avg_running_requests = dict()
+        look_back_period = self.autoscaling_config.look_back_period_s
+        self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
         avg_queued_requests = (
             self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
             or self.num_queued_requests
@@ -398,10 +392,6 @@ class RouterMetricsManager:
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
-            look_back_period = self.autoscaling_config.look_back_period_s
-            self.metrics_store.prune_keys_and_compact_data(
-                time.time() - look_back_period
-            )
             for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
                 # Calculate avg running requests
                 avg_running_requests[replica_id] = (

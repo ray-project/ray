@@ -147,6 +147,7 @@ class TestAutoscalingMetrics:
             },
             max_ongoing_requests=25,
             version="v1",
+            graceful_shutdown_timeout_s=0.1,
         )
         class A:
             async def __call__(self):
@@ -167,7 +168,12 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_queued_requests_eq, handle=handle, expected=0)
         tlog("Confirmed all requests are assigned to replicas.")
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            # when running requests are collected at handle, then there is guaranteed over counting
+            # resulting in the number of replicas being greater than desired value.
+            wait_for_condition(check_num_replicas_gte, name="A", target=5)
+        else:
+            wait_for_condition(check_num_replicas_eq, name="A", target=5)
         tlog("Confirmed deployment scaled to 5 replicas.")
         tlog("Releasing signal.")
         signal.send.remote()
@@ -229,9 +235,16 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         print("Confirmed many queries are inflight.")
 
-        wait_for_condition(
-            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=20
-        )
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            # when running requests are collected at handle, then there is guaranteed over counting
+            # resulting in the number of replicas being greater than desired value.
+            wait_for_condition(
+                check_num_replicas_gte, name="A", target=5, app_name="app1"
+            )
+        else:
+            wait_for_condition(
+                check_num_replicas_eq, name="A", target=5, app_name="app1"
+            )
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Wait for all requests to be scheduled to replicas so they'll be failed
@@ -303,9 +316,20 @@ class TestAutoscalingMetrics:
         handle = serve.run(app)
         [handle.remote() for _ in range(20)]
 
-        # Wait for deployment A to scale up
-        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            # when running requests are collected at handle, then there is guaranteed over counting
+            # resulting in the number of replicas being greater than desired value.
+            wait_for_condition(check_num_replicas_gte, name="A", target=5)
+            # Wait for deployment A to scale up
+            wait_for_condition(
+                check_num_requests_ge, client=client, id=dep_id, expected=20
+            )
+        else:
+            wait_for_condition(check_num_replicas_eq, name="A", target=5)
+            # Wait for deployment A to scale up
+            wait_for_condition(
+                check_num_requests_eq, client=client, id=dep_id, expected=20
+            )
         print("Confirmed deployment scaled to 5 replicas.")
 
         router_info = [
@@ -352,7 +376,8 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 10,
+                # keep this less than the wait_for_condition timeout
+                "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
             health_check_period_s=1,
@@ -376,8 +401,18 @@ class TestAutoscalingMetrics:
         [caller.call.remote() for _ in range(20)]
 
         # Wait for deployment A to scale up
-        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
-        wait_for_condition(check_num_replicas_eq, name="A", target=5, timeout=20)
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            # when running requests are collected at handle, then there is guaranteed over counting
+            # resulting in the number of replicas being greater than desired value.
+            wait_for_condition(check_num_replicas_gte, name="A", target=5)
+            wait_for_condition(
+                check_num_requests_ge, client=client, id=dep_id, expected=20
+            )
+        else:
+            wait_for_condition(check_num_replicas_eq, name="A", target=5)
+            wait_for_condition(
+                check_num_requests_eq, client=client, id=dep_id, expected=20
+            )
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Kill CallerActor

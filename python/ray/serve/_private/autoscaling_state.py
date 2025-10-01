@@ -554,7 +554,6 @@ class AutoscalingState:
         # Add handle metrics
         for handle_metric in self._handle_requests.values():
             total_requests += handle_metric.aggregated_queued_requests
-
             # Add running requests from handles if not collected on replicas
             if not metrics_collected_on_replicas:
                 for replica_id in self._running_replicas:
@@ -564,7 +563,6 @@ class AutoscalingState:
                         total_requests += handle_metric.aggregated_metrics.get(
                             RUNNING_REQUESTS_KEY
                         ).get(replica_id)
-
         return total_requests
 
     def get_total_num_requests(self) -> float:
