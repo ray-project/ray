@@ -2,11 +2,14 @@ import json
 import logging
 import os
 import random
-from hashlib import sha256
+import time
+from hashlib import md5, sha256
 from pathlib import Path
 from typing import Any, Callable
+from uuid import UUID
 
 from azure.common.credentials import get_cli_profile
+from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
 from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
@@ -16,6 +19,9 @@ from ray.autoscaler._private.util import (
     generate_ssh_key_name,
     generate_ssh_key_paths,
 )
+
+# Built-in Azure Contributor role definition ID used for role assignments.
+CONTRIBUTOR_ROLE_DEFINITION_ID = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 
 UNIQUE_ID_LEN = 4
 
@@ -96,6 +102,12 @@ def _configure_resource_group(config):
     config["provider"]["unique_id"] = unique_id
     logger.info("Using unique id: %s", unique_id)
     cluster_id = "{}-{}".format(config["cluster_name"], unique_id)
+    role_assignment_name = f"ray-{cluster_id}-ra"
+    role_assignment_guid = _generate_arm_guid(role_assignment_name)
+    role_assignment_resource_id = (
+        f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers"
+        f"/Microsoft.Authorization/roleAssignments/{role_assignment_guid}"
+    )
 
     subnet_mask = config["provider"].get("subnet_mask")
     if subnet_mask is None:
@@ -189,6 +201,116 @@ def _configure_resource_group(config):
         "Using msi_name: %s from msi_resource_group: %s", msi_name, msi_resource_group
     )
 
+    existing_principal_id = None
+    if not use_existing_msi:
+        # If an MSI already exists, capture its principal ID so any lingering role
+        # assignments can be deleted prior to redeployment.
+        msi_resource_id = (
+            f"/subscriptions/{subscription_id}/resourceGroups/{msi_resource_group}"
+            f"/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{msi_name}"
+        )
+        try:
+            get_identity = get_azure_sdk_function(
+                client=resource_client.resources, function_name="get_by_id"
+            )
+            existing_msi = get_identity(msi_resource_id, "2023-01-31")
+            existing_principal_id = getattr(existing_msi, "properties", {}).get(
+                "principalId"
+            )
+        except ResourceNotFoundError:
+            existing_principal_id = None
+        except Exception as exc:
+            logger.warning(
+                "Failed to query MSI %s for existing principal: %s",
+                msi_name,
+                exc,
+            )
+
+        if existing_principal_id:
+            logger.info(
+                "Removing existing role assignments for MSI principal %s before recreation",
+                existing_principal_id,
+            )
+            _delete_role_assignments_for_principal(
+                resource_client,
+                resource_group,
+                existing_principal_id,
+            )
+
+        delete_role_assignment = get_azure_sdk_function(
+            client=resource_client.resources, function_name="delete_by_id"
+        )
+        get_role_assignment = get_azure_sdk_function(
+            client=resource_client.resources, function_name="get_by_id"
+        )
+
+        role_assignment_known_missing = False
+        query_failed = False
+        try:
+            get_role_assignment(
+                role_assignment_resource_id,
+                "2022-04-01",
+            )
+        except ResourceNotFoundError:
+            role_assignment_known_missing = True
+            logger.debug(
+                "Role assignment %s not found before MSI creation; skipping deletion",
+                role_assignment_guid,
+            )
+        except Exception as exc:
+            query_failed = True
+            logger.warning(
+                "Failed to query role assignment %s before deletion: %s",
+                role_assignment_guid,
+                exc,
+            )
+
+        if not role_assignment_known_missing:
+            try:
+                delete_lro = delete_role_assignment(
+                    resource_id=role_assignment_resource_id,
+                    api_version="2022-04-01",
+                )
+                if hasattr(delete_lro, "wait"):
+                    delete_lro.wait()
+                logger.info(
+                    "Deleted existing role assignment %s before recreating MSI",
+                    role_assignment_guid,
+                )
+
+                # Ensure deletion has propagated before redeploying when possible.
+                if not query_failed:
+                    for attempt in range(10):
+                        try:
+                            get_role_assignment(
+                                role_assignment_resource_id,
+                                "2022-04-01",
+                            )
+                            logger.debug(
+                                "Role assignment %s still present after deletion (attempt %d)",
+                                role_assignment_guid,
+                                attempt + 1,
+                            )
+                            time.sleep(2)
+                        except ResourceNotFoundError:
+                            break
+                    else:
+                        logger.warning(
+                            "Role assignment %s persisted after deletion attempts; deployment may fail",
+                            role_assignment_guid,
+                        )
+            except ResourceNotFoundError:
+                logger.debug(
+                    "Role assignment %s disappeared before deletion attempt; continuing",
+                    role_assignment_guid,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to delete role assignment %s before MSI creation: %s",
+                    role_assignment_guid,
+                    e,
+                )
+
     parameters = {
         "properties": {
             "mode": DeploymentMode.incremental,
@@ -199,6 +321,7 @@ def _configure_resource_group(config):
                 "msiName": {"value": msi_name},
                 "msiResourceGroup": {"value": msi_resource_group},
                 "createMsi": {"value": not use_existing_msi},
+                "roleAssignmentGuid": {"value": role_assignment_guid},
             },
         }
     }
@@ -330,3 +453,95 @@ def _configure_key_pair(config):
         azure_arm_parameters["publicKey"] = public_key
 
     return config
+
+
+def _delete_role_assignments_for_principal(
+    resource_client: ResourceManagementClient,
+    resource_group: str,
+    principal_id: str,
+) -> None:
+    """Delete a role assignments in the resource group for the given principal.
+
+    Uses the generic ResourceManagementClient so we avoid depending on
+    azure-mgmt-authorization. Only contributor assignments associated with the
+    provided principal ID are removed.
+    """
+
+    if not principal_id:
+        return
+
+    list_by_rg = get_azure_sdk_function(
+        client=resource_client.resources, function_name="list_by_resource_group"
+    )
+    delete_role_assignment = get_azure_sdk_function(
+        client=resource_client.resources, function_name="delete_by_id"
+    )
+
+    try:
+        assignments = list(
+            list_by_rg(
+                resource_group,
+                "resourceType eq 'Microsoft.Authorization/roleAssignments'",
+            )
+        )
+        logger.debug(
+            "Found %d role assignments in resource group %s while cleaning up principal %s",
+            len(assignments),
+            resource_group,
+            principal_id,
+        )
+    except HttpResponseError as exc:
+        logger.warning(
+            "Failed to enumerate role assignments for resource group %s: %s",
+            resource_group,
+            exc,
+        )
+        return
+
+    for assignment in assignments:
+        properties = getattr(assignment, "properties", {}) or {}
+        logger.debug(
+            "Inspecting role assignment %s with principalId=%s roleDefinitionId=%s",
+            getattr(assignment, "name", "<unknown>"),
+            properties.get("principalId"),
+            properties.get("roleDefinitionId"),
+        )
+        if properties.get("principalId") != principal_id:
+            continue
+
+        role_definition_id = (properties.get("roleDefinitionId") or "").lower()
+        if not role_definition_id.endswith(CONTRIBUTOR_ROLE_DEFINITION_ID):
+            continue
+
+        try:
+            delete_lro = delete_role_assignment(
+                resource_id=assignment.id,
+                api_version="2022-04-01",
+            )
+            if hasattr(delete_lro, "wait"):
+                delete_lro.wait()
+            logger.info(
+                "Deleted existing role assignment %s for principal %s",
+                assignment.name,
+                principal_id,
+            )
+        except ResourceNotFoundError:
+            logger.debug(
+                "Role assignment %s not found while processing principal %s",
+                assignment.name,
+                principal_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to delete role assignment %s for principal %s: %s",
+                assignment.name,
+                principal_id,
+                exc,
+            )
+
+
+def _generate_arm_guid(*values: Any) -> str:
+    """Replicates ARM template guid() function for creating deterministic IDs."""
+
+    concatenated = "".join(str(v) for v in values)
+    return str(UUID(md5(concatenated.encode("utf-8")).hexdigest()))
