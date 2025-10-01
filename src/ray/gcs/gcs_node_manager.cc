@@ -489,7 +489,7 @@ GcsNodeManager::GetAliveNodeFromCache(const ray::NodeID &node_id) const {
   return iter->second;
 }
 
-std::optional<std::shared_ptr<rpc::GcsNodeAddressAndLiveness>>
+std::optional<std::shared_ptr<const rpc::GcsNodeAddressAndLiveness>>
 GcsNodeManager::GetAliveNodeAddress(const ray::NodeID &node_id) const {
   absl::ReaderMutexLock lock(&mutex_);
   auto iter = alive_nodes_.find(node_id);
