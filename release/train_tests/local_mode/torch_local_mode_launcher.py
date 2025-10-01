@@ -1,3 +1,12 @@
+"""Ray Train release test: local mode launched by torchrun.
+
+Setup:
+- 2 x g4dn.12xlarge (4 GPU)
+
+Test owner: xinyuangui2
+
+The test launches a ray cluster with 2 nodes, and launches a torchrun job on each node.
+"""
 import os
 import ray
 import subprocess
@@ -21,9 +30,9 @@ def _torch_run_launch(
     master_address: str,
     node_rank: int,
     absolute_path: str,
-    n_nodes: int = 2,
-    n_processes_per_node: int = 4,
-    master_port: int = 29500,
+    n_nodes: int,
+    n_processes_per_node: int,
+    master_port: int,
 ):
     cmd = [
         "torchrun",
@@ -74,7 +83,7 @@ def torch_run_launch_on_nodes():
     for i in range(len(node_id_ips)):
         futures.append(
             _force_on_node(node_id_ips[i][0], _torch_run_launch).remote(
-                master_address, i, absolute_path
+                master_address, i, absolute_path, len(node_id_ips), 4, 29500
             )
         )
     ray.get(futures)

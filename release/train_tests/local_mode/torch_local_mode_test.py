@@ -1,6 +1,3 @@
-"""Ray train release test: local mode launched by torchrun
-"""
-
 import os
 import tempfile
 
@@ -64,10 +61,13 @@ def train_func(config):
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
+    epoch_losses = []
     for epoch in range(config["num_epochs"]):
         if ray.train.get_context().get_world_size() > 1:
             train_loader.sampler.set_epoch(epoch)
 
+        epoch_loss = 0.0
+        num_batches = 0
         for images, labels in train_loader:
             # This is done by `prepare_data_loader`!
             # images, labels = images.to("cuda"), labels.to("cuda")
@@ -77,8 +77,19 @@ def train_func(config):
             loss.backward()
             optimizer.step()
 
+            epoch_loss += loss.item()
+            num_batches += 1
+
+        # Calculate average loss for the epoch
+        avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else float("inf")
+        epoch_losses.append(avg_epoch_loss)
+
         # [3] Report metrics and checkpoint.
-        metrics = {"loss": loss.item(), "epoch": epoch}
+        metrics = {
+            "loss": avg_epoch_loss,
+            "epoch": epoch,
+            "epoch_losses": epoch_losses.copy(),  # Track all losses for validation
+        }
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             torch.save(
                 model.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
@@ -108,9 +119,43 @@ def fit_func():
     # Train the model.
     result = trainer.fit()
 
-    # Inspect the results.
+    # Inspect the results and validate loss makes sense
     final_loss = result.metrics["loss"]
+    epoch_losses = result.metrics.get("epoch_losses", [])
+
     logger.info(f"final_loss: {final_loss}")
+    logger.info(f"all epoch losses: {epoch_losses}")
+
+    # Validation 1: Check loss is finite and not NaN
+    assert not torch.isnan(torch.tensor(final_loss)), f"Final loss is NaN: {final_loss}"
+    assert torch.isfinite(
+        torch.tensor(final_loss)
+    ), f"Final loss is not finite: {final_loss}"
+
+    # Validation 2: Check loss convergence - final loss should be lower than initial loss
+    if len(epoch_losses) >= 2:
+        initial_loss = epoch_losses[0]
+        assert (
+            final_loss < initial_loss
+        ), f"Loss didn't decrease: initial={initial_loss}, final={final_loss}"
+        logger.info(
+            f"Loss successfully decreased from {initial_loss:.4f} to {final_loss:.4f}"
+        )
+
+        # Additional check: loss should show general decreasing trend
+        # Allow for some fluctuation but overall trend should be downward
+        mid_point = len(epoch_losses) // 2
+        early_avg = sum(epoch_losses[:mid_point]) / mid_point
+        late_avg = sum(epoch_losses[mid_point:]) / (len(epoch_losses) - mid_point)
+        assert (
+            late_avg < early_avg
+        ), f"Loss trend not decreasing: early_avg={early_avg:.4f}, late_avg={late_avg:.4f}"
+        logger.info(
+            f"Loss trend validation passed: early_avg={early_avg:.4f}, late_avg={late_avg:.4f}"
+        )
+
+    logger.info("All loss validation checks passed!")
+    return result
 
 
 if __name__ == "__main__":
