@@ -278,7 +278,7 @@ Custom checkpoint uploading
 :func:`~ray.train.report` defaults to uploading from disk to the remote ``storage_path``
 with the PyArrow filesystem copying utilities before reporting the checkpoint to Ray Train.
 If you would rather upload the checkpoint manually or with a third-party library
-such as Torch Distributed Checkpointing, you can first upload the checkpoint to
+such as `Torch Distributed Checkpointing <https://docs.pytorch.org/docs/stable/distributed.checkpoint.html>`_, you can first upload the checkpoint to
 the ``storage_path`` and then report a reference to the uploaded checkpoint with
 ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
 
