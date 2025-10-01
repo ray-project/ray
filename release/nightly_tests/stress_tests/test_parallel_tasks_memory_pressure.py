@@ -46,7 +46,7 @@ def allocate_memory(
     *,
     num_chunks: int = 10,
     allocate_interval_s: float = 5,
-):
+) -> int:
     chunks = []
     total_allocated_bytes = 0
     for _ in range(num_chunks):
