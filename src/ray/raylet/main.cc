@@ -383,7 +383,7 @@ int main(int argc, char *argv[]) {
                                             cluster_id,
                                             /*allow_cluster_id_nil=*/false,
                                             /*fetch_cluster_id_if_nil=*/false);
-  gcs_client = std::make_unique<ray::gcs::GcsClient>(client_options);
+  gcs_client = std::make_unique<ray::gcs::GcsClient>(client_options, node_ip_address);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
@@ -699,7 +699,7 @@ int main(int argc, char *argv[]) {
         std::move(add_process_to_application_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
-        main_service, /*record_stats=*/true);
+        main_service, /*record_stats=*/true, node_ip_address);
 
     worker_rpc_pool = std::make_unique<ray::rpc::CoreWorkerClientPool>(
         [&](const ray::rpc::Address &addr) {

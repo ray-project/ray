@@ -14,10 +14,8 @@
 
 #include "ray/gcs_rpc_client/gcs_client.h"
 
-#include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -96,16 +94,22 @@ bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
   }
 }
 
-GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
-    : options_(options), gcs_client_id_(gcs_client_id) {}
+GcsClient::GcsClient(GcsClientOptions options,
+                     std::string local_address,
+                     UniqueID gcs_client_id)
+    : options_(std::move(options)),
+      gcs_client_id_(gcs_client_id),
+      local_address_(std::move(local_address)) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
   if (timeout_ms < 0) {
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
-      io_service, /*record_stats=*/false, options_.cluster_id_);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service,
+                                                                  /*record_stats=*/false,
+                                                                  local_address_,
+                                                                  options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
