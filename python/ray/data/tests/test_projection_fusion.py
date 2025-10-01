@@ -785,6 +785,263 @@ class TestProjectionFusion:
         assert len(result) == 1
         assert result[0] == expected
 
+    @pytest.mark.parametrize(
+        "operations,expected",
+        [
+            # Basic count operations
+            ([("count",)], 3),  # All 3 rows
+            ([("rename", {"a": "A"}), ("count",)], 3),
+            ([("select", ["a", "b"]), ("count",)], 3),
+            ([("with_column", "d", 4), ("count",)], 3),
+            # Filter operations affecting count
+            ([("filter", col("a") > 1), ("count",)], 2),  # 2 rows have a > 1
+            ([("filter", col("b") == 2), ("count",)], 3),  # All rows have b == 2
+            ([("filter", col("c") < 10), ("count",)], 3),  # All rows have c < 10
+            ([("filter", col("a") == 1), ("count",)], 1),  # 1 row has a == 1
+            # Projection then filter then count
+            ([("rename", {"a": "A"}), ("filter", col("A") > 1), ("count",)], 2),
+            ([("select", ["a", "b"]), ("filter", col("a") > 1), ("count",)], 2),
+            ([("with_column", "d", 4), ("filter", col("d") == 4), ("count",)], 3),
+            # Filter then projection then count
+            ([("filter", col("a") > 1), ("rename", {"a": "A"}), ("count",)], 2),
+            ([("filter", col("b") == 2), ("select", ["a", "b"]), ("count",)], 3),
+            ([("filter", col("c") < 10), ("with_column", "d", 4), ("count",)], 3),
+            # Multiple projections with filter and count
+            (
+                [
+                    ("rename", {"a": "A"}),
+                    ("select", ["A", "b"]),
+                    ("filter", col("A") > 1),
+                    ("count",),
+                ],
+                2,
+            ),
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("rename", {"d": "D"}),
+                    ("filter", col("D") == 4),
+                    ("count",),
+                ],
+                3,
+            ),
+            (
+                [
+                    ("select", ["a", "b"]),
+                    ("filter", col("a") > 1),
+                    ("rename", {"a": "x"}),
+                    ("count",),
+                ],
+                2,
+            ),
+            # Complex combinations
+            (
+                [
+                    ("filter", col("a") > 0),
+                    ("rename", {"b": "B"}),
+                    ("select", ["a", "B"]),
+                    ("filter", col("B") == 2),
+                    ("count",),
+                ],
+                3,
+            ),
+            (
+                [
+                    ("with_column", "sum", 99),
+                    ("filter", col("a") > 1),
+                    ("select", ["a", "sum"]),
+                    ("count",),
+                ],
+                2,
+            ),
+            (
+                [
+                    ("rename", {"a": "A", "b": "B"}),
+                    ("filter", (col("A") + col("B")) > 3),
+                    ("select", ["A"]),
+                    ("count",),
+                ],
+                2,
+            ),
+        ],
+    )
+    def test_projection_fusion_with_count_and_filter(self, operations, expected):
+        """Test projection fusion with count operations including filters."""
+        from ray.data.expressions import lit
+
+        # Create dataset with 3 rows: {"a": 1, "b": 2, "c": 3}, {"a": 2, "b": 2, "c": 3}, {"a": 3, "b": 2, "c": 3}
+        ds = ray.data.from_items(
+            [
+                {"a": 1, "b": 2, "c": 3},
+                {"a": 2, "b": 2, "c": 3},
+                {"a": 3, "b": 2, "c": 3},
+            ]
+        )
+
+        # Apply operations
+        for op in operations:
+            if op[0] == "rename":
+                ds = ds.rename_columns(op[1])
+            elif op[0] == "select":
+                ds = ds.select_columns(op[1])
+            elif op[0] == "with_column":
+                ds = ds.with_column(op[1], lit(op[2]))
+            elif op[0] == "filter":
+                # Use the predicate expression directly
+                ds = ds.filter(expr=op[1])
+            elif op[0] == "count":
+                # Count returns a scalar, not a dataset
+                result = ds.count()
+                assert result == expected
+                return  # Early return since count() terminates the pipeline
+
+        # This should not be reached for count operations
+        assert False, "Count operation should have returned early"
+
+    @pytest.mark.parametrize(
+        "invalid_operations,error_type,error_message_contains",
+        [
+            # Try to filter on a column that doesn't exist yet
+            (
+                [("filter", col("d") > 0), ("with_column", "d", 4)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "d",
+            ),
+            # Try to filter on a renamed column before the rename
+            (
+                [("filter", col("A") > 1), ("rename", {"a": "A"})],
+                (KeyError, ray.exceptions.RayTaskError),
+                "A",
+            ),
+            # Try to use a column that was removed by select
+            (
+                [("select", ["a"]), ("filter", col("b") == 2)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to filter on a column after it was removed by select
+            (
+                [("select", ["a", "b"]), ("filter", col("c") < 10)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "c",
+            ),
+            # Try to use with_column referencing a non-existent column
+            (
+                [("select", ["a"]), ("with_column", "new_col", col("b") + 1)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to filter on a column that was renamed away
+            (
+                [("rename", {"b": "B"}), ("filter", col("b") == 2)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to use with_column with old column name after rename
+            (
+                [("rename", {"a": "A"}), ("with_column", "result", col("a") + 1)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "a",
+            ),
+            # Try to select using old column name after rename
+            (
+                [("rename", {"b": "B"}), ("select", ["a", "b", "c"])],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to filter on a computed column that was removed by select
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("select", ["a", "b"]),
+                    ("filter", col("d") == 4),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "d",
+            ),
+            # Try to rename a column that was removed by select
+            (
+                [("select", ["a", "b"]), ("rename", {"c": "C"})],
+                (KeyError, ray.exceptions.RayTaskError),
+                "c",
+            ),
+            # Complex: rename, select (removing renamed source), then use old name
+            (
+                [
+                    ("rename", {"a": "A"}),
+                    ("select", ["b", "c"]),
+                    ("filter", col("a") > 0),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "a",
+            ),
+            # Complex: with_column, select (keeping new column), filter on removed original
+            (
+                [
+                    ("with_column", "sum", col("a") + col("b")),
+                    ("select", ["sum"]),
+                    ("filter", col("a") > 0),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "a",
+            ),
+            # Try to use column in with_column expression after it was removed
+            (
+                [
+                    ("select", ["a", "c"]),
+                    ("with_column", "result", col("a") + col("b")),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+        ],
+    )
+    def test_projection_operations_invalid_order(
+        self, invalid_operations, error_type, error_message_contains
+    ):
+        """Test that operations fail gracefully when referencing non-existent columns."""
+        import ray
+        from ray.data.expressions import lit
+
+        # Create dataset with 3 rows: {"a": 1, "b": 2, "c": 3}, {"a": 2, "b": 2, "c": 3}, {"a": 3, "b": 2, "c": 3}
+        ds = ray.data.from_items(
+            [
+                {"a": 1, "b": 2, "c": 3},
+                {"a": 2, "b": 2, "c": 3},
+                {"a": 3, "b": 2, "c": 3},
+            ]
+        )
+
+        # Apply operations and expect them to fail
+        with pytest.raises(error_type) as exc_info:
+            for op in invalid_operations:
+                if op[0] == "rename":
+                    ds = ds.rename_columns(op[1])
+                elif op[0] == "select":
+                    ds = ds.select_columns(op[1])
+                elif op[0] == "with_column":
+                    if len(op) == 3 and not isinstance(op[2], (int, float, str)):
+                        # Expression-based with_column (op[2] is an expression)
+                        ds = ds.with_column(op[1], op[2])
+                    else:
+                        # Literal-based with_column
+                        ds = ds.with_column(op[1], lit(op[2]))
+                elif op[0] == "filter":
+                    ds = ds.filter(expr=op[1])
+                elif op[0] == "count":
+                    ds.count()
+                    return
+
+            # Force execution to trigger the error
+            result = ds.take_all()
+            print(f"Unexpected success: {result}")
+
+        # Verify the error message contains the expected column name
+        error_str = str(exc_info.value).lower()
+        assert (
+            error_message_contains.lower() in error_str
+        ), f"Expected '{error_message_contains}' in error message: {error_str}"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
