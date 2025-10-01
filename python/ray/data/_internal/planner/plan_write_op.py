@@ -21,20 +21,6 @@ from ray.data.datasource.datasource import Datasource
 WRITE_UUID_KWARG_NAME = "write_uuid"
 
 
-def gen_datasink_write_result(
-    write_result_blocks: List[Block],
-) -> WriteResult:
-    assert all(
-        isinstance(block, DataFrame) and len(block) == 1
-        for block in write_result_blocks
-    )
-    total_num_rows = sum(result["num_rows"].sum() for result in write_result_blocks)
-    total_size_bytes = sum(result["size_bytes"].sum() for result in write_result_blocks)
-
-    write_returns = [result["write_return"][0] for result in write_result_blocks]
-    return WriteResult(total_num_rows, total_size_bytes, write_returns)
-
-
 def generate_write_fn(
     datasink_or_legacy_datasource: Union[Datasink, Datasource], **write_args
 ) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
