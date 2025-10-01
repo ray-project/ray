@@ -39,6 +39,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
+from ray.data.expressions import Expr
 
 try:
     import pyarrow
@@ -462,6 +463,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
         else:
             for i in range(self.num_rows()):
                 yield self._get_row(i)
+
+    def filter(self, predicate_expr: "Expr") -> "pyarrow.Table":
+        """Filter rows based on a predicate expression."""
+        if self._table.num_rows == 0:
+            return self._table
+
+        from ray.data._expression_evaluator import eval_expr
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use PyArrow's built-in filter method
+        return self._table.filter(mask)
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):

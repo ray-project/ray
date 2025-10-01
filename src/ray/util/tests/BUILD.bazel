@@ -347,6 +347,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "process_spawn_pg_test",
+    srcs = ["process_spawn_pg_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/util:process",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "scoped_dup2_wrapper_test",
     size = "small",
     srcs = ["scoped_dup2_wrapper_test.cc"],
