@@ -276,7 +276,7 @@ void GcsActorManager::HandleReportActorOutOfScope(
 
     DestroyActor(actor_id,
                  GenActorOutOfScopeCause(actor),
-                 /*force_kill=*/true,
+                 /*force_kill=*/false,
                  [reply, send_reply_callback]() {
                    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
                  });
