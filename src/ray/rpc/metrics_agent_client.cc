@@ -37,7 +37,10 @@ void MetricsAgentClientImpl::WaitForServerReadyWithRetry(
     return;
   }
 
-  RAY_LOG(INFO) << "Initializing exporter ...";
+  if (retry_count == 0) {
+    // Only log the first time we start the retry loop.
+    RAY_LOG(INFO) << "Initializing exporter ...";
+  }
   HealthCheck(rpc::HealthCheckRequest(),
               [this, init_exporter_fn](auto &status, auto &&reply) {
                 if (status.ok() && !exporter_initialized_) {
