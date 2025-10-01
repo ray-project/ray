@@ -5,6 +5,40 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+"""
+The Ray Train Circular Import Linter is designed to address the intricate issue of circular dependencies within the Ray Train framework. Circular import errors arise when two or more modules depend on each other, creating a loop that Python's import system cannot resolve. In the context of Ray Train, this problem is particularly pronounced due to the interdependencies between the `ray.train` and `ray.train.v2` modules.
+
+The core challenge stems from the fact that `ray.train.v2` relies on `ray.train` for foundational functionality, while `ray.train` depends on `ray.train.v2` for enhanced features when the `RAY_TRAIN_V2_ENABLED` flag is set. This bidirectional dependency can lead to import errors, especially when v2 attributes are directly imported or during the deserialization of v2 attributes in train worker setups.
+
+To mitigate these issues, the linter implements several key strategies:
+1. **Import Resolution**: By enforcing importing `ray.train` v1 modules within `ray.train.v2` init files, the linter helps resolve circular import errors.
+2. **Comprehensive Detection**: The linter parses both the v1 and v2 train directories to detect potential circular imports. It ensures that for each v2 patch within the v1 `__init__.py` files, there are no circular imports in the overriding v2 files, or there is an import on the direct import path of the v2 file that suppresses the circular import.
+3. **Extensibility**: The linter is designed to be extensible, allowing it to be adapted for other patching directories beyond Ray Train V2.
+
+The decision to build a custom linter was driven by the need for a tool that could specifically address dependencies between two separate directories, a feature not available in existing libraries like pycycle. This custom approach not only allows for tailored solutions but also ensures a lightweight implementation.
+
+### Example Violations:
+- **Classic Case**:
+  - `ray/train/a/init.py`: `from ray.train.v2.a.sub_module import foo`
+  - `ray/train/v2/a/sub_module.py`: `import ray.train.a`
+- **Reexport through package**:
+  - `ray/train/a/init.py`: `from ray.train.v2.a import foo`
+  - `ray/train/v2/a/init.py`: `from .submodule import foo`
+  - `ray/train/v2/a/sub_module.py`: `import ray.train.a`
+
+### Example Violation Suppression:
+- **Typical Suppression**:
+  - `ray/train/a/init.py`: `from ray.train.v2.a.submodule import foo`
+  - `ray/train/v2/a/init.py`: `import ray.train.a` -> suppression import
+  - `ray/train/v2/a/sub_module.py`: `import ray.train.a`
+- **Early Suppression**:
+  - `ray/train/a/init.py`: `from ray.train.v2.a.submodule import foo`
+  - `ray/train/v2/init.py`: `import ray.train.a` -> suppression import
+  - `ray/train/v2/a/sub_module.py`: `import ray.train.a`
+
+By implementing these strategies, the Ray Train Circular Import Linter effectively identifies and resolves circular import issues, ensuring smoother operation and integration of the Ray Train framework.
+"""
+
 TRAIN_PACKAGES = set()
 
 
