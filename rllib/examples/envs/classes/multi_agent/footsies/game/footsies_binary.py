@@ -200,7 +200,9 @@ class FootsiesBinary:
                     zip_ref.extractall(self.full_extract_dir)
 
                 if self.binary_to_download == "mac_windowed":
-                    self.full_download_path.with_suffix(".app").rename(self.renamed_path)
+                    self.full_download_path.with_suffix(".app").rename(
+                        self.renamed_path
+                    )
                 else:
                     self.full_download_path.with_suffix("").rename(self.renamed_path)
                 logger.info(f"Extracted game binary to {self.renamed_path}")
