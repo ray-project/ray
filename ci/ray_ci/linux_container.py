@@ -69,9 +69,6 @@ class LinuxContainer(Container):
                 raise ValueError(
                     "install mask is not supported for build type: " + build_type
                 )
-            if build_type == "with-cpp":
-                # Only set for Java tests because there's multi-language worker tests.
-                build_cmd += ["--build-arg", "RAY_DISABLE_EXTRA_CPP=0"]
 
         build_cmd += ["-f", "ci/ray_ci/tests.env.Dockerfile", "/ray"]
         subprocess.check_call(

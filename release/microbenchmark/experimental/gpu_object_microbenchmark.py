@@ -69,6 +69,8 @@ class Actor:
 
     def recv(self, tensor: torch.Tensor):
         assert tensor.device.type == self.device.type
+        # Return the first element of the tensor to make sure the actor has received the tensor.
+        return tensor[0].item()
 
 
 def _exec_p2p_transfer(

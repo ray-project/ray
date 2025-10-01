@@ -21,6 +21,16 @@ steps:
     tags: release_wheels
     depends_on: manylinux
 
+  - name: ray-java-build
+    label: "wanda: java build (x86_64)"
+    wanda: ci/docker/ray-java.wanda.yaml
+    tags:
+      - release_wheels
+      - oss
+    env:
+      ARCH_SUFFIX: ""
+    depends_on: manylinux
+
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
     tags:
