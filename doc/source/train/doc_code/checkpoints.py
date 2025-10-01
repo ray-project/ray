@@ -456,7 +456,7 @@ def train_fn(config):
 def train_fn(config):
     ...
     metrics = {...}
-    tmpdir = tempfile.TemporaryDirectory()
+    tmpdir = tempfile.mkdtemp()
     ...  # Save checkpoint to tmpdir
     checkpoint = Checkpoint.from_directory(tmpdir)
     train.report(
@@ -503,7 +503,6 @@ def train_fn(config):
 # __checkpoint_upload_mode_no_upload_end__
 
 # __validation_fn_torch_trainer_start__
-
 import os
 import tempfile
 
@@ -558,9 +557,7 @@ def validate_fn(checkpoint, config):
 # __validation_fn_torch_trainer_end__
 
 # __validation_fn_map_batches_start__
-
 import os
-
 import torch
 
 
@@ -596,7 +593,6 @@ def validate_fn(checkpoint, config):
 # __validation_fn_map_batches_end__
 
 # __validation_fn_report_start__
-
 import os
 import tempfile
 
@@ -604,8 +600,11 @@ import ray.data
 import ray.train
 import ray.train.torch
 
-train_dataset = ray.data.read_parquet(...)
-validation_dataset = ray.data.read_parquet(...)
+
+def get_datasets():
+    train_dataset = ray.data.read_parquet(...)
+    validation_dataset = ray.data.read_parquet(...)
+    return train_dataset, validation_dataset
 
 
 def train_func(config):
@@ -613,13 +612,13 @@ def train_func(config):
     epochs = ...
     model = ...
     rank = ray.train.get_context().get_world_rank()
+    local_checkpoint_dir = tempfile.mkdtemp()
     for epoch in epochs:
         ...  # training step
         if rank == 0:
-            temp_checkpoint_dir = tempfile.TemporaryDirectory()
             training_metrics = {"loss": ..., "epoch": epoch}
             iteration_checkpoint_dir = os.path.join(
-                temp_checkpoint_dir, f"epoch_{epoch}_rank_{rank}"
+                local_checkpoint_dir, f"epoch_{epoch}_rank_{rank}"
             )
             os.makedirs(iteration_checkpoint_dir, exist_ok=True)
             torch.save(
@@ -643,13 +642,8 @@ def train_func(config):
 
 trainer = ray.train.torch.TorchTrainer(
     train_func,
-    train_loop_config={"validation_dataset": validation_dataset},
-    scaling_config=...,
-    datasets={"train": train_dataset},
-    run_config=ray.train.RunConfig(
-        storage_path=...,
-    ),
+    train_loop_config={"validation_dataset": ...},
+    datasets={"train": ...},
 )
-result = trainer.fit()
 
 # __validation_fn_report_end__

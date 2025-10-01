@@ -264,10 +264,11 @@ to avoid accumulating too many upload threads and potentially running out of mem
 
 Because ``report`` returns without waiting for the checkpoint upload to complete,
 you must ensure that the local checkpoint directory stays alive until the checkpoint
-upload completes. This means you cannot ``report`` a checkpoint whose directory is
-from a ``tempfile.TemporaryDirectory`` context manager. ``report`` also exposes the
-``delete_local_checkpoint_after_upload`` parameter, which defaults to ``True`` if
-``checkpoint_upload_mode`` is ``ray.train.CheckpointUploadMode.ASYNC``.
+upload completes. This means you cannot use a temporary directory that may be
+deleted before the upload finishes (e.g. from ``tempfile.TemporaryDirectory``).
+ ``report`` also exposes the ``delete_local_checkpoint_after_upload`` parameter, which
+ defaults to ``True`` if ``checkpoint_upload_mode`` is
+ ``ray.train.CheckpointUploadMode.ASYNC``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
@@ -322,6 +323,7 @@ Validating checkpoints asynchronously
 -------------------------------------
 
 You can also asynchronously validate checkpoints that you :func:`~ray.train.report` as follows:
+
 * Define your own ``validation_fn`` whose inputs are the :class:`~ray.train.Checkpoint` to validate
   and an optional config dict and whose output is a dict of metrics from the validation. We recommend
   performing the validation with an eval-only :ref:`Trainer <train-overview-trainers>` or with
@@ -333,6 +335,7 @@ You can also asynchronously validate checkpoints that you :func:`~ray.train.repo
 
 The main benefits of validating with :func:`~ray.train.report` over performing the validation
 in the training loop include:
+
 * Running validation in parallel with the training loop
 * Running validation on different hardware than training
 * Leveraging :ref:`vms-autoscaling` to only use validation resources when needed
@@ -361,10 +364,12 @@ calculate average cross entropy loss on a validation set. To learn more about ho
     :end-before: __validation_fn_map_batches_end__
 
 You should use ``TorchTrainer`` if:
+
 * You don't want to add a dependency on Ray Data
 * You prefer Torch's metrics aggregation API to Ray Data's
 
 You should use ``map_batches`` if:
+
 * You care about validation performance. Preliminary benchmarks show that ``map_batches`` is
   faster and the Ray Data team will continue to work on OSS and proprietary performance improvements.
 * You prefer Ray Data's metrics aggregation API to Torch's
