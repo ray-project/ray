@@ -89,7 +89,7 @@ message AutoscalingConfig {
   // Custom Prometheus metrics for autoscaling.
   // Wrapped in a message to preserve presence (None vs empty list) to match
   // Python type Optional[List[Tuple[str, str]]].
-  optional PrometheusCustomMetrics prometheus_custom_metrics = 17;
+  optional PrometheusCustomMetrics prometheus_metrics = 17;
 }
 
 message PrometheusMetric {

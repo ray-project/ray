@@ -45,7 +45,7 @@ def check_autoscaling_metrics_include_prometheus(
 class TestPrometheusCustomMetrics:
     """Test that prometheus custom metrics are properly fetched and reported."""
 
-    def test_prometheus_custom_metrics_integration(self, serve_instance):
+    def test_prometheus_metrics_integration(self, serve_instance):
         """Test that prometheus custom metrics are fetched and reported correctly."""
 
         @serve.deployment(
@@ -57,7 +57,7 @@ class TestPrometheusCustomMetrics:
                 "downscale_delay_s": 0.1,
                 "metrics_interval_s": 0.1,
                 "look_back_period_s": 0.1,
-                "prometheus_custom_metrics": [
+                "prometheus_metrics": [
                     "ray_serve_deployment_processing_latency_ms_bucket"
                 ],
             },
@@ -81,7 +81,7 @@ class TestPrometheusCustomMetrics:
                 "downscale_delay_s": 0.1,
                 "metrics_interval_s": 0.1,
                 "look_back_period_s": 0.1,
-                "prometheus_custom_metrics": [
+                "prometheus_metrics": [
                     "ray_serve_deployment_processing_latency_ms_bucket_only_b"
                 ],
             },

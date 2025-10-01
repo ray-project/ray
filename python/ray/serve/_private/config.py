@@ -244,17 +244,17 @@ class DeploymentConfig(BaseModel):
         if data.get("autoscaling_config"):
             autoscaling_config_dict = data["autoscaling_config"]
 
-            if "prometheus_custom_metrics" in autoscaling_config_dict:
-                prom_metrics = autoscaling_config_dict["prometheus_custom_metrics"]
+            if "prometheus_metrics" in autoscaling_config_dict:
+                prom_metrics = autoscaling_config_dict["prometheus_metrics"]
                 if prom_metrics is None:
                     # Explicit None: leave field unset by removing the key
-                    autoscaling_config_dict.pop("prometheus_custom_metrics")
+                    autoscaling_config_dict.pop("prometheus_metrics")
                 elif isinstance(prom_metrics, list):
                     metrics_msgs = [
                         PrometheusMetricProto(metric_name=name) for name in prom_metrics
                     ]
                     autoscaling_config_dict[
-                        "prometheus_custom_metrics"
+                        "prometheus_metrics"
                     ] = PrometheusCustomMetricsProto(metrics=metrics_msgs)
 
             data["autoscaling_config"] = AutoscalingConfigProto(
@@ -346,10 +346,10 @@ class DeploymentConfig(BaseModel):
             if not data["autoscaling_config"].get("target_ongoing_requests"):
                 data["autoscaling_config"]["target_ongoing_requests"] = None
 
-            prom_wrapper = data["autoscaling_config"].get("prometheus_custom_metrics")
+            prom_wrapper = data["autoscaling_config"].get("prometheus_metrics")
             if prom_wrapper is not None:
                 metrics_list = prom_wrapper.get("metrics", []) or []
-                data["autoscaling_config"]["prometheus_custom_metrics"] = [
+                data["autoscaling_config"]["prometheus_metrics"] = [
                     m.get("metric_name", "") for m in metrics_list
                 ]
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])

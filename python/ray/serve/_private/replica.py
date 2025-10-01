@@ -246,11 +246,6 @@ class ReplicaMetricsManager:
         self._prometheus_metrics_enabled = False
         self._prometheus_queries: Optional[List[str]] = None
 
-        if autoscaling_config and autoscaling_config.prometheus_custom_metrics:
-            self._prometheus_metrics_enabled = True
-            self._prometheus_queries = autoscaling_config.prometheus_custom_metrics
-            self.start_metrics_pusher()
-
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
             self._request_counter.inc(count, tags={"route": route})
@@ -318,8 +313,17 @@ class ReplicaMetricsManager:
 
         self._autoscaling_config = autoscaling_config
 
-        if self._autoscaling_config and self.should_collect_ongoing_requests():
-            self.start_metrics_pusher()
+        if self._autoscaling_config:
+
+            if self._autoscaling_config.prometheus_metrics:
+                self._prometheus_metrics_enabled = True
+                self._prometheus_queries = autoscaling_config.prometheus_metrics
+                self.start_metrics_pusher()
+                return
+
+            elif self.should_collect_ongoing_requests():
+                self.start_metrics_pusher()
+                return
 
     def enable_custom_autoscaling_metrics(
         self,

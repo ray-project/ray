@@ -237,7 +237,7 @@ class AutoscalingConfig(BaseModel):
 
     # Prometheus metrics which will be collected at each replica, which will be available in the custom AutoscalingPolicy function
     # List of metric_names
-    prometheus_custom_metrics: Optional[List[str]] = None
+    prometheus_metrics: Optional[List[str]] = None
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")

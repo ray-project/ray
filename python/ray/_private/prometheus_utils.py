@@ -255,12 +255,12 @@ def extract_metric_values(
                 if filter_func:
                     metrics_result[metric_name] = filter_func(samples)
                 else:
-                    # Return the first sample's value if no filter
-                    metrics_result[metric_name] = samples[0].value
+                    # Return all samples if no filter
+                    metrics_result[metric_name] = samples
             else:
-                metrics_result[metric_name] = 0.0
+                metrics_result[metric_name] = []
         else:
             logger.warning(f"Metric {metric_name} not found in exporter response")
-            metrics_result[metric_name] = 0.0
+            metrics_result[metric_name] = []
 
     return metrics_result
