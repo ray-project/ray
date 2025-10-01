@@ -21,6 +21,7 @@ import hashlib
 import importlib
 import io
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
@@ -293,13 +294,34 @@ class VideoProcessor:
                         if decoded >= RAY_LLM_BATCH_MAX_DECODE_FRAMES():
                             break
         finally:
+            exc_type, _, _ = sys.exc_info()
+            close_error: Optional[Exception] = None
+
             try:
                 if container is not None:
                     container.close()
             except Exception as e:
-                raise RuntimeError(
+                close_error = RuntimeError(
                     f"Failed to close PyAV container for source {self._source_repr(source, resolved, is_memory)}: {e}"
-                ) from e
+                )
+                if exc_type is None:
+                    raise close_error from e
+
+            cleanup_error: Optional[Exception] = None
+            if cleanup_path is not None and not self._keep_downloaded:
+                try:
+                    os.remove(cleanup_path)
+                except Exception as e:
+                    cleanup_error = RuntimeError(
+                        f"Failed to remove cached file at {cleanup_path}: {e}"
+                    )
+                    if exc_type is None:
+                        raise cleanup_error from e
+                    if close_error is None:
+                        close_error = cleanup_error
+
+            if exc_type is None and close_error is not None:
+                raise close_error
 
         if not frames and not allow_zero_samples:
             raise ValueError("No frames sampled")
@@ -334,14 +356,6 @@ class VideoProcessor:
                 "failed": False,
             },
         }
-
-        if cleanup_path is not None and not self._keep_downloaded:
-            try:
-                os.remove(cleanup_path)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to remove cached file at {cleanup_path}: {e}"
-                ) from e
 
         return result
 
