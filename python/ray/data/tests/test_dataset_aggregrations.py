@@ -55,7 +55,7 @@ def test_count_after_caching_after_execution(ray_start_regular):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
+def test_global_tabular_min(ray_start_regular_shared_2_cpus, ds_format, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_min with: {seed}")
     random.seed(seed)
@@ -98,7 +98,7 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
+def test_global_tabular_max(ray_start_regular_shared_2_cpus, ds_format, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_max with: {seed}")
     random.seed(seed)
@@ -141,7 +141,7 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
+def test_global_tabular_mean(ray_start_regular_shared_2_cpus, ds_format, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_mean with: {seed}")
     random.seed(seed)
@@ -184,7 +184,7 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
+def test_global_tabular_std(ray_start_regular_shared_2_cpus, ds_format, num_parts):
     # NOTE: Do not change the seed
     seed = 1740035705
 
