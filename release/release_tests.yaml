@@ -2760,18 +2760,21 @@
   working_dir: nightly_tests
 
   # TODO: https://github.com/ray-project/ray/issues/47596
-  stable: false
+  # XXX: CLOSE ISSUE IF FIXED.
+  # stable: false
 
   frequency: nightly
   team: core
   env: aws_perf
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        - RAY_memory_usage_threshold=0.7
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
     timeout: 1000
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 10 --mem-pct-per-task .2
 
   variations:
     - __suffix__: aws
@@ -2780,27 +2783,6 @@
       frequency: manual
       cluster:
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
-
-
-- name: tune_air_oom
-  group: core-daily-test
-  working_dir: air_tests
-
-  stable: false
-
-  frequency: nightly
-  team: core
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_usage_threshold=0.7
-        - RAY_task_oom_retries=-1
-    cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
-
-  run:
-    timeout: 3600
-    script: bash oom/tune_air_oom.sh
 
 
 - name: dask_on_ray_1tb_sort

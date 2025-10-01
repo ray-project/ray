@@ -24,7 +24,7 @@ parser.add_argument(
 )
 
 
-@ray.remote(max_retries=-1)
+@ray.remote
 def allocate_memory(
     target_bytes: int,
     *,
