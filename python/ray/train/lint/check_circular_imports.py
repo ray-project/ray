@@ -28,6 +28,11 @@ def is_package(module_str: str) -> bool:
     return module_str in TRAIN_PACKAGES
 
 
+def does_overlap(main_module: str, module: str) -> bool:
+    """Checks if the init file of module is on the import path of main_module"""
+    return main_module.startswith(f"{module}.") or main_module == module
+
+
 class Import:
     """
     Represents an import statement.
@@ -91,7 +96,7 @@ class ImportCollector(ast.NodeVisitor):
 
         # Base parts based on the level
         base_module_parts = (
-            package_parts if level == 1 else package_parts[: -((level - 1))]
+            package_parts if level == 1 else package_parts[: -(level - 1)]
         )
 
         # Construct absolute module string
@@ -117,8 +122,9 @@ class ImportCollector(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             if alias.name:
-                is_package = alias.name in TRAIN_PACKAGES
-                self.imports.add(Import(module=alias.name, is_package=is_package))
+                self.imports.add(
+                    Import(module=alias.name, is_package=is_package(alias.name))
+                )
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         import_str = self._to_absolute_module(node.level or 0, node.module)
@@ -126,8 +132,9 @@ class ImportCollector(ast.NodeVisitor):
             return
 
         names = [alias.name for alias in node.names]
-        is_package = import_str in TRAIN_PACKAGES
-        self.imports.add(Import(module=import_str, is_package=is_package, names=names))
+        self.imports.add(
+            Import(module=import_str, is_package=is_package(import_str), names=names)
+        )
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Skip function contents
@@ -148,6 +155,7 @@ def collect_imports(
     try:
         tree = ast.parse(source_text)
     except SyntaxError:
+        print(f"Warning: Failed to parse {module_name} for circular imports")
         return set()
     collector = ImportCollector(module_name, is_package)
     collector.visit(tree)
@@ -156,13 +164,10 @@ def collect_imports(
 
 def get_base_dir() -> Path:
     """Return the filesystem path to the ray python directory."""
-    try:
-        import ray
+    import ray
 
-        package_dir = Path(os.path.dirname(ray.__file__)).parent
-        return package_dir
-    except ModuleNotFoundError:
-        raise ModuleNotFoundError("ray package not found")
+    package_dir = Path(os.path.dirname(ray.__file__)).parent
+    return package_dir
 
 
 def get_base_train_dir() -> Path:
@@ -309,7 +314,7 @@ def check_violations(
 
         for patch_module, imports in patch_train_file_imports.items():
             # Skip if the base train init module is in the import path of the patch module
-            if base_train_init_module in patch_module:
+            if does_overlap(patch_module, base_train_init_module):
                 continue
 
             # Skip if the patch train module init file imports the base train init module
@@ -319,12 +324,15 @@ def check_violations(
                 else patch_module
             )
             patch_init_imports = patch_train_init_imports.get(patch_init_module, set())
-            if any(base_train_init_module in imp.module for imp in patch_init_imports):
+            if any(
+                does_overlap(imp.module, base_train_init_module)
+                for imp in patch_init_imports
+            ):
                 continue
 
             for patch_import in imports:
                 # If any of those v1 imports go through the init file, then it is a violation
-                if base_train_init_module in patch_import.module:
+                if does_overlap(patch_import.module, base_train_init_module):
                     violations.append(
                         f"circular-import-train: Circular import between {base_train_init_module} (importing {patch_module}) and {patch_module} (importing {patch_import.module}). Resolve by importing {base_train_init_module} in the __init__.py of {patch_init_module}."
                     )
