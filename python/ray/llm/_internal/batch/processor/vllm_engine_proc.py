@@ -90,6 +90,15 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         values["task_type"] = vLLMTaskType(task_type_str)
         return values
 
+    @root_validator(pre=True)
+    def validate_placement_group_config(cls, values):
+        placement_group_config = values.get("placement_group_config")
+        if placement_group_config is not None:
+            values["placement_group_config"] = PlacementGroupSchema(
+                **placement_group_config
+            ).model_dump()
+        return values
+
 
 def build_vllm_engine_processor(
     config: vLLMEngineProcessorConfig,
@@ -171,8 +180,7 @@ def build_vllm_engine_processor(
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
-                placement_group_config=config.placement_group_config
-                and PlacementGroupSchema(**config.placement_group_config).model_dump(),
+                placement_group_config=config.placement_group_config,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,

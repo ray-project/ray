@@ -92,7 +92,8 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     }
 
 
-def test_generation_model(gpu_type, model_opt_125m):
+@pytest.mark.parametrize("backend", ["mp", "ray"])
+def test_generation_model(gpu_type, model_opt_125m, backend):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
     chat_template = """
@@ -125,6 +126,7 @@ def test_generation_model(gpu_type, model_opt_125m):
             max_model_len=2048,
             # Skip CUDA graph capturing to reduce startup time.
             enforce_eager=True,
+            distributed_executor_backend=backend,
         ),
         batch_size=16,
         accelerator_type=gpu_type,

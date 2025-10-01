@@ -687,7 +687,7 @@ class vLLMEngineStage(StatefulStage):
         placement_group_config = fn_constructor_kwargs.pop(
             "placement_group_config", None
         )
-        if executor_backend == "ray" and num_bundles_per_replica > 1:
+        if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
             # instead of an object.
             map_batches_kwargs["ray_remote_args_fn"] = partial(

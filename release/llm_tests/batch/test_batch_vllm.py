@@ -352,10 +352,20 @@ def test_async_udf_queue_capped(concurrency):
             "ray",
             dict(bundles=[{"CPU": 1}] * 4),
         ),
+        # Empty placement group
+        (
+            "ray",
+            None,
+        ),
         # Custom placement group with MP backend
         (
             "mp",
             dict(bundles=[{"GPU": 1}] * 4),
+        ),
+        # Empty placement group with MP backend
+        (
+            "mp",
+            None,
         ),
     ],
 )
