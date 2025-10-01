@@ -1,6 +1,6 @@
 import random
 import sys
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import pytest
 
@@ -13,6 +13,7 @@ from ray.serve._private.common import (
     ReplicaState,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -393,6 +394,63 @@ def test_rank_stability_on_replica_death(serve_instance):
     for replica_id in initial_replica_ids:
         if replica_id != killed_replica_id:
             assert final_ranks[replica_id] == initial_ranks[replica_id]
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE,
+    reason="reconfigure is not called on rank changes if RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE is not set",
+)
+def test_user_reconfigure_rank(serve_instance):
+    """Test that user can reconfigure the rank of a deployment."""
+
+    @ray.remote(num_cpus=0)
+    class Collector:
+        def __init__(self):
+            self.lst = []
+
+        def append(self, msg):
+            self.lst.append(msg)
+
+        def get(self):
+            return self.lst
+
+    collector = Collector.remote()
+
+    @serve.deployment(num_replicas=4, user_config={"name": "Bob"})
+    class ReconfigureRankTracker:
+        def __call__(self):
+            return "hello"
+
+        async def reconfigure(self, user_config: Any, rank: int):
+            await collector.append.remote(rank)
+
+    _ = serve.run(ReconfigureRankTracker.bind())
+    wait_for_condition(
+        lambda: check_rank_assignment_complete("ReconfigureRankTracker", 4),
+    )
+
+    def _check():
+        assert set(ray.get(collector.get.remote())) == {0, 1, 2, 3}
+        return True
+
+    wait_for_condition(_check)
+
+    serve.run(ReconfigureRankTracker.options(user_config={"name": "Alice"}).bind())
+    wait_for_condition(
+        lambda: check_rank_assignment_complete("ReconfigureRankTracker", 4),
+    )
+
+    def _check():
+        # During update, ranks are first assigned from 4 to 8. Then `reconfigure` readjusts them to 0–3.
+        # We expect a total of 12 calls:
+        #   1. Initial call with ranks 0–4
+        #   2. Update call with ranks 4–8
+        #   3. Readjustment call with ranks 0–3
+        assert len(ray.get(collector.get.remote())) == 12
+        assert set(ray.get(collector.get.remote())) == {0, 1, 2, 3, 4, 5, 6, 7}
+        return True
+
+    wait_for_condition(_check)
 
 
 if __name__ == "__main__":

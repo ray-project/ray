@@ -128,6 +128,10 @@ HEALTH_CHECK_METHOD = "check_health"
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 
+RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE = get_env_bool(
+    "RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE", "0"
+)
+
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Limit the number of cached handles because each handle has long poll

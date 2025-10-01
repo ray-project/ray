@@ -134,6 +134,7 @@ py_test_module_list(
     size = "medium",
     env = {
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+        "RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE": "1",
     },
     files = [
         "test_fastapi.py",
