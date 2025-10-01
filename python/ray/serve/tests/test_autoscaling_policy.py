@@ -147,6 +147,11 @@ class TestAutoscalingMetrics:
             },
             max_ongoing_requests=25,
             version="v1",
+            # With RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE=1, ongoing requests may be
+            # double-counted, causing the count to exceed 50. This can temporarily trigger
+            # the autoscaler to scale above 5 replicas. Once the autoscaler stabilizes at 5,
+            # the extra replicas need to shut down. If graceful_shutdown_timeout_s is large,
+            # the test may hang during shutdown and eventually fail.
             graceful_shutdown_timeout_s=0.1,
         )
         class A:
@@ -290,6 +295,8 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
+                # keep this less than the wait_for_condition timeout because we want the
+                # autoscaler to be responsive to changes in metrics.
                 "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
@@ -376,7 +383,8 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                # keep this less than the wait_for_condition timeout
+                # keep this less than the wait_for_condition timeout because we want the
+                # autoscaler to be responsive to changes in metrics.
                 "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
