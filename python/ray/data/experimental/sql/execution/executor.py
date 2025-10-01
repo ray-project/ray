@@ -122,7 +122,6 @@ class QueryExecutor:
                 result = self._execute_simple_query(ast)
 
             # Log execution success
-            self._logger.debug(
                 f"Query executed successfully (total: {self._queries_executed})"
             )
             return result
@@ -444,7 +443,6 @@ class QueryExecutor:
         """Execute aggregate query with COUNT(*) using manual counting."""
         from ray.data.experimental.sql.utils import get_function_name_from_expression
 
-        self._logger.debug("Handling COUNT(*) with manual row counting")
         result_row = {}
         # Use Ray's native count for COUNT(*) - this is the only legitimate use
         total_rows = dataset.count()
@@ -502,13 +500,9 @@ class QueryExecutor:
             aggregates, dataset
         )
 
-        self._logger.debug(f"Built {len(aggregates)} aggregates: {aggregates}")
-        self._logger.debug(f"Column renames: {renames}")
 
         result = dataset.aggregate(*aggregates)
 
-        self._logger.debug(f"Aggregate result type: {type(result)}")
-        self._logger.debug(f"Aggregate result: {result}")
 
         if isinstance(result, dict):
             result = ray.data.from_items([result])
@@ -517,12 +511,10 @@ class QueryExecutor:
 
         if renames and result is not None:
             try:
-                self._logger.debug(f"Renaming columns: {renames}")
                 result = result.rename_columns(renames)
             except Exception as e:
                 self._logger.warning(f"Failed to rename columns: {e}")
 
-        self._logger.debug(f"Final aggregate result: {result}")
         return result
 
     def _resolve_from_clause(self, ast: exp.Select) -> Tuple[Dataset, str]:

@@ -107,15 +107,9 @@ class DataFusionOptimizer:
         if self.available:
             try:
                 self.df_ctx = df.SessionContext()
-                self._logger.info("DataFusion optimizer initialized successfully")
-            except Exception as e:
-                self._logger.warning(f"DataFusion initialization failed: {e}")
                 self.available = False
         else:
             self.df_ctx = None
-            self._logger.info(
-                "DataFusion not available - will use SQLGlot-only optimization"
-            )
 
     def is_available(self) -> bool:
         """Check if DataFusion optimizer is available.
@@ -144,7 +138,6 @@ class DataFusionOptimizer:
             or None if optimization fails (caller should fallback to SQLGlot).
         """
         if not self.available:
-            self._logger.debug("DataFusion not available, skipping optimization")
             return None
 
         try:
@@ -158,16 +151,12 @@ class DataFusionOptimizer:
             logical_plan = df_result.logical_plan()
             optimized_logical = df_result.optimized_logical_plan()
 
-            self._logger.debug(f"DataFusion logical plan: {logical_plan}")
-            self._logger.debug(f"DataFusion optimized plan: {optimized_logical}")
 
             # Extract optimization decisions from the plans
             optimizations = self._extract_optimizations(
                 optimized_logical, query, datasets
             )
 
-            self._logger.info(
-                f"DataFusion optimization complete: {len(optimizations.join_order)} joins, "
                 f"{len(optimizations.filter_placement)} filters"
             )
 
@@ -226,8 +215,6 @@ class DataFusionOptimizer:
             # Very large datasets - use fraction that gives max_sample for largest table
             base_sample_fraction = DEFAULT_MAX_SAMPLE_SIZE / max_table_size
 
-        self._logger.info(
-            f"Sampling {len(datasets)} tables with {base_sample_fraction:.2%} fraction "
             f"(largest table: ~{max_table_size} rows)"
         )
 
@@ -257,7 +244,6 @@ class DataFusionOptimizer:
                 # Register with DataFusion
                 self.df_ctx.register_table(name, sample_arrow)
 
-                self._logger.debug(
                     f"Registered table '{name}' with DataFusion: "
                     f"{len(sample_arrow)} rows ({sample_size}/{estimated_rows} = "
                     f"{sample_size/max(estimated_rows,1):.1%}), "
@@ -291,7 +277,6 @@ class DataFusionOptimizer:
                 try:
                     stats = dataset._plan._dataset_stats_summary
                     if hasattr(stats, "num_rows") and stats.num_rows:
-                        self._logger.debug(
                             f"Table '{table_name}': Estimated {stats.num_rows} rows from metadata"
                         )
                         return stats.num_rows
@@ -310,13 +295,11 @@ class DataFusionOptimizer:
                 return TINY_DATASET_THRESHOLD  # from_items usually small
 
             # Fallback: Assume default size
-            self._logger.debug(
                 f"Table '{table_name}': No metadata, assuming {DEFAULT_SAMPLE_SIZE} rows"
             )
             return DEFAULT_SAMPLE_SIZE
 
         except Exception as e:
-            self._logger.debug(f"Could not estimate size for '{table_name}': {e}")
             return DEFAULT_SAMPLE_SIZE
 
     def _calculate_smart_sample_size(self, dataset: Dataset, table_name: str) -> int:
@@ -360,7 +343,6 @@ class DataFusionOptimizer:
                             sample_size = int(
                                 estimated_rows * TINY_DATASET_SAMPLE_FRACTION
                             )
-                            self._logger.debug(
                                 f"Table '{table_name}': Full dataset "
                                 f"({estimated_rows} rows - tiny)"
                             )
@@ -373,7 +355,6 @@ class DataFusionOptimizer:
                                     int(estimated_rows * SMALL_DATASET_SAMPLE_FRACTION),
                                 ),
                             )
-                            self._logger.debug(
                                 f"Table '{table_name}': {int(SMALL_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
@@ -388,7 +369,6 @@ class DataFusionOptimizer:
                                     ),
                                 ),
                             )
-                            self._logger.debug(
                                 f"Table '{table_name}': {int(MEDIUM_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
@@ -401,16 +381,12 @@ class DataFusionOptimizer:
                                     int(estimated_rows * LARGE_DATASET_SAMPLE_FRACTION),
                                 ),
                             )
-                            self._logger.debug(
                                 f"Table '{table_name}': {int(LARGE_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
                         else:
                             # Very large dataset - fixed max sample
                             sample_size = max_sample
-                            self._logger.info(
-                                f"Table '{table_name}': Max sample "
-                                f"({sample_size} rows from ~{estimated_rows} rows)"
                             )
 
                         return max(min_sample, min(sample_size, max_sample))
@@ -427,7 +403,6 @@ class DataFusionOptimizer:
                     if hasattr(logical_plan, "dag"):
                         # Estimated blocks can hint at size
                         # More blocks usually means larger dataset
-                        self._logger.debug(
                             f"Table '{table_name}': Using metadata-based estimation"
                         )
                         # Use larger sample for datasets with more blocks (heuristic)
@@ -444,7 +419,6 @@ class DataFusionOptimizer:
             if "read_parquet" in dataset_str or "read_csv" in dataset_str:
                 # Read operations likely have metadata
                 # Use larger sample for better statistics
-                self._logger.debug(
                     f"Table '{table_name}': Read operation detected, using larger sample"
                 )
                 return min(
@@ -452,13 +426,11 @@ class DataFusionOptimizer:
                 )
 
             # Fallback: Use default sample size
-            self._logger.debug(
                 f"Table '{table_name}': Using default sample ({default_sample} rows)"
             )
             return default_sample
 
         except Exception as e:
-            self._logger.debug(
                 f"Could not determine smart sample size for '{table_name}': {e}, "
                 f"using default ({default_sample})"
             )
@@ -497,7 +469,6 @@ class DataFusionOptimizer:
         try:
             # Get string representation of optimized plan
             plan_str = str(optimized_plan)
-            self._logger.debug(f"DataFusion optimized plan:\n{plan_str}")
 
             # Extract optimization information from plan structure
             # DataFusion's optimized plan shows the result of:
@@ -525,7 +496,6 @@ class DataFusionOptimizer:
                         )
 
             optimizations.filter_placement = filters
-            self._logger.debug(
                 f"Extracted {len(filters)} filter placements from DataFusion plan"
             )
 
@@ -538,7 +508,6 @@ class DataFusionOptimizer:
                         projections.extend(cols)
 
             optimizations.projection_columns = projections
-            self._logger.debug(
                 f"Extracted {len(projections)} projection columns from DataFusion plan"
             )
 
@@ -558,7 +527,6 @@ class DataFusionOptimizer:
                     f"{j.get('left', '')}_{j.get('right', '')}": j.get("type", "inner")
                     for j in joins
                 }
-                self._logger.debug(f"Extracted {len(joins)} joins from DataFusion plan")
 
             # Extract aggregation information
             for line in plan_lines:
@@ -566,20 +534,16 @@ class DataFusionOptimizer:
                     agg_strategy = self._extract_aggregation_strategy(line)
                     if agg_strategy:
                         optimizations.aggregation_strategy = agg_strategy
-                        self._logger.debug(
                             f"Extracted aggregation strategy: {agg_strategy}"
                         )
                         break
 
             # Log summary of extracted optimizations
-            self._logger.info(
-                f"Extracted optimizations: {len(optimizations.filter_placement)} filters, "
                 f"{len(optimizations.projection_columns)} projections, "
                 f"{len(optimizations.join_order)} joins"
             )
 
         except Exception as e:
-            self._logger.debug(f"Could not extract detailed optimizations: {e}")
             # Return basic optimizations on error
 
         return optimizations

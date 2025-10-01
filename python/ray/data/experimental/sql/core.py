@@ -89,18 +89,12 @@ class RaySQL:
         """
         self.registry.register(name, dataset)
         # Avoid expensive count() operation during registration
-        self._logger.info(f"Registered table '{name}' successfully")
-
-    def unregister_table(self, name: str) -> None:
         """Unregister a table by name.
 
         Args:
             name: Table name to unregister.
         """
         self.registry.unregister(name)
-        self._logger.info(f"Unregistered table '{name}'")
-
-    def sql(self, query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
         """Execute a SQL query with optional DataFusion optimization.
 
         Args:
@@ -127,8 +121,6 @@ class RaySQL:
             )
 
         start_time = time.time()
-        self._logger.info(
-            f"Executing SQL query: {query.strip()[:100]}{'...' if len(query.strip()) > 100 else ''}"
         )
 
         try:
@@ -138,13 +130,8 @@ class RaySQL:
                     result = self._execute_with_datafusion(query)
                     if result is not None:
                         execution_time = time.time() - start_time
-                        self._logger.info(
-                            f"Query executed with DataFusion optimization in {execution_time:.3f}s"
-                        )
                         return result
                 except Exception as e:
-                    self._logger.info(
-                        f"DataFusion optimization failed ({e}), falling back to SQLGlot"
                     )
                     # Fall through to SQLGlot execution
 
@@ -163,7 +150,6 @@ class RaySQL:
                 # Cache the parsed and validated query
                 self._cache_query(query, ast)
             else:
-                self._logger.debug(f"Using cached query plan for: {query[:50]}...")
 
             # Handle WITH clauses (CTEs) before main query execution
             if hasattr(ast, "with_") and ast.with_ is not None:
@@ -182,11 +168,6 @@ class RaySQL:
                 )
 
             execution_time = time.time() - start_time
-            self._logger.info(f"Query executed successfully in {execution_time:.3f}s")
-
-            return result
-
-        except (SQLParseError, UnsupportedOperationError, SQLExecutionError):
             # Re-raise known SQL errors without wrapping
             raise
         except ValueError as e:
@@ -250,7 +231,6 @@ class RaySQL:
             # Get DataFusion optimizer
             optimizer = get_datafusion_optimizer()
             if optimizer is None or not optimizer.is_available():
-                self._logger.debug("DataFusion optimizer not available")
                 return None
 
             # Get registered datasets for DataFusion
@@ -262,7 +242,6 @@ class RaySQL:
             optimizations = optimizer.optimize_query(query, registered_datasets)
 
             if optimizations is None:
-                self._logger.debug(
                     "DataFusion optimization returned None, using fallback"
                 )
                 return None
@@ -270,7 +249,6 @@ class RaySQL:
             # Step 2: Parse SQL with SQLGlot for compatibility
             ast = sqlglot.parse_one(query)
             if not ast or not isinstance(ast, exp.Select):
-                self._logger.debug("Query not a SELECT, using fallback")
                 return None
 
             # Step 3: Execute with Ray Data applying DataFusion hints
@@ -286,16 +264,11 @@ class RaySQL:
             )
 
             if result is not None:
-                self._logger.info(
-                    "Query executed with DataFusion optimizations + Ray Data execution"
-                )
                 return result
             else:
-                self._logger.debug("DataFusion execution returned None, using fallback")
                 return None
 
         except Exception as e:
-            self._logger.debug(f"DataFusion execution attempt failed: {e}")
             return None
 
     def list_tables(self) -> List[str]:
@@ -320,9 +293,6 @@ class RaySQL:
     def clear_tables(self) -> None:
         """Clear all registered tables."""
         self.registry.clear()
-        self._logger.info("Cleared all registered tables")
-
-    def get_supported_features(self) -> Set[str]:
         """Get the set of supported SQL features.
 
         Returns:
@@ -412,9 +382,6 @@ class RaySQL:
 
                 # Register the CTE result as a temporary table
                 self.register_table(cte_name, cte_result)
-                self._logger.info(f"Registered CTE '{cte_name}' as temporary table")
-
-    def _get_cache_key(self, query: str) -> str:
         """Generate a cache key for the query."""
         # Normalize whitespace and create hash
         normalized = " ".join(query.strip().split())

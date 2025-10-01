@@ -384,7 +384,7 @@ def get_supported_sql_features():
             features = get_supported_sql_features()
             print("Supported aggregates:", features["aggregates"])
     """
-    from ray.data.experimental.sql.parser import SUPPORTED_FUNCTIONS
+    from ray.data.experimental.sql.engines.sqlglot.parser import SUPPORTED_FUNCTIONS
 
     return {
         "aggregates": sorted(SUPPORTED_AGGREGATES),
@@ -426,7 +426,7 @@ def get_feature_suggestion(feature_name: str):
     Returns:
         A helpful suggestion string, or None if no suggestion is available.
     """
-    from ray.data.experimental.sql.parser import (
+    from ray.data.experimental.sql.engines.sqlglot.parser import (
         UNSUPPORTED_AGGREGATE_SUGGESTIONS,
         UNSUPPORTED_CONSTRUCTS,
         UNSUPPORTED_FUNCTION_SUGGESTIONS,
@@ -482,7 +482,7 @@ def validate_sql_feature_support(sql_string: str, strict_mode: bool = True):
             validate_sql_feature_support("SELECT * FROM sales")  # OK
     """
     from ray.data.experimental.sql.config import SQLConfig
-    from ray.data.experimental.sql.parser import SQLParser
+    from ray.data.experimental.sql.engines.sqlglot.parser import SQLParser
 
     config = SQLConfig()
     parser = SQLParser(config)
