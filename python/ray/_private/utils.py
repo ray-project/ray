@@ -832,8 +832,7 @@ def install_unified_signal_handlers(
             return
         _shutdown_in_progress = True
         if is_driver:
-            os._exit(signum)
-            return
+            sys.exit(signum)
         else:
             try:
                 if worker_graceful_cb is None:
@@ -863,6 +862,16 @@ def install_unified_signal_handlers(
         signal.signal(signal.SIGINT, _handler)
     set_sigterm_handler(_handler)
     _unified_signal_installed = True
+
+
+def reset_unified_signal_handlers_state():
+    """
+    Reset unified-signal module flags so that a subsequent init() in the same
+    process can reinstall handlers with correct context.
+    """
+    global _unified_signal_installed, _shutdown_in_progress
+    _unified_signal_installed = False
+    _shutdown_in_progress = False
 
 
 def try_to_symlink(symlink_path, target_path):
