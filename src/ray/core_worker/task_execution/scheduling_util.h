@@ -28,7 +28,8 @@ namespace core {
 /// Object dependency and RPC state of an inbound request.
 class InboundRequest {
  public:
-  InboundRequest();
+  InboundRequest() = default;
+
   InboundRequest(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
                      accept_callback,
                  std::function<void(const TaskSpecification &,
@@ -65,7 +66,7 @@ class DependencyWaiter {
   virtual void Wait(const std::vector<rpc::ObjectReference> &dependencies,
                     std::function<void()> on_dependencies_available) = 0;
 
-  virtual ~DependencyWaiter(){};
+  virtual ~DependencyWaiter() = default;
 };
 
 class DependencyWaiterImpl : public DependencyWaiter {
