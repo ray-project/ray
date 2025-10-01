@@ -259,9 +259,9 @@ class RaySQL:
             # - Resource management (CPU/GPU/memory budgets)
             # - Backpressure control (3 policies)
             # - Streaming execution model
-            result = execute_with_datafusion_hints(
-                query, ast, optimizations, self.registry, self.config
-            )
+                result = execute_with_datafusion_hints(
+                    ast, optimizations, self.registry, self.config
+                )
 
             if result is not None:
                 return result

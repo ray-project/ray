@@ -102,7 +102,6 @@ class DataFusionExecutor:
 
 
 def execute_with_datafusion_hints(
-    query: str,
     ast: exp.Select,
     optimizations: QueryOptimizations,
     registry: TableRegistry,
@@ -115,7 +114,6 @@ def execute_with_datafusion_hints(
     DataFusion optimizations guide execution order and placement.
 
     Args:
-        query: Original SQL query string.
         ast: Parsed SQLGlot AST.
         optimizations: Engine-agnostic optimization decisions from DataFusion.
         registry: Table registry with registered Ray Datasets.
