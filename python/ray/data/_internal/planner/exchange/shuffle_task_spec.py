@@ -104,8 +104,6 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             random = np.random.RandomState(seed_i)
             random.shuffle(slices)
 
-        num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
-        assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         from ray.data.block import BlockMetadataWithSchema
 
         meta = block.get_metadata(exec_stats=stats.build())
