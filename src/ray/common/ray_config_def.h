@@ -843,6 +843,9 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 ///     export RAY_testing_rpc_failure="*=-1:25:50"
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 RAY_CONFIG(std::string, testing_rpc_failure, "")
+/// If this is set, when injecting RPC failures, we'll check if the server and client have
+/// the same address. If they do, we won't inject the failure.
+RAY_CONFIG(bool, testing_rpc_failure_avoid_intra_node_failures, false)
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
