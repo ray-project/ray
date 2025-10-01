@@ -53,7 +53,6 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
-    RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
@@ -921,9 +920,7 @@ class ReplicaBase(ABC):
             await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                 deployment_config.max_ongoing_requests
             )
-            if user_config_changed or (
-                has_rank_changed and RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE
-            ):
+            if user_config_changed or has_rank_changed:
                 await self._user_callable_wrapper.call_reconfigure(
                     deployment_config.user_config,
                     rank=rank,
@@ -1700,21 +1697,32 @@ class UserCallableWrapper:
         # NOTE(abrar): The only way to subscribe to rank changes is to provide some user config.
         # We can relax this in the future as more usecases arise for rank. I am reluctant to
         # introduce behavior change for a feature we might not need.
-        if user_config is not None:
+        user_subscribed_to_rank = False
+        if not self._is_function and hasattr(self._callable, RECONFIGURE_METHOD):
+            reconfigure_method = getattr(self._callable, RECONFIGURE_METHOD)
+            params = inspect.signature(reconfigure_method).parameters
+            user_subscribed_to_rank = "rank" in params
+        if user_config is not None or user_subscribed_to_rank:
             if self._is_function:
-                raise ValueError("deployment_def must be a class to use user_config")
+                raise ValueError(
+                    "deployment_def must be a class to use user_config or rank"
+                )
             elif not hasattr(self._callable, RECONFIGURE_METHOD):
                 raise RayServeException(
-                    "user_config specified but deployment "
+                    "user_config or rank specified but deployment "
                     + self._deployment_id
                     + " missing "
                     + RECONFIGURE_METHOD
                     + " method"
                 )
+            kwargs = {}
+            if user_subscribed_to_rank:
+                # For backwards compatibility, only pass rank if it is an argument to the reconfigure method.
+                kwargs["rank"] = rank
             await self._call_func_or_gen(
                 getattr(self._callable, RECONFIGURE_METHOD),
                 args=(user_config,),
-                kwargs={"rank": rank},
+                kwargs=kwargs,
             )
 
     async def _handle_user_method_result(

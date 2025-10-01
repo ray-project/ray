@@ -13,7 +13,6 @@ from ray.serve._private.common import (
     ReplicaState,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -396,41 +395,39 @@ def test_rank_stability_on_replica_death(serve_instance):
             assert final_ranks[replica_id] == initial_ranks[replica_id]
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE,
-    reason="reconfigure is not called on rank changes if RAY_SERVE_CALL_RECONFIGURE_ON_RANK_CHANGE is not set",
-)
 def test_user_reconfigure_rank(serve_instance):
     """Test that user can reconfigure the rank of a deployment."""
+    signal_actor = SignalActor.remote()
 
-    @ray.remote(num_cpus=0)
-    class Collector:
-        def __init__(self):
-            self.lst = []
-
-        def append(self, msg):
-            self.lst.append(msg)
-
-        def get(self):
-            return self.lst
-
-    collector = Collector.remote()
-
-    @serve.deployment(num_replicas=4, user_config={"name": "Bob"})
+    @serve.deployment(
+        num_replicas=4, user_config={"name": "Bob"}, max_ongoing_requests=1
+    )
     class ReconfigureRankTracker:
-        def __call__(self):
-            return "hello"
+        def __init__(self):
+            self.my_rank = "Bob"
+
+        async def __call__(self):
+            await signal_actor.wait.remote()
+            return self.my_rank
 
         async def reconfigure(self, user_config: Any, rank: int):
-            await collector.append.remote(rank)
+            self.my_rank = rank
 
-    _ = serve.run(ReconfigureRankTracker.bind())
+    handle = serve.run(ReconfigureRankTracker.bind())
     wait_for_condition(
         lambda: check_rank_assignment_complete("ReconfigureRankTracker", 4),
     )
 
+    f = [handle.remote() for _ in range(4)]
+
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 4,
+    )
+
+    signal_actor.send.remote(clear=True)
+
     def _check():
-        assert set(ray.get(collector.get.remote())) == {0, 1, 2, 3}
+        assert {f.result() for f in f} == {0, 1, 2, 3}
         return True
 
     wait_for_condition(_check)
@@ -440,14 +437,14 @@ def test_user_reconfigure_rank(serve_instance):
         lambda: check_rank_assignment_complete("ReconfigureRankTracker", 4),
     )
 
+    f = [handle.remote() for _ in range(4)]
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 4,
+    )
+    signal_actor.send.remote()
+
     def _check():
-        # During update, ranks are first assigned from 4 to 8. Then `reconfigure` readjusts them to 0–3.
-        # We expect a total of 12 calls:
-        #   1. Initial call with ranks 0–4
-        #   2. Update call with ranks 4–8
-        #   3. Readjustment call with ranks 0–3
-        assert len(ray.get(collector.get.remote())) == 12
-        assert set(ray.get(collector.get.remote())) == {0, 1, 2, 3, 4, 5, 6, 7}
+        assert {f.result() for f in f} == {0, 1, 2, 3}
         return True
 
     wait_for_condition(_check)
