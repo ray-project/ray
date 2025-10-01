@@ -173,7 +173,7 @@ class MultiConsumerEventBuffer:
                     # Timeout, return the current batch
                     break
 
-        self._evict_old_events()
+            self._evict_old_events()
         return batch
 
     async def register_consumer(self, consumer_name: str) -> None:
