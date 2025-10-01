@@ -46,4 +46,4 @@ examples:
       - pandas
     use_cases:
       - etl
-    link: examples/ray-data-etl-tpch/pytorch_resnet_batch_prediction
+    link: examples/ray-data-etl-tpch/README
