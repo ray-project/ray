@@ -2705,7 +2705,7 @@ class Dataset:
                 import ray
 
                 def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
-                    for feature in group.drop("variety").columns:
+                    for feature in group.drop(columns=["variety"]).columns:
                         group[feature] = group[feature] / group[feature].abs().max()
                     return group
 
