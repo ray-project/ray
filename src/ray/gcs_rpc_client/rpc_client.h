@@ -19,10 +19,8 @@
 #include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
 #include <utility>
 
-#include "absl/container/btree_map.h"
 #include "ray/common/grpc_util.h"
 #include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/network_util.h"
@@ -158,35 +156,35 @@ class GcsRpcClient {
                        << " seconds.";
     }
 
-    job_info_grpc_client_ =
-        std::make_shared<GrpcClient<JobInfoGcsService>>(channel_, client_call_manager);
-    actor_info_grpc_client_ =
-        std::make_shared<GrpcClient<ActorInfoGcsService>>(channel_, client_call_manager);
-    node_info_grpc_client_ =
-        std::make_shared<GrpcClient<NodeInfoGcsService>>(channel_, client_call_manager);
+    job_info_grpc_client_ = std::make_shared<GrpcClient<JobInfoGcsService>>(
+        channel_, client_call_manager, address);
+    actor_info_grpc_client_ = std::make_shared<GrpcClient<ActorInfoGcsService>>(
+        channel_, client_call_manager, address);
+    node_info_grpc_client_ = std::make_shared<GrpcClient<NodeInfoGcsService>>(
+        channel_, client_call_manager, address);
     node_resource_info_grpc_client_ =
-        std::make_shared<GrpcClient<NodeResourceInfoGcsService>>(channel_,
-                                                                 client_call_manager);
-    worker_info_grpc_client_ =
-        std::make_shared<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<NodeResourceInfoGcsService>>(
+            channel_, client_call_manager, address);
+    worker_info_grpc_client_ = std::make_shared<GrpcClient<WorkerInfoGcsService>>(
+        channel_, client_call_manager, address);
     placement_group_info_grpc_client_ =
-        std::make_shared<GrpcClient<PlacementGroupInfoGcsService>>(channel_,
-                                                                   client_call_manager);
-    internal_kv_grpc_client_ =
-        std::make_shared<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<PlacementGroupInfoGcsService>>(
+            channel_, client_call_manager, address);
+    internal_kv_grpc_client_ = std::make_shared<GrpcClient<InternalKVGcsService>>(
+        channel_, client_call_manager, address);
     internal_pubsub_grpc_client_ = std::make_shared<GrpcClient<InternalPubSubGcsService>>(
-        channel_, client_call_manager);
-    task_info_grpc_client_ =
-        std::make_shared<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
+        channel_, client_call_manager, address);
+    task_info_grpc_client_ = std::make_shared<GrpcClient<TaskInfoGcsService>>(
+        channel_, client_call_manager, address);
     ray_event_export_grpc_client_ =
-        std::make_shared<GrpcClient<RayEventExportGcsService>>(channel_,
-                                                               client_call_manager);
+        std::make_shared<GrpcClient<RayEventExportGcsService>>(
+            channel_, client_call_manager, address);
     autoscaler_state_grpc_client_ =
         std::make_shared<GrpcClient<autoscaler::AutoscalerStateService>>(
-            channel_, client_call_manager);
+            channel_, client_call_manager, address);
 
-    runtime_env_grpc_client_ =
-        std::make_shared<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
+    runtime_env_grpc_client_ = std::make_shared<GrpcClient<RuntimeEnvGcsService>>(
+        channel_, client_call_manager, address);
 
     retryable_grpc_client_ = RetryableGrpcClient::Create(
         channel_,

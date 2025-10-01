@@ -23,11 +23,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
-#include "ray/common/bundle_spec.h"
-#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/runtime_env_common.h"
-#include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
@@ -38,7 +34,6 @@
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
-#include "ray/util/container_util.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
@@ -62,7 +57,7 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
                                     const JobID &job_id,
                                     const WorkerID &worker_id,
                                     const std::string &suffix) {
-  std::string parsed_job_id = "";
+  std::string parsed_job_id;
   if (job_id.IsNil()) {
     char *job_id_env = ::getenv("RAY_JOB_ID");
     if (job_id_env != nullptr) {
@@ -137,8 +132,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  auto client_call_manager =
-      std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+  auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+      io_service_, /*record_stats=*/false, options.node_ip_address);
   auto periodical_runner = PeriodicalRunner::Create(io_service_);
   auto worker_context = std::make_unique<WorkerContext>(
       options.worker_type, worker_id, GetProcessJobID(options));
@@ -169,7 +164,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   }
 
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_unique<gcs::GcsClient>(options.gcs_options),
+      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
       std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
                                                        *client_call_manager),
       options.session_name);
@@ -267,8 +262,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       << "Initializing worker at address: "
       << BuildAddress(rpc_address.ip_address(), rpc_address.port());
 
-  auto gcs_client = std::make_shared<gcs::GcsClient>(options.gcs_options,
-                                                     worker_context->GetWorkerID());
+  auto gcs_client = std::make_shared<gcs::GcsClient>(
+      options.gcs_options, options.node_ip_address, worker_context->GetWorkerID());
   RAY_CHECK_OK(gcs_client->Connect(io_service_));
 
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
@@ -406,7 +401,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node_info->node_manager_address(), node_info->node_manager_port());
-    return core_worker->raylet_client_pool_->GetOrConnectByAddress(std::move(addr));
+    return core_worker->raylet_client_pool_->GetOrConnectByAddress(addr);
   };
 
   experimental_mutable_object_provider =
@@ -851,11 +846,12 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   // the system config in the constructor of `CoreWorkerProcessImpl`.
   std::promise<std::string> promise;
   std::thread thread([&] {
-    instrumented_io_context io_service{/*enable_lag_probe=*/false,
+    instrumented_io_context io_service{/*emit_metrics=*/false,
                                        /*running_on_single_thread=*/true};
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
-    rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
+    rpc::ClientCallManager client_call_manager(
+        io_service, /*record_stats=*/false, options_.node_ip_address);
     rpc::Address raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         NodeID::Nil(), options_.node_ip_address, options_.node_manager_port);
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
