@@ -786,51 +786,6 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: long_running_apex
-  group: Long running tests
-  working_dir: long_running_tests
-  stable: false
-
-  frequency: weekly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: tpl_cpu_3.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/apex.py
-    long_running: true
-    wait_for_nodes:
-      num_nodes: 3
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_compute: tpl_cpu_3_gce.yaml
-
 - name: long_running_impala
   group: Long running tests
   working_dir: long_running_tests
