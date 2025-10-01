@@ -73,6 +73,7 @@ GcsServer::GcsServer(
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
+                           config.node_ip_address,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_([this](const rpc::Address &addr) {
@@ -121,6 +122,7 @@ GcsServer::GcsServer(
       event_aggregator_client_call_manager_(
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           /*record_stats=*/true,
+          config.node_ip_address,
           ClusterID::Nil(),
           RayConfig::instance().gcs_server_rpc_client_thread_num()),
       event_aggregator_client_(std::make_unique<rpc::EventAggregatorClientImpl>(
