@@ -8,9 +8,11 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
     TargetTemplate,
 )
-from ray.llm._internal.serve.builders.application_builders import (
-    RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX,
-)
+
+# from ray.llm._internal.serve.builders.application_builders import (
+#     RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX,
+# )
+RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX = "LLMServer:"
 
 SERVE_LLM_GRAFANA_PANELS = [
     Panel(
@@ -20,9 +22,9 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"'
+                expr='sum by (model_name, WorkerId) (rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"'
                 + RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX
-                + '.*"}}[$interval])) by (WorkerId)',
+                + '.*"}}[$interval]))',
                 legend="{{model_name}}, {{WorkerId}}",
             ),
             Target(
@@ -44,23 +46,23 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='(sum by(model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="Mean - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -76,11 +78,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="tokens/s",
         targets=[
             Target(
-                expr='sum by (model_name, WorkerId) (rate(ray_vllm:request_prompt_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by (model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="Prompt Tokens/Sec - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='sum by (model_name, WorkerId) (rate(ray_vllm:generation_tokens_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by (model_name, WorkerId) (rate(ray_vllm_generation_tokens_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="Generation Tokens/Sec - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -96,23 +98,23 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='(sum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="Average - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -128,7 +130,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="percentunit",
         targets=[
             Target(
-                expr='sum by (WorkerId) (ray_vllm:kv_cache_usage_perc{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}})',
+                expr='sum by (WorkerId) (ray_vllm_kv_cache_usage_perc{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}})',
                 legend="GPU Cache Usage - {{WorkerId}}",
             ),
         ],
@@ -144,15 +146,15 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="percent",
         targets=[
             Target(
-                expr="max(100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval]))))",
+                expr="max(100 * (sum by (WorkerId) (rate(ray_vllm_gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_gpu_prefix_cache_queries_total[$interval]))))",
                 legend="Max Hit Rate",
             ),
             Target(
-                expr="min(100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval]))))",
+                expr="min(100 * (sum by (WorkerId) (rate(ray_vllm_gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_gpu_prefix_cache_queries_total[$interval]))))",
                 legend="Min Hit Rate",
             ),
             Target(
-                expr="100 * (sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm:gpu_prefix_cache_queries_total[$interval])))",
+                expr="100 * (sum by (WorkerId) (rate(ray_vllm_gpu_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_gpu_prefix_cache_queries_total[$interval])))",
                 legend="Hit Rate {{WorkerId}}",
             ),
         ],
@@ -168,23 +170,23 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm:e2e_request_latency_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:e2e_request_latency_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="Average - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm:e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -200,15 +202,15 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='ray_vllm:num_requests_running{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}',
+                expr='ray_vllm_num_requests_running{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}',
                 legend="Num Running - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='ray_vllm:num_requests_swapped{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}',
+                expr='ray_vllm_num_requests_swapped{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}',
                 legend="Num Swapped - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='ray_vllm:num_requests_waiting{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}',
+                expr='ray_vllm_num_requests_waiting{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}',
                 legend="Num Waiting - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -224,11 +226,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm:request_prompt_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
                 legend="P50-{{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm:request_prompt_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
                 legend="P90-{{WorkerId}}",
             ),
         ],
@@ -244,11 +246,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='histogram_quantile(0.50, sum by(le, model_name, WorkerId) (rate(ray_vllm:request_generation_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.50, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
                 legend="P50-{{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm:request_generation_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
                 legend="P90-{{WorkerId}}",
             ),
         ],
@@ -264,7 +266,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='sum by(le, model_name, WorkerId) (increase(ray_vllm:request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(le, model_name, WorkerId) (increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="{{le}}",
                 template=TargetTemplate.HEATMAP,
             ),
@@ -282,7 +284,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='sum by(le, model_name, WorkerId) (increase(ray_vllm:request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(le, model_name, WorkerId) (increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="{{le}}",
                 template=TargetTemplate.HEATMAP,
             ),
@@ -300,7 +302,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='sum by(finished_reason, model_name, WorkerId) (increase(ray_vllm:request_success_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(finished_reason, model_name, WorkerId) (increase(ray_vllm_request_success_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="{{finished_reason}} - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -316,7 +318,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm:request_queue_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="{{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -332,11 +334,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm:request_decode_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_decode_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="Decode - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm:request_prefill_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_prefill_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="Prefill - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -352,7 +354,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="none",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm:request_max_num_generation_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_max_num_generation_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
                 legend="{{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -368,11 +370,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='(sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])))',
+                expr='(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])))',
                 legend="Input: {{model_name}}",
             ),
             Target(
-                expr='(sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])))',
+                expr='(sum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])))',
                 legend="Generated: {{model_name}}",
             ),
         ],
@@ -389,11 +391,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
+                expr='delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
                 legend="Input: {{model_name}}",
             ),
             Target(
-                expr='delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
+                expr='delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
                 legend="Generated: {{model_name}}",
             ),
         ],
@@ -410,7 +412,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])) / sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
+                expr='sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])) / sum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
                 legend="{{model_name}}",
             ),
         ],
@@ -427,7 +429,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
+                expr='sum by (model_name) (delta(ray_vllm_request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
                 legend="{{model_name}}",
             ),
         ],
@@ -444,7 +446,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='max_over_time(sum by (model_name) (rate(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[2m]))[24h:])',
+                expr='max_over_time(sum by (model_name) (rate(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[2m]))[24h:1m])',
                 legend="{{model_name}}",
             ),
         ],
@@ -461,7 +463,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])) + sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
+                expr='sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])) + sum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
                 legend="{{model_name}}",
             ),
         ],
@@ -478,7 +480,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='(sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) +\nsum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                expr='(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) +\nsum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))) / sum by (model_name) (delta(ray_vllm_request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="{{ model_name}}",
             ),
         ],
@@ -495,7 +497,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                expr='sum by (model_name) (delta(ray_vllm_request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="{{ model_name}}",
             ),
         ],
@@ -512,11 +514,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                expr='sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="In: {{ model_name}}",
             ),
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                expr='sum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="Out: {{ model_name }}",
             ),
         ],
@@ -533,7 +535,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='(sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) + sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])))/ sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                expr='(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) + sum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])))/ sum by (model_name) (delta(ray_vllm_request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="{{ model_name}}",
             ),
         ],
@@ -550,11 +552,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                expr='sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm_request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="In: {{ model_name}}",
             ),
             Target(
-                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                expr='sum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm_request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="Out: {{ model_name}}",
             ),
         ],
