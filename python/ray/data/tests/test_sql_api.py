@@ -1,4 +1,13 @@
-"""Tests for Ray Data SQL API."""
+"""Tests for Ray Data SQL API.
+
+Tests cover:
+- Basic SQL operations (SELECT, WHERE, JOIN, GROUP BY, etc.)
+- Multi-dialect support via SQLGlot
+- DataFusion optimization integration
+- Configuration via DataContext
+- Error handling and fallback behavior
+- Auto-discovery of datasets from variables
+"""
 
 import pytest
 
