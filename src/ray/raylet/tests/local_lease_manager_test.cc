@@ -324,7 +324,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
             *scheduler_,
             lease_dependency_manager_,
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+            [this](const NodeID &node_id) -> const rpc::GcsNodeAddressAndLiveness * {
               if (node_info_.count(node_id) != 0) {
                 return &node_info_[node_id];
               }
@@ -372,7 +372,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   int default_arg_size_ = 10;
   int64_t current_time_ms_ = 0;
 
-  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
 
   MockObjectManager object_manager_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
