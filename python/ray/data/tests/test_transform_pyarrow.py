@@ -34,6 +34,10 @@ from ray.data.extensions import (
 )
 
 
+def _extension_array_concat_supported() -> bool:
+    return get_pyarrow_version() >= MIN_PYARROW_VERSION_TYPE_PROMOTION
+
+
 def test_try_defragment_table():
     chunks = np.array_split(np.arange(1000), 10)
 
@@ -1012,6 +1016,10 @@ def test_mixed_tensor_types_variable_shaped(
         np.testing.assert_array_equal(result_tensor, expected_tensor)
 
 
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+)
 def test_mixed_tensor_types_in_struct(
     struct_with_mixed_tensor_types_blocks, struct_with_mixed_tensor_types_expected
 ):
@@ -1043,6 +1051,10 @@ def test_mixed_tensor_types_in_struct(
             assert struct_row[key] == expected_value
 
 
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+)
 def test_nested_struct_with_mixed_tensor_types(
     nested_struct_with_mixed_tensor_types_blocks,
     nested_struct_with_mixed_tensor_types_expected,
@@ -1074,6 +1086,10 @@ def test_nested_struct_with_mixed_tensor_types(
             assert field in struct_data[0]["nested"]
 
 
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+)
 def test_multiple_tensor_fields_in_struct(
     multiple_tensor_fields_struct_blocks, multiple_tensor_fields_struct_expected
 ):
@@ -1131,6 +1147,10 @@ def test_struct_with_incompatible_tensor_dtypes_fails():
         concat([t1, t2])
 
 
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+)
 def test_struct_with_additional_fields(
     struct_with_additional_fields_blocks, struct_with_additional_fields_expected
 ):
@@ -1164,6 +1184,10 @@ def test_struct_with_additional_fields(
             assert row["extra"] == extra_values[i]
 
 
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0"
+)
 def test_struct_with_null_tensor_values(
     struct_with_null_tensor_values_blocks, struct_with_null_tensor_values_expected
 ):
