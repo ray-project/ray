@@ -114,19 +114,11 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    expr_list = op.exprs
-
-    def _resolve_rename_chain(name: str, rename_map: Dict[str, str]) -> str:
-        seen = set()
-        while name in rename_map and rename_map[name] not in seen:
-            seen.add(name)
-            name = rename_map[name]
-        return name
-
     def _project_block(block: Block) -> Block:
         try:
             block_accessor = BlockAccessor.for_block(block)
-            if not block_accessor.num_rows() or not expr_list:
+
+            if not block_accessor.num_rows() or not op.exprs:
                 return block
 
             # Preserve original input column order for preserve_existing semantics.
@@ -135,19 +127,23 @@ def plan_project_op(
             # Outputs to compute (in order) and their computed data.
             output_names_in_order: List[str] = []
             seen_output_names = set()
-            # Track simple renames: src_col -> dest_col for alias(ColumnExpr(src), dest).
+
+            # Track direct renames from input schema only:
+            # src_col -> dest_col for alias(ColumnExpr(src), dest) where src is in input_cols.
             rename_map: Dict[str, str] = {}
+
             computed_outputs: Dict[str, Any] = {}
 
             # Phase 1: compute all outputs from the same input snapshot.
-            for expr in expr_list:
+            for expr in op.exprs:
                 output_name = expr.name
 
-                # Detect simple rename (no expression change) to update ordering later.
+                # Detect simple rename sourced from the input schema.
                 if (
                     isinstance(expr, AliasExpr)
                     and isinstance(expr.expr, ColumnExpr)
                     and expr.expr.name != output_name
+                    and expr.expr.name in input_cols
                 ):
                     rename_map[expr.expr.name] = output_name
 
@@ -165,16 +161,16 @@ def plan_project_op(
 
             # Phase 3: finalize output schema.
             if op.preserve_existing:
-                # Start from the input column order, applying chained renames,
+                # Start from the input column order, applying only direct renames from input,
                 # then append any new output columns not already included.
                 final_cols: List[str] = []
                 seen_final = set()
 
                 for col in input_cols:
-                    resolved = _resolve_rename_chain(col, rename_map)
-                    if resolved not in seen_final:
-                        final_cols.append(resolved)
-                        seen_final.add(resolved)
+                    dest = rename_map.get(col, col)
+                    if dest not in seen_final:
+                        final_cols.append(dest)
+                        seen_final.add(dest)
 
                 for name in output_names_in_order:
                     if name not in seen_final:

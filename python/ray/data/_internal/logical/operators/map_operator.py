@@ -293,7 +293,7 @@ class Project(AbstractMap):
         for expr in self._exprs:
             if not isinstance(expr, Expr):
                 raise TypeError(f"Expected Expr got {expr} with type: {type(expr)}")
-            if getattr(expr, "name", None) is None:
+            if expr.name is None:
                 raise TypeError(
                     "All Project expressions must be named; use .alias(name) or col(name)."
                 )
