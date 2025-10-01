@@ -267,15 +267,30 @@ class RaySQL:
                 )
                 return None
 
-            # For now, execute with standard path but log that DataFusion was used
-            # Full implementation would apply DataFusion optimizations to execution
-            self._logger.info(
-                "DataFusion optimization completed, executing with Ray Data"
+            # Step 2: Parse SQL with SQLGlot for compatibility
+            ast = sqlglot.parse_one(query)
+            if not ast or not isinstance(ast, exp.Select):
+                self._logger.debug("Query not a SELECT, using fallback")
+                return None
+
+            # Step 3: Execute with Ray Data applying DataFusion hints
+            # This preserves Ray Data's:
+            # - Distributed execution across cluster
+            # - Resource management (CPU/GPU/memory budgets)
+            # - Backpressure control (3 policies)
+            # - Streaming execution model
+            result = execute_with_datafusion_hints(
+                query, ast, optimizations, self.registry
             )
 
-            # Execute the query with SQLGlot path for now
-            # TODO: Apply DataFusion optimizations to execution order
-            return None  # Fall back to standard execution
+            if result is not None:
+                self._logger.info(
+                    "Query executed with DataFusion optimizations + Ray Data execution"
+                )
+                return result
+            else:
+                self._logger.debug("DataFusion execution returned None, using fallback")
+                return None
 
         except Exception as e:
             self._logger.debug(f"DataFusion execution attempt failed: {e}")
