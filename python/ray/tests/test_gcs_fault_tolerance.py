@@ -12,13 +12,11 @@ import pytest
 from filelock import FileLock
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
-    convert_actor_state,
     external_redis_test_enabled,
     generate_system_config_map,
     redis_sentinel_replicas,
@@ -261,9 +259,12 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
 @pytest.mark.parametrize(
     "ray_start_regular_with_external_redis",
     [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
+        {
+            **generate_system_config_map(
+                gcs_rpc_server_reconnect_timeout_s=60,
+            ),
+            "include_dashboard": True,
+        }
     ],
     indirect=True,
 )
@@ -279,8 +280,8 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     del actor
 
     def condition():
-        actor_status = ray._private.state.actors(actor_id=actor_id)
-        if actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD):
+        actor_status = ray.util.state.get_actor(id=actor_id)
+        if actor_status.state == "DEAD":
             return True
         else:
             return False

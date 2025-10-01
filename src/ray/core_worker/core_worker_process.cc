@@ -24,19 +24,18 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/cgroup/cgroup_context.h"
-#include "ray/common/cgroup/cgroup_manager.h"
-#include "ray/common/cgroup/constants.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
-#include "ray/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/container_util.h"
@@ -151,15 +150,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   if (RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
 #ifdef __linux__
     // Not setting sigchld = ignore: user may want to do waitpid on their own.
-    // If user's bad code causes a zombie process, it will hang their in zombie status
+    // If user's bad code causes a zombie process, it will hang there in zombie status
     // until this worker exits and raylet reaps it.
     if (SetThisProcessAsSubreaper()) {
-      RAY_LOG(INFO) << "Set this core_worker process as subreaper: " << pid;
+      RAY_LOG(INFO) << "Set this core_worker process as subreaper: " << pid
+                    << " (deprecated; prefer per-worker process groups).";
       SetSigchldIgnore();
     } else {
       RAY_LOG(WARNING)
           << "Failed to set this core_worker process as subreaper. If Raylet is set as "
-             "subreaper, user-spawn daemon processes may be killed by raylet.";
+             "subreaper, user-spawn daemon processes may be killed by raylet. "
+             "Subreaper is deprecated; prefer per-worker process groups.";
     }
 #else
     RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Raylet will not "

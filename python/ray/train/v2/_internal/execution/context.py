@@ -5,15 +5,20 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
+from ray._common.retry import retry
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train._internal import session
-from ray.train._internal.session import _TrainingResult
+from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
+from ray.train.v2._internal.execution.training_report import (
+    _TrainingReport,
+    _ValidationSpec,
+)
 from ray.train.v2._internal.util import (
     _copy_doc,
     construct_user_exception_with_traceback,
@@ -215,13 +220,16 @@ class TrainContext:
             )
         )
 
+    # TODO: make retry configurable
+    @retry(description="upload checkpoint", max_attempts=3, match=AWS_RETRYABLE_TOKENS)
     def _upload_checkpoint(
         self,
         checkpoint_dir_name: str,
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         delete_local_checkpoint_after_upload: bool = False,
-    ) -> _TrainingResult:
+        validation_spec: Optional[_ValidationSpec] = None,
+    ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
 
         Args:
@@ -229,13 +237,16 @@ class TrainContext:
             metrics: The metrics to report.
             checkpoint: The checkpoint to report.
             delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+            validation_spec: The validation specification.
 
         Returns:
             The training result object containing the persisted checkpoint.
         """
 
         if not checkpoint:
-            return _TrainingResult(checkpoint=None, metrics=metrics)
+            return _TrainingReport(
+                checkpoint=None, metrics=metrics, validation_spec=None
+            )
 
         # Persist the checkpoint to the remote storage path.
         try:
@@ -259,11 +270,15 @@ class TrainContext:
                     f"Failed to delete the local checkpoint after a successful upload: {checkpoint}"
                 )
 
-        return _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
+        return _TrainingReport(
+            checkpoint=persisted_checkpoint,
+            metrics=metrics,
+            validation_spec=validation_spec,
+        )
 
     def _wait_then_report(
-        self, training_result: _TrainingResult, report_call_index: int
-    ) -> None:
+        self, training_report: _TrainingReport, report_call_index: int
+    ):
         """Thread waits for its turn before reporting training result to result queue.
 
         It does this in order to guarantee the FIFO processing of checkpoints.
@@ -279,12 +294,12 @@ class TrainContext:
                 lambda: self.current_report_index == report_call_index - 1
             )
             logger.info(
-                f"Reporting training result {report_call_index}: {training_result}"
+                f"Reporting training result {report_call_index}: {training_report}"
             )
             # Update latest checkpoint as the persisted checkpoint.
-            if training_result.checkpoint:
-                self.checkpoint = training_result.checkpoint
-            self.get_result_queue().put(training_result)
+            if training_report.checkpoint:
+                self.checkpoint = training_report.checkpoint
+            self.get_result_queue().put(training_report)
             self.current_report_index += 1
             self.report_order_condition.notify_all()
 
@@ -295,6 +310,8 @@ class TrainContext:
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+        validate_config: Optional[Dict] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -323,6 +340,13 @@ class TrainContext:
                 for callback in self.execution_context.train_context_callbacks
             ]
         ):
+            if validate_fn:
+                validation_spec = _ValidationSpec(
+                    validate_fn=validate_fn,
+                    validate_config=validate_config,
+                )
+            else:
+                validation_spec = None
             self.report_call_index += 1
             report_call_index = self.report_call_index
 
@@ -333,19 +357,22 @@ class TrainContext:
 
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:
-                training_result = self._upload_checkpoint(
+                training_report = self._upload_checkpoint(
                     checkpoint_dir_name,
                     metrics,
                     checkpoint,
                     delete_local_checkpoint_after_upload,
+                    validation_spec,
                 )
-                self._wait_then_report(training_result, report_call_index)
+                self._wait_then_report(training_report, report_call_index)
 
             elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
-                training_result = _TrainingResult(
-                    checkpoint=checkpoint, metrics=metrics
+                training_report = _TrainingReport(
+                    checkpoint=checkpoint,
+                    metrics=metrics,
+                    validation_spec=validation_spec,
                 )
-                self._wait_then_report(training_result, report_call_index)
+                self._wait_then_report(training_report, report_call_index)
 
             elif checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
 
@@ -356,16 +383,20 @@ class TrainContext:
                     report_call_index: int,
                 ) -> None:
                     try:
-                        training_result = self._upload_checkpoint(
+                        training_report = self._upload_checkpoint(
                             checkpoint_dir_name,
                             metrics,
                             checkpoint,
                             delete_local_checkpoint_after_upload,
+                            validation_spec,
                         )
-                        self._wait_then_report(training_result, report_call_index)
+                        self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
+                        # TODO: env var to disable eager raising
                         logger.exception(
-                            "Async checkpoint upload failed - shutting down workers"
+                            "Checkpoint upload failed in the background thread. Raising eagerly "
+                            "to avoid training in a corrupted state with more potential progress "
+                            "lost due to checkpointing failures."
                         )
                         self.execution_context.training_thread_runner.get_exception_queue().put(
                             construct_user_exception_with_traceback(e)
