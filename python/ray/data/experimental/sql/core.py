@@ -220,7 +220,7 @@ class RaySQL:
             True if DataFusion can be imported and used.
         """
         try:
-            from ray.data.experimental.sql.datafusion_optimizer import (
+            from ray.data.experimental.sql.engines.datafusion.datafusion_optimizer import (
                 is_datafusion_available,
             )
 
@@ -243,7 +243,7 @@ class RaySQL:
             Dataset if DataFusion optimization succeeds, None to fallback to SQLGlot.
         """
         try:
-            from ray.data.experimental.sql.datafusion_optimizer import (
+            from ray.data.experimental.sql.engines.datafusion.datafusion_optimizer import (
                 get_datafusion_optimizer,
             )
 
