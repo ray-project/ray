@@ -14,83 +14,17 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import pyarrow.fs
 
 from ray.air._internal.filelock import TempFileLock
-from ray.train._internal.storage import _download_from_fs_path, _exists_at_fs_path
+from ray.train._internal.storage import (
+    _create_abfss_filesystem,
+    _download_from_fs_path,
+    _exists_at_fs_path,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 # The filename of the file that stores user metadata set on the checkpoint.
 _METADATA_FILE_NAME = ".metadata.json"
-
-
-def _create_abfss_filesystem(storage_path: str):
-    """Create an ABFSS filesystem for Azure Blob Storage.
-    
-    Args:
-        storage_path: ABFSS URI (abfss://container@account.dfs.core.windows.net/path)
-    
-    Returns:
-        Tuple of (PyArrow FileSystem, path without abfss:// prefix)
-    
-    Raises:
-        ImportError: If required dependencies are not installed.
-        ValueError: If the ABFSS URI format is invalid.
-    """
-    try:
-        import adlfs
-        from azure.identity import DefaultAzureCredential
-    except ImportError:
-        raise ImportError(
-            "You must `pip install adlfs azure-identity` "
-            "to use ABFSS URIs with Ray Train checkpoints. "
-            "Note that these must be preinstalled on all nodes in the Ray cluster."
-        )
-    
-    from urllib.parse import urlparse
-    
-    # Parse and validate the ABFSS URI
-    parsed = urlparse(storage_path)
-    
-    # Validate ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
-    if not parsed.netloc or "@" not in parsed.netloc:
-        raise ValueError(
-            f"Invalid ABFSS URI format - missing container@account: {storage_path}"
-        )
-    
-    container_part, hostname_part = parsed.netloc.split("@", 1)
-    
-    # Validate container name (must be non-empty)
-    if not container_part:
-        raise ValueError(
-            f"Invalid ABFSS URI format - empty container name: {storage_path}"
-        )
-    
-    # Validate hostname format
-    if not hostname_part or not hostname_part.endswith(".dfs.core.windows.net"):
-        raise ValueError(
-            f"Invalid ABFSS URI format - invalid hostname (must end with .dfs.core.windows.net): {storage_path}"
-        )
-    
-    # Extract and validate account name
-    azure_storage_account_name = hostname_part.split(".")[0]
-    if not azure_storage_account_name:
-        raise ValueError(
-            f"Invalid ABFSS URI format - empty account name: {storage_path}"
-        )
-    
-    # Create the adlfs filesystem
-    adlfs_fs = adlfs.AzureBlobFileSystem(
-        account_name=azure_storage_account_name,
-        credential=DefaultAzureCredential(),
-    )
-    
-    # Wrap with PyArrow's PyFileSystem for compatibility
-    fs = pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(adlfs_fs))
-    
-    # Return the path without the abfss:// prefix
-    path = f"{container_part}{parsed.path}"
-    
-    return fs, path
 
 # The prefix of the temp checkpoint directory that `to_directory` downloads to
 # on the local filesystem.
