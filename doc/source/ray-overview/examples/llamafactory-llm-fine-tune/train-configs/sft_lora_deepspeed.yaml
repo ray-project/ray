@@ -1,4 +1,4 @@
-# qwen2.5_deepspeed_lora_sft.yaml
+# sft_lora_deepspeed.yaml
 
 ### model
 model_name_or_path: Qwen/Qwen2.5-32B-Instruct
@@ -60,3 +60,4 @@ ray_init_kwargs:
       # HF_TOKEN: <your_huggingface_token>
       # if hf_transfer is installed
       HF_HUB_ENABLE_HF_TRANSFER: '1'
+      

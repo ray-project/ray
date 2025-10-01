@@ -9,7 +9,7 @@ set -euxo pipefail
 for nb in \
   "notebooks/dpo_qlora" \
   "notebooks/kto_lora" \
-  "notebooks/sft_lora_deepspeed" \
+  "notebooks/sft_lora_deepspeed"
 do
   python ci/nb2py.py "${nb}.ipynb" "${nb}.py" --ignore-cmds
   python "${nb}.py"
