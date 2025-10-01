@@ -1405,5 +1405,100 @@ def test_actor_ray_shutdown_dont_interfere_with_kill(
     wait_for_condition(lambda: not check_file_exists_and_not_empty(shutdown_file))
 
 
+def test_actor_ray_shutdown_called_on_del(ray_start_regular_shared, tempfile_factory):
+    """Test that __ray_shutdown__ is called when actor goes out of scope via del."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class DelTestActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_on_del")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = DelTestActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "shutdown_called_on_del"
+
+
+def test_actor_del_with_atexit(ray_start_regular_shared, tempfile_factory):
+    """Test that both __ray_shutdown__ and atexit handlers run on del actor."""
+    shutdown_file = tempfile_factory()
+    atexit_file = tempfile_factory()
+
+    @ray.remote
+    class BothHandlersActor:
+        def __init__(self):
+            atexit.register(self.cleanup)
+
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_del")
+                f.flush()
+
+        def cleanup(self):
+            with open(atexit_file, "w") as f:
+                f.write("atexit_del")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = BothHandlersActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "ray_shutdown_del"
+
+    wait_for_condition(lambda: check_file_exists_and_not_empty(atexit_file), timeout=10)
+    with open(atexit_file, "r") as f:
+        assert f.read() == "atexit_del"
+
+
+def test_actor_ray_shutdown_called_on_scope_exit(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test that __ray_shutdown__ is called when actor goes out of scope naturally."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class ScopeTestActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_on_scope_exit")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    def create_and_use_actor():
+        actor = ScopeTestActor.remote()
+        ray.get(actor.ready.remote())
+        # Actor goes out of scope at end of function
+
+    create_and_use_actor()
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "shutdown_called_on_scope_exit"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

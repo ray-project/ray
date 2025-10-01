@@ -3,7 +3,8 @@ Terminating Actors
 
 Actor processes will be terminated automatically when all copies of the
 actor handle have gone out of scope in Python, or if the original creator
-process dies.
+process dies. When actors terminate gracefully, Ray calls the actor's
+``__ray_shutdown__()`` method if defined, allowing for cleanup of resources.
 
 Note that automatic termination of actors is not yet supported in Java or C++.
 
@@ -33,9 +34,8 @@ manually destroyed.
             actor_handle = Actor.remote()
 
             ray.kill(actor_handle)
-            # This will not go through the normal Python sys.exit
-            # teardown logic, so any exit handlers installed in
-            # the actor using ``atexit`` will not be called.
+            # Force kill: the actor exits immediately without cleanup.
+            # This will NOT call __ray_shutdown__() or atexit handlers.
 
 
     .. tab-item:: Java
@@ -191,3 +191,47 @@ You could see the actor is dead as a result of the user's `exit_actor()` call:
       is_detached: false
       placement_group_id: null
       repr_name: ''
+
+
+Actor cleanup with __ray_shutdown__
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When an actor terminates gracefully, Ray calls the ``__ray_shutdown__()`` method
+if it exists. Use this method to clean up resources like database connections,
+file handles, or other external resources.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. code-block:: python
+
+            import ray
+
+            @ray.remote
+            class DatabaseActor:
+                def __init__(self):
+                    self.db_connection = connect_to_database()
+                    
+                def __ray_shutdown__(self):
+                    """Called automatically before actor terminates."""
+                    if self.db_connection:
+                        self.db_connection.close()
+                
+                def query(self, sql):
+                    return self.db_connection.execute(sql)
+
+            actor = DatabaseActor.remote()
+            ray.get(actor.query.remote("SELECT * FROM users"))
+            del actor  # __ray_shutdown__() is called automatically
+
+When ``__ray_shutdown__()`` is called:
+
+- **Automatic termination**: When all actor handles go out of scope (``del actor`` or natural scope exit)
+- **Manual graceful termination**: When you call ``actor.__ray_terminate__.remote()``
+
+When ``__ray_shutdown__()`` is **NOT** called:
+
+- **Force kill**: When you use ``ray.kill(actor)`` - the actor is killed immediately without cleanup
+
+Exceptions in ``__ray_shutdown__()`` are caught and logged but don't prevent actor termination.
