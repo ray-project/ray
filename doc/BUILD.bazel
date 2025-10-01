@@ -166,6 +166,7 @@ py_test(
     tags = [
         "exclusive",
         "post_wheel_build",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -178,6 +179,7 @@ py_test(
     tags = [
         "exclusive",
         "mem_pressure",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -190,6 +192,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -202,6 +205,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -214,6 +218,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -237,6 +242,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -249,6 +255,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -447,6 +454,7 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = [
         "dask",
+        "custom_setup",
         "exclusive",
         "team:data",
     ],

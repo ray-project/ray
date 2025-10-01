@@ -95,8 +95,8 @@ class CoreWorkerTest : public ::testing::Test {
       return Status::OK();
     };
 
-    auto client_call_manager =
-        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+    auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+        io_service_, /*record_stats=*/false, /*local_address=*/"");
 
     auto core_worker_client_pool =
         std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {

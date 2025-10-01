@@ -1,19 +1,20 @@
-from copy import copy
-import numpy as np
-import unittest
 import math
+import unittest
+from copy import copy
+
+import numpy as np
 
 from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
-    TorchDiagGaussian,
     TorchDeterministic,
+    TorchDiagGaussian,
     TorchMultiCategorical,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import (
-    softmax,
-    SMALL_NUMBER,
     LARGE_INTEGER,
+    SMALL_NUMBER,
+    softmax,
 )
 from ray.rllib.utils.test_utils import check
 
@@ -268,7 +269,8 @@ class TestDistributions(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

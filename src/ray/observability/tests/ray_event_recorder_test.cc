@@ -126,6 +126,12 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   io_service_.run_one();
 
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  std::sort(recorded_events.begin(),
+            recorded_events.end(),
+            [](const rpc::events::RayEvent &a, const rpc::events::RayEvent &b) {
+              return a.session_name() < b.session_name();
+            });
+
   // Verify events
   ASSERT_EQ(recorded_events.size(), 4);
   ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
