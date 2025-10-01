@@ -2,15 +2,15 @@
 
 This repository provides ready-to-run templates for fine-tuning Large Language Models (LLMs) on Anyscale using [LLaMAFactory](https://github.com/hiyouga/LLaMA-Factory). These templates demonstrate instruction tuning and preference alignment at scale (multi-GPU, multi-node), with configurations that are reusable across different cloud providers.
 
-Each template is an executable notebook that guides you through setup, configuration, and distributed execution. Corresponding YAML/JSON configurations are included for repeatable runs and automation.
+Each template is an executable notebook that guides you through setup, configuration, and distributed execution. It also includes corresponding YAML/JSON configurations for repeatable runs and automation.
 
 ## Why LLaMAFactory?
 
-LLaMAFactory is an easy-to-use, open-source framework. Its simple, declarative configs and consistent CLI allow you to define Supervised Fine-Tuning (SFT), Direct Preference Optimization (DPO), and Kahneman-Tversky Optimization (KTO) runs once and reuse them across environments. It supports popular adapters like LoRA and QLoRA (via PEFT) and integrates with DeepSpeed for efficient multi-GPU training. This enables reproducible, composable workflows that start small and scale on demand.
+LLaMAFactory is an easy-to-use, open-source framework. Its simple, declarative configs and consistent CLI allow you to define Supervised Fine-Tuning (SFT), Direct Preference Optimization (DPO), and Kahneman-Tversky Optimization (KTO) runs once and reuse them across environments. It supports popular adapters like LoRA and QLoRA using Parameter-Efficient Fine-Tuning and integrates with DeepSpeed for efficient multi-GPU training. This enables reproducible, composable workflows that start small and scale on demand.
 
 ## Templates
 
-### [SFT (LoRA) with DeepSpeed](./notebooks/sft_lora_deepspeed.ipynb)
+### [SFT with LoRA and DeepSpeed](./notebooks/sft_lora_deepspeed.ipynb)
 Supervised instruction tuning with **LoRA** and **DeepSpeed ZeRO** for efficient, reproducible multi-GPU training.
 
 ---

@@ -1,4 +1,4 @@
-# qwen2.5_7b_qlora_dpo_ray.yaml
+# dpo_qlora.yaml
 
 ### model
 trust_remote_code: true
@@ -61,3 +61,4 @@ ray_init_kwargs:
       # HF_TOKEN: <your_huggingface_token>
       # Enable faster downloads if hf_transfer is installed:
       HF_HUB_ENABLE_HF_TRANSFER: '1'
+      
