@@ -164,6 +164,7 @@ py_test(
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
+# This adds conftest for test configurations which add artifact logging of failed tests
 py_library(
     name = "tuned_examples_conftest",
     srcs = ["tuned_examples/conftest.py"],
