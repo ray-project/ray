@@ -8,9 +8,9 @@ ENV TERM=xterm
 
 ARG SSH_PORT=5020
 
-ARG PIP_REQUIREMENTS
+ARG PYTHON_DEPSET
 
-COPY "$PIP_REQUIREMENTS" /home/ray/python_depset.lock
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
