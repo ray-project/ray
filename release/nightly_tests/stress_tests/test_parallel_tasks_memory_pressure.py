@@ -65,7 +65,9 @@ def main(*, num_tasks: int, mem_pct_per_task: float):
     while len(unready) > 0:
         [ready], unready = ray.wait(unready, num_returns=1)
         assert ray.get(ready) >= bytes_per_task
-        print(f"{num_tasks-len(unready)} / {num_tasks} tasks have completed in {time.time()-start:.2f}s.")
+        print(
+            f"{num_tasks-len(unready)} / {num_tasks} tasks have completed in {time.time()-start:.2f}s."
+        )
 
     end = time.time()
     print(f"All tasks completed in {end-start:.2f} seconds.")
