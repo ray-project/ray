@@ -59,6 +59,8 @@ void OutOfOrderActorSchedulingQueue::Stop() {
   if (fiber_state_manager_) {
     fiber_state_manager_->Stop();
   }
+  CancelAllPending(Status::SchedulingCancelled(
+      "Out-of-order actor scheduling queue stopped; canceling pending tasks"));
 }
 
 bool OutOfOrderActorSchedulingQueue::TaskQueueEmpty() const {
@@ -250,6 +252,16 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
           RunRequest(std::move(request));
         },
         "OutOfOrderActorSchedulingQueue.RunRequest");
+  }
+}
+
+void OutOfOrderActorSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
+  while (!queued_actor_tasks_.empty()) {
+    auto it = queued_actor_tasks_.begin();
+    it->second.Cancel(status);
+    pending_task_id_to_is_canceled.erase(it->first);
+    queued_actor_tasks_.erase(it);
   }
 }
 
