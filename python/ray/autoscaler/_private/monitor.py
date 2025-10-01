@@ -259,9 +259,9 @@ class Monitor:
         # Tell the readonly node provider what nodes to report.
         if self.readonly_config:
             new_nodes = []
-            for msg in list(resources_batch_data.batch):
+            for msg in list(cluster_resource_state.node_states):
                 node_id = msg.node_id.hex()
-                new_nodes.append((node_id, msg.node_manager_address))
+                new_nodes.append((node_id, msg.node_ip_address))
             self.autoscaler.provider._set_nodes(new_nodes)
 
         mirror_node_types = {}
@@ -272,14 +272,14 @@ class Monitor:
         ):
             # GCS has detected the cluster full of actors.
             cluster_full = True
-        for resource_message in resources_batch_data.batch:
+        for resource_message in cluster_resource_state.node_states:
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
                 # Keep prefix in sync with ReadonlyNodeProvider.
                 node_type = format_readonly_node_type(node_id.hex())
                 resources = {}
-                for k, v in resource_message.resources_total.items():
+                for k, v in resource_message.total_resources.items():
                     resources[k] = v
                 mirror_node_types[node_type] = {
                     "resources": resources,
@@ -292,8 +292,8 @@ class Monitor:
             ):
                 # A worker node has detected the cluster full of actors.
                 cluster_full = True
-            total_resources = dict(resource_message.resources_total)
-            available_resources = dict(resource_message.resources_available)
+            total_resources = dict(resource_message.total_resources)
+            available_resources = dict(resource_message.available_resources)
 
             waiting_bundles, infeasible_bundles = parse_resource_demands(
                 resources_batch_data.resource_load_by_shape
@@ -319,7 +319,7 @@ class Monitor:
                 else:
                     ip = node_id.hex()
             else:
-                ip = resource_message.node_manager_address
+                ip = resource_message.node_ip_address
 
             idle_duration_s = 0.0
             if node_id in ray_nodes_idle_duration_ms_by_id:
