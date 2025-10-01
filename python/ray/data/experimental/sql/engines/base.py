@@ -87,14 +87,15 @@ class OptimizerBackend(ABC):
 
     @abstractmethod
     def optimize_query(
-        self, query: str, datasets: Dict[str, Dataset]
+        self, query: str, datasets: Dict[str, Dataset], dialect: str = "duckdb"
     ) -> Optional[QueryOptimizations]:
         """
         Optimize SQL query and return standardized optimization hints.
 
         Args:
-            query: SQL query string.
+            query: SQL query string in the specified dialect.
             datasets: Registered Ray Datasets for the query.
+            dialect: SQL dialect of the query (e.g., "mysql", "postgres", "spark").
 
         Returns:
             QueryOptimizations with engine-agnostic hints, or None if optimization fails.

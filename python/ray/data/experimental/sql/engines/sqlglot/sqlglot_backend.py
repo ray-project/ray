@@ -38,7 +38,7 @@ class SQLGlotBackend(OptimizerBackend):
         return "sqlglot"
 
     def optimize_query(
-        self, query: str, datasets: Dict[str, Dataset]
+        self, query: str, datasets: Dict[str, Dataset], dialect: str = "duckdb"
     ) -> Optional[QueryOptimizations]:
         """
         Optimize query using SQLGlot's rule-based optimizer.
@@ -47,13 +47,15 @@ class SQLGlotBackend(OptimizerBackend):
         is handled by the standard QueryExecutor with its handlers.
 
         Args:
-            query: SQL query string.
+            query: SQL query string in the specified dialect.
             datasets: Registered datasets (not used by SQLGlot).
+            dialect: SQL dialect (SQLGlot handles this natively).
 
         Returns:
             Basic QueryOptimizations (SQLGlot optimization happens in parser).
         """
         # SQLGlot optimization is integrated into the parser
+        # SQLGlot natively supports the dialect, no translation needed
         # Return basic hints - actual optimization happens during execution
         return QueryOptimizations(
             predicate_pushdown=True,

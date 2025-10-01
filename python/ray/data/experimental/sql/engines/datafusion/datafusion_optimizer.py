@@ -120,18 +120,25 @@ class DataFusionOptimizer:
         return self.available
 
     def optimize_query(
-        self, query: str, datasets: Dict[str, Dataset]
+        self, query: str, datasets: Dict[str, Dataset], dialect: str = "duckdb"
     ) -> Optional[DataFusionOptimizations]:
         """
         Optimize SQL query using DataFusion's cost-based optimizer.
 
-        Registers Ray Datasets with DataFusion (using small samples for planning),
-        runs DataFusion's query optimizer, and extracts optimization decisions
-        to guide Ray Data execution.
+        CRITICAL: DataFusion only supports PostgreSQL syntax. If the user's
+        dialect is not PostgreSQL-compatible, we translate it using SQLGlot
+        before sending to DataFusion.
+
+        Flow:
+        1. If dialect != postgres: Translate query to PostgreSQL (via SQLGlot)
+        2. Register datasets with DataFusion
+        3. Optimize with DataFusion CBO
+        4. Extract optimization decisions
 
         Args:
-            query: SQL query string (PostgreSQL-compatible syntax).
+            query: SQL query string in user's chosen dialect.
             datasets: Dictionary mapping table names to Ray Datasets.
+            dialect: User's SQL dialect (e.g., "mysql", "spark", "postgres").
 
         Returns:
             DataFusionOptimizations with extracted optimization decisions,
@@ -141,11 +148,15 @@ class DataFusionOptimizer:
             return None
 
         try:
+            # Translate query to PostgreSQL if needed
+            # DataFusion only understands PostgreSQL syntax
+            translated_query = self._translate_to_postgres(query, dialect)
+
             # Register Ray Datasets with DataFusion for optimization planning
             self._register_datasets(datasets)
 
-            # Parse and optimize with DataFusion
-            df_result = self.df_ctx.sql(query)
+            # Parse and optimize with DataFusion (using PostgreSQL syntax)
+            df_result = self.df_ctx.sql(translated_query)
 
             # Get optimized plans
             logical_plan = df_result.logical_plan()
@@ -167,6 +178,49 @@ class DataFusionOptimizer:
                 f"DataFusion optimization failed: {e}, will fallback to SQLGlot"
             )
             return None
+
+    def _translate_to_postgres(self, query: str, source_dialect: str) -> str:
+        """
+        Translate SQL query from user's dialect to PostgreSQL for DataFusion.
+
+        DataFusion only supports PostgreSQL-compatible syntax. This method
+        uses SQLGlot to translate queries from other dialects (MySQL, Spark SQL,
+        BigQuery, etc.) to PostgreSQL.
+
+        Args:
+            query: SQL query in source dialect.
+            source_dialect: Source SQL dialect (e.g., "mysql", "spark", "bigquery").
+
+        Returns:
+            Query translated to PostgreSQL syntax.
+        """
+        # If already PostgreSQL-compatible, no translation needed
+        postgres_dialects = {"postgres", "postgresql", "duckdb"}
+        if source_dialect.lower() in postgres_dialects:
+            return query
+
+        try:
+            import sqlglot
+
+            # Parse query in source dialect
+            ast = sqlglot.parse_one(query, read=source_dialect)
+
+            # Translate to PostgreSQL
+            postgres_query = ast.sql(dialect="postgres")
+
+            self._logger.debug(
+                f"Translated query from {source_dialect} to PostgreSQL for DataFusion"
+            )
+
+            return postgres_query
+
+        except Exception as e:
+            self._logger.warning(
+                f"Could not translate {source_dialect} to PostgreSQL: {e}, "
+                f"using original query"
+            )
+            # Return original query - DataFusion will either parse it or fail gracefully
+            return query
 
     def _register_datasets(self, datasets: Dict[str, Dataset]) -> None:
         """Register Ray Datasets with DataFusion for optimization planning.

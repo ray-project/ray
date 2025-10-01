@@ -60,14 +60,18 @@ class DataFusionBackend(OptimizerBackend):
         return "datafusion"
 
     def optimize_query(
-        self, query: str, datasets: Dict[str, Dataset]
+        self, query: str, datasets: Dict[str, Dataset], dialect: str = "duckdb"
     ) -> Optional[QueryOptimizations]:
         """
         Optimize query using DataFusion's cost-based optimizer.
 
+        Automatically translates non-PostgreSQL dialects to PostgreSQL
+        before sending to DataFusion (which only supports PostgreSQL syntax).
+
         Args:
-            query: SQL query string (PostgreSQL-compatible).
+            query: SQL query string in user's chosen dialect.
             datasets: Registered Ray Datasets.
+            dialect: User's SQL dialect (translated to PostgreSQL if needed).
 
         Returns:
             QueryOptimizations with DataFusion's decisions, or None if optimization fails.
@@ -76,8 +80,8 @@ class DataFusionBackend(OptimizerBackend):
             return None
 
         try:
-            # Get DataFusion optimizations
-            df_optimizations = self.optimizer.optimize_query(query, datasets)
+            # Get DataFusion optimizations (with automatic dialect translation)
+            df_optimizations = self.optimizer.optimize_query(query, datasets, dialect)
 
             if df_optimizations is None:
                 return None
