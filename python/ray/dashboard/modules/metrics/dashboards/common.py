@@ -377,7 +377,6 @@ PIE_CHART_TEMPLATE = {
 
 BAR_CHART_PANEL_TEMPLATE = {
     "aliasColors": {},
-    "bars": False,
     "dashLength": 10,
     "dashes": False,
     "datasource": r"${datasource}",
