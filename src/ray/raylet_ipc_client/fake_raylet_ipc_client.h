@@ -25,23 +25,23 @@ namespace ipc {
 
 class FakeRayletIpcClient : public RayletIpcClientInterface {
  public:
-  ray::Status RegisterClient(const WorkerID &worker_id,
-                             rpc::WorkerType worker_type,
-                             const JobID &job_id,
-                             int runtime_env_hash,
-                             const rpc::Language &language,
-                             const std::string &ip_address,
-                             const std::string &serialized_job_config,
-                             const StartupToken &startup_token,
-                             NodeID *node_id,
-                             int *assigned_port) override {
+  Status RegisterClient(const WorkerID &worker_id,
+                        rpc::WorkerType worker_type,
+                        const JobID &job_id,
+                        int runtime_env_hash,
+                        const rpc::Language &language,
+                        const std::string &ip_address,
+                        const std::string &serialized_job_config,
+                        const StartupToken &startup_token,
+                        NodeID *node_id,
+                        int *assigned_port) override {
     return Status::OK();
   }
 
-  ray::Status Disconnect(const rpc::WorkerExitType &exit_type,
-                         const std::string &exit_detail,
-                         const std::shared_ptr<LocalMemoryBuffer>
-                             &creation_task_exception_pb_bytes) override {
+  Status Disconnect(const rpc::WorkerExitType &exit_type,
+                    const std::string &exit_detail,
+                    const std::shared_ptr<LocalMemoryBuffer>
+                        &creation_task_exception_pb_bytes) override {
     return Status::OK();
   }
 
@@ -51,14 +51,14 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
     return Status::OK();
   }
 
-  ray::Status ActorCreationTaskDone() override { return Status::OK(); }
+  Status ActorCreationTaskDone() override { return Status::OK(); }
 
-  ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                              const std::vector<rpc::Address> &owner_addresses) override {
+  Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                         const std::vector<rpc::Address> &owner_addresses) override {
     return Status::OK();
   }
 
-  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+  StatusOr<absl::flat_hash_set<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
@@ -66,26 +66,25 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
     return absl::flat_hash_set<ObjectID>();
   }
 
-  ray::Status CancelGetRequest() override { return Status::OK(); }
+  Status CancelGetRequest() override { return Status::OK(); }
 
-  ray::Status NotifyDirectCallTaskBlocked() override { return Status::OK(); }
+  Status NotifyWorkerBlocked() override { return Status::OK(); }
 
-  ray::Status NotifyDirectCallTaskUnblocked() override { return Status::OK(); }
+  Status NotifyWorkerUnblocked() override { return Status::OK(); }
 
-  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                   int64_t tag) override {
+  Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                              int64_t tag) override {
     return Status::OK();
   }
 
-  ray::Status PushError(const ray::JobID &job_id,
-                        const std::string &type,
-                        const std::string &error_message,
-                        double timestamp) override {
+  Status PushError(const JobID &job_id,
+                   const std::string &type,
+                   const std::string &error_message,
+                   double timestamp) override {
     return Status::OK();
   }
 
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
-                          bool local_only) override {
+  Status FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override {
     return Status::OK();
   }
 

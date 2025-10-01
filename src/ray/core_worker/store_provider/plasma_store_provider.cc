@@ -261,7 +261,7 @@ Status UnblockIfNeeded(
     // NOTE: for direct call actors, we still need to issue an unblock IPC to release
     // get subscriptions, even if the worker isn't blocked.
     if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return raylet_client->NotifyDirectCallTaskUnblocked();
+      return raylet_client->NotifyWorkerUnblocked();
     } else {
       return Status::OK();  // We don't need to release resources.
     }
@@ -403,7 +403,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     ready->insert(entry);
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
   return Status::OK();
 }

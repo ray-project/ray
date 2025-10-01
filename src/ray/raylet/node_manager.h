@@ -400,14 +400,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
+  void HandleNotifyWorkerBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
   /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
+  void HandleNotifyWorkerUnblocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
