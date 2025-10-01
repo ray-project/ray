@@ -391,8 +391,6 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       [this] {
         for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
-          // GetOrConnectionByID will not connect to the raylet is it hasn't been
-          // connected.
           if (auto raylet_client_opt = raylet_client_pool_.GetByID(alive_node.first)) {
             raylet_client = raylet_client_opt;
           } else {
