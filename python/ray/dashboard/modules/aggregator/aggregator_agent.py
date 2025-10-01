@@ -45,7 +45,7 @@ PUBLISH_EVENT_WORKERS = ray_constants.env_integer(
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
+    f"{env_var_prefix}_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 1
 )
 # Maximum size of the event buffer in the aggregator agent
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
@@ -53,7 +53,7 @@ MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
 )
 # Maximum sleep time between sending batches of events to the external service
 MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 0.1
+    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 1
 )
 # Maximum number of events to send in a single batch to the external service
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
