@@ -306,7 +306,8 @@ def test_concurrency(shutdown_only, target_max_block_size_infinite_or_default):
     assert sorted(extract_values("id", result)) == list(range(10)), result
 
     # Function: autoscaling params should error
-    with pytest.raises(ValueError):
+    error_message = r"`min_op_concurrency`/`max_op_concurrency`/`initial_op_concurrency` are only supported for callable classes \(actors\)\. Use `concurrency=n` for functions\."
+    with pytest.raises(ValueError, match=error_message):
         ds.map(udf, min_op_concurrency=2, max_op_concurrency=4).take_all()
 
     # Class: fixed size via concurrency=int
@@ -325,28 +326,33 @@ def test_concurrency(shutdown_only, target_max_block_size_infinite_or_default):
 
     # Invalid combinations:
     # - concurrency used together with autoscaling params
-    with pytest.raises(ValueError):
+    error_message = "`concurrency` cannot be used together with `initial_op_concurrency`, `min_op_concurrency`, or `max_op_concurrency`."
+    with pytest.raises(ValueError, match=error_message):
         ds.map(
             UDFClass, concurrency=2, min_op_concurrency=1, max_op_concurrency=2
         ).take_all()
 
     # - min without max
-    with pytest.raises(ValueError):
+    error_message = "`min_op_concurrency` and `max_op_concurrency` must be specified together for autoscaling actor pools."
+    with pytest.raises(ValueError, match=error_message):
         ds.map(UDFClass, min_op_concurrency=2).take_all()
 
     # - initial without min/max
-    with pytest.raises(ValueError):
+    error_message = "`min_op_concurrency` and `max_op_concurrency` must be specified together for autoscaling actor pools."
+    with pytest.raises(ValueError, match=error_message):
         ds.map(UDFClass, initial_op_concurrency=2).take_all()
 
     # Test illegal values.
     # - invalid autoscaling range
-    with pytest.raises(ValueError):
+    error_message = "('min_size must be <= max_size', 4, 2)"
+    with pytest.raises(ValueError, match=error_message):
         ds.map(UDFClass, min_op_concurrency=4, max_op_concurrency=2).take_all()
 
     # Test concurrency not set.
     result = ds.map(udf).take_all()
     assert sorted(extract_values("id", result)) == list(range(10)), result
-    with pytest.raises(ValueError):
+    error_message = "`concurrency` must be specified when using a callable class. For example, use `concurrency=n` for a pool of `n` workers."
+    with pytest.raises(ValueError, match=error_message):
         ds.map(UDFClass).take_all()
 
 
