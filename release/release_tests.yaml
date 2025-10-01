@@ -2759,19 +2759,23 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  # TODO: https://github.com/ray-project/ray/issues/47596
-  stable: false
-
   frequency: nightly
   team: core
   env: aws_perf
   cluster:
-    byod: {}
+    byod:
+      runtime_env:
+        # Lower the memory usage threshold at which the Ray memory monitor will kill
+        # running tasks so that it does not compete with the system OOM killer.
+        - RAY_memory_usage_threshold=0.7
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
-    timeout: 1000
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
+    # The script parameters are tuned to run for ~30min.
+    timeout: 3600
+    # The memory allocated per task is tuned along with the `RAY_memory_usage_threshold` setting above
+    # to trigger the Ray memory monitor to kick in before the Ray worker cgroup OOMs.
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 64 --mem-pct-per-task .5
 
   variations:
     - __suffix__: aws
