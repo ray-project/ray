@@ -323,7 +323,7 @@ def check_violations(
                 if not is_package(patch_module)
                 else patch_module
             )
-            patch_init_imports = patch_train_init_imports.get(patch_init_module, set())
+            patch_init_imports = patch_train_init_imports.get(patch_init_module, [])
             if any(
                 does_overlap(imp.module, base_train_init_module)
                 for imp in patch_init_imports
