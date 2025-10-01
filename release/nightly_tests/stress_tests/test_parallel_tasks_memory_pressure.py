@@ -23,6 +23,7 @@ parser.add_argument(
     type=float,
 )
 
+
 @ray.remote(max_retries=-1)
 def allocate_memory(
     target_bytes: int,
@@ -60,6 +61,7 @@ def main(*, num_tasks: int, mem_pct_per_task: float):
     end = time.time()
 
     print(f"Tasks completed in {end-start:.2f} seconds.")
+
 
 if __name__ == "__main__":
     main(**vars(parser.parse_args()))
