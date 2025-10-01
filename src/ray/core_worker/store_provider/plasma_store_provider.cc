@@ -403,7 +403,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     ready->insert(entry);
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerBlocked());
+    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
   return Status::OK();
 }
