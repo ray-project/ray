@@ -1,3 +1,19 @@
+"""Release test script to test Ray OOM killer on parallel tasks.
+
+This test submits a set of parallel tasks, each of which allocates a configured portion
+of the available memory on the host. The number of CPUs available (and therefore number
+of tasks running in parallel) and the amount of memory allocated by each task is
+expected to be tuned to trigger the Ray memory monitor.
+
+The expected behavior of the test is:
+    - When all tasks run in parallel, they exceed the memory monitor's threshold for
+      the node.
+    - The memory monitor should kill workers running the tasks. The policy should
+      select the tasks that have started running more recently, allowing the workload
+      to progress despite frequent OOMs.
+    - The tasks should retry infinitely due to our current default policy for OOM.
+    - All of the tasks should eventually complete successfully.
+"""
 import argparse
 import random
 import time
@@ -11,16 +27,16 @@ from ray._private.utils import get_system_memory, get_used_memory
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--num-tasks",
-    help="number of tasks to process in total",
-    default="10",
+    help="Total number of tasks to execute.",
     type=int,
+    default=8,
 )
 
 parser.add_argument(
     "--mem-pct-per-task",
-    help="memory to allocate per task as a fraction of the node's available memory",
-    default="0.4",
+    help="Fraction of the node's available memory to allocate per task.",
     type=float,
+    default=0.5,
 )
 
 
