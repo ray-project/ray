@@ -11,6 +11,14 @@ build_arg_sets:
   py312:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
+  gpu_p39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+    CUDA_CODE: "gpu"
+  gpu_p310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+    CUDA_CODE: "gpu"
 
 
 depsets:
@@ -61,13 +69,14 @@ depsets:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
     constraints:
-      - python/requirements_compiled.txt
+      - /tmp/ray-deps/requirements_compiled.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
     build_arg_sets:
-      - py39
-      - py310
+      - gpu_p39
+      - gpu_p310
