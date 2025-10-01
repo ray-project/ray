@@ -340,7 +340,7 @@ class AutoscalingState:
         return timeseries_list
 
     def _aggregate_ongoing_requests(
-        self, metrics_timeseries_dicts: List[Dict[str, List]]
+        self, metrics_timeseries_dicts: List[Dict[str, List[TimeStampedValue]]]
     ) -> float:
         """Aggregate and average ongoing requests from timeseries data using instantaneous merge.
 
