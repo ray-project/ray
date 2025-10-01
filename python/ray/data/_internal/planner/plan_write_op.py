@@ -2,8 +2,6 @@ import itertools
 import uuid
 from typing import Callable, Iterator, List, Union
 
-from pandas import DataFrame
-
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -15,7 +13,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.datasink import Datasink, WriteResult
+from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
 
 WRITE_UUID_KWARG_NAME = "write_uuid"

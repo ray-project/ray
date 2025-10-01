@@ -31,9 +31,7 @@ class WriteResult(Generic[WriteReturnType]):
     def combine(cls, *wrs: "WriteResult") -> "WriteResult":
         num_rows = sum(wr.num_rows for wr in wrs)
         size_bytes = sum(wr.size_bytes for wr in wrs)
-        write_returns = list(
-            itertools.chain(*[wr.write_returns for wr in wrs])
-        )
+        write_returns = list(itertools.chain(*[wr.write_returns for wr in wrs]))
 
         return WriteResult(
             num_rows=num_rows,

@@ -86,7 +86,6 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.plan_write_op import gen_datasink_write_result
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
@@ -111,6 +110,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
+from ray.data.datasource.datasink import WriteResult, gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -4931,9 +4931,7 @@ class Dataset:
             for bundle in iter_:
                 res = ray.get(bundle.block_refs)
                 # Generate write result report
-                write_results.append(
-                    gen_datasink_write_result(res)
-                )
+                write_results.append(gen_datasink_write_result(res))
 
             combined_write_result = WriteResult.combine(*write_results)
 
