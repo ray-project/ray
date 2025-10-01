@@ -1,8 +1,8 @@
+import copy
 import unittest
 from collections import defaultdict
 from typing import Any, Dict, Optional, SupportsFloat, Tuple
-import unittest
-import copy
+
 import gymnasium as gym
 import numpy as np
 from gymnasium.core import ActType, ObsType
