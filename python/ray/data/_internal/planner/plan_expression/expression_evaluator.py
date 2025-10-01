@@ -388,14 +388,14 @@ class NativeExpressionEvaluator:
         else:
             raise TypeError(f"Unsupported block type: {block_type}")
 
-    def visit(self, expr: Expr) -> Union[BlockColumn, Block]:
+    def visit(self, expr: Expr) -> Union[BlockColumn, Any]:
         """Visit an expression node and return the evaluated result.
 
         Args:
             expr: The expression to evaluate.
 
         Returns:
-            The evaluated result as a BlockColumn.
+            The evaluated result as a BlockColumn or scalar value.
         """
         if isinstance(expr, ColumnExpr):
             return self.visit_column(expr)
@@ -483,7 +483,7 @@ class NativeExpressionEvaluator:
 
         return result
 
-    def visit_alias(self, expr: AliasExpr) -> BlockColumn:
+    def visit_alias(self, expr: AliasExpr) -> Union[BlockColumn, Any]:
         """Visit an alias expression and return the renamed result.
 
         Args:

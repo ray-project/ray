@@ -1089,18 +1089,16 @@ class Dataset:
                 raise ValueError(
                     "select_columns requires all elements of 'cols' to be strings."
                 )
+            if len(cols) != len(set(cols)):
+                raise ValueError(
+                    "select_columns expected unique column names, "
+                    f"got duplicate column names: {cols}"
+                )
             exprs = [col(c) for c in cols]
         else:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-
-        if len(cols) != len(set(cols)):
-            raise ValueError(
-                "select_columns expected unique column names, "
-                f"got duplicate column names: {cols}"
-            )
-
         # Don't feel like we really need this
         from ray.data._internal.compute import TaskPoolStrategy
 

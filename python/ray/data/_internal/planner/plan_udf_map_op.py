@@ -54,7 +54,6 @@ from ray.data.block import (
     BatchFormat,
     Block,
     BlockAccessor,
-    BlockColumn,
     CallableClass,
     DataBatch,
     UserDefinedFunction,
@@ -130,7 +129,7 @@ def plan_project_op(
             out_names_in_order: List[str] = []
 
             source_block = block
-            computed: Dict[str, "BlockColumn"] = {}
+            computed: Dict[str, Any] = {}
 
             # Phase 1: compute all outputs from the same input snapshot
             for expr in expr_list:

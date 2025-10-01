@@ -157,7 +157,7 @@ class ProjectionPushdown(Rule):
 
         def ensure_named(expr: Expr, name: str) -> Expr:
             """Ensure expression is aliased with the given name, unwrapping existing aliases."""
-            if getattr(expr, "name", None) == name:
+            if expr.name == name:
                 return expr
             # Unwrap AliasExpr to avoid double-aliasing
             if isinstance(expr, AliasExpr):
@@ -173,8 +173,7 @@ class ProjectionPushdown(Rule):
                 for e in p.exprs:
                     name = _expr_output_name(e)
                     # Substitute column references, then check if this column is already defined
-                    e_subst = _substitute_column_refs(e, defs)
-                    resolved = defs.get(name, e_subst)
+                    resolved = _substitute_column_refs(e, defs)
                     new_defs[name] = ensure_named(resolved, name)
                     new_order.append(name)
                 defs = new_defs
