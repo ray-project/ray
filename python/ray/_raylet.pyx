@@ -138,6 +138,7 @@ from ray.includes.common cimport (
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
     WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR,
+    WORKER_EXIT_TYPE_INTENDED_USER_EXIT,
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
@@ -3027,7 +3028,7 @@ cdef class CoreWorker:
         """
         cdef CWorkerExitType c_exit_type
         if exit_type == "user":
-            c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
+            c_exit_type = WORKER_EXIT_TYPE_INTENDED_USER_EXIT
         elif exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
         elif exit_type == "intentional_system_exit":

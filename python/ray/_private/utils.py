@@ -802,7 +802,11 @@ _unified_signal_installed = False
 _shutdown_in_progress = False
 
 
-def install_unified_signal_handlers(is_driver: bool):
+def install_unified_signal_handlers(
+    is_driver: bool,
+    worker_graceful_cb: Optional[callable] = None,
+    worker_force_cb: Optional[callable] = None,
+):
     """
     Install unified SIGTERM/SIGINT handlers:
     - First signal: request graceful shutdown (drivers call ray.shutdown(); workers rely
@@ -832,20 +836,18 @@ def install_unified_signal_handlers(is_driver: bool):
             return
         else:
             try:
-                from ray._private.worker import global_worker  # noqa: F401
-
-                global_worker.core_worker.drain_and_exit_worker(
-                    "intentional_system_exit", b"signal: first"
-                )
+                if worker_graceful_cb is None:
+                    raise RuntimeError("worker_graceful_cb not set")
+                worker_graceful_cb()
             except Exception:
                 # As a last resort, fall back to SystemExit.
                 raise SystemExit(1)
 
     def _force(detail: str):
         try:
-            from ray._private.worker import global_worker  # noqa: F401
-
-            global_worker.core_worker.force_exit_worker("user", detail.encode("utf-8"))
+            if worker_force_cb is None:
+                raise RuntimeError("worker_force_cb not set")
+            worker_force_cb(detail)
         except Exception:
             # As a last resort, exit process immediately.
             os._exit(1)
@@ -859,7 +861,7 @@ def install_unified_signal_handlers(is_driver: bool):
 
     if is_driver:
         signal.signal(signal.SIGINT, _handler)
-        set_sigterm_handler(_handler)
+    set_sigterm_handler(_handler)
     _unified_signal_installed = True
 
 
