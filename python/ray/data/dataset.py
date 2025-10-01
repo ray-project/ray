@@ -3480,7 +3480,9 @@ class Dataset:
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(Project(self._logical_plan.dag, exprs=[]))
+        count_op = Count(
+            Project(self._logical_plan.dag, exprs=[], preserve_existing=False)
+        )
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 

@@ -114,11 +114,17 @@ class TestPorjectionFusion:
         current_op = input_op
 
         for expr_dict in expressions_list:
-            exprs = {
-                name: self._parse_expression(desc) for name, desc in expr_dict.items()
-            }
+            # Convert dictionary to list of named expressions
+            exprs = []
+            for name, desc in expr_dict.items():
+                expr = self._parse_expression(desc)
+                named_expr = expr.alias(name)
+                exprs.append(named_expr)
+
+            # Set preserve_existing=True for all operators to allow fusion
+            # This means each operator adds new columns while preserving existing ones
             current_op = Project(
-                current_op, cols=None, cols_rename=None, exprs=exprs, ray_remote_args={}
+                current_op, exprs=exprs, preserve_existing=True, ray_remote_args={}
             )
 
         return current_op
@@ -130,7 +136,8 @@ class TestPorjectionFusion:
 
         while isinstance(current, Project):
             if current.exprs:
-                levels.append(set(current.exprs.keys()))
+                # Extract names from list of expressions instead of dictionary keys
+                levels.append({expr.name for expr in current.exprs})
             current = current.input_dependency
 
         return list(reversed(levels))  # Return bottom-up order
@@ -672,6 +679,111 @@ class TestPorjectionFusion:
             self._describe_plan_structure(optimized_chained)
             == "Project(3 exprs) -> FromItems"  # Changed from multiple operators
         )
+
+    @pytest.mark.parametrize(
+        "operations,expected",
+        [
+            # Single operations
+            ([("rename", {"a": "A"})], {"A": 1, "b": 2, "c": 3}),
+            ([("select", ["a", "b"])], {"a": 1, "b": 2}),
+            ([("with_column", "d", 4)], {"a": 1, "b": 2, "c": 3, "d": 4}),
+            # Two operations - rename then select
+            ([("rename", {"a": "A"}), ("select", ["A"])], {"A": 1}),
+            ([("rename", {"a": "A"}), ("select", ["b"])], {"b": 2}),
+            (
+                [("rename", {"a": "A", "b": "B"}), ("select", ["A", "B"])],
+                {"A": 1, "B": 2},
+            ),
+            # Two operations - select then rename
+            ([("select", ["a", "b"]), ("rename", {"a": "A"})], {"A": 1, "b": 2}),
+            ([("select", ["a"]), ("rename", {"a": "x"})], {"x": 1}),
+            # Two operations - with_column combinations
+            ([("with_column", "d", 4), ("select", ["a", "d"])], {"a": 1, "d": 4}),
+            ([("select", ["a"]), ("with_column", "d", 4)], {"a": 1, "d": 4}),
+            (
+                [("rename", {"a": "A"}), ("with_column", "d", 4)],
+                {"A": 1, "b": 2, "c": 3, "d": 4},
+            ),
+            (
+                [("with_column", "d", 4), ("rename", {"d": "D"})],
+                {"a": 1, "b": 2, "c": 3, "D": 4},
+            ),
+            # Three operations
+            (
+                [
+                    ("rename", {"a": "A"}),
+                    ("select", ["A", "b"]),
+                    ("with_column", "d", 4),
+                ],
+                {"A": 1, "b": 2, "d": 4},
+            ),
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("rename", {"a": "A"}),
+                    ("select", ["A", "d"]),
+                ],
+                {"A": 1, "d": 4},
+            ),
+            (
+                [
+                    ("select", ["a", "b"]),
+                    ("rename", {"a": "x"}),
+                    ("with_column", "d", 4),
+                ],
+                {"x": 1, "b": 2, "d": 4},
+            ),
+            # Column swap
+            ([("rename", {"a": "b", "b": "a"}), ("select", ["a"])], {"a": 2}),
+            ([("rename", {"a": "b", "b": "a"}), ("select", ["b"])], {"b": 1}),
+            # Multiple same operations
+            (
+                [("rename", {"a": "x"}), ("rename", {"x": "y"})],
+                {"y": 1, "b": 2, "c": 3},
+            ),
+            ([("select", ["a", "b"]), ("select", ["a"])], {"a": 1}),
+            (
+                [("with_column", "d", 4), ("with_column", "e", 5)],
+                {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5},
+            ),
+            # Complex expressions with with_column
+            (
+                [("rename", {"a": "x"}), ("with_column_expr", "sum", "x", 10)],
+                {"x": 1, "b": 2, "c": 3, "sum": 10},
+            ),
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("with_column", "e", 5),
+                    ("select", ["d", "e"]),
+                ],
+                {"d": 4, "e": 5},
+            ),
+        ],
+    )
+    def test_projection_operations_comprehensive(self, operations, expected):
+        """Comprehensive test for projection operations combinations."""
+        from ray.data.expressions import col, lit
+
+        # Create initial dataset
+        ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2, "c": 3})
+
+        # Apply operations
+        for op in operations:
+            if op[0] == "rename":
+                ds = ds.rename_columns(op[1])
+            elif op[0] == "select":
+                ds = ds.select_columns(op[1])
+            elif op[0] == "with_column":
+                ds = ds.with_column(op[1], lit(op[2]))
+            elif op[0] == "with_column_expr":
+                # Special case for expressions referencing columns
+                ds = ds.with_column(op[1], col(op[2]) * op[3])
+
+        # Verify result
+        result = ds.take_all()
+        assert len(result) == 1
+        assert result[0] == expected
 
 
 if __name__ == "__main__":

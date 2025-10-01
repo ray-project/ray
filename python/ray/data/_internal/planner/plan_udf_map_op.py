@@ -118,7 +118,12 @@ def plan_project_op(
         try:
             block_accessor = BlockAccessor.for_block(block)
 
-            if not block_accessor.num_rows() or not op.exprs:
+            if not block_accessor.num_rows():
+                return block
+
+            if len(op.exprs) == 0:
+                if not op.preserve_existing:
+                    return block_accessor.select([])
                 return block
 
             # Preserve original input column order for preserve_existing semantics.
