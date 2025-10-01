@@ -54,6 +54,9 @@
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -505,16 +508,36 @@ int main(int argc, char *argv[]) {
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
-    // Core worker tries to kill child processes when it exits. But they can't do
-    // it perfectly: if the core worker is killed by SIGKILL, the child processes
-    // leak. So in raylet we also kill child processes via Linux subreaper.
-    // Only works on Linux >= 3.4.
-    if (RayConfig::instance()
-            .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+    const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
+    const bool subreaper_enabled =
+        RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
+    if (pg_enabled && subreaper_enabled) {
+      RAY_LOG(ERROR)
+          << "Both per-worker process groups and subreaper are enabled. "
+          << "Per-worker process groups will be used for worker cleanup. "
+          << "Subreaper is deprecated and will be removed in a future release.";
+    }
+
+#if !defined(_WIN32)
+    RAY_LOG(INFO) << "Per-worker process group cleanup is "
+                  << (pg_enabled ? "ENABLED" : "DISABLED") << ", subreaper is "
+                  << (subreaper_enabled ? "ENABLED" : "DISABLED");
+#else
+    RAY_LOG(INFO) << "Per-worker process group cleanup is not supported on Windows.";
+#endif
+
+    if (subreaper_enabled && !pg_enabled) {
+      RAY_LOG(WARNING)
+          << "Subreaper-based orphan cleanup is enabled. "
+          << "Subreaper is deprecated and will be removed in a future release. "
+          << "Prefer per-worker process groups.";
       enable_subreaper();
     } else {
-      RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
+#if !defined(_WIN32)
+      // Ensure child processes are auto-reaped to avoid zombies even when both
+      // subreaper and per-worker PG cleanup are disabled.
       ray::SetSigchldIgnore();
+#endif
     }
 
     // Parse the worker port list.
