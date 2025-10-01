@@ -1,5 +1,6 @@
 import contextlib
-from collections import defaultdict, namedtuple
+
+from collections import namedtuple, defaultdict
 from datetime import datetime
 from typing import Any, List, Optional
 

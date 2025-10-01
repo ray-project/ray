@@ -1,14 +1,15 @@
 """Test the allgather API on a distributed Ray cluster."""
-import numpy as np
 import pytest
+import ray
+
+import numpy as np
 import torch
 
-import ray
+from ray.util.collective.types import Backend
 from ray.util.collective.tests.cpu_util import (
     create_collective_workers,
     init_tensors_for_gather_scatter,
 )
-from ray.util.collective.types import Backend
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
@@ -136,8 +137,7 @@ def test_allgather_torch_numpy(ray_start_distributed_2_nodes, backend):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

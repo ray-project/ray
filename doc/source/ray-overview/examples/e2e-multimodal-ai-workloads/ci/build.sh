@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euxo pipefail
+set -exo pipefail
 
 # Install Python dependencies
 pip3 install --no-cache-dir \

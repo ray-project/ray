@@ -139,8 +139,6 @@ cpp/
 
 docker/
 .buildkite/pipeline.build_cpp.yml
-.buildkite/_images.rayci.yml
-.buildkite/release/_images.rayci.yml
 @ docker linux_wheels
 ;
 
@@ -208,7 +206,6 @@ ci/docker/forge.wanda.yaml
 ci/docker/forge.aarch64.wanda.yaml
 .buildkite/pipeline.build.yml
 .buildkite/hooks/post-command
-.buildkite/release/
 .buildkite/release-automation/
 @ tools
 ;

@@ -1,7 +1,7 @@
 import logging
 import os
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import List
 
 import ray._private.ray_constants as ray_constants
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
@@ -9,12 +9,9 @@ from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
-from ray.train.v2._internal.execution.worker_group import ActorMetadata
+from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
 from ray.train.v2._internal.util import ray_get_safe
 from ray.train.v2.api.config import ScalingConfig
-
-if TYPE_CHECKING:
-    from ray.train.v2._internal.execution.worker_group.worker import Worker
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +27,11 @@ class AcceleratorSetupCallback(WorkerGroupCallback):
         self._backend = backend_config.backend_cls()
         self._scaling_config = scaling_config
 
-    def before_init_train_context(
-        self, workers: List["Worker"]
-    ) -> Dict[str, List[Any]]:
-        self._maybe_share_cuda_visible_devices(workers)
+    def after_worker_group_start(self, worker_group: WorkerGroup):
+        self._maybe_share_cuda_visible_devices(worker_group)
         # TODO: Add support for sharing other accelerator resources.
 
-        return {}
-
-    def _maybe_share_cuda_visible_devices(self, workers: List["Worker"]):
-        """Set CUDA visible devices environment variables on workers."""
+    def _maybe_share_cuda_visible_devices(self, worker_group: WorkerGroup):
         share_cuda_visible_devices_enabled = env_bool(
             ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
             self._backend.share_cuda_visible_devices,
@@ -49,10 +41,10 @@ class AcceleratorSetupCallback(WorkerGroupCallback):
             self._scaling_config._resources_per_worker_not_none.get("GPU", 0) > 0
             and share_cuda_visible_devices_enabled
         ):
-            _share_cuda_visible_devices(workers)
+            _share_cuda_visible_devices(worker_group)
 
 
-def _share_cuda_visible_devices(workers: List["Worker"]):
+def _share_cuda_visible_devices(worker_group: WorkerGroup):
     """Sets CUDA_VISIBLE_DEVICES on all workers.
     For each worker, CUDA_VISIBLE_DEVICES will be set to the GPU IDs
     visible to all workers on that worker's node.
@@ -69,16 +61,15 @@ def _share_cuda_visible_devices(workers: List["Worker"]):
         CUDA_VISIBLE_DEVICES:
         - Worker1: "0,1,2,3"
         - Worker2: "0,1,2,3"
-        - Worker3: "0,1"
-
-    Args:
-        workers: List of worker objects.
+        - Worker2: "0,1"
     """
-    _share_accelerator_ids(workers, ray_constants.GPU, CUDA_VISIBLE_DEVICES_ENV_VAR)
+    _share_accelerator_ids(
+        worker_group, ray_constants.GPU, CUDA_VISIBLE_DEVICES_ENV_VAR
+    )
 
 
 def _share_accelerator_ids(
-    workers: List["Worker"], accelerator_name: str, env_var: str
+    worker_group: WorkerGroup, accelerator_name: str, env_var: str
 ):
     """Sets the given env_var on all workers.
     For each worker, the cores/devices are visible to all the
@@ -95,14 +86,18 @@ def _share_accelerator_ids(
         NEURON_RT_VISIBLE_CORES/TPU_VISIBLE_CHIPS/...:
         - Worker1: "0,1,2,3"
         - Worker2: "0,1,2,3"
-        - Worker3: "0,1"
+        - Worker2: "0,1"
 
     Args:
-        workers: List of worker objects.
         accelerator_name: The name of the accelerator.
         env_var: The name of the environment variable to set.
     """
-    worker_metadatas = [worker.metadata for worker in workers]
+    if not worker_group.has_started():
+        raise RuntimeError(
+            "WorkerGroup must be started before sharing accelerator IDs."
+        )
+
+    worker_metadatas = [worker.metadata for worker in worker_group.get_workers()]
     visible_accelerator_ids_per_worker = _get_visible_accelerator_ids_per_worker(
         worker_metadatas=worker_metadatas, accelerator_name=accelerator_name
     )
@@ -113,8 +108,8 @@ def _share_accelerator_ids(
     futures = []
     for rank, visible_accelerator_ids in enumerate(visible_accelerator_ids_per_worker):
         futures.append(
-            workers[rank].execute_async(
-                set_accelerator_ids, accelerator_ids=visible_accelerator_ids
+            worker_group.execute_single_async(
+                rank, set_accelerator_ids, accelerator_ids=visible_accelerator_ids
             )
         )
     ray_get_safe(futures)

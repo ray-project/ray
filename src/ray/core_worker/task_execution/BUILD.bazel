@@ -43,7 +43,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc:server_call",
     ],
 )
 
@@ -53,7 +53,7 @@ ray_cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/common:task_common",
-        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc:server_call",
     ],
 )
 
@@ -67,7 +67,7 @@ ray_cc_library(
         ":scheduling_util",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
-        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc:server_call",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -87,7 +87,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/core_worker:task_event_buffer",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc:server_call",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -110,9 +110,10 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/core_worker:task_event_buffer",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc:server_call",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -138,7 +139,10 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/core_worker:common",
         "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/rpc:server_call",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
     ],
 )

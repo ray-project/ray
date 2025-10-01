@@ -8,7 +8,9 @@ from collections import Counter
 import click
 import numpy as np
 
-from ray.tune import Checkpoint, CheckpointConfig, RunConfig, Callback, report, Tuner
+from ray import train, tune
+from ray.train import Checkpoint, CheckpointConfig, RunConfig
+from ray.tune import Callback
 
 
 class ProgressCallback(Callback):
@@ -60,9 +62,9 @@ def function_trainable(config):
                         pickle.dump(checkpoint_data, fp)
 
                 checkpoint = Checkpoint.from_directory(directory)
-                report(metrics, checkpoint=checkpoint)
+                train.report(metrics, checkpoint=checkpoint)
         else:
-            report(metrics)
+            train.report(metrics)
         time.sleep(sleep_time)
 
 
@@ -72,7 +74,7 @@ def function_trainable(config):
 def main(bucket, smoke_test):
     # Note: smoke_test is ignored as we just adjust the timeout.
     # The parameter is passed by the release test pipeline.
-    tuner = Tuner(
+    tuner = tune.Tuner(
         function_trainable,
         param_space={
             "sleep_time": 30,

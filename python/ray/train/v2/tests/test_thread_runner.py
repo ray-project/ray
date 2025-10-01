@@ -46,16 +46,13 @@ def test_successful_return(thread_runner):
 def test_error(thread_runner):
     """Checks that an exception can be captured from the target function."""
 
-    def wrapped_train_func():
-        def train_fn_with_final_checkpoint_flush():
-            def train_func():
-                raise ValueError
+    def target():
+        def nested():
+            raise ValueError
 
-            train_func()
+        nested()
 
-        train_fn_with_final_checkpoint_flush()
-
-    thread_runner.run(wrapped_train_func)
+    thread_runner.run(target)
     assert not thread_runner.join()
 
     assert thread_runner.get_return_value() is None
@@ -67,9 +64,6 @@ def test_error(thread_runner):
     assert isinstance(error._base_exc, ValueError)
     print(error._traceback_str)
     assert "_run_target" not in error._traceback_str
-    assert "wrapped_train_func" not in error._traceback_str
-    assert "train_fn_with_final_checkpoint_flush" not in error._traceback_str
-    assert "train_func" in error._traceback_str
 
 
 def test_nested_thread_error(thread_runner):

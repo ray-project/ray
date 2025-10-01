@@ -174,8 +174,8 @@ class _SerializationContext:
         tensor_device_type: str,
         target_device: Device,
     ):
-        import numpy as np
         import torch
+        import numpy as np
 
         if target_device == Device.DEFAULT:
             target_device_type = tensor_device_type

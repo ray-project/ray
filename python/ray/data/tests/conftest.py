@@ -10,6 +10,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+import ray.util.state
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -23,7 +24,6 @@ from ray.data.tests.mock_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
-from ray.util.state import list_actors
 
 
 @pytest.fixture(scope="module")
@@ -144,38 +144,19 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
-    fs = None
-    try:
-        fs = pa.fs.S3FileSystem(
-            region="us-west-2",
-            endpoint_override=s3_server,
-            **kwargs,
-        )
-        if s3_path.startswith("s3://"):
-            if "@" in s3_path:
-                s3_path = s3_path.split("@")[-1]
-            else:
-                s3_path = s3_path[len("s3://") :]
-        s3_path = urllib.parse.quote(s3_path)
-        fs.create_dir(s3_path)
-        yield fs
-
-    finally:
-        # Explicit cleanup for S3FileSystem resources
-        if fs is not None:
-            try:
-                # Clean up test directory if it exists
-                try:
-                    file_info = fs.get_file_info(s3_path)
-                    if file_info.type != pa.fs.FileType.NotFound:
-                        fs.delete_dir(s3_path)
-                except (OSError, pa.lib.ArrowIOError):
-                    # Directory doesn't exist or can't be deleted, that's fine
-                    pass
-            except Exception as e:
-                print(f"Warning: S3 filesystem cleanup error: {e}")
-            finally:
-                fs = None
+    fs = pa.fs.S3FileSystem(
+        region="us-west-2",
+        endpoint_override=s3_server,
+        **kwargs,
+    )
+    if s3_path.startswith("s3://"):
+        if "@" in s3_path:
+            s3_path = s3_path.split("@")[-1]
+        else:
+            s3_path = s3_path[len("s3://") :]
+    s3_path = urllib.parse.quote(s3_path)
+    fs.create_dir(s3_path)
+    yield fs
 
 
 @pytest.fixture(scope="function")
@@ -586,7 +567,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             ),
         }
 
-        self.actor_metrics = list_actors(limit=10_000)
+        self.actor_metrics = ray.util.state.list_actors(limit=10_000)
 
     def clear_task_count(self):
         self.task_metrics = []

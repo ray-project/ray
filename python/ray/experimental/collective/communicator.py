@@ -1,5 +1,5 @@
-from dataclasses import dataclass
 from typing import List
+from dataclasses import dataclass
 
 import ray
 from ray.util.collective.types import Backend

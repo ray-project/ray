@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "ray/common/lease/lease.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 

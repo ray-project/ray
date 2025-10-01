@@ -1,6 +1,5 @@
-import sys
-
 import pytest
+import sys
 
 from ray._common.network_utils import is_localhost
 

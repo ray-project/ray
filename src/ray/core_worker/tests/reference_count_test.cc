@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/functional/bind_front.h"
+#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/pubsub/publisher.h"
@@ -27,8 +28,6 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
-#include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
@@ -115,7 +114,7 @@ static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
 }
 
-class MockCoreWorkerClientInterface : public rpc::FakeCoreWorkerClient {
+class MockCoreWorkerClientInterface : public rpc::CoreWorkerClientInterface {
  public:
   ~MockCoreWorkerClientInterface() = default;
   virtual void WaitForRefRemoved(const ObjectID object_id,
@@ -320,7 +319,10 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     auto r = num_requests_;
 
     auto borrower_callback = [=]() {
-      rc_.SubscribeRefRemoved(object_id, contained_in_id, owner_address);
+      auto ref_removed_callback =
+          absl::bind_front(&ReferenceCounter::HandleRefRemoved, &rc_);
+      rc_.SetRefRemovedCallback(
+          object_id, contained_in_id, owner_address, ref_removed_callback);
     };
     borrower_callbacks_[r] = borrower_callback;
 

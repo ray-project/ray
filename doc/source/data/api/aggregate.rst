@@ -25,5 +25,3 @@ compute aggregations.
     AbsMax
     Quantile
     Unique
-    MissingValuePercentage
-    ZeroPercentage

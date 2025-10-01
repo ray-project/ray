@@ -14,6 +14,8 @@
 
 #include "ray/raylet/scheduling/policy/scorer.h"
 
+#include <numeric>
+
 namespace ray {
 namespace raylet_scheduling_policy {
 

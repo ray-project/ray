@@ -613,23 +613,19 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "frequency": "nightly",
                 "run": {"script": "test_script.py"},
                 "smoke_test": {"frequency": "nightly"},
-                "cluster": {"byod": {"type": "cpu"}},
             }
         )
 
-        with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
-            step = get_step(test, smoke_test=False)
-            self.assertNotIn(
-                "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
-            )
+        step = get_step(test, smoke_test=False)
+        self.assertNotIn(
+            "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
+        )
 
-            step = get_step(test, smoke_test=True)
-            self.assertIn(
-                "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
-            )
+        step = get_step(test, smoke_test=True)
+        self.assertIn("--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"])
 
-            step = get_step(test, priority_val=20)
-            self.assertEqual(step["priority"], 20)
+        step = get_step(test, priority_val=20)
+        self.assertEqual(step["priority"], 20)
 
     def testInstanceResources(self):
         # AWS instances
@@ -745,24 +741,17 @@ class BuildkiteSettingsTest(unittest.TestCase):
             test = MockTest(
                 {
                     "name": "test_1",
-                    "cluster": {
-                        "cluster_compute": cluster_config_full_path,
-                        "byod": {"type": "cpu"},
-                    },
+                    "cluster": {"cluster_compute": cluster_config_full_path},
                     "smoke_test": {
-                        "cluster": {
-                            "cluster_compute": cluster_config_smoke_path,
-                            "byod": {"type": "cpu"},
-                        },
+                        "cluster": {"cluster_compute": cluster_config_smoke_path},
                     },
                 }
             )
-            with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
-                step = get_step(test, smoke_test=False)
-                self.assertEqual(step["concurrency_group"], "medium")
+            step = get_step(test, smoke_test=False)
+            self.assertEqual(step["concurrency_group"], "medium")
 
-                step = get_step(test, smoke_test=True)
-                self.assertEqual(step["concurrency_group"], "small")
+            step = get_step(test, smoke_test=True)
+            self.assertEqual(step["concurrency_group"], "small")
 
     def testStepQueueClient(self):
         test_regular = MockTest(
@@ -770,7 +759,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "name": "test",
                 "frequency": "nightly",
                 "run": {"script": "test_script.py"},
-                "cluster": {"byod": {"type": "cpu"}},
             }
         )
         test_client = MockTest(
@@ -778,16 +766,14 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "name": "test",
                 "frequency": "nightly",
                 "run": {"script": "test_script.py", "type": "client"},
-                "cluster": {"byod": {"type": "cpu"}},
             }
         )
 
-        with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
-            step = get_step(test_regular)
-            self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_DEFAULT))
+        step = get_step(test_regular)
+        self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_DEFAULT))
 
-            step = get_step(test_client)
-            self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_CLIENT))
+        step = get_step(test_client)
+        self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_CLIENT))
 
 
 if __name__ == "__main__":

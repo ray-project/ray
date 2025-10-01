@@ -1,5 +1,6 @@
-from ray.tune import tune
 from ray.util.client import ray
+
+from ray.tune import tune
 
 ray.connect("localhost:50051")
 

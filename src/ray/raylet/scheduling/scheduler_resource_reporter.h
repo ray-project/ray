@@ -17,6 +17,8 @@
 #include <deque>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/ray_config.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
 

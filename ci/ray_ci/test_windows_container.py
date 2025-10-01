@@ -25,7 +25,9 @@ def test_install_ray() -> None:
         },
     ):
         WindowsContainer("hi").install_ray()
-        image = "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:hi"
+        image = (
+            "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-hi"
+        )
         assert install_ray_cmds[-1] == [
             "docker",
             "build",
@@ -64,7 +66,7 @@ def test_get_run_command() -> None:
         "/hi:/hello",
         "--workdir",
         "C:\\rayci",
-        "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:test",
+        "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
         "bash",
         "-c",
         "hi\nhello",

@@ -1,9 +1,9 @@
 """Types conversion between different backends."""
 
+from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import List, Tuple, TYPE_CHECKING, Optional
 
 from numpy import int32
 
@@ -38,8 +38,6 @@ class Backend(object):
 
     NCCL = "nccl"
     MPI = "mpi"
-    # `pygloo` is deprecated. Use gloo through torch.distributed for both
-    # `GLOO` and `TORCH_GLOO`.
     GLOO = "gloo"
     # Use gloo through torch.distributed.
     TORCH_GLOO = "torch_gloo"

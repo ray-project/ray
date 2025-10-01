@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from .operator import Operator
 
 if TYPE_CHECKING:
-    from ray.data.context import DataContext
+    from ray.data import DataContext
 
 
 class Plan:

@@ -19,11 +19,11 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_utils.h"
-#include "ray/core_worker/fake_actor_creator.h"
-#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray::core {
 
@@ -53,7 +53,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   return task;
 }
 
-class MockWorkerClient : public rpc::FakeCoreWorkerClient {
+class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
@@ -85,8 +85,11 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
 class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
  public:
   ActorTaskSubmitterTest()
-      : client_pool_(std::make_shared<rpc::CoreWorkerClientPool>(
-            [&](const rpc::Address &addr) { return worker_client_; })),
+      : client_pool_(
+            std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
+              num_clients_connected_++;
+              return worker_client_;
+            })),
         worker_client_(std::make_shared<MockWorkerClient>()),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
@@ -106,8 +109,9 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
 
   void TearDown() override { io_context.stop(); }
 
+  int num_clients_connected_ = 0;
   int64_t last_queue_warning_ = 0;
-  FakeActorCreator actor_creator_;
+  MockActorCreatorInterface actor_creator_;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
@@ -544,6 +548,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
+  ASSERT_EQ(num_clients_connected_, 1);
 
   // Create four tasks for the actor.
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
@@ -556,6 +561,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Actor restarts, but we don't receive the disconnect message until later.
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
+  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   submitter_.SubmitTask(task2);
@@ -567,6 +573,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
       actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
+  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   submitter_.SubmitTask(task3);
@@ -577,6 +584,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // The actor dies twice. We receive the last RESTART message first.
   submitter_.DisconnectActor(
       actor_id, 3, /*dead=*/false, death_cause, /*is_restartable=*/true);
+  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   submitter_.SubmitTask(task4);
@@ -593,16 +601,19 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   submitter_.ConnectActor(actor_id, addr, 2);
   submitter_.DisconnectActor(
       actor_id, 2, /*dead=*/false, death_cause, /*is_restartable=*/true);
+  ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently.
   submitter_.DisconnectActor(
       actor_id, 3, /*dead=*/true, death_cause, /*is_restartable=*/false);
+  ASSERT_EQ(num_clients_connected_, 2);
 
   // We receive more late messages. Nothing happens because the actor is dead.
   submitter_.DisconnectActor(
       actor_id, 4, /*dead=*/false, death_cause, /*is_restartable=*/true);
   addr.set_port(3);
   submitter_.ConnectActor(actor_id, addr, 4);
+  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task5 = CreateActorTaskHelper(actor_id, worker_id, 4);
   EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task5.TaskId(), _, _, _, _, _))
@@ -624,6 +635,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, actor_addr1, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
+  ASSERT_EQ(num_clients_connected_, 1);
 
   // Create 3 tasks for the actor.
   auto task1_first_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 0);
@@ -736,6 +748,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
+  ASSERT_EQ(num_clients_connected_, 1);
 
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.

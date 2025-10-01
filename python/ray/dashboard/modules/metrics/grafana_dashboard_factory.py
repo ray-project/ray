@@ -66,10 +66,7 @@ def _read_configs_for_dashboard(
         )
         or ""
     )
-    if global_filters_str == "":
-        global_filters = []
-    else:
-        global_filters = global_filters_str.split(",")
+    global_filters = global_filters_str.split(",")
 
     return uid, global_filters
 

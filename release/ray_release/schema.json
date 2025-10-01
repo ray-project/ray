@@ -108,9 +108,6 @@
 				"post_build_script": {
 					"type": "string"
 				},
-				"python_depset": {
-					"type": "string"
-				},
 				"pip": {
 					"type": "array"
 				},

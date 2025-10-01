@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <string_view>
 
 #include "ray/core_worker/shutdown_coordinator.h"
@@ -68,15 +69,20 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   /// Execute worker exit sequence with task draining.
   /// Drains tasks/references as applicable for worker mode, then performs
   /// graceful shutdown.
+  void ExecuteWorkerExit(std::string_view exit_type,
+                         std::string_view detail,
+                         std::chrono::milliseconds timeout_ms) override;
+
   void ExecuteExit(std::string_view exit_type,
                    std::string_view detail,
                    std::chrono::milliseconds timeout_ms,
                    const std::shared_ptr<LocalMemoryBuffer>
                        &creation_task_exception_pb_bytes) override;
 
-  /// Execute exit sequence only if the worker is currently idle; otherwise, it
+  /// Execute handle exit sequence with idle checking.
+  /// Only performs worker exit if the worker is currently idle; otherwise, it
   /// logs and returns without action.
-  void ExecuteExitIfIdle(std::string_view exit_type,
+  void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override;
 

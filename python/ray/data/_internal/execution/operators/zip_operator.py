@@ -1,4 +1,3 @@
-import collections
 import itertools
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -7,7 +6,6 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
-    NAryOperator,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
@@ -26,7 +24,7 @@ if TYPE_CHECKING:
     from ray.data.block import BlockMetadataWithSchema
 
 
-class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
+class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that zips its inputs together.
 
     NOTE: the implementation is bulk for now, which materializes all its inputs in
@@ -36,79 +34,71 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def __init__(
         self,
+        left_input_op: PhysicalOperator,
+        right_input_op: PhysicalOperator,
         data_context: DataContext,
-        *input_ops: PhysicalOperator,
     ):
         """Create a ZipOperator.
 
         Args:
-            input_ops: Operators generating input data for this operator to zip.
+            left_input_ops: The input operator at left hand side.
+            right_input_op: The input operator at right hand side.
         """
-        assert len(input_ops) >= 2
-        self._input_buffers: List[collections.deque[RefBundle]] = [
-            collections.deque() for _ in range(len(input_ops))
-        ]
-        self._output_buffer: collections.deque[RefBundle] = collections.deque()
+        self._left_buffer: List[RefBundle] = []
+        self._right_buffer: List[RefBundle] = []
+        self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
         super().__init__(
+            "Zip",
+            [left_input_op, right_input_op],
             data_context,
-            *input_ops,
+            target_max_block_size=None,
         )
 
     def num_outputs_total(self) -> Optional[int]:
-        num_outputs = None
-        for input_op in self.input_dependencies:
-            input_num_outputs = input_op.num_outputs_total()
-            if input_num_outputs is None:
-                continue
-            if num_outputs is None:
-                num_outputs = input_num_outputs
-            else:
-                num_outputs = max(num_outputs, input_num_outputs)
-        return num_outputs
+        left_num_outputs = self.input_dependencies[0].num_outputs_total()
+        right_num_outputs = self.input_dependencies[1].num_outputs_total()
+        if left_num_outputs is not None and right_num_outputs is not None:
+            return max(left_num_outputs, right_num_outputs)
+        elif left_num_outputs is not None:
+            return left_num_outputs
+        else:
+            return right_num_outputs
 
     def num_output_rows_total(self) -> Optional[int]:
-        num_rows = None
-        for input_op in self.input_dependencies:
-            input_num_rows = input_op.num_output_rows_total()
-            if input_num_rows is None:
-                continue
-            if num_rows is None:
-                num_rows = input_num_rows
-            else:
-                num_rows = max(num_rows, input_num_rows)
-        return num_rows
+        left_num_rows = self.input_dependencies[0].num_output_rows_total()
+        right_num_rows = self.input_dependencies[1].num_output_rows_total()
+        if left_num_rows is not None and right_num_rows is not None:
+            return max(left_num_rows, right_num_rows)
+        elif left_num_rows is not None:
+            return left_num_rows
+        else:
+            return right_num_rows
 
     def internal_queue_size(self) -> int:
-        return sum([len(buf) for buf in self._input_buffers])
+        return len(self._left_buffer) + len(self._right_buffer)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
-        assert 0 <= input_index <= len(self._input_dependencies), input_index
-        self._input_buffers[input_index].append(refs)
-        self._metrics.on_input_queued(refs)
+        assert input_index == 0 or input_index == 1, input_index
+        if input_index == 0:
+            self._left_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
+        else:
+            self._right_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
-        assert len(self._output_buffer) == 0, len(self._output_buffer)
+        self._output_buffer, self._stats = self._zip(
+            self._left_buffer, self._right_buffer
+        )
 
-        # Start with the first input buffer
-        while self._input_buffers[0]:
-            refs = self._input_buffers[0].popleft()
-            self._output_buffer.append(refs)
+        while self._left_buffer:
+            refs = self._left_buffer.pop()
             self._metrics.on_input_dequeued(refs)
-
-        # Process each additional input buffer
-        for input_buffer in self._input_buffers[1:]:
-            self._output_buffer, self._stats = self._zip(
-                self._output_buffer, input_buffer
-            )
-
-            # Clear the input buffer AFTER using it in _zip
-            while input_buffer:
-                refs = input_buffer.popleft()
-                self._metrics.on_input_dequeued(refs)
-
-        # Mark outputs as ready
+        while self._right_buffer:
+            refs = self._right_buffer.pop()
+            self._metrics.on_input_dequeued(refs)
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)
 
@@ -118,7 +108,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        refs = self._output_buffer.popleft()
+        refs = self._output_buffer.pop(0)
         self._metrics.on_output_dequeued(refs)
         return refs
 
@@ -129,10 +119,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return True
 
     def _zip(
-        self,
-        left_input: collections.deque[RefBundle],
-        right_input: collections.deque[RefBundle],
-    ) -> Tuple[collections.deque[RefBundle], StatsDict]:
+        self, left_input: List[RefBundle], right_input: List[RefBundle]
+    ) -> Tuple[List[RefBundle], StatsDict]:
         """Zip the RefBundles from `left_input` and `right_input` together.
 
         Zip is done in 2 steps: aligning blocks, and zipping blocks from
@@ -231,7 +219,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             output_metadata_schema
         )
 
-        output_refs: collections.deque[RefBundle] = collections.deque()
+        output_refs = []
         input_owned = all(b.owns_blocks for b in left_input)
         for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
             output_refs.append(

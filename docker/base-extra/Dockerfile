@@ -2,7 +2,7 @@
 
 ARG BASE_IMAGE="rayproject/ray:latest"
 
-FROM "$BASE_IMAGE" AS main-build
+FROM "$BASE_IMAGE"
 
 ENV TERM=xterm
 
@@ -198,63 +198,7 @@ fi
 # Remove apt sources so that it won't run into apt update issues when running
 # the image.
 sudo rm -rf /etc/apt/sources.list.d/*
-sudo rm -rf /var/lib/apt/lists/*
 
 EOF
-
-# --- HAProxy Build Stage ---
-FROM $BASE_IMAGE AS haproxy-builder
-
-USER root
-
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    libpcre3-dev \
-    libssl-dev \
-    zlib1g-dev \
-    ca-certificates
-rm -rf /var/lib/apt/lists/*
-
-# Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
-HAPROXY_BUILD_DIR=$(mktemp -d)
-curl -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
-tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
-make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
-make -C "${HAPROXY_BUILD_DIR}" install SBINDIR=/usr/local/bin
-rm -rf "${HAPROXY_BUILD_DIR}"
-
-EOF
-
-# --- Return to main image ---
-FROM main-build AS main
-
-USER root
-
-# Copy HAProxy binary from builder stage
-COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
-
-# Install HAProxy runtime dependency and setup
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-apt-get update -y
-apt-get install -y --no-install-recommends socat
-
-mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
-chown -R ray:"$(id -gn ray)" /run/haproxy
-
-rm -rf /var/lib/apt/lists/*
-EOF
-
-USER ray
-WORKDIR /home/ray
 
 RUN mkdir -p /tmp/supervisord

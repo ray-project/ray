@@ -12,7 +12,6 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 from collections import defaultdict
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
-from typing_extensions import Self
 import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -60,7 +59,7 @@ from ray.rllib.utils.metrics import (
     TD_ERROR_KEY,
     TIMERS,
 )
-from ray._common.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
@@ -239,7 +238,7 @@ class DQNConfig(AlgorithmConfig):
         categorical_distribution_temperature: Optional[float] = NotProvided,
         burn_in_len: Optional[int] = NotProvided,
         **kwargs,
-    ) -> Self:
+    ) -> "DQNConfig":
         """Sets the training related configuration.
 
         Args:
@@ -594,7 +593,7 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
 class DQN(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> DQNConfig:
+    def get_default_config(cls) -> AlgorithmConfig:
         return DQNConfig()
 
     @classmethod

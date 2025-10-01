@@ -17,10 +17,10 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 
-#include "absl/synchronization/mutex.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -43,13 +43,17 @@ class ShutdownExecutorInterface {
   virtual void ExecuteForceShutdown(std::string_view exit_type,
                                     std::string_view detail) = 0;
 
+  virtual void ExecuteWorkerExit(std::string_view exit_type,
+                                 std::string_view detail,
+                                 std::chrono::milliseconds timeout_ms) = 0;
+
   virtual void ExecuteExit(std::string_view exit_type,
                            std::string_view detail,
                            std::chrono::milliseconds timeout_ms,
                            const std::shared_ptr<::ray::LocalMemoryBuffer>
                                &creation_task_exception_pb_bytes) = 0;
 
-  virtual void ExecuteExitIfIdle(std::string_view exit_type,
+  virtual void ExecuteHandleExit(std::string_view exit_type,
                                  std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
@@ -254,14 +258,14 @@ class ShutdownCoordinator {
   rpc::WorkerType worker_type_;
 
   // Mutex-guarded shutdown state
-  mutable absl::Mutex mu_;
-  ShutdownState state_ ABSL_GUARDED_BY(mu_) = ShutdownState::kRunning;
-  ShutdownReason reason_ ABSL_GUARDED_BY(mu_) = ShutdownReason::kNone;
-  bool force_executed_ ABSL_GUARDED_BY(mu_) = false;
-  bool force_started_ ABSL_GUARDED_BY(mu_) = false;
+  mutable std::mutex mu_;
+  ShutdownState state_ = ShutdownState::kRunning;
+  ShutdownReason reason_ = ShutdownReason::kNone;
+  bool force_executed_ = false;
+  bool force_started_ = false;
 
   /// Shutdown detail for observability (set once during shutdown initiation)
-  std::string shutdown_detail_ ABSL_GUARDED_BY(mu_);
+  std::string shutdown_detail_;
 };
 }  // namespace core
 }  // namespace ray

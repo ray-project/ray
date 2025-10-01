@@ -18,8 +18,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
-    BlockMapTransformFn,
-    MapTransformer,
+    create_map_transformer_from_block_fn,
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -34,7 +33,7 @@ def make_map_transformer(block_fn):
         for block in block_iter:
             yield pd.DataFrame({"id": block_fn(block["id"])})
 
-    return MapTransformer([BlockMapTransformFn(map_fn)])
+    return create_map_transformer_from_block_fn(map_fn)
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:

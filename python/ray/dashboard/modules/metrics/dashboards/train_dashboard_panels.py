@@ -2,9 +2,10 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
-    Row,
     Target,
+    Row,
 )
+
 
 # Ray Train Metrics (Controller)
 CONTROLLER_STATE_PANEL = Panel(

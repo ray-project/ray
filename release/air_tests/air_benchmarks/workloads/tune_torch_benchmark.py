@@ -8,9 +8,8 @@ import click
 import numpy as np
 
 import ray
-from ray.train import ScalingConfig, RunConfig
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.tune.integration.ray_train import TuneReportCallback
 
 
 CONFIG = {"lr": 1e-3, "batch_size": 64, "epochs": 20}
@@ -22,7 +21,7 @@ def prepare_mnist():
 
     print("Preparing Torch benchmark: Downloading MNIST")
 
-    @ray.remote(num_cpus=0)
+    @ray.remote
     def _download_data():
         import torchvision
 
@@ -32,24 +31,24 @@ def prepare_mnist():
     ray.get(schedule_remote_fn_on_all_nodes(_download_data))
 
 
-def train_loop(config: Dict):
-    from torch_benchmark import train_func
-
-    train_func(use_ray=True, config=config)
-
-
 def get_trainer(
     num_workers: int = 4,
     use_gpu: bool = False,
     config: Optional[Dict] = None,
 ):
     """Get the trainer to be used across train and tune to ensure consistency."""
+    from torch_benchmark import train_func
+
+    def train_loop(config):
+        train_func(use_ray=True, config=config)
+
     # We are using STRICT_PACK here to do an apples to apples comparison.
     # PyTorch defaults to using multithreading, so if the workers are spread,
     # they are able to utilize more resources. We would effectively be comparing
     # X tune runs with 2 CPUs per worker vs. 1 tune run with up to 8 CPUs per
     # worker. Using STRICT_PACK avoids this by forcing all workers to be
     # co-located.
+
     config = config or CONFIG
 
     trainer = TorchTrainer(
@@ -58,12 +57,9 @@ def get_trainer(
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             resources_per_worker={"CPU": 2},
+            trainer_resources={"CPU": 0},
             use_gpu=use_gpu,
             placement_strategy="STRICT_PACK",
-        ),
-        run_config=RunConfig(
-            name="train_torch_benchmark",
-            storage_path="/mnt/cluster_storage/ray-train-results",
         ),
     )
     return trainer
@@ -71,27 +67,6 @@ def get_trainer(
 
 def train_torch(num_workers: int, use_gpu: bool = False, config: Optional[Dict] = None):
     trainer = get_trainer(num_workers=num_workers, use_gpu=use_gpu, config=config)
-    trainer.fit()
-
-
-def train_driver_fn(config: Dict):
-
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_loop,
-        train_loop_config=config["train_loop_config"],
-        run_config=RunConfig(
-            name="tune_torch_benchmark",
-            storage_path="/mnt/cluster_storage/ray-tune-results",
-            callbacks=[TuneReportCallback()],
-        ),
-        scaling_config=ScalingConfig(
-            num_workers=config["num_workers"],
-            resources_per_worker={"CPU": 2},
-            use_gpu=config["use_gpu"],
-            placement_strategy="STRICT_PACK",
-        ),
-    )
-
     trainer.fit()
 
 
@@ -115,14 +90,11 @@ def tune_torch(
         "train_loop_config": {
             "lr": tune.loguniform(1e-4, 1e-1),
         },
-        "num_workers": num_workers,
-        "use_gpu": use_gpu,
     }
 
-    param_space["train_loop_config"].update(config or {})
-
+    trainer = get_trainer(num_workers=num_workers, use_gpu=use_gpu, config=config)
     tuner = Tuner(
-        trainable=train_driver_fn,
+        trainable=trainer,
         param_space=param_space,
         tune_config=TuneConfig(mode="min", metric="loss", num_samples=num_trials),
     )

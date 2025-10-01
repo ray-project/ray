@@ -15,6 +15,7 @@ from unittest import mock
 import pytest
 
 import ray
+import ray.train
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
 from ray.exceptions import RayTaskError

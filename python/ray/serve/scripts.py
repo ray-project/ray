@@ -868,8 +868,6 @@ def build(
         Dumper=ServeDeploySchemaDumper,
         default_flow_style=False,
         sort_keys=False,
-        width=80,  # Set width to avoid folding long lines
-        indent=2,  # Use 2-space indentation for more compact configuration
     )
     cli_logger.info(
         "The auto-generated application names default to `app1`, `app2`, ... etc. "
@@ -886,31 +884,35 @@ def build(
 class ServeDeploySchemaDumper(yaml.SafeDumper):
     """YAML dumper object with custom formatting for ServeDeploySchema.
 
-    Reformat config to follow this spacing with appropriate line breaks:
-    ---------------------------------------------------------------
-    proxy_location: EveryNode
+    Reformat config to follow this spacing:
+    ---------------------------------------
 
-    http_options:
-      host: 0.0.0.0
-      port: 8000
+    host: 0.0.0.0
 
-    grpc_options:
-      port: 9000
-      grpc_servicer_functions: []
-
-    logging_config:
-      # ...
+    port: 8000
 
     applications:
-      - name: app1
-        import_path: app1.path
-        # ...
+
+    - name: app1
+
+      import_path: app1.path
+
+      runtime_env: {}
+
+      deployments:
+
+      - name: deployment1
+        ...
+
+      - name: deployment2
+        ...
     """
 
     def write_line_break(self, data=None):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
-        # Only add extra line breaks between top-level keys
-        if len(self.indents) == 1:
+        # Indents must be at most 4 to ensure that only the top 4 levels of
+        # the config file have line breaks between them.
+        if len(self.indents) <= 4:
             super().write_line_break()

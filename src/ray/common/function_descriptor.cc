@@ -14,8 +14,6 @@
 
 #include "ray/common/function_descriptor.h"
 
-#include "ray/util/logging.h"
-
 namespace ray {
 FunctionDescriptor FunctionDescriptorBuilder::Empty() {
   static ray::FunctionDescriptor empty =

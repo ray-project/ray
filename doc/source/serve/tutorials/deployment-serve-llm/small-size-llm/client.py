@@ -1,10 +1,10 @@
 from urllib.parse import urljoin
 from openai import OpenAI
 
-API_KEY = "FAKE_KEY"
-BASE_URL = "http://localhost:8000"
+api_key = "FAKE_KEY"
+base_url = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
+client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
 
 response = client.chat.completions.create(
     model="my-llama-3.1-8b",

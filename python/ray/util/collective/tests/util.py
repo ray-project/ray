@@ -1,12 +1,12 @@
-import logging
-
 import cupy as cp
-import torch
+import logging
 
 import ray
 import ray.util.collective as col
-from ray.util.collective.collective_group.nccl_util import get_num_gpus
 from ray.util.collective.types import Backend, ReduceOp
+from ray.util.collective.collective_group.nccl_util import get_num_gpus
+
+import torch
 
 logger = logging.getLogger(__name__)
 

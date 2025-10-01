@@ -25,7 +25,6 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
-#include "ray/common/status.h"
 #include "ray/rpc/common.h"
 #include "ray/util/network_util.h"
 #include "ray/util/thread_utils.h"

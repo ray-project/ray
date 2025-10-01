@@ -16,7 +16,6 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
-from typing_extensions import Self
 
 import gymnasium as gym
 import tree
@@ -49,7 +48,7 @@ from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray._common.deprecation import (
+from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
     deprecation_warning,
@@ -153,7 +152,7 @@ class AlgorithmConfig(_Config):
         return DEFAULT_POLICY_ID
 
     @classmethod
-    def from_dict(cls, config_dict: dict) -> Self:
+    def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
         """Creates an AlgorithmConfig from a legacy python config dict.
 
         .. testcode::
@@ -733,7 +732,7 @@ class AlgorithmConfig(_Config):
     def update_from_dict(
         self,
         config_dict: PartialAlgorithmConfigDict,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Modifies this AlgorithmConfig via the provided python config dict.
 
         Warns if `config_dict` contains deprecated keys.
@@ -868,19 +867,18 @@ class AlgorithmConfig(_Config):
         return state
 
     @classmethod
-    def from_state(cls, state: Dict[str, Any]) -> Union[Self, Any]:
+    def from_state(cls, state: Dict[str, Any]) -> "AlgorithmConfig":
         """Returns an instance constructed from the state.
 
         Args:
+            cls: An `AlgorithmConfig` class.
             state: A dictionary containing the state of an `AlgorithmConfig`.
                 See `AlgorithmConfig.get_state` for creating a state.
-                The constructed class will be of  ``state["class"]``.
 
         Returns:
             An `AlgorithmConfig` instance with attributes from the `state`.
         """
 
-        # As ctor could be any other class add Any to the return type to indicate this.
         ctor = state["class"]
         config = ctor()
 
@@ -910,7 +908,7 @@ class AlgorithmConfig(_Config):
         config = self.to_dict()
         return self._serialize_dict(config)
 
-    def copy(self, copy_frozen: Optional[bool] = None) -> Self:
+    def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
         """Creates a deep copy of this config and (un)freezes if necessary.
 
         Args:
@@ -1391,7 +1389,7 @@ class AlgorithmConfig(_Config):
 
         return learner
 
-    def get_config_for_module(self, module_id: ModuleID) -> Self:
+    def get_config_for_module(self, module_id: ModuleID) -> "AlgorithmConfig":
         """Returns an AlgorithmConfig object, specific to the given module ID.
 
         In a multi-agent setup, individual modules might override one or more
@@ -1430,7 +1428,7 @@ class AlgorithmConfig(_Config):
         *,
         extra_python_environs_for_driver: Optional[dict] = NotProvided,
         extra_python_environs_for_worker: Optional[dict] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's python environment settings.
 
         Args:
@@ -1464,7 +1462,7 @@ class AlgorithmConfig(_Config):
         num_gpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
         local_gpu_idx=DEPRECATED_VALUE,  # moved to `learners`
         num_cpus_for_local_worker=DEPRECATED_VALUE,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
         Args:
@@ -1591,7 +1589,7 @@ class AlgorithmConfig(_Config):
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
         torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
         torch_skip_nan_gradients: Optional[bool] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
         Args:
@@ -1701,7 +1699,7 @@ class AlgorithmConfig(_Config):
         self,
         enable_rl_module_and_learner: Optional[bool] = NotProvided,
         enable_env_runner_and_connector_v2: Optional[bool] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's API stack settings.
 
         Args:
@@ -1756,7 +1754,7 @@ class AlgorithmConfig(_Config):
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
         env_task_fn=DEPRECATED_VALUE,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
         Args:
@@ -1890,7 +1888,7 @@ class AlgorithmConfig(_Config):
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
         enable_connectors=DEPRECATED_VALUE,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
         Args:
@@ -2265,7 +2263,7 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
-    ) -> Self:
+    ):
         """Sets LearnerGroup and Learner worker related configurations.
 
         Args:
@@ -2358,7 +2356,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
         Args:
@@ -2567,7 +2565,7 @@ class AlgorithmConfig(_Config):
         on_episode_step: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_episode_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_sample_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the callbacks configuration.
 
         Args:
@@ -2733,7 +2731,7 @@ class AlgorithmConfig(_Config):
         # Deprecated args.
         always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
         Args:
@@ -3090,7 +3088,7 @@ class AlgorithmConfig(_Config):
         output_filesystem_kwargs: Optional[Dict] = NotProvided,
         output_write_episodes: Optional[bool] = NotProvided,
         offline_sampling: Optional[str] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
         Args:
@@ -3446,7 +3444,7 @@ class AlgorithmConfig(_Config):
         # Now done via Ray object store, which has its own cloud-supported
         # spillover mechanism.
         policy_map_cache=DEPRECATED_VALUE,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
         Validates the new multi-agent settings and translates everything into
@@ -3614,7 +3612,7 @@ class AlgorithmConfig(_Config):
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
         log_gradients: Optional[bool] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's reporting settings.
 
         Args:
@@ -3684,7 +3682,7 @@ class AlgorithmConfig(_Config):
         self,
         export_native_model_files: Optional[bool] = NotProvided,
         checkpoint_trainable_policies_only: Optional[bool] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's checkpointing settings.
 
         Args:
@@ -3718,7 +3716,7 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
         Args:
@@ -3775,7 +3773,7 @@ class AlgorithmConfig(_Config):
         num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
-    ) -> Self:
+    ):
         """Sets the config's fault tolerance settings.
 
         Args:
@@ -3908,7 +3906,7 @@ class AlgorithmConfig(_Config):
         # Deprecated arg.
         model_config_dict=DEPRECATED_VALUE,
         _enable_rl_module_api=DEPRECATED_VALUE,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
         Args:
@@ -3980,7 +3978,7 @@ class AlgorithmConfig(_Config):
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
-    ) -> Self:
+    ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
         Args:

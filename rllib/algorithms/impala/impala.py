@@ -2,7 +2,6 @@ import copy
 import logging
 import queue
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
-from typing_extensions import Self
 
 import ray
 from ray import ObjectRef
@@ -22,7 +21,7 @@ from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
@@ -208,7 +207,7 @@ class IMPALAConfig(AlgorithmConfig):
         num_aggregation_workers=DEPRECATED_VALUE,
         max_requests_in_flight_per_aggregator_worker=DEPRECATED_VALUE,
         **kwargs,
-    ) -> Self:
+    ) -> "IMPALAConfig":
         """Sets the training related configuration.
 
         Args:
@@ -359,7 +358,7 @@ class IMPALAConfig(AlgorithmConfig):
         _env_runners_only: Optional[bool] = NotProvided,
         _skip_learners: Optional[bool] = NotProvided,
         **kwargs,
-    ) -> Self:
+    ) -> "IMPALAConfig":
         """Sets the debugging related configuration.
 
         Args:
@@ -529,7 +528,7 @@ class IMPALA(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> IMPALAConfig:
+    def get_default_config(cls) -> AlgorithmConfig:
         return IMPALAConfig()
 
     @classmethod

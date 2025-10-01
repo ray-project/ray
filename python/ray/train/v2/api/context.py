@@ -253,36 +253,27 @@ class LocalTrainContext(TrainContext):
     def __init__(
         self,
         experiment_name: str,
-        world_size: int = 1,
-        world_rank: int = 0,
-        local_rank: int = 0,
-        local_world_size: int = 1,
-        node_rank: int = 0,
     ):
         self.experiment_name = experiment_name
-        self.world_size = world_size
-        self.world_rank = world_rank
-        self.local_rank = local_rank
-        self.local_world_size = local_world_size
-        self.node_rank = node_rank
 
     def get_experiment_name(self) -> str:
         return self.experiment_name
 
     def get_world_size(self) -> int:
-        return self.world_size
+        return 1
 
     def get_world_rank(self) -> int:
-        return self.world_rank
+        return 0
 
     def get_local_rank(self) -> int:
-        return self.local_rank
+        return 0
 
     def get_local_world_size(self) -> int:
-        return self.local_world_size
+        return 1
 
     def get_node_rank(self) -> int:
-        return self.node_rank
+        """For local mode, we only use one node."""
+        return 0
 
     def get_storage(self):
         raise NotImplementedError("Local storage context not yet implemented. ")

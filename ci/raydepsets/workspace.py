@@ -23,7 +23,6 @@ class Depset:
     packages: Optional[List[str]] = None
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
-    pre_hooks: Optional[List[str]] = None
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -51,7 +50,6 @@ def _dict_to_depset(depset: dict) -> Depset:
         depsets=depset.get("depsets", []),
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
-        pre_hooks=depset.get("pre_hooks", []),
         packages=depset.get("packages", []),
     )
 

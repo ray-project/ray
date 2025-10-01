@@ -1,10 +1,10 @@
 """Test the reduce API."""
-import numpy as np
 import pytest
-
+import numpy as np
 import ray
-from ray.util.collective.tests.cpu_util import create_collective_workers
 from ray.util.collective.types import Backend, ReduceOp
+
+from ray.util.collective.tests.cpu_util import create_collective_workers
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
@@ -160,8 +160,7 @@ def test_reduce_invalid_rank(ray_start_single_node, backend, dst_rank=3):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

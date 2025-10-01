@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <optional>
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 

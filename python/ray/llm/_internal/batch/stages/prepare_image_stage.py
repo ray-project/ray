@@ -322,21 +322,12 @@ class PrepareImageUDF(StatefulStageUDF):
 
         image_info: List[_ImageType] = []
         for message in messages:
-            content = message["content"]
-
-            # Convert PyArrow objects to Python objects if needed (like ChatTemplateStage).
-            # This handles the case where unform content types are serialized with PyArrow
-            # instead of pickle- happens when all messages have the same content structure
-            # (e.g., no system prompt + string content mixed with user messages with list content).
-            if hasattr(content, "tolist"):
-                content = content.tolist()
-
-            if not isinstance(content, list):
+            if not isinstance(message["content"], list):
                 continue
-            for content_item in content:
-                if content_item["type"] not in ("image", "image_url"):
+            for content in message["content"]:
+                if content["type"] not in ("image", "image_url"):
                     continue
-                image = content_item[content_item["type"]]
+                image = content[content["type"]]
                 if not isinstance(image, str) and not isinstance(
                     image, self.Image.Image
                 ):

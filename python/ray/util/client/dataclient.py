@@ -1,15 +1,15 @@
 """This file implements a threaded stream controller to abstract a data stream
 back to the ray clientserver.
 """
-import logging
 import math
+import logging
 import queue
 import threading
 import warnings
-from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
-
 import grpc
+
+from collections import OrderedDict
+from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc

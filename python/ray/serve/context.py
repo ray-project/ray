@@ -8,7 +8,7 @@ import contextvars
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -195,10 +195,6 @@ _serve_request_context = contextvars.ContextVar(
     "Serve internal request context variable", default=None
 )
 
-_serve_batch_request_context = contextvars.ContextVar(
-    "Serve internal batching request context variable", default=None
-)
-
 
 def _get_serve_request_context():
     """Get the current request context.
@@ -210,13 +206,6 @@ def _get_serve_request_context():
     if _serve_request_context.get() is None:
         _serve_request_context.set(_RequestContext())
     return _serve_request_context.get()
-
-
-def _get_serve_batch_request_context():
-    """Get the list of request contexts for the current batch."""
-    if _serve_batch_request_context.get() is None:
-        _serve_batch_request_context.set([])
-    return _serve_batch_request_context.get()
 
 
 def _set_request_context(
@@ -242,16 +231,6 @@ def _set_request_context(
             or current_request_context.multiplexed_model_id,
         )
     )
-
-
-def _unset_request_context():
-    """Unset the request context."""
-    _serve_request_context.set(_RequestContext())
-
-
-def _set_batch_request_context(request_contexts: List[_RequestContext]):
-    """Add the request context to the batch request context."""
-    _serve_batch_request_context.set(request_contexts)
 
 
 # `_requests_pending_assignment` is a map from request ID to a

@@ -73,6 +73,16 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
       last_detail = std::string(detail);
     }
   }
+  void ExecuteWorkerExit(std::string_view exit_type,
+                         std::string_view detail,
+                         std::chrono::milliseconds timeout_ms) override {
+    worker_exit_calls++;
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
+  }
   void ExecuteExit(std::string_view exit_type,
                    std::string_view detail,
                    std::chrono::milliseconds timeout_ms,
@@ -85,7 +95,7 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
       last_detail = std::string(detail);
     }
   }
-  void ExecuteExitIfIdle(std::string_view exit_type,
+  void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {
     handle_exit_calls++;
@@ -106,11 +116,14 @@ class NoOpShutdownExecutor : public ShutdownExecutorInterface {
                                std::string_view,
                                std::chrono::milliseconds) override {}
   void ExecuteForceShutdown(std::string_view, std::string_view) override {}
+  void ExecuteWorkerExit(std::string_view,
+                         std::string_view,
+                         std::chrono::milliseconds) override {}
   void ExecuteExit(std::string_view,
                    std::string_view,
                    std::chrono::milliseconds,
                    const std::shared_ptr<::ray::LocalMemoryBuffer> &) override {}
-  void ExecuteExitIfIdle(std::string_view,
+  void ExecuteHandleExit(std::string_view,
                          std::string_view,
                          std::chrono::milliseconds) override {}
   void KillChildProcessesImmediately() override {}

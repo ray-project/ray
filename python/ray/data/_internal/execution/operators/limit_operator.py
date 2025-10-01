@@ -29,7 +29,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_blocks_stats: List[BlockStats] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op, data_context)
+        super().__init__(self._name, input_op, data_context, target_max_block_size=None)
         if self._limit <= 0:
             self.mark_execution_finished()
 
@@ -54,9 +54,7 @@ class LimitOperator(OneToOneOperator):
             else:
                 # Slice the last block.
                 def slice_fn(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
-                    block = BlockAccessor.for_block(block).slice(
-                        0, num_rows, copy=False
-                    )
+                    block = BlockAccessor.for_block(block).slice(0, num_rows, copy=True)
                     metadata = copy.deepcopy(metadata)
                     metadata.num_rows = num_rows
                     metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()

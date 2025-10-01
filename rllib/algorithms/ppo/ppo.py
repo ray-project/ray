@@ -11,7 +11,6 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 
 import logging
 from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
-from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -26,7 +25,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
@@ -206,7 +205,7 @@ class PPOConfig(AlgorithmConfig):
         # Deprecated.
         vf_share_layers=DEPRECATED_VALUE,
         **kwargs,
-    ) -> Self:
+    ) -> "PPOConfig":
         """Sets the training related configuration.
 
         Args:
@@ -363,7 +362,7 @@ class PPOConfig(AlgorithmConfig):
 class PPO(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> PPOConfig:
+    def get_default_config(cls) -> AlgorithmConfig:
         return PPOConfig()
 
     @classmethod

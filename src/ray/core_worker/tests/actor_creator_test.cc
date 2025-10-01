@@ -12,16 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/actor_creator.h"
-
+// clang-format off
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs_client/gcs_client.h"
+#include "ray/core_worker/actor_creator.h"
 #include "ray/common/test_utils.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
+// clang-format on
 
 namespace ray {
 namespace core {
@@ -31,7 +32,7 @@ class ActorCreatorTest : public ::testing::Test {
   ActorCreatorTest() {}
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
-    actor_creator = std::make_unique<ActorCreator>(gcs_client->Actors());
+    actor_creator = std::make_unique<DefaultActorCreator>(gcs_client);
   }
   TaskSpecification GetTaskSpec(const ActorID &actor_id) {
     rpc::TaskSpec task_spec;
@@ -42,7 +43,7 @@ class ActorCreatorTest : public ::testing::Test {
     return TaskSpecification(task_spec);
   }
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
-  std::unique_ptr<ActorCreator> actor_creator;
+  std::unique_ptr<DefaultActorCreator> actor_creator;
 };
 
 TEST_F(ActorCreatorTest, IsRegister) {
@@ -66,19 +67,19 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
       .WillRepeatedly(::testing::DoAll(::testing::SaveArg<1>(&cb)));
-  int count = 0;
-  auto per_finish_cb = [&count](Status status) {
+  int cnt = 0;
+  auto per_finish_cb = [&cnt](Status status) {
     ASSERT_TRUE(status.ok());
-    count++;
+    cnt++;
   };
   actor_creator->AsyncRegisterActor(task_spec, per_finish_cb);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 100; ++i) {
     actor_creator->AsyncWaitForActorRegisterFinish(actor_id, per_finish_cb);
   }
   cb(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
-  ASSERT_EQ(11, count);
+  ASSERT_EQ(101, cnt);
 }
 
 }  // namespace core

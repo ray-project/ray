@@ -4,7 +4,7 @@
 # to check each subprocess unit and validate that errors
 # aren't being consumed/hidden.
 
-set -euxo pipefail
+set -exo pipefail
 
 # Use the AWS CLI to fetch BRAVE_API_KEY from Secrets Manager.
 # Replace 'my-brave-api-key-secret' with the actual secret name.

@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "absl/container/flat_hash_map.h"
 #include "ray/observability/metric_interface.h"
 
 namespace ray {
@@ -22,62 +21,49 @@ namespace observability {
 
 class FakeMetric : public MetricInterface {
  public:
-  FakeMetric() {}
+  FakeMetric() = default;
   ~FakeMetric() = default;
 
   void Record(double value) override { Record(value, stats::TagsType{}); }
 
+  void Record(double value, stats::TagsType tags) override {
+    absl::flat_hash_map<std::string, std::string> tags_map;
+    for (const auto &tag : tags) {
+      tags_map[tag.first.name()] = tag.second;
+    }
+    tag_to_value_.emplace(std::move(tags_map), value);
+  }
+
   void Record(double value,
-              std::vector<std::pair<std::string_view, std::string>> tags) override {
+              const std::unordered_map<std::string, std::string> &tags) override {
     stats::TagsType tags_pair_vec;
     tags_pair_vec.reserve(tags.size());
     std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
-      tags_pair_vec.emplace_back(stats::TagKeyType::Register(tag.first),
-                                 std::move(tag.second));
+      return tags_pair_vec.emplace_back(stats::TagKeyType::Register(tag.first),
+                                        std::move(tag.second));
     });
     Record(value, std::move(tags_pair_vec));
   }
 
-  void Record(double value, stats::TagsType tags) override = 0;
+  void Record(double value,
+              const std::unordered_map<std::string_view, std::string> &tags) override {
+    stats::TagsType tags_pair_vec;
+    tags_pair_vec.reserve(tags.size());
+    std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
+      return tags_pair_vec.emplace_back(stats::TagKeyType::Register(tag.first),
+                                        std::move(tag.second));
+    });
+    Record(value, std::move(tags_pair_vec));
+  }
 
   const absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>
       &GetTagToValue() const {
     return tag_to_value_;
   }
 
- protected:
+ private:
   absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>
       tag_to_value_;
-};
-
-class FakeCounter : public FakeMetric {
- public:
-  FakeCounter() {}
-  ~FakeCounter() = default;
-
-  void Record(double value, stats::TagsType tags) override {
-    absl::flat_hash_map<std::string, std::string> tags_map;
-    for (const auto &tag : tags) {
-      tags_map[tag.first.name()] = tag.second;
-    }
-    // accumulate the value of the tag set
-    tag_to_value_[std::move(tags_map)] += value;
-  }
-};
-
-class FakeGauge : public FakeMetric {
- public:
-  FakeGauge() {}
-  ~FakeGauge() = default;
-
-  void Record(double value, stats::TagsType tags) override {
-    absl::flat_hash_map<std::string, std::string> tags_map;
-    for (const auto &tag : tags) {
-      tags_map[tag.first.name()] = tag.second;
-    }
-    // record the last value of the tag set
-    tag_to_value_.emplace(std::move(tags_map), value);
-  }
 };
 
 }  // namespace observability

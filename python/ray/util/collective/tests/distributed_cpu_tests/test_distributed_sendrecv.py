@@ -1,10 +1,10 @@
 """Test the send/recv API."""
 import numpy as np
 import pytest
-
 import ray
-from ray.util.collective.tests.cpu_util import create_collective_workers
+
 from ray.util.collective.types import Backend
+from ray.util.collective.tests.cpu_util import create_collective_workers
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
@@ -45,8 +45,7 @@ def test_sendrecv(
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

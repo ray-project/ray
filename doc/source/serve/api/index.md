@@ -392,7 +392,6 @@ Content-Type: application/json
    schema.CeleryAdapterConfig
    schema.TaskProcessorConfig
    schema.TaskResult
-   schema.ScaleDeploymentRequest
 ```
 
 (serve-rest-api-response-schema)=

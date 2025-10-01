@@ -19,7 +19,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -32,7 +31,7 @@ namespace raylet {
 Worker::Worker(const JobID &job_id,
                int runtime_env_hash,
                const WorkerID &worker_id,
-               const rpc::Language &language,
+               const Language &language,
                rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
@@ -121,7 +120,7 @@ void Worker::SetStartupToken(StartupToken startup_token) {
   startup_token_ = startup_token;
 }
 
-rpc::Language Worker::GetLanguage() const { return language_; }
+Language Worker::GetLanguage() const { return language_; }
 
 const std::string Worker::IpAddress() const { return ip_address_; }
 

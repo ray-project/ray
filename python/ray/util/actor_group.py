@@ -1,12 +1,12 @@
-import logging
 import weakref
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Type, TypeVar
+import logging
+from typing import List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
-from ray._private.utils import get_ray_doc_version
 from ray.actor import ActorHandle
 from ray.util.annotations import Deprecated
+from ray._private.utils import get_ray_doc_version
 
 T = TypeVar("T")
 ActorMetadata = TypeVar("ActorMetadata")

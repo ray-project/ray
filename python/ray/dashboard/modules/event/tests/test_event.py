@@ -14,11 +14,10 @@ from pprint import pprint
 
 import numpy as np
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._common.utils import binary_to_hex
 from ray._private.event.event_logger import (
     filter_event_by_level,
     get_event_id,
@@ -34,6 +33,7 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
+from ray._common.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,

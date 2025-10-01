@@ -14,6 +14,7 @@
 
 #include "ray/raylet/lease_dependency_manager.h"
 
+#include <list>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -94,7 +95,7 @@ class LeaseDependencyManagerTest : public ::testing::Test {
   }
 
   CustomMockObjectManager object_manager_mock_;
-  ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
   LeaseDependencyManager lease_dependency_manager_;
 };
 

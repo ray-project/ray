@@ -1,8 +1,7 @@
 import logging
-import os
-import warnings
 from collections import Counter, defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
+import os
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -15,6 +14,7 @@ from typing import (
     Tuple,
     Union,
 )
+import warnings
 
 import pyarrow.fs
 

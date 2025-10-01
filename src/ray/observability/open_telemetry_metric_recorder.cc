@@ -116,7 +116,6 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
   for (const auto &observation : it->second) {
     observer->Observe(observation.second, observation.first);
   }
-  it->second.clear();
 }
 
 void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,

@@ -20,6 +20,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
@@ -29,7 +30,7 @@
 #include "ray/core_worker/task_execution/scheduling_queue.h"
 #include "ray/core_worker/task_execution/scheduling_util.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
-#include "ray/rpc/rpc_callback_types.h"
+#include "ray/rpc/server_call.h"
 
 namespace ray {
 namespace core {

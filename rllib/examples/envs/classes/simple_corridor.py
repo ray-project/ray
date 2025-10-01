@@ -1,10 +1,6 @@
-import logging
-
 import gymnasium as gym
-import numpy as np
 from gymnasium.spaces import Box, Discrete
-
-logger = logging.getLogger("ray.rllib")
+import numpy as np
 
 
 class SimpleCorridor(gym.Env):
@@ -24,7 +20,7 @@ class SimpleCorridor(gym.Env):
 
     def set_corridor_length(self, length):
         self.end_pos = length
-        logger.info(f"Set corridor length to {self.end_pos}")
+        print(f"Set corridor length to {self.end_pos}")
         assert self.end_pos <= 999, "The maximum `corridor_length` allowed is 999!"
 
     def reset(self, *, seed=None, options=None):

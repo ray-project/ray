@@ -1,10 +1,10 @@
 """Test the reduce API."""
-import cupy as cp
 import pytest
-
+import cupy as cp
 import ray
-from ray.util.collective.tests.util import create_collective_multigpu_workers
 from ray.util.collective.types import ReduceOp
+
+from ray.util.collective.tests.util import create_collective_multigpu_workers
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])

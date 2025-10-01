@@ -21,15 +21,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_actors, list_placement_groups
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "include_dashboard": True,
-        }
-    ],
-    indirect=True,
-)
 def test_placement_group_no_resource(ray_start_cluster):
     @ray.remote(num_cpus=1)
     class Actor(object):
@@ -105,12 +96,15 @@ def test_placement_group_no_resource(ray_start_cluster):
         for actor in chain(first_node, second_node):
             ray.get(actor.value.remote())
 
+        # Get all actors.
+        actor_infos = ray._private.state.actors()
+
         first_node_ids = [
-            ray.util.state.get_actor(id=actor._actor_id.hex()).node_id
+            actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
             for actor in first_node
         ]
         second_node_ids = [
-            ray.util.state.get_actor(id=actor._actor_id.hex()).node_id
+            actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
             for actor in second_node
         ]
 
@@ -208,15 +202,6 @@ def test_task_using_pg_observability(ray_start_cluster):
 
 
 @pytest.mark.parametrize("scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK"])
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "include_dashboard": True,
-        }
-    ],
-    indirect=True,
-)
 def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_strategy):
     @ray.remote
     class Actor(object):
@@ -270,10 +255,13 @@ def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_stra
     [ray.get(actor.value.remote()) for actor in actors]
 
     # Get all actors.
-    actor_infos = ray.util.state.list_actors(detail=True)
+    actor_infos = ray._private.state.actors()
 
     # Make sure all actors in counter_list are located in separate nodes.
-    assert are_pairwise_unique([info_obj.node_id for info_obj in actor_infos])
+    actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
+    assert are_pairwise_unique(
+        [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
+    )
 
 
 def test_placement_group_parallel_submission(ray_start_cluster):

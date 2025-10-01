@@ -1,12 +1,13 @@
+import subprocess
+import os
+import sys
+import random
+import threading
 import collections
 import logging
-import os
-import random
 import shutil
-import subprocess
-import sys
-import threading
 import time
+
 
 _logger = logging.getLogger("ray.util.spark.utils")
 
@@ -198,9 +199,8 @@ _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
 
 
 def calc_mem_ray_head_node(configured_heap_memory_bytes, configured_object_store_bytes):
-    import shutil
-
     import psutil
+    import shutil
 
     if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
         available_physical_mem = int(

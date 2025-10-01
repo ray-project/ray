@@ -1,6 +1,5 @@
 import logging
 from typing import Optional, Type, Union
-from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
@@ -26,7 +25,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import (
+from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
@@ -125,7 +124,7 @@ class CQLConfig(SACConfig):
         min_q_weight: Optional[float] = NotProvided,
         deterministic_backup: Optional[bool] = NotProvided,
         **kwargs,
-    ) -> Self:
+    ) -> "CQLConfig":
         """Sets the training-related configuration.
 
         Args:
@@ -162,7 +161,7 @@ class CQLConfig(SACConfig):
         return self
 
     @override(AlgorithmConfig)
-    def offline_data(self, **kwargs) -> Self:
+    def offline_data(self, **kwargs) -> "CQLConfig":
 
         super().offline_data(**kwargs)
 
@@ -282,7 +281,7 @@ class CQL(SAC):
 
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> CQLConfig:
+    def get_default_config(cls) -> AlgorithmConfig:
         return CQLConfig()
 
     @classmethod

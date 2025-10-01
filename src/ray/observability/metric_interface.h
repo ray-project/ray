@@ -40,7 +40,9 @@ class MetricInterface {
   virtual void Record(double value) = 0;
   virtual void Record(double value, stats::TagsType tags) = 0;
   virtual void Record(double value,
-                      std::vector<std::pair<std::string_view, std::string>> tags) = 0;
+                      const std::unordered_map<std::string, std::string> &tags) = 0;
+  virtual void Record(double value,
+                      const std::unordered_map<std::string_view, std::string> &tags) = 0;
 };
 
 }  // namespace observability

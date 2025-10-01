@@ -6,12 +6,12 @@ locally in LocalNodeProvider. To start the webserver the user runs:
 import argparse
 import json
 import logging
-import socket
 import threading
+import socket
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
-from ray._common.network_utils import build_address
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

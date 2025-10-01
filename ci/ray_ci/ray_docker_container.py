@@ -1,11 +1,11 @@
 import os
-from typing import List, Optional
+from typing import List
 
 from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, PYTHON_VERSIONS
 from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.docker_container import RAY_REPO_MAP, DockerContainer, RayType
+from ci.ray_ci.docker_container import DockerContainer
 from ci.ray_ci.utils import RAY_VERSION, docker_pull
 
 
@@ -14,32 +14,21 @@ class RayDockerContainer(DockerContainer):
     Container for building and publishing ray docker images
     """
 
-    def run(self, base: Optional[str] = None) -> None:
+    def run(self, use_base_extra_testdeps: bool = False) -> None:
         """
         Build and publish ray docker images
         """
         assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
         rayci_build_id = os.environ["RAYCI_BUILD_ID"]
-        if base is None:
-            if self.image_type in [
-                RayType.RAY_EXTRA.value,
-                RayType.RAY_ML_EXTRA.value,
-                RayType.RAY_LLM_EXTRA.value,
-            ]:
-                base = "base-extra"
-            else:
-                base = "base"
-
+        base_name = "base" if not use_base_extra_testdeps else "base-extra-testdeps"
         if self.architecture == DEFAULT_ARCHITECTURE:
-            suffix = base
+            suffix = base_name
         else:
-            suffix = f"{base}-{self.architecture}"
-
-        image_repo = RAY_REPO_MAP[self.image_type]
+            suffix = f"{base_name}-{self.architecture}"
 
         base_image = (
             f"{_DOCKER_ECR_REPO}:{rayci_build_id}"
-            f"-{image_repo}-py{self.python_version}-{self.platform}-{suffix}"
+            f"-{self.image_type}-py{self.python_version}-{self.platform}-{suffix}"
         )
 
         docker_pull(base_image)
@@ -50,7 +39,7 @@ class RayDockerContainer(DockerContainer):
         )
         constraints_file = "requirements_compiled.txt"
         tag = self._get_canonical_tag()
-        ray_image = f"rayproject/{image_repo}:{tag}"
+        ray_image = f"rayproject/{self.image_type}:{tag}"
         pip_freeze = f"{self.image_type}:{tag}_pip-freeze.txt"
 
         cmds = [
@@ -84,7 +73,6 @@ class RayDockerContainer(DockerContainer):
         )
 
     def _get_image_names(self) -> List[str]:
-        repo_name = RAY_REPO_MAP[self.image_type]
-        ray_repo = f"rayproject/{repo_name}"
+        ray_repo = f"rayproject/{self.image_type}"
 
         return [f"{ray_repo}:{tag}" for tag in self._get_image_tags(external=True)]

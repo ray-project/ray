@@ -175,15 +175,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def unique(self) -> BlockColumn:
         pd = lazy_import_pandas()
-        try:
-            return pd.Series(self._column.unique())
-        except ValueError as e:
-            if "buffer source array is read-only" in str(e):
-                # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
-                #       when computing unique values hence failing
-                return pd.Series(self._column.copy().unique())
-            else:
-                raise
+        return pd.Series(self._column.unique())
 
     def flatten(self) -> BlockColumn:
         return self._column.list.flatten()
@@ -243,7 +235,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _combine_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
@@ -254,11 +246,9 @@ class PandasBlockBuilder(TableBlockBuilder):
             df.reset_index(drop=True, inplace=True)
         else:
             df = tables[0]
-
         ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
-
         return df
 
     @staticmethod
@@ -289,10 +279,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.columns.tolist()
 
     def fill_column(self, name: str, value: Any) -> Block:
-        # Check if value is array-like - if so, use upsert_column logic
-        if isinstance(value, (pd.Series, np.ndarray)):
-            return self.upsert_column(name, value)
-        # Scalar value - use original fill_column logic
+        assert name not in self._table.columns
+
         return self._table.assign(**{name: value})
 
     @staticmethod
@@ -332,8 +320,6 @@ class PandasBlockAccessor(TableBlockAccessor):
     def upsert_column(
         self, column_name: str, column_data: BlockColumn
     ) -> "pandas.DataFrame":
-        import pyarrow
-
         if isinstance(column_data, (pyarrow.Array, pyarrow.ChunkedArray)):
             column_data = column_data.to_pandas()
 

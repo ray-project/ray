@@ -56,59 +56,17 @@ class CgroupManager : public CgroupManagerInterface {
     execute permissions.
    */
   static StatusOr<std::unique_ptr<CgroupManager>> Create(
-      std::string base_cgroup,
+      std::string base_cgroup_path,
       const std::string &node_id,
       const int64_t system_reserved_cpu_weight,
       const int64_t system_reserved_memory_bytes,
       std::unique_ptr<CgroupDriverInterface> cgroup_driver);
 
-  // Uncopyable type.
+  // Unmovable and uncopyable type.
   CgroupManager(const CgroupManager &) = delete;
   CgroupManager &operator=(const CgroupManager &) = delete;
-
-  CgroupManager(CgroupManager &&);
-  CgroupManager &operator=(CgroupManager &&);
-
-  /**
-    Moves the process into the application leaf cgroup (@see
-    CgroupManagerInterface::kLeafCgroupName).
-
-    To move the pid, the process must have read, write, and execute permissions for the
-      1) the cgroup the pid is currently in i.e. the source cgroup.
-      2) the system leaf cgroup i.e. the destination cgroup.
-      3) the lowest common ancestor of the source and destination cgroups.
-
-    TODO(#54703): There currently is not a good way to signal to the caller that
-    the method can cause a FATAL error. Revisit this once we've settled on a pattern.
-
-    NOTE: If the process does not have adequate cgroup permissions or the application leaf
-    cgroup does not exist, this will fail a RAY_CHECK.
-
-    @param pid of the process to move into the application leaf cgroup.
-
-    @return Status::OK if pid moved successfully.
-    @return Status::NotFound if the application cgroup does not exist.
-  */
-  Status AddProcessToApplicationCgroup(const std::string &pid) override;
-
-  /**
-    Moves the process into the system leaf cgroup (@see
-    CgroupManagerInterface::kLeafCgroupName).
-
-    To move the pid, the process must have read, write, and execute permissions for the
-      1) the cgroup the pid is currently in i.e. the source cgroup.
-      2) the system leaf cgroup i.e. the destination cgroup.
-      3) the lowest common ancestor of the source and destination cgroups.
-
-    NOTE: If the process does not have adequate cgroup permissions or the system leaf
-    cgroup does not exist, this will fail a RAY_CHECK.
-
-    @param pid of the process to move into the system leaf cgroup.
-
-    @return Status::OK if pid moved successfully.
-    @return Status::NotFound if the system cgroup does not exist.
-  */
-  Status AddProcessToSystemCgroup(const std::string &pid) override;
+  CgroupManager(CgroupManager &&) = default;
+  CgroupManager &operator=(CgroupManager &&) = default;
 
   /**
     Performs cleanup in reverse order from the Initialize function:
@@ -122,27 +80,9 @@ class CgroupManager : public CgroupManagerInterface {
   ~CgroupManager() override;
 
  private:
-  CgroupManager(std::string base_cgroup,
+  CgroupManager(std::string base_cgroup_path,
                 const std::string &node_id,
                 std::unique_ptr<CgroupDriverInterface> cgroup_driver);
-
-  /**
-    Moves the process into the specified cgroup.
-
-    To move the pid, the process must have read, write, and execute permissions for the
-      1) the cgroup the pid is currently in i.e. the source cgroup.
-      2) the system leaf cgroup i.e. the destination cgroup.
-      3) the lowest common ancestor of the source and destination cgroups.
-
-    NOTE: If the process does not have adequate cgroup permissions or the system leaf
-    cgroup does not exist, this will fail a RAY_CHECK.
-
-    @param pid of the process to move into the system leaf cgroup.
-
-    @return Status::OK if pid moved successfully.
-    @return Status::NotFound if the system cgroup does not exist.
-  */
-  Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid);
 
   /**
     Performs the following operations:
@@ -171,10 +111,9 @@ class CgroupManager : public CgroupManagerInterface {
   Status Initialize(const int64_t system_reserved_cpu_weight,
                     const int64_t system_reserved_memory_bytes);
 
-  // The Register* methods register a callback that will execute in the destructor
-  // in FILO order. All callbacks required the cgroup_driver_ to be available to
-  // remove the cgroup hierarchy.
-  void RegisterDeleteCgroup(const std::string &cgroup);
+  // TODO(#54703): This is a placeholder for cleanup. This will be implemented in the a
+  // future PR.
+  void RegisterDeleteCgroup(const std::string &cgroup_path);
   void RegisterMoveAllProcesses(const std::string &from, const std::string &to);
   template <typename T>
   void RegisterRemoveConstraint(const std::string &cgroup,
@@ -182,12 +121,10 @@ class CgroupManager : public CgroupManagerInterface {
   void RegisterDisableController(const std::string &cgroup,
                                  const std::string &controller);
 
-  std::string base_cgroup_;
-  std::string node_cgroup_;
-  std::string system_cgroup_;
-  std::string system_leaf_cgroup_;
-  std::string application_cgroup_;
-  std::string application_leaf_cgroup_;
+  std::string base_cgroup_path_;
+  std::string node_cgroup_path_;
+  std::string system_cgroup_path_;
+  std::string application_cgroup_path_;
 
   // This will be popped in reverse order to clean up all side-effects performed
   // during setup.

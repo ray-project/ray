@@ -4,11 +4,14 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data import Dataset
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
+    BlocksToBatchesMapTransformFn,
+    BuildOutputBlocksMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
@@ -25,7 +28,6 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
-from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
@@ -54,6 +56,10 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     input = physical_op.input_dependencies[0]
     assert isinstance(input, InputDataBuffer)
     assert physical_op in input.output_dependencies, input.output_dependencies
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
     assert physical_op._logical_operators == [read_op, op]
 
 
@@ -80,6 +86,10 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
     assert physical_op._logical_operators == [read_op, map1, map2, map3, map4]
 
 
@@ -279,6 +289,11 @@ def test_read_with_map_batches_fused_successfully(
     # # Target min-rows requirement is not set
     assert physical_op._block_ref_bundler._min_rows_per_bundle is None
 
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
+
 
 @pytest.mark.parametrize(
     "input_op,fused",
@@ -291,6 +306,7 @@ def test_read_with_map_batches_fused_successfully(
                     get_read_tasks=lambda _: [MagicMock()]
                 ),
                 parallelism=1,
+                mem_size=1,
             ),
             False,
         ),
@@ -363,6 +379,8 @@ def test_map_batches_batch_size_fusion(
     # Target min-rows requirement is set to max of upstream and downstream
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
+
+    assert physical_op.actual_target_max_block_size == context.target_max_block_size
 
 
 @pytest.mark.parametrize("upstream_batch_size", [None, 1, 2])
@@ -706,7 +724,9 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     check_transform_fns(
         map_op,
         [
+            BlocksToBatchesMapTransformFn,
             BatchMapTransformFn,
+            BuildOutputBlocksMapTransformFn,
         ],
     )
     read_op = map_op.input_dependencies[0]
@@ -714,6 +734,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
         read_op,
         [
             BlockMapTransformFn,
+            BuildOutputBlocksMapTransformFn,
         ],
     )
 
@@ -726,6 +747,8 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
         fused_op,
         [
             BlockMapTransformFn,
+            BlocksToBatchesMapTransformFn,
             BatchMapTransformFn,
+            BuildOutputBlocksMapTransformFn,
         ],
     )

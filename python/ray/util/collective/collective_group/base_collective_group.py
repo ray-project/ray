@@ -1,15 +1,16 @@
 """Abstract class for collective groups."""
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
+from abc import abstractmethod
 
 from ray.util.collective.types import (
-    AllGatherOptions,
     AllReduceOptions,
     BarrierOptions,
-    BroadcastOptions,
-    RecvOptions,
     ReduceOptions,
+    AllGatherOptions,
+    BroadcastOptions,
     ReduceScatterOptions,
     SendOptions,
+    RecvOptions,
 )
 
 

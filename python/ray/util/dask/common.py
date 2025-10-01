@@ -1,15 +1,16 @@
-import uuid
 from collections import OrderedDict
 from collections.abc import Iterator
 from operator import getitem
-
-from dask.core import get as get_sync, quote
-from dask.utils import apply
+import uuid
 
 import ray
 
+from dask.core import quote
+from dask.core import get as get_sync
+from dask.utils import apply
+
 try:
-    from dataclasses import fields as dataclass_fields, is_dataclass
+    from dataclasses import is_dataclass, fields as dataclass_fields
 except ImportError:
     # Python < 3.7
     def is_dataclass(x):

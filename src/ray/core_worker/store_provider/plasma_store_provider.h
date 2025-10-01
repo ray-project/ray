@@ -25,10 +25,11 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
+#include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -99,8 +100,6 @@ class CoreWorkerPlasmaStoreProvider {
       ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
-      std::shared_ptr<plasma::PlasmaClientInterface> store_client,
-      int64_t fetch_batch_size,
       std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
@@ -202,7 +201,7 @@ class CoreWorkerPlasmaStoreProvider {
 
   StatusOr<std::string> GetMemoryUsage();
 
-  std::shared_ptr<plasma::PlasmaClientInterface> &store_client() { return store_client_; }
+  std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
 
  private:
   /// Ask the raylet to pull a set of objects and then attempt to get them
@@ -237,7 +236,7 @@ class CoreWorkerPlasmaStoreProvider {
   Status WarmupStore();
 
   const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
-  std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// Used to look up a plasma object's owner.
   ReferenceCounter &reference_counter_;
   std::function<Status()> check_signals_;
@@ -245,7 +244,6 @@ class CoreWorkerPlasmaStoreProvider {
   uint32_t object_store_full_delay_ms_;
   // Pointer to the shared buffer tracker.
   std::shared_ptr<BufferTracker> buffer_tracker_;
-  int64_t fetch_batch_size_ = 0;
 };
 
 }  // namespace core

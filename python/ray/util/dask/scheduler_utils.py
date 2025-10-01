@@ -5,7 +5,7 @@ The following is adapted from Dask release 2021.03.1:
 
 import os
 import warnings
-from queue import Empty, Queue
+from queue import Queue, Empty
 
 import dask
 from dask import config

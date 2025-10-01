@@ -1,8 +1,8 @@
 """Test the broadcast API."""
-import numpy as np
 import pytest
-
+import numpy as np
 import ray
+
 from ray.util.collective.tests.cpu_util import create_collective_workers
 from ray.util.collective.types import Backend
 
@@ -87,8 +87,7 @@ def test_broadcast_invalid_rank(ray_start_single_node, backend, src_rank=3):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

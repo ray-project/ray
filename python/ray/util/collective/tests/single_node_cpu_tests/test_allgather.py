@@ -1,9 +1,8 @@
 """Test the collective allgather API."""
 import numpy as np
 import pytest
-import torch
-
 import ray
+import torch
 from ray.util.collective.tests.cpu_util import (
     create_collective_workers,
     init_tensors_for_gather_scatter,
@@ -136,8 +135,7 @@ def test_allgather_torch_numpy(ray_start_single_node, backend):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

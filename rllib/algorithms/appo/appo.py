@@ -11,7 +11,6 @@ https://arxiv.org/pdf/1912.00167
 """
 
 from typing import Optional, Type
-from typing_extensions import Self
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -19,7 +18,7 @@ from ray.rllib.algorithms.impala.impala import IMPALA, IMPALAConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -171,7 +170,7 @@ class APPOConfig(IMPALAConfig):
         target_update_frequency=DEPRECATED_VALUE,
         use_critic=DEPRECATED_VALUE,
         **kwargs,
-    ) -> Self:
+    ) -> "APPOConfig":
         """Sets the training related configuration.
 
         Args:
@@ -406,7 +405,7 @@ class APPO(IMPALA):
 
     @classmethod
     @override(IMPALA)
-    def get_default_config(cls) -> APPOConfig:
+    def get_default_config(cls) -> AlgorithmConfig:
         return APPOConfig()
 
     @classmethod

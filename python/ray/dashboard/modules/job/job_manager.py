@@ -33,7 +33,7 @@ from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.modules.job.utils import get_head_node_id
 from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
-from ray.job_submission import JobErrorType, JobStatus
+from ray.job_submission import JobStatus, JobErrorType
 from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -41,6 +41,11 @@ from ray.util.scheduling_strategies import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES = ray_constants.env_integer(
+    "RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES", 5
+)
 
 
 def generate_job_id() -> str:
@@ -161,11 +166,12 @@ class JobManager:
             )
         )
 
-        job_status = None
-        job_info = None
-        ping_obj_ref = None
+        should_monitor = True
+        num_consecutive_failures = 0
 
-        while True:
+        job_status = None
+
+        while should_monitor:
             try:
                 # NOTE: Job monitoring loop sleeps before proceeding with monitoring
                 #       sequence to consolidate the control-flow of the pacing
@@ -173,17 +179,12 @@ class JobManager:
                 #       many branches
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
 
-                job_status = await self._job_info_client.get_status(
-                    job_id, timeout=None
-                )
+                job_status = await self._job_info_client.get_status(job_id)
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
                     # If the job is still pending, we will set the status
                     # to FAILED.
-                    if job_info is None:
-                        job_info = await self._job_info_client.get_info(
-                            job_id, timeout=None
-                        )
+                    job_info = await self._job_info_client.get_info(job_id)
 
                     if time.time() - job_info.start_time / 1000 > timeout:
                         err_msg = (
@@ -225,10 +226,10 @@ class JobManager:
                             JobStatus.FAILED,
                             message=err_msg,
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
-                            timeout=None,
                         )
+                        should_monitor = False
                         logger.error(err_msg)
-                        break
+                        continue
 
                 if job_supervisor is None:
                     job_supervisor = self._get_actor_for_job(job_id)
@@ -252,31 +253,22 @@ class JobManager:
                                 "failed to get job supervisor."
                             ),
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
-                            timeout=None,
                         )
-                        break
+                        should_monitor = False
+                        continue
 
-                # Check to see if `JobSupervisor` is alive and reachable
-                if ping_obj_ref is None:
-                    ping_obj_ref = job_supervisor.ping.options(
-                        max_task_retries=-1
-                    ).remote()
-                ready, _ = ray.wait([ping_obj_ref], timeout=0)
-                if ready:
-                    ray.get(ping_obj_ref)
-                    ping_obj_ref = None
-                else:
-                    continue
+                # Verify `JobSupervisor` is alive and reachable
+                await job_supervisor.ping.remote()
+                # Reset consecutive failures counter
+                num_consecutive_failures = 0
 
             except Exception as e:
-                job_status = await self._job_info_client.get_status(
-                    job_id, timeout=None
-                )
                 target_job_error_message = ""
                 target_job_error_type: Optional[JobErrorType] = None
                 if job_status is not None and job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
+                    should_monitor = False
                     pass
                 else:
                     if isinstance(e, RuntimeEnvSetupError):
@@ -304,26 +296,45 @@ class JobManager:
                         target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
 
                     else:
-                        logger.error(
+                        logger.warning(
                             f"Job monitoring for job {job_id} failed "
                             f"unexpectedly: {e}.",
                             exc_info=e,
                         )
 
-                        target_job_error_message = f"Unexpected error occurred: {e}"
-                        target_job_error_type = (
-                            JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
-                        )
+                        if (
+                            num_consecutive_failures
+                            < RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES
+                        ):
+                            num_consecutive_failures += 1
+                            continue
+                        else:
+                            logger.error(
+                                f"Job monitoring failed more than "
+                                f"{RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES} "
+                                f"times, marking job as failed",
+                                exc_info=e,
+                            )
 
-                    job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
-                        job_id,
-                        job_status,
-                        message=target_job_error_message,
-                        error_type=target_job_error_type
-                        or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
-                        timeout=None,
-                    )
+                            target_job_error_message = f"Unexpected error occurred: {e}"
+                            target_job_error_type = (
+                                JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
+                            )
+
+                    # If target job error message is set it entails that the job ought
+                    # to be marked as failed (and terminated)
+                    if target_job_error_message:
+                        # Terminate monitoring loop
+                        should_monitor = False
+
+                        job_status = JobStatus.FAILED
+                        await self._job_info_client.put_status(
+                            job_id,
+                            job_status,
+                            message=target_job_error_message,
+                            error_type=target_job_error_type
+                            or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                        )
 
                 # Log error message to the job driver file for easy access.
                 if target_job_error_message:
@@ -342,8 +353,6 @@ class JobManager:
                         self.event_logger.error(event_log, submission_id=job_id)
                     else:
                         self.event_logger.info(event_log, submission_id=job_id)
-
-                break
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:

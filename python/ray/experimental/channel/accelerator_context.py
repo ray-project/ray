@@ -1,11 +1,10 @@
-import importlib
 import threading
-from contextlib import nullcontext
-from typing import TYPE_CHECKING, ContextManager, List, Optional, Type
-
+import importlib
 import ray
-from ray._private.accelerators import get_accelerator_manager_for_resource
+from typing import TYPE_CHECKING, Optional, Type, ContextManager, List
+from contextlib import nullcontext
 from ray.experimental.channel.communicator import Communicator
+from ray._private.accelerators import get_accelerator_manager_for_resource
 
 if TYPE_CHECKING:
     import torch

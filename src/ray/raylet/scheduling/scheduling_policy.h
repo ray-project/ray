@@ -18,6 +18,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {

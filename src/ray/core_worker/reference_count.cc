@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
 #define PRINT_REF_COUNT(it) \
@@ -559,7 +558,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
       OnObjectOutOfScopeOrFreed(arg_it);
     }
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
-      RAY_CHECK(!arg_it->second.publish_ref_removed);
+      RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
       EraseReference(arg_it);
     }
@@ -684,10 +683,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
-  if (it->second.RefCount() == 0 && it->second.publish_ref_removed) {
-    RAY_LOG(DEBUG) << "Calling PublishRefRemoved for object " << id;
-    PublishRefRemovedInternal(id);
-    it->second.publish_ref_removed = false;
+  if (it->second.RefCount() == 0 && it->second.on_ref_removed) {
+    RAY_LOG(DEBUG) << "Calling on_ref_removed for object " << id;
+    it->second.on_ref_removed(id);
+    it->second.on_ref_removed = nullptr;
   }
 
   PRINT_REF_COUNT(it);
@@ -1254,13 +1253,8 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::PublishRefRemoved(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
-  PublishRefRemovedInternal(object_id);
-}
-
-void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
-  RAY_LOG(DEBUG).WithField(object_id) << "PublishRefRemoved ";
+void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
+  RAY_LOG(DEBUG).WithField(object_id) << "HandleRefRemoved ";
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     PRINT_REF_COUNT(it);
@@ -1290,9 +1284,11 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
   object_info_publisher_->Publish(std::move(pub_message));
 }
 
-void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
-                                           const ObjectID &contained_in_id,
-                                           const rpc::Address &owner_address) {
+void ReferenceCounter::SetRefRemovedCallback(
+    const ObjectID &object_id,
+    const ObjectID &contained_in_id,
+    const rpc::Address &owner_address,
+    const ReferenceCounter::ReferenceRemovedCallback &ref_removed_callback) {
   absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG).WithField(object_id)
       << "Received WaitForRefRemoved object contained in " << contained_in_id;
@@ -1302,8 +1298,6 @@ void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
     it = object_id_refs_.emplace(object_id, Reference()).first;
   }
 
-  auto &reference = it->second;
-
   // If we are borrowing the ID because we own an object that contains it, then
   // add the outer object to the inner ID's ref count. We will not respond to
   // the owner of the inner ID until the outer object ID goes out of scope.
@@ -1311,28 +1305,28 @@ void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
     AddNestedObjectIdsInternal(contained_in_id, {object_id}, rpc_address_);
   }
 
-  if (reference.RefCount() == 0) {
+  if (it->second.RefCount() == 0) {
     RAY_LOG(DEBUG).WithField(object_id)
         << "Ref count for borrowed object is already 0, responding to WaitForRefRemoved";
     // We already stopped borrowing the object ID. Respond to the owner
     // immediately.
-    PublishRefRemovedInternal(object_id);
+    ref_removed_callback(object_id);
     DeleteReferenceInternal(it, nullptr);
   } else {
     // We are still borrowing the object ID. Respond to the owner once we have
     // stopped borrowing it.
-    if (reference.publish_ref_removed) {
+    if (it->second.on_ref_removed != nullptr) {
       // TODO(swang): If the owner of an object dies and and is re-executed, it
       // is possible that we will receive a duplicate request to set
-      // publish_ref_removed. If messages are delayed and we overwrite the
+      // on_ref_removed. If messages are delayed and we overwrite the
       // callback here, it's possible we will drop the request that was sent by
       // the more recent owner. We should fix this by setting multiple
       // callbacks or by versioning the owner requests.
       RAY_LOG(WARNING).WithField(object_id)
-          << "publish_ref_removed already set for object. The owner task must have "
-             "died and been re-executed.";
+          << "on_ref_removed already set for object. The owner task must have died and "
+             "been re-executed.";
     }
-    reference.publish_ref_removed = true;
+    it->second.on_ref_removed = ref_removed_callback;
   }
 }
 

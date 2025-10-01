@@ -6,19 +6,18 @@ and flattening function signatures for serialization.
 """
 
 import inspect
+import pytest
 import sys
 from typing import Any, Optional
 from unittest.mock import Mock, patch
 
-import pytest
-
 from ray._common.signature import (
-    DUMMY_TYPE,
-    extract_signature,
-    flatten_args,
     get_signature,
-    recover_args,
+    extract_signature,
     validate_args,
+    flatten_args,
+    recover_args,
+    DUMMY_TYPE,
 )
 
 
