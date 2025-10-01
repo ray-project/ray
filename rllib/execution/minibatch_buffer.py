@@ -1,5 +1,5 @@
-from typing import Any, Tuple
 import queue
+from typing import Any, Tuple
 
 from ray.rllib.utils.annotations import OldAPIStack
 
