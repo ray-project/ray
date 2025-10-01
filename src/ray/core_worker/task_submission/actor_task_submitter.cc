@@ -667,18 +667,42 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_manager_.CompletePendingTask(task_id, reply, addr, reply.is_application_error());
   } else if (status.IsSchedulingCancelled()) {
-    std::ostringstream stream;
-    stream << "The task " << task_id << " is canceled from an actor " << actor_id
-           << " before it executes.";
-    const auto &msg = stream.str();
-    RAY_LOG(DEBUG) << msg;
+    // Check if this is due to actor shutdown or explicit user cancellation.
+    // Actor shutdown should raise RayActorError, not TaskCancelledError.
+    bool is_actor_dead = false;
     rpc::RayErrorInfo error_info;
-    error_info.set_error_message(msg);
-    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
-    task_manager_.FailPendingTask(task_spec.TaskId(),
-                                  rpc::ErrorType::TASK_CANCELLED,
-                                  /*status*/ nullptr,
-                                  &error_info);
+    {
+      absl::MutexLock lock(&mu_);
+      auto queue_pair = client_queues_.find(actor_id);
+      if (queue_pair != client_queues_.end()) {
+        is_actor_dead = queue_pair->second.state_ == rpc::ActorTableData::DEAD;
+        if (is_actor_dead) {
+          const auto &death_cause = queue_pair->second.death_cause_;
+          error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
+        }
+      }
+    }
+
+    if (is_actor_dead) {
+      RAY_LOG(DEBUG) << "Task " << task_id << " cancelled due to actor " << actor_id
+                     << " death";
+      task_manager_.FailPendingTask(task_spec.TaskId(),
+                                    error_info.error_type(),
+                                    /*status*/ nullptr,
+                                    &error_info);
+    } else {
+      std::ostringstream stream;
+      stream << "The task " << task_id << " is canceled from an actor " << actor_id
+             << " before it executes.";
+      const auto &msg = stream.str();
+      RAY_LOG(DEBUG) << msg;
+      error_info.set_error_message(msg);
+      error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
+      task_manager_.FailPendingTask(task_spec.TaskId(),
+                                    rpc::ErrorType::TASK_CANCELLED,
+                                    /*status*/ nullptr,
+                                    &error_info);
+    }
   } else {
     bool is_actor_dead = false;
     bool fail_immediately = false;
