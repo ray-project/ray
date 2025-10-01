@@ -523,6 +523,26 @@ class GPUObjectManager:
             )
         return gpu_object
 
+    def free_object_primary_copy(self, object_id: str):
+        """
+        Free the primary copy of the GPU object.
+        """
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_free__,
+        )
+
+        try:
+            src_actor = self.managed_gpu_object_metadata[object_id].src_actor
+            print(f"free_object_primary_copy: {object_id}, src_actor: {src_actor}")
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_free__, object_id
+            )
+            print("hi here")
+        except Exception as e:
+            print(f"free_object_primary_copy: {object_id}, error: {e}")
+            # This could fail if this is a retry and it's already been freed.
+            pass
+
     def actor_has_tensor_transport(
         self, actor: "ray.actor.ActorHandle", tensor_transport: TensorTransportEnum
     ):
