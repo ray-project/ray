@@ -3717,10 +3717,7 @@
   team: core
 
   cluster:
-    # leave oom disabled as test is marked unstable at the moment.
     byod:
-      runtime_env:
-        - RAY_memory_monitor_refresh_ms=0
       pip:
         - ray[default]
     cluster_compute: aws.yaml
