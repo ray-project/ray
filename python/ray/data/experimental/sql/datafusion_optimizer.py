@@ -197,11 +197,6 @@ class DataFusionOptimizer:
         Returns:
             DataFusionOptimizations with extracted decisions.
         """
-        # For now, return basic optimizations
-        # Full implementation would walk the DataFusion plan tree
-        # and extract detailed optimization decisions
-
-        # Default optimizations (to be enhanced with plan walking)
         optimizations = DataFusionOptimizations(
             join_order=[],
             join_algorithms={},
@@ -212,22 +207,173 @@ class DataFusionOptimizer:
         )
 
         try:
-            # Extract optimizations from plan
-            # Note: Full implementation requires walking DataFusion's plan tree
-            # For now, we rely on DataFusion having optimized the query
-            # and let Ray Data execute the optimized structure
-
+            # Get string representation of optimized plan
             plan_str = str(optimized_plan)
-            self._logger.debug(f"Optimized plan structure: {plan_str}")
+            self._logger.debug(f"DataFusion optimized plan:\n{plan_str}")
 
-            # DataFusion has already optimized the query structure
-            # The key insight: we can execute the optimized query string
-            # with Ray Data operations, trusting DataFusion's optimization decisions
+            # Extract optimization information from plan structure
+            # DataFusion's optimized plan shows the result of:
+            # - Predicate pushdown (filters moved closer to scans)
+            # - Projection pushdown (column selection moved earlier)
+            # - Join reordering (based on cost estimates)
+            # - Expression simplification
+
+            # Parse plan string to extract key optimizations
+            plan_lines = plan_str.split("\n")
+
+            # Extract filters (look for Filter operations in plan)
+            filters = []
+            for i, line in enumerate(plan_lines):
+                if "Filter:" in line or "filter" in line.lower():
+                    # Extract filter expression
+                    filter_expr = self._extract_filter_from_line(line)
+                    if filter_expr:
+                        filters.append(
+                            {
+                                "expression": filter_expr,
+                                "position": i,
+                                "type": "filter",
+                            }
+                        )
+
+            optimizations.filter_placement = filters
+            self._logger.debug(
+                f"Extracted {len(filters)} filter placements from DataFusion plan"
+            )
+
+            # Extract projections (look for Projection operations)
+            projections = []
+            for line in plan_lines:
+                if "Projection:" in line or "projection" in line.lower():
+                    cols = self._extract_columns_from_line(line)
+                    if cols:
+                        projections.extend(cols)
+
+            optimizations.projection_columns = projections
+            self._logger.debug(
+                f"Extracted {len(projections)} projection columns from DataFusion plan"
+            )
+
+            # Extract join information
+            joins = []
+            for line in plan_lines:
+                if "Join:" in line or "join" in line.lower():
+                    join_info = self._extract_join_from_line(line)
+                    if join_info:
+                        joins.append(join_info)
+
+            if joins:
+                optimizations.join_order = [
+                    (j.get("left", ""), j.get("right", "")) for j in joins
+                ]
+                optimizations.join_algorithms = {
+                    f"{j.get('left', '')}_{j.get('right', '')}": j.get("type", "inner")
+                    for j in joins
+                }
+                self._logger.debug(f"Extracted {len(joins)} joins from DataFusion plan")
+
+            # Extract aggregation information
+            for line in plan_lines:
+                if "Aggregate:" in line or "aggregate" in line.lower():
+                    agg_strategy = self._extract_aggregation_strategy(line)
+                    if agg_strategy:
+                        optimizations.aggregation_strategy = agg_strategy
+                        self._logger.debug(
+                            f"Extracted aggregation strategy: {agg_strategy}"
+                        )
+                        break
+
+            # Log summary of extracted optimizations
+            self._logger.info(
+                f"Extracted optimizations: {len(optimizations.filter_placement)} filters, "
+                f"{len(optimizations.projection_columns)} projections, "
+                f"{len(optimizations.join_order)} joins"
+            )
 
         except Exception as e:
             self._logger.debug(f"Could not extract detailed optimizations: {e}")
+            # Return basic optimizations on error
 
         return optimizations
+
+    def _extract_filter_from_line(self, line: str) -> Optional[str]:
+        """Extract filter expression from plan line.
+
+        Args:
+            line: Line from DataFusion plan string.
+
+        Returns:
+            Filter expression or None.
+        """
+        # DataFusion plan lines look like: "Filter: age > 25"
+        if ":" in line:
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                return parts[1].strip()
+        return None
+
+    def _extract_columns_from_line(self, line: str) -> List[str]:
+        """Extract column names from projection line.
+
+        Args:
+            line: Line from DataFusion plan string.
+
+        Returns:
+            List of column names.
+        """
+        # DataFusion projection lines show column list
+        # Extract column names from the line
+        columns = []
+        if ":" in line:
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                # Parse column list (simple heuristic)
+                col_part = parts[1].strip()
+                # This is a simplified extraction - production version would
+                # use proper plan tree walking
+                if "," in col_part:
+                    columns = [c.strip() for c in col_part.split(",")]
+        return columns
+
+    def _extract_join_from_line(self, line: str) -> Optional[Dict[str, str]]:
+        """Extract join information from plan line.
+
+        Args:
+            line: Line from DataFusion plan string.
+
+        Returns:
+            Dictionary with join information or None.
+        """
+        # Extract join type and tables from plan line
+        join_info = {}
+        if "inner" in line.lower():
+            join_info["type"] = "inner"
+        elif "left" in line.lower():
+            join_info["type"] = "left"
+        elif "right" in line.lower():
+            join_info["type"] = "right"
+        else:
+            join_info["type"] = "inner"  # Default
+
+        # Note: Actual table names would be extracted from plan tree
+        # This is simplified for the current implementation
+        return join_info if join_info else None
+
+    def _extract_aggregation_strategy(self, line: str) -> Optional[str]:
+        """Extract aggregation strategy from plan line.
+
+        Args:
+            line: Line from DataFusion plan string.
+
+        Returns:
+            Aggregation strategy (hash, sort) or None.
+        """
+        # DataFusion uses different aggregation strategies
+        if "hash" in line.lower():
+            return "hash_aggregate"
+        elif "sort" in line.lower():
+            return "sort_aggregate"
+        return "hash_aggregate"  # Default
 
 
 def get_datafusion_optimizer() -> Optional[DataFusionOptimizer]:
