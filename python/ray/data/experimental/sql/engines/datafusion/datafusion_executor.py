@@ -18,7 +18,7 @@ from sqlglot import exp
 
 from ray.data import Dataset
 from ray.data.experimental.sql.config import SQLConfig
-from ray.data.experimental.sql.datafusion_optimizer import DataFusionOptimizations
+from ray.data.experimental.sql.engines.base import QueryOptimizations
 from ray.data.experimental.sql.execution.executor import QueryExecutor
 from ray.data.experimental.sql.registry.base import TableRegistry
 from ray.data.experimental.sql.utils import setup_logger
@@ -104,21 +104,21 @@ class DataFusionExecutor:
 def execute_with_datafusion_hints(
     query: str,
     ast: exp.Select,
-    optimizations: DataFusionOptimizations,
+    optimizations: QueryOptimizations,
     registry: TableRegistry,
     config: SQLConfig,
 ) -> Optional[Dataset]:
     """
-    Execute query using DataFusion hints with EXISTING QueryExecutor.
+    Execute query using DataFusion hints with existing QueryExecutor.
 
-    REUSES existing QueryExecutor instead of reimplementing.
+    Reuses existing QueryExecutor instead of reimplementing execution logic.
     DataFusion optimizations guide execution order and placement.
 
     Args:
         query: Original SQL query string.
         ast: Parsed SQLGlot AST.
-        optimizations: DataFusion optimization decisions.
-        registry: Table registry.
+        optimizations: Engine-agnostic optimization decisions from DataFusion.
+        registry: Table registry with registered Ray Datasets.
         config: SQL configuration.
 
     Returns:
