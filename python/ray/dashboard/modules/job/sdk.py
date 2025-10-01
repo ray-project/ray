@@ -515,6 +515,10 @@ class JobSubmissionClient(SubmissionClient):
                         )
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    raise RuntimeError(
-                        f"WebSocket error while tailing logs for job {job_id}."
-                    )
+                    # Old Ray versions may send ERROR on connection close
+                    # Only raise if job hasn't reached terminal state
+                    if not job_status.is_terminal():
+                        raise RuntimeError(
+                            f"WebSocket error while tailing logs for job {job_id}."
+                        )
+                    break
