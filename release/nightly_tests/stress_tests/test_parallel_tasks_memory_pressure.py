@@ -2,7 +2,6 @@ import argparse
 import random
 import time
 from math import ceil
-from typing import Dict
 
 import numpy as np
 
@@ -29,7 +28,7 @@ def allocate_memory(
     target_bytes: int,
     *,
     num_chunks: int = 10,
-    allocate_interval_s: float = 1,
+    allocate_interval_s: float = 10,
 ):
     chunks = []
     for _ in range(num_chunks):
