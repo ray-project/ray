@@ -2782,27 +2782,6 @@
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
 
 
-- name: tune_air_oom
-  group: core-daily-test
-  working_dir: air_tests
-
-  stable: false
-
-  frequency: nightly
-  team: core
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_usage_threshold=0.7
-        - RAY_task_oom_retries=-1
-    cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
-
-  run:
-    timeout: 3600
-    script: bash oom/tune_air_oom.sh
-
-
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
   working_dir: nightly_tests
