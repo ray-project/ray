@@ -117,69 +117,73 @@ def plan_project_op(
 
     expr_list = op.exprs
 
+    def _resolve_rename_chain(name: str, rename_map: Dict[str, str]) -> str:
+        seen = set()
+        while name in rename_map and rename_map[name] not in seen:
+            seen.add(name)
+            name = rename_map[name]
+        return name
+
     def _project_block(block: Block) -> Block:
         try:
             block_accessor = BlockAccessor.for_block(block)
             if not block_accessor.num_rows() or not expr_list:
                 return block
 
-            # Snapshot original columns; evaluate all exprs against original block.
-            orig_cols = list(block_accessor.column_names())
-            rename_map = {}
-            out_names_in_order: List[str] = []
+            # Preserve original input column order for preserve_existing semantics.
+            input_cols = list(block_accessor.column_names())
 
-            source_block = block
-            computed: Dict[str, Any] = {}
+            # Outputs to compute (in order) and their computed data.
+            output_names_in_order: List[str] = []
+            seen_output_names = set()
+            # Track simple renames: src_col -> dest_col for alias(ColumnExpr(src), dest).
+            rename_map: Dict[str, str] = {}
+            computed_outputs: Dict[str, Any] = {}
 
-            # Phase 1: compute all outputs from the same input snapshot
+            # Phase 1: compute all outputs from the same input snapshot.
             for expr in expr_list:
-                out_name = expr.name
-                aliased_expr = (
-                    expr if isinstance(expr, AliasExpr) else expr.alias(out_name)
-                )
+                output_name = expr.name
 
-                inner = getattr(aliased_expr, "expr", None)
-                if isinstance(inner, ColumnExpr) and inner.name != out_name:
-                    rename_map[inner.name] = out_name
+                # Detect simple rename (no expression change) to update ordering later.
+                if (
+                    isinstance(expr, AliasExpr)
+                    and isinstance(expr.expr, ColumnExpr)
+                    and expr.expr.name != output_name
+                ):
+                    rename_map[expr.expr.name] = output_name
 
-                computed[out_name] = eval_expr(aliased_expr, source_block)
-                if out_name not in out_names_in_order:
-                    out_names_in_order.append(out_name)
+                computed_outputs[output_name] = eval_expr(expr, block)
+                if output_name not in seen_output_names:
+                    output_names_in_order.append(output_name)
+                    seen_output_names.add(output_name)
 
-            # Phase 2: commit outputs
+            # Phase 2: materialize outputs onto the block.
             cur_block = block
-            for out_name in out_names_in_order:
+            for output_name in output_names_in_order:
                 cur_block = BlockAccessor.for_block(cur_block).fill_column(
-                    out_name, computed[out_name]
+                    output_name, computed_outputs[output_name]
                 )
 
-            # Finalize schema
+            # Phase 3: finalize output schema.
             if op.preserve_existing:
-                # Resolve chained renames (e.g., a->x, x->y => final 'y').
-                def resolve(name: str) -> str:
-                    seen = set()
-                    cur = name
-                    while cur in rename_map and rename_map[cur] not in seen:
-                        seen.add(cur)
-                        cur = rename_map[cur]
-                    return cur
-
+                # Start from the input column order, applying chained renames,
+                # then append any new output columns not already included.
                 final_cols: List[str] = []
                 seen_final = set()
 
-                for c in orig_cols:
-                    out_c = resolve(c)
-                    if out_c not in seen_final:
-                        final_cols.append(out_c)
-                        seen_final.add(out_c)
+                for col in input_cols:
+                    resolved = _resolve_rename_chain(col, rename_map)
+                    if resolved not in seen_final:
+                        final_cols.append(resolved)
+                        seen_final.add(resolved)
 
-                for name in out_names_in_order:
+                for name in output_names_in_order:
                     if name not in seen_final:
                         final_cols.append(name)
                         seen_final.add(name)
             else:
-                # Exact select: only expr outputs (in order).
-                final_cols = out_names_in_order
+                # Exact select: only requested outputs (in order).
+                final_cols = output_names_in_order
 
             return BlockAccessor.for_block(cur_block).select(final_cols)
         except Exception as e:

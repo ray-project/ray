@@ -1,5 +1,4 @@
-import logging
-from typing import Dict, List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -8,29 +7,27 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.operators.map_operator import Project
-from ray.data.expressions import ColumnExpr, Expr
-
-logger = logging.getLogger(__name__)
+from ray.data.expressions import (
+    AliasExpr,
+    BinaryExpr,
+    ColumnExpr,
+    Expr,
+    LiteralExpr,
+    UDFExpr,
+    UnaryExpr,
+)
 
 
 def _expr_output_name(expr: Expr) -> str:
-    name = getattr(expr, "name", None)
-    if name is None:
+    if expr.name is None:
         raise ValueError(
             "Project expressions must be named; use .alias(name) or col(name)."
         )
-    return name
+    return expr.name
 
 
 def _collect_input_columns_from_exprs(exprs: List[Expr]) -> Set[str]:
-    from ray.data.expressions import (
-        AliasExpr,
-        BinaryExpr,
-        LiteralExpr,
-        UDFExpr,
-        UnaryExpr,
-    )
-
+    """Collect all input column names referenced by the given expressions."""
     cols: Set[str] = set()
 
     def visit(e: Expr) -> None:
@@ -57,40 +54,25 @@ def _collect_input_columns_from_exprs(exprs: List[Expr]) -> Set[str]:
     return cols
 
 
-def _substitute_column_refs(expr: Expr, col_mapping: Dict[str, Expr]) -> Expr:
-    """Recursively substitute ColumnExpr references based on col_mapping."""
-    from ray.data.expressions import (
-        AliasExpr,
-        BinaryExpr,
-        LiteralExpr,
-        UDFExpr,
-        UnaryExpr,
-    )
-
+def _substitute_column_refs(expr: Expr, col_mapping: dict[str, Expr]) -> Expr:
+    """Recursively substitute ColumnExpr references according to col_mapping."""
     if isinstance(expr, ColumnExpr):
-        # If this column has a mapped expression, return it (without alias)
-        if expr.name in col_mapping:
-            mapped = col_mapping[expr.name]
-            # Unwrap alias to get base expression
-            if isinstance(mapped, AliasExpr):
-                return mapped.expr
-            return mapped
+        mapped = col_mapping.get(expr.name)
+        if mapped is not None:
+            # Unwrap alias to avoid double-aliasing downstream
+            return mapped.expr if isinstance(mapped, AliasExpr) else mapped
         return expr
-    elif isinstance(expr, AliasExpr):
-        # Recursively substitute in the inner expression, keep the alias name
+    if isinstance(expr, AliasExpr):
         return _substitute_column_refs(expr.expr, col_mapping).alias(expr.name)
-    elif isinstance(expr, BinaryExpr):
+    if isinstance(expr, BinaryExpr):
         return type(expr)(
             expr.op,
             _substitute_column_refs(expr.left, col_mapping),
             _substitute_column_refs(expr.right, col_mapping),
         )
-    elif isinstance(expr, UnaryExpr):
-        return type(expr)(
-            expr.op,
-            _substitute_column_refs(expr.operand, col_mapping),
-        )
-    elif isinstance(expr, UDFExpr):
+    if isinstance(expr, UnaryExpr):
+        return type(expr)(expr.op, _substitute_column_refs(expr.operand, col_mapping))
+    if isinstance(expr, UDFExpr):
         new_args = [_substitute_column_refs(a, col_mapping) for a in expr.args]
         new_kwargs = {
             k: _substitute_column_refs(v, col_mapping) for k, v in expr.kwargs.items()
@@ -98,11 +80,7 @@ def _substitute_column_refs(expr: Expr, col_mapping: Dict[str, Expr]) -> Expr:
         return type(expr)(
             fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
         )
-    elif isinstance(expr, LiteralExpr):
-        return expr
-    else:
-        # Unknown expression type, return as-is
-        return expr
+    return expr
 
 
 def _gather_project_chain(op: Project) -> Tuple[LogicalOperator, List[Project]]:
@@ -119,6 +97,80 @@ def _gather_project_chain(op: Project) -> Tuple[LogicalOperator, List[Project]]:
     return cur, [op]
 
 
+def _ensure_named(expr: Expr, name: str) -> Expr:
+    """Ensure expression is aliased with the given name, unwrapping existing aliases."""
+    if expr.name == name:
+        return expr
+    if isinstance(expr, AliasExpr):
+        return expr.expr.alias(name)
+    return expr.alias(name)
+
+
+def _is_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
+    """Detect expressions of the form alias(ColumnExpr(src), dest) where src != dest."""
+    if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
+        dest = _expr_output_name(expr)
+        src = expr.expr.name
+        if src != dest:
+            return src, dest
+    return None
+
+
+def _apply_selection_step(
+    prev_defs: dict[str, Expr], project: Project
+) -> Tuple[dict[str, Expr], List[str]]:
+    """Selection step: reset outputs to exactly the given expressions and order."""
+    new_defs: dict[str, Expr] = {}
+    new_order: List[str] = []
+    for expr in project.exprs:
+        name = _expr_output_name(expr)
+        resolved = _substitute_column_refs(expr, prev_defs)
+        new_defs[name] = _ensure_named(resolved, name)
+        new_order.append(name)
+    return new_defs, new_order
+
+
+def _apply_preserve_step(
+    prev_defs: dict[str, Expr], prev_order: List[str], project: Project
+) -> Tuple[dict[str, Expr], List[str]]:
+    """Preserve-existing step: apply renames and adds without losing ordering.
+
+    - Renames replace the position of the source column if the source isn't also
+      produced as an output by this same project.
+    - New columns are appended to the end.
+    """
+    snapshot_defs = prev_defs.copy()
+    snapshot_order = prev_order.copy()
+    current_output_names = {_expr_output_name(e) for e in project.exprs}
+
+    defs = prev_defs.copy()
+    order = prev_order.copy()
+
+    for expr in project.exprs:
+        name = _expr_output_name(expr)
+        rename = _is_simple_rename(expr)
+
+        if rename is not None:
+            src, dest = rename
+            resolved = snapshot_defs.get(src, expr)
+            defs[dest] = _ensure_named(resolved, dest)
+
+            if src in snapshot_order and src not in current_output_names:
+                idx = snapshot_order.index(src)
+                order[idx] = dest
+            elif dest not in order:
+                order.append(dest)
+            continue
+
+        # Non-rename: substitute column references through snapshot_defs
+        resolved = _substitute_column_refs(expr, snapshot_defs)
+        defs[name] = _ensure_named(resolved, name)
+        if name not in order:
+            order.append(name)
+
+    return defs, order
+
+
 class ProjectionPushdown(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         dag = plan.dag
@@ -131,21 +183,8 @@ class ProjectionPushdown(Rule):
             return cls._fuse(op)
         return op
 
-    @classmethod
-    def _supports_projection_pushdown(cls, op: Project) -> bool:
-        # Only safe when we don't need to preserve unspecified columns.
-        if op.preserve_existing:
-            return False
-        inp = op.input_dependency
-        return (
-            isinstance(inp, LogicalOperatorSupportsProjectionPushdown)
-            and inp.supports_projection_pushdown()
-        )
-
     @staticmethod
     def _fuse(op: Project) -> LogicalOperator:
-        from ray.data.expressions import AliasExpr
-
         # Fuse the entire Project chain into one Project with correct semantics.
         ancestor, chain = _gather_project_chain(op)
 
@@ -153,67 +192,18 @@ class ProjectionPushdown(Rule):
         # order: final output order (names)
         defs: dict[str, Expr] = {}
         order: List[str] = []
-        saw_selection = False
+        is_selection_op = False
 
-        def ensure_named(expr: Expr, name: str) -> Expr:
-            """Ensure expression is aliased with the given name, unwrapping existing aliases."""
-            if expr.name == name:
-                return expr
-            # Unwrap AliasExpr to avoid double-aliasing
-            if isinstance(expr, AliasExpr):
-                return expr.expr.alias(name)
-            return expr.alias(name)
-
-        for p in chain:
-            if not p.preserve_existing:
-                # Selection: reset to exactly requested outputs, resolved from previous defs.
-                saw_selection = True
-                new_defs: dict[str, Expr] = {}
-                new_order: List[str] = []
-                for e in p.exprs:
-                    name = _expr_output_name(e)
-                    # Substitute column references, then check if this column is already defined
-                    resolved = _substitute_column_refs(e, defs)
-                    new_defs[name] = ensure_named(resolved, name)
-                    new_order.append(name)
-                defs = new_defs
-                order = new_order
-                continue
-
-            # Preserve-existing step: apply renames and adds without losing ordering.
-            # Snapshot current defs to handle column swaps correctly
-            snapshot_defs = defs.copy()
-            snapshot_order = order.copy()
-
-            # Track output names from this Project to avoid replacing them in order
-            current_output_names = {_expr_output_name(e) for e in p.exprs}
-
-            for e in p.exprs:
-                name = _expr_output_name(e)
-                # Detect simple rename: alias(ColumnExpr(src), name) with src != name
-                inner = getattr(e, "expr", None)
-                if isinstance(inner, ColumnExpr) and inner.name != name:
-                    src = inner.name
-                    # Resolve definition from snapshot, not current defs
-                    resolved = snapshot_defs.get(src, e)
-                    # Update mapping: name <- src
-                    defs[name] = ensure_named(resolved, name)
-                    # Update order: replace src with name ONLY if src is not also an output of this Project
-                    if src in snapshot_order and src not in current_output_names:
-                        idx = snapshot_order.index(src)
-                        order[idx] = name
-                    elif name not in order:
-                        order.append(name)
-                else:
-                    # For non-rename expressions, substitute column references
-                    e_subst = _substitute_column_refs(e, snapshot_defs)
-                    defs[name] = ensure_named(e_subst, name)
-                    if name not in order:
-                        order.append(name)
+        for project in chain:
+            if not project.preserve_existing:
+                is_selection_op = True
+                defs, order = _apply_selection_step(defs, project)
+            else:
+                defs, order = _apply_preserve_step(defs, order, project)
 
         # Build final expr list in order; decide preservation.
         final_exprs = [defs[n] for n in order]
-        final_preserve = not saw_selection
+        final_preserve = not is_selection_op
 
         # Optional pushdown for selection-only final.
         if (
