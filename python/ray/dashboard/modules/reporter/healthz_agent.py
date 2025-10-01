@@ -1,5 +1,7 @@
 from aiohttp.web import Request, Response
 
+import asyncio
+
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.exceptions
@@ -52,36 +54,37 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             content_type="application/text",
         )
 
-    async def gcs_health(self) -> Response:
-        # Check GCS health.
+    async def local_gcs_health(self) -> Response:
+        # Check GCS health, unless there is no local GCS.
+        if not self._dashboard_agent.is_head:
+            return Response(status=200, text="success (no local gcs)")
         try:
             gcs_alive = await self._health_checker.check_gcs_liveness()
             if not gcs_alive:
                 return Response(status=503, text="GCS health check failed.")
         except Exception as e:
             return Response(status=503, text=f"GCS health check failed: {e}")
+        return Response(status=200, text="success")
 
     @routes.get("/api/healthz")
     async def unified_health(self, req: Request) -> Response:
-        checks = {}
-        async with asyncio.TaskGroup() as tg:
-            checks["raylet"] = tg.create_task(self.health_check(req))
-            if self._dashboard_agent.is_head:
-                checks["gcs"] = tg.create_task(self.gcs_health())
+        [raylet_check, gcs_check] = await asyncio.gather(
+            self.health_check(req),
+            self.local_gcs_health(),
+        )
+        checks = {"raylet": raylet_check, "gcs": gcs_check}
 
-        # Collect health check results and log any failures.
-        for name in checks:
-            result = checks[name].result()
-            checks[name] = result
+        # Collect overall health check status and log any failures.
+        status = 200
+        for name, result in checks.items():
             if result.status != 200:
+                status = 503
                 logger.warning(
                     f"health check {name} failed: {result.status} {result.text}"
                 )
 
         return Response(
-            status=(
-                200 if all([resp.status == 200 for resp in checks.values()]) else 503
-            ),
+            status=status,
             text="\n".join([f"{name}: {resp.text}" for name, resp in checks.items()]),
             content_type="application/text",
         )
