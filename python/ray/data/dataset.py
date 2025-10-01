@@ -1571,6 +1571,9 @@ class Dataset:
                 fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 concurrency=concurrency,
+                min_concurrency=min_concurrency,
+                max_concurrency=max_concurrency,
+                initial_concurrency=initial_concurrency,
             )
 
         # Create Filter operator with explicitly typed arguments
