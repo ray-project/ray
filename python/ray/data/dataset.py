@@ -4929,9 +4929,13 @@ class Dataset:
             write_results = []
 
             for bundle in iter_:
-                write_results.extend(ray.get(bundle.block_refs))
+                res = ray.get(bundle.block_refs)
+                # Generate write result report
+                write_results.append(
+                    gen_datasink_write_result(res)
+                )
 
-            combined_write_result = gen_datasink_write_result(write_results)
+            combined_write_result = WriteResult.combine(*write_results)
 
             logger.info(
                 "Data sink %s finished. %d rows and %s data written.",
