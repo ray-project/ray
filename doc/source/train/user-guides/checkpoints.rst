@@ -266,9 +266,8 @@ Because ``report`` returns without waiting for the checkpoint upload to complete
 you must ensure that the local checkpoint directory stays alive until the checkpoint
 upload completes. This means you cannot use a temporary directory that may be
 deleted before the upload finishes (e.g. from ``tempfile.TemporaryDirectory``).
- ``report`` also exposes the ``delete_local_checkpoint_after_upload`` parameter, which
- defaults to ``True`` if ``checkpoint_upload_mode`` is
- ``ray.train.CheckpointUploadMode.ASYNC``.
+``report`` also exposes the ``delete_local_checkpoint_after_upload`` parameter, which
+defaults to ``True`` if ``checkpoint_upload_mode`` is ``ray.train.CheckpointUploadMode.ASYNC``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
