@@ -2769,15 +2769,25 @@
   cluster:
     byod:
       runtime_env:
+        # XXX: comment.
         - RAY_memory_usage_threshold=0.7
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
     timeout: 1000
-    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 10 --mem-pct-per-task .2
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 10 --mem-pct-per-task .4
 
   variations:
-    - __suffix__: aws
+    - __suffix__: aws0
+    - __suffix__: aws1
+    - __suffix__: aws2
+    - __suffix__: aws3
+    - __suffix__: aws4
+    - __suffix__: aws5
+    - __suffix__: aws6
+    - __suffix__: aws7
+    - __suffix__: aws8
+    - __suffix__: aws9
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -3723,6 +3733,7 @@
     # leave oom disabled as test is marked unstable at the moment.
     byod:
       runtime_env:
+        # XXX: ??????
         - RAY_memory_monitor_refresh_ms=0
       pip:
         - ray[default]
