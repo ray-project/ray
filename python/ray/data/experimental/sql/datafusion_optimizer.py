@@ -29,6 +29,38 @@ except ImportError:
     df = None
 
 
+# Configuration constants for adaptive sampling strategy
+# These determine how many rows to sample from datasets for DataFusion optimization
+
+# Minimum sample size for any dataset (ensures basic statistics)
+DEFAULT_MIN_SAMPLE_SIZE = 100
+
+# Maximum sample size for any dataset (caps memory usage)
+DEFAULT_MAX_SAMPLE_SIZE = 10000
+
+# Default sample size when metadata is unavailable
+DEFAULT_SAMPLE_SIZE = 1000
+
+# Dataset size tier thresholds (in rows) for adaptive sampling
+TINY_DATASET_THRESHOLD = 1000  # < 1K rows: use all rows
+SMALL_DATASET_THRESHOLD = 10000  # 1K-10K rows: use 50% sample
+MEDIUM_DATASET_THRESHOLD = 100000  # 10K-100K rows: use 10% sample
+LARGE_DATASET_THRESHOLD = 1000000  # 100K-1M rows: use 1% sample
+# > 1M rows: use fixed max sample
+
+# Sampling percentages for each tier
+TINY_DATASET_SAMPLE_FRACTION = 1.0  # 100% - use all
+SMALL_DATASET_SAMPLE_FRACTION = 0.5  # 50%
+MEDIUM_DATASET_SAMPLE_FRACTION = 0.1  # 10%
+LARGE_DATASET_SAMPLE_FRACTION = 0.01  # 1%
+
+# Multiplier for datasets from read operations (often have good metadata)
+READ_OPERATION_SAMPLE_MULTIPLIER = 5
+
+# Multiplier for datasets with block metadata
+BLOCK_METADATA_SAMPLE_MULTIPLIER = 2
+
+
 @dataclass
 class DataFusionOptimizations:
     """Optimization decisions extracted from DataFusion's query planner.
@@ -209,10 +241,10 @@ class DataFusionOptimizer:
         Returns:
             Optimal sample size (rows to take).
         """
-        # Defaults - configurable via DataContext in future
-        min_sample = 100
-        max_sample = 10000
-        default_sample = 1000
+        # Use module-level constants for configuration
+        min_sample = DEFAULT_MIN_SAMPLE_SIZE
+        max_sample = DEFAULT_MAX_SAMPLE_SIZE
+        default_sample = DEFAULT_SAMPLE_SIZE
 
         try:
             # Strategy 1: Check for estimated row count from read metadata
@@ -226,39 +258,55 @@ class DataFusionOptimizer:
                     if hasattr(stats, "num_rows") and stats.num_rows:
                         estimated_rows = stats.num_rows
 
-                        # Adaptive sampling tiers
-                        if estimated_rows < 1000:
+                        # Adaptive sampling tiers using constants
+                        if estimated_rows < TINY_DATASET_THRESHOLD:
                             # Tiny dataset - use all (no sampling needed)
-                            sample_size = estimated_rows
+                            sample_size = int(
+                                estimated_rows * TINY_DATASET_SAMPLE_FRACTION
+                            )
                             self._logger.debug(
                                 f"Table '{table_name}': Full dataset "
-                                f"({estimated_rows} rows - small)"
+                                f"({estimated_rows} rows - tiny)"
                             )
-                        elif estimated_rows < 10000:
+                        elif estimated_rows < SMALL_DATASET_THRESHOLD:
                             # Small dataset - 50% sample for good statistics
                             sample_size = min(
-                                max_sample, max(min_sample, int(estimated_rows * 0.5))
+                                max_sample,
+                                max(
+                                    min_sample,
+                                    int(estimated_rows * SMALL_DATASET_SAMPLE_FRACTION),
+                                ),
                             )
                             self._logger.debug(
-                                f"Table '{table_name}': 50% sample "
+                                f"Table '{table_name}': {int(SMALL_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
-                        elif estimated_rows < 100000:
+                        elif estimated_rows < MEDIUM_DATASET_THRESHOLD:
                             # Medium dataset - 10% sample
                             sample_size = min(
-                                max_sample, max(min_sample, int(estimated_rows * 0.1))
+                                max_sample,
+                                max(
+                                    min_sample,
+                                    int(
+                                        estimated_rows * MEDIUM_DATASET_SAMPLE_FRACTION
+                                    ),
+                                ),
                             )
                             self._logger.debug(
-                                f"Table '{table_name}': 10% sample "
+                                f"Table '{table_name}': {int(MEDIUM_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
-                        elif estimated_rows < 1000000:
+                        elif estimated_rows < LARGE_DATASET_THRESHOLD:
                             # Large dataset - 1% sample (still 10k max)
                             sample_size = min(
-                                max_sample, max(min_sample, int(estimated_rows * 0.01))
+                                max_sample,
+                                max(
+                                    min_sample,
+                                    int(estimated_rows * LARGE_DATASET_SAMPLE_FRACTION),
+                                ),
                             )
                             self._logger.debug(
-                                f"Table '{table_name}': 1% sample "
+                                f"Table '{table_name}': {int(LARGE_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
                         else:
@@ -287,7 +335,10 @@ class DataFusionOptimizer:
                             f"Table '{table_name}': Using metadata-based estimation"
                         )
                         # Use larger sample for datasets with more blocks (heuristic)
-                        return min(max_sample, default_sample * 2)
+                        return min(
+                            max_sample,
+                            default_sample * BLOCK_METADATA_SAMPLE_MULTIPLIER,
+                        )
                 except Exception:
                     pass
 
@@ -300,7 +351,9 @@ class DataFusionOptimizer:
                 self._logger.debug(
                     f"Table '{table_name}': Read operation detected, using larger sample"
                 )
-                return min(max_sample, default_sample * 5)
+                return min(
+                    max_sample, default_sample * READ_OPERATION_SAMPLE_MULTIPLIER
+                )
 
             # Fallback: Use default sample size
             self._logger.debug(
