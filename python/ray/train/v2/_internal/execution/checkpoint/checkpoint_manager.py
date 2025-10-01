@@ -20,8 +20,9 @@ from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 try:
-    from pydantic import BaseModel
     from pydantic_core import from_json
+
+    from ray._common.pydantic_compat import BaseModel
 except (ImportError, ModuleNotFoundError) as exc:
     raise ImportError(
         "`ray.train.v2` requires the pydantic package, which is missing. "
