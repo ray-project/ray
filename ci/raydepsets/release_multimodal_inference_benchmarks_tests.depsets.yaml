@@ -11,7 +11,7 @@ depsets:
     operation: compile
     requirements:
       - release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
-      - release/nightly_tests/daft_benchmarks/audio_transcription/requirements.in
+      - release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
     output: release/ray_release/byod/audio_transcription_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}

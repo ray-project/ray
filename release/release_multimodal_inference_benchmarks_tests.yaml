@@ -1,6 +1,6 @@
 - name: DEFAULTS
-  group: daft-benchmarks
-  working_dir: nightly_tests/daft_benchmarks
+  group: multimodal-inference-benchmarks
+  working_dir: nightly_tests/multimodal_inference_benchmarks
 
   frequency: manual
   team: data
