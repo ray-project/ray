@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
@@ -155,11 +155,10 @@ class NixlTensorTransport(TensorTransportManager):
         )
 
     @staticmethod
-    def garbage_collect(*args: Any):
+    def garbage_collect(tensor_transport_meta: NixlTransportMetadata):
         from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
-        tensor_transport_meta = args[0]
         descs = tensor_transport_meta.nixl_reg_descs
         nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
         nixl_backend.deregister_memory(descs)

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
@@ -178,5 +178,5 @@ class CollectiveTensorTransport(TensorTransportManager):
             )
 
     @staticmethod
-    def garbage_collect(*args: Any):
+    def garbage_collect(tensor_transport_meta: CollectiveTransportMetadata):
         pass

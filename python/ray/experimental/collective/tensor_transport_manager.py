@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
 from ray.util.collective.types import (
@@ -129,10 +129,10 @@ class TensorTransportManager(ABC):
 
     @staticmethod
     @abstractmethod
-    def garbage_collect(*args: Any):
+    def garbage_collect(tensor_transport_meta: TensorTransportMetadata):
         """
-        Garbage collect with the given arguments.
+        Garbage collect for the tensor transport after the GPU object is freed.
 
         Args:
-            *args: The arguments needed for the garbage collect function.
+            tensor_transport_meta: The tensor transport metadata.
         """
