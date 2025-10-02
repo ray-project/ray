@@ -155,9 +155,10 @@ class NixlTensorTransport(TensorTransportManager):
         )
 
     @staticmethod
-    def deregister_memory(descs: Any):
+    def garbage_collect(*args: Any):
         from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
+        descs = args[0]
         nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
         nixl_backend.deregister_memory(descs)

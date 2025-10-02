@@ -535,12 +535,11 @@ class GPUObjectManager:
 
         try:
             src_actor = self.managed_gpu_object_metadata[object_id].src_actor
-            tensor_transport_meta = self.managed_gpu_object_metadata[
-                object_id
-            ].tensor_transport_meta
-
+            gpu_object_meta = self.managed_gpu_object_metadata[object_id]
+            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                __ray_free__, object_id, tensor_transport_meta
+                __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
             )
         except Exception:
             # This could fail if this is a retry and it's already been freed.

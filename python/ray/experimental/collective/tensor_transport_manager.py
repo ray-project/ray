@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
 from ray.util.collective.types import (
@@ -125,4 +125,14 @@ class TensorTransportManager(ABC):
         Args:
             tensors: The tensors to send.
             communicator_metadata: The communicator metadata for the send/recv operation.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def garbage_collect(*args: Any):
+        """
+        Garbage collect with the given arguments.
+
+        Args:
+            *args: The arguments needed for the garbage collect function.
         """

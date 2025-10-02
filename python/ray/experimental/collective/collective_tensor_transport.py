@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
 from ray.experimental.collective.tensor_transport_manager import (
@@ -176,3 +176,7 @@ class CollectiveTensorTransport(TensorTransportManager):
                 communicator_metadata.dst_rank,
                 communicator_metadata.communicator_name,
             )
+
+    @staticmethod
+    def garbage_collect(*args: Any):
+        pass

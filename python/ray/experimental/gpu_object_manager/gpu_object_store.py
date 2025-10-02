@@ -104,14 +104,20 @@ def __ray_recv__(
     gpu_object_store.add_object(obj_id, tensors)
 
 
-def __ray_free__(self, obj_id: str, tensor_transport_meta: TensorTransportMetadata):
+def __ray_free__(
+    self,
+    obj_id: str,
+    tensor_transport_backend: Backend,
+    tensor_transport_meta: TensorTransportMetadata,
+):
     try:
         from ray._private.worker import global_worker
         from ray.experimental.collective import get_tensor_transport_manager
-        from ray.util.collective.types import Backend
 
-        tensor_transport_manager = get_tensor_transport_manager(Backend.NIXL)
-        tensor_transport_manager.deregister_memory(tensor_transport_meta.nixl_reg_descs)
+        tensor_transport_manager = get_tensor_transport_manager(
+            tensor_transport_backend
+        )
+        tensor_transport_manager.garbage_collect(tensor_transport_meta.nixl_reg_descs)
 
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         gpu_object_store.pop_object(obj_id)
