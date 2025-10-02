@@ -388,6 +388,7 @@ py_test_module_list(
         "test_logging_java.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "medium_size_python_tests_k_to_z",
         "needs_java",
