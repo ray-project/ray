@@ -169,7 +169,7 @@ py_library(
     name = "tuned_examples_conftest",
     srcs = ["tuned_examples/conftest.py"],
     visibility = [
-        "//python/ray/rllib:__subpackages__",
+        "//rllib:__subpackages__",
     ],
     deps = ["//python/ray/tests:conftest"],
 )
