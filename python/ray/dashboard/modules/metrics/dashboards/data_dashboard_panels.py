@@ -642,7 +642,7 @@ EXTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 )
 
 # Combined Input Queue and Output Queue Blocks Panel
-COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL = Panel(
+COMBINED_INQUEUE_BLOCKS_PANEL = Panel(
     id=56,
     title="Operator Combined Internal + External Input Queue Size (Blocks)",
     description="Total number of blocks in operator's internal + external input queue.",
@@ -889,7 +889,7 @@ DATA_GRAFANA_ROWS = [
             ROWS_GENERATED_PANEL,
             OBJECT_STORE_MEMORY_PANEL,
             RUNNING_TASKS_PANEL,
-            COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL,
+            COMBINED_INQUEUE_BLOCKS_PANEL,
             COMBINED_OUTQUEUE_BLOCKS_PANEL,
         ],
         collapsed=False,
