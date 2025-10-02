@@ -19,5 +19,3 @@ depsets:
     build_arg_sets:
       - py39
       - py310
-    pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
