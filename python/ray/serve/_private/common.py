@@ -820,13 +820,14 @@ class DeploymentSnapshot(BaseModel):
         """Return True if scaling-related fields are equal.
 
         Used for autoscaling snapshot log deduplication. Compares only:
-        current_replicas, scaling_status.
+        timestamp_str, app, deployment.
         """
         if not isinstance(other, DeploymentSnapshot):
             return False
         return (
-            self.current_replicas == other.current_replicas
-            and self.scaling_status == other.scaling_status
+            self.timestamp_str == other.timestamp_str
+            and self.app == other.app
+            and self.deployment == other.deployment
         )
 
 
