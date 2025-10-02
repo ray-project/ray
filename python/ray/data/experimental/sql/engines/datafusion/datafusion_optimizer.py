@@ -342,6 +342,7 @@ class DataFusionOptimizer:
                 try:
                     stats = dataset._plan._dataset_stats_summary
                     if hasattr(stats, "num_rows") and stats.num_rows:
+                        self._logger.debug(
                             f"Table '{table_name}': Estimated {stats.num_rows} rows from metadata"
                         )
                         return stats.num_rows
@@ -360,6 +361,7 @@ class DataFusionOptimizer:
                 return TINY_DATASET_THRESHOLD  # from_items usually small
 
             # Fallback: Assume default size
+            self._logger.debug(
                 f"Table '{table_name}': No metadata, assuming {DEFAULT_SAMPLE_SIZE} rows"
             )
             return DEFAULT_SAMPLE_SIZE
@@ -498,6 +500,7 @@ class DataFusionOptimizer:
                 )
 
             # Fallback: Use default sample size
+            self._logger.debug(
                 f"Table '{table_name}': Using default sample ({default_sample} rows)"
             )
             return default_sample
