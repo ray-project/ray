@@ -274,6 +274,8 @@ class Project(AbstractMap):
         self,
         input_op: LogicalOperator,
         exprs: List["Expr"],
+        # `preserve_existing` is required for Project to distinguish between retaining the existing set of columns vs. only using those defined in `exprs`
+        # For example, it's set to True for operators like with_column, rename_columns, but False for select_columns since the final set of columns are to be pruned.
         preserve_existing: bool = False,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,

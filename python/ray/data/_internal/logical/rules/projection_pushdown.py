@@ -44,26 +44,26 @@ def _collect_input_columns_from_exprs(exprs: List[Expr]) -> Set[str]:
     return cols
 
 
-def _substitute_column_refs(expr: Expr, col_mapping: dict[str, Expr]) -> Expr:
+def _substitute_columns(expr: Expr, col_mapping: dict[str, Expr]) -> Expr:
     if isinstance(expr, ColumnExpr):
         mapped = col_mapping.get(expr.name)
         if mapped is not None:
             return mapped.expr if isinstance(mapped, AliasExpr) else mapped
         return expr
     if isinstance(expr, AliasExpr):
-        return _substitute_column_refs(expr.expr, col_mapping).alias(expr.name)
+        return _substitute_columns(expr.expr, col_mapping).alias(expr.name)
     if isinstance(expr, BinaryExpr):
         return type(expr)(
             expr.op,
-            _substitute_column_refs(expr.left, col_mapping),
-            _substitute_column_refs(expr.right, col_mapping),
+            _substitute_columns(expr.left, col_mapping),
+            _substitute_columns(expr.right, col_mapping),
         )
     if isinstance(expr, UnaryExpr):
-        return type(expr)(expr.op, _substitute_column_refs(expr.operand, col_mapping))
+        return type(expr)(expr.op, _substitute_columns(expr.operand, col_mapping))
     if isinstance(expr, UDFExpr):
-        new_args = [_substitute_column_refs(a, col_mapping) for a in expr.args]
+        new_args = [_substitute_columns(a, col_mapping) for a in expr.args]
         new_kwargs = {
-            k: _substitute_column_refs(v, col_mapping) for k, v in expr.kwargs.items()
+            k: _substitute_columns(v, col_mapping) for k, v in expr.kwargs.items()
         }
         return type(expr)(
             fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
@@ -71,7 +71,7 @@ def _substitute_column_refs(expr: Expr, col_mapping: dict[str, Expr]) -> Expr:
     return expr
 
 
-def _ensure_named(expr: Expr, name: str) -> Expr:
+def _get_aliased_expr(expr: Expr, name: str) -> Expr:
     if expr.name == name:
         return expr
     if isinstance(expr, AliasExpr):
@@ -79,7 +79,7 @@ def _ensure_named(expr: Expr, name: str) -> Expr:
     return expr.alias(name)
 
 
-def _is_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
+def _get_expr_renames(expr: Expr) -> Optional[Tuple[str, str]]:
     if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
         dest = expr.name
         src = expr.expr.name
@@ -88,60 +88,67 @@ def _is_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
     return None
 
 
-def _pairwise_fuse_projects(up: Project, down: Project) -> Optional[Project]:
-    """Try to fuse two consecutive Projects (up -> down). Return fused Project or None if invalid."""
-    produced_names = {e.name for e in up.exprs}
-    produced_map = {e.name: _ensure_named(e, e.name) for e in up.exprs}
+def _pairwise_fuse_projects(
+    upstream: Project, downstream: Project
+) -> Optional[Project]:
+    """Try to fuse two consecutive Projects (upstream -> downstream). Return fused Project or None if invalid."""
+    cols_produced_by_upstream = {e.name for e in upstream.exprs}
+    produced_map = {e.name: _get_aliased_expr(e, e.name) for e in upstream.exprs}
 
     # Compute base names explicitly removed by 'rename' in up (when source isn't kept).
-    forbidden_base: Set[str] = set()
-    for e in up.exprs:
-        rn = _is_simple_rename(e)
-        if rn is not None:
-            src, _ = rn
-            if src not in produced_names:
-                forbidden_base.add(src)
+    columns_consumed_by_renames: Set[str] = set()
+    for expr in upstream.exprs:
+        renamed_expr = _get_expr_renames(expr)
+        if renamed_expr is not None:
+            src, _ = renamed_expr
+            if src not in cols_produced_by_upstream:
+                columns_consumed_by_renames.add(src)
 
     # Validate and substitute downstream expressions
-    substituted_down_exprs: List[Expr] = []
-    for expr in down.exprs:
-        refs = _collect_input_columns_from_exprs([expr])
-        base_refs = refs - (refs & produced_names)
+    substituted_downstream_exprs: List[Expr] = []
+    for expr in downstream.exprs:
+        input_columns_from_expr = _collect_input_columns_from_exprs([expr])
+        downstream_input_only_columns = input_columns_from_expr - (
+            input_columns_from_expr & cols_produced_by_upstream
+        )
 
-        if not up.preserve_existing:
+        if not upstream.preserve_existing:
             # After a selection, only the produced names are visible.
-            if base_refs:
+            if downstream_input_only_columns:
                 return None
         else:
-            # Preserve-existing: base refs are allowed except ones explicitly removed by rename.
-            if any(r in forbidden_base for r in base_refs):
+            # Preserve-existing: base columns are allowed except ones explicitly removed by rename.
+            if any(
+                base_col in columns_consumed_by_renames
+                for base_col in downstream_input_only_columns
+            ):
                 return None
 
-        substituted = _substitute_column_refs(expr, produced_map)
-        substituted_down_exprs.append(_ensure_named(substituted, expr.name))
+        substituted = _substitute_columns(expr, produced_map)
+        substituted_downstream_exprs.append(_get_aliased_expr(substituted, expr.name))
 
     # If downstream is a selection, it resets outputs.
-    if not down.preserve_existing:
+    if not downstream.preserve_existing:
         return Project(
-            up.input_dependency,
-            exprs=substituted_down_exprs,
+            upstream.input_dependency,
+            exprs=substituted_downstream_exprs,
             preserve_existing=False,
-            ray_remote_args=down._ray_remote_args,
+            ray_remote_args=downstream._ray_remote_args,
         )
 
     # Preserve-existing downstream: merge into upstream outputs, honoring renames.
-    current_output_names = {e.name for e in down.exprs}
-    defs = {e.name: _ensure_named(e, e.name) for e in up.exprs}
-    order = [e.name for e in up.exprs]
+    current_output_names = {e.name for e in downstream.exprs}
+    defs = {e.name: _get_aliased_expr(e, e.name) for e in upstream.exprs}
+    order = [e.name for e in upstream.exprs]
 
-    for expr in down.exprs:
+    for expr in downstream.exprs:
         name = expr.name
-        rename = _is_simple_rename(expr)
+        rename = _get_expr_renames(expr)
 
         if rename is not None:
             src, dest = rename
             resolved = produced_map.get(src, expr)
-            defs[dest] = _ensure_named(resolved, dest)
+            defs[dest] = _get_aliased_expr(resolved, dest)
 
             # If source is not kept by downstream, remove/replace it.
             if src not in current_output_names and src in defs:
@@ -154,19 +161,19 @@ def _pairwise_fuse_projects(up: Project, down: Project) -> Optional[Project]:
             continue
 
         # Non-rename: add/overwrite, keeping order stable.
-        substituted = _substitute_column_refs(expr, produced_map)
-        defs[name] = _ensure_named(substituted, name)
+        substituted = _substitute_columns(expr, produced_map)
+        defs[name] = _get_aliased_expr(substituted, name)
         if name not in order:
             order.append(name)
 
     fused_exprs = [defs[n] for n in order]
-    fused_preserve = up.preserve_existing and down.preserve_existing
+    fused_preserve = upstream.preserve_existing and downstream.preserve_existing
 
     return Project(
-        up.input_dependency,
+        upstream.input_dependency,
         exprs=fused_exprs,
         preserve_existing=fused_preserve,
-        ray_remote_args=down._ray_remote_args,
+        ray_remote_args=downstream._ray_remote_args,
     )
 
 

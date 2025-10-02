@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+_BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 
 
 # Set the max chunk size in bytes for Arrow to Batches conversion in
@@ -170,7 +171,8 @@ class ArrowBlockBuilder(TableBlockBuilder):
                 for table in tables:
                     if table.num_rows > 0:
                         table = table.append_column(
-                            "__concat_stub", pa.nulls(table.num_rows)
+                            _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+                            pa.nulls(table.num_rows),
                         )
                     tables_with_stub.append(table)
                 result = transform_pyarrow.concat(tables_with_stub, promote_types=True)
@@ -339,7 +341,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table
 
     def num_rows(self) -> int:
-        # Arrow may represent an empty table via an N > 0 row, 0-column table
+        # Arrow may represent an empty table via an N > 0 row, 0-column table, e.g. when
+        # slicing an empty table, so we return 0 if num_columns == 0.
         return self._table.num_rows
 
     def size_bytes(self) -> int:

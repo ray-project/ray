@@ -23,7 +23,10 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import (
+    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+    ArrowBlockAccessor,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -102,9 +105,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
-
-
-_BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 
 
 class _ParquetFragment:
