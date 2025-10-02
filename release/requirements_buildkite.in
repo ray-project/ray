@@ -1,7 +1,7 @@
 # Requirements to run release tests from buildkite (client dependencies will be installed separately)
 # Copy anyscale pin to requirements.txt and util.py
 aioboto3
-anyscale >= 0.26.14
+anyscale >= 0.26.58
 bazel-runfiles
 boto3
 click
@@ -31,3 +31,5 @@ jsonschema>=4.23.0
 certifi>=2025.1.31
 h11>=0.16.0
 google-cloud-logging
+azure-storage-file-datalake
+msal

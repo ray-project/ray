@@ -95,11 +95,11 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aks
-      env: aks
+    - __suffix__: azure
+      env: azure
       frequency: manual
       cluster:
-        cluster_compute: hello_world_compute_config_aks.yaml
+        cluster_compute: hello_world_compute_config_azure.yaml
 
 #######################
 # Cluster scaling tests

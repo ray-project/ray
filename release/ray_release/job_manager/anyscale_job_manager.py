@@ -4,9 +4,8 @@ from typing import Any, Dict, Optional, Tuple, List
 
 
 import anyscale
+from anyscale.job.models import JobConfig
 from anyscale.sdk.anyscale_client.models import (
-    CreateProductionJob,
-    CreateProductionJobConfig,
     HaJobStates,
 )
 from ray_release.anyscale_util import get_cluster_name
@@ -60,31 +59,30 @@ class AnyscaleJobManager:
             f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
         )
 
-        anyscale_client = self.sdk
-
         runtime_env = {
             "env_vars": env_vars_for_job,
             "pip": pip or [],
         }
+        print("Working dir: ", working_dir)
+        print("Upload path: ", upload_path)
         if working_dir:
             runtime_env["working_dir"] = working_dir
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 
         try:
-            job_request = CreateProductionJob(
+            job_config = JobConfig(
                 name=self.cluster_manager.cluster_name,
-                description=f"Smoke test: {self.cluster_manager.smoke_test}",
-                project_id=self.cluster_manager.project_id,
-                config=CreateProductionJobConfig(
-                    entrypoint=cmd_to_run,
-                    runtime_env=runtime_env,
-                    build_id=self.cluster_manager.cluster_env_build_id,
-                    compute_config_id=self.cluster_manager.cluster_compute_id,
-                    max_retries=0,
-                ),
+                project="default",
+                cloud="anyscale_aks_public_default_cloud_us_west_2",
+                image_uri="rayreleasetest.azurecr.io/anyscale/ray:abfss-adlfs-rebase",
+                working_dir=working_dir,
+                entrypoint=cmd_to_run,
+                compute_config="default_y8sy__compute__hello_world.azure__73898838c837ef6780e2965d7fa3a6f6a316b7c89480d1198084cddb3524efdb:1",
+                env_vars=env_vars_for_job,
             )
-            job_response = anyscale_client.create_job(job_request)
+            job_id = anyscale.job.submit(job_config)
+            job_response = anyscale.job.status(id=job_id)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -92,7 +90,29 @@ class AnyscaleJobManager:
                 f"{e}"
             ) from e
 
-        self.last_job_result = job_response.result
+        # try:
+        #     job_request = CreateProductionJob(
+        #         name=self.cluster_manager.cluster_name,
+        #         description=f"Smoke test: {self.cluster_manager.smoke_test}",
+        #         project_id=self.cluster_manager.project_id,
+        #         config=CreateProductionJobConfig(
+        #             entrypoint=cmd_to_run,
+        #             runtime_env=runtime_env,
+        #             build_id=self.cluster_manager.cluster_env_build_id,
+        #             compute_config_id=self.cluster_manager.cluster_compute_id,
+        #             max_retries=0,
+        #         ),
+        #     )
+        #     logger.info("Job request: " + str(job_request))
+        #     job_response = anyscale_client.create_job(job_request)
+        # except Exception as e:
+        #     raise JobStartupFailed(
+        #         "Error starting job with name "
+        #         f"{self.cluster_manager.cluster_name}: "
+        #         f"{e}"
+        #     ) from e
+
+        self.last_job_result = job_response
         self.start_time = time.time()
 
         logger.info(f"Link to job: " f"{format_link(self.job_url)}")
