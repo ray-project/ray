@@ -378,11 +378,10 @@ class AutoscalingState:
 
         # Use instantaneous merge approach - no arbitrary windowing needed
         aggregated_metrics = merge_timeseries_dicts(*metrics_timeseries_dicts)
-        running_requests_timeseries = aggregated_metrics.get(ONGOING_REQUESTS_KEY, [])
-        if running_requests_timeseries:
-
+        ongoing_requests_timeseries = aggregated_metrics.get(ONGOING_REQUESTS_KEY, [])
+        if ongoing_requests_timeseries:
             # assume that the last recorded metric is valid for last_window_s seconds
-            last_metric_time = running_requests_timeseries[-1].timestamp
+            last_metric_time = ongoing_requests_timeseries[-1].timestamp
             # we dont want to make any assumption about how long the last metric will be valid
             # only conclude that the last metric is valid for last_window_s seconds that is the
             # difference between the current time and the last metric recorded time
@@ -392,10 +391,10 @@ class AutoscalingState:
             if last_window_s <= 0:
                 last_window_s = 1e-3
             # Calculate the time-weighted average of the running requests
-            avg_running = time_weighted_average(
-                running_requests_timeseries, last_window_s=last_window_s
+            avg_ongoing = time_weighted_average(
+                ongoing_requests_timeseries, last_window_s=last_window_s
             )
-            return avg_running if avg_running is not None else 0.0
+            return avg_ongoing if avg_ongoing is not None else 0.0
 
         return 0.0
 
