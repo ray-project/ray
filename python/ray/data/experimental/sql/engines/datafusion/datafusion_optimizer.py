@@ -574,6 +574,7 @@ class DataFusionOptimizer:
                         )
 
             optimizations.filter_placement = filters
+            self._logger.debug(
                 f"Extracted {len(filters)} filter placements from DataFusion plan"
             )
 
@@ -586,6 +587,7 @@ class DataFusionOptimizer:
                         projections.extend(cols)
 
             optimizations.projection_columns = projections
+            self._logger.debug(
                 f"Extracted {len(projections)} projection columns from DataFusion plan"
             )
 
@@ -612,11 +614,14 @@ class DataFusionOptimizer:
                     agg_strategy = self._extract_aggregation_strategy(line)
                     if agg_strategy:
                         optimizations.aggregation_strategy = agg_strategy
+                        self._logger.debug(
                             f"Extracted aggregation strategy: {agg_strategy}"
                         )
                         break
 
             # Log summary of extracted optimizations
+            self._logger.info(
+                f"Extracted optimizations: {len(optimizations.filter_placement)} filters, "
                 f"{len(optimizations.projection_columns)} projections, "
                 f"{len(optimizations.join_order)} joins"
             )
