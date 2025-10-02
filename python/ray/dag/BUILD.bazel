@@ -143,6 +143,7 @@ py_test(
     main = "tests/experimental/test_torch_tensor_dag.py",
     tags = [
         "compiled_graphs",
+        "custom_setup",
         "exclusive",
         "multi_gpu",
         "no_windows",
@@ -161,6 +162,7 @@ py_test(
     main = "tests/experimental/test_torch_tensor_transport.py",
     tags = [
         "compiled_graphs",
+        "custom_setup",
         "exclusive",
         "multi_gpu",
         "no_windows",
@@ -182,6 +184,7 @@ py_test(
 #         "compiled_graphs",
 #         "exclusive",
 #         "multi_gpu",
+#         "custom_setup",
 #         "no_windows",
 #         "team:core",
 #     ],
