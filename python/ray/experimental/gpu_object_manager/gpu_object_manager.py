@@ -525,7 +525,9 @@ class GPUObjectManager:
 
     def free_object_primary_copy(self, object_id: str):
         """
-        Free the primary copy of the GPU object.
+        Free the primary copy of the GPU object. Expected to be idempotent when called from
+        free_actor_object_callback because the primary copy holder should always only have one ref
+        in the deque.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_free__,
