@@ -12,13 +12,7 @@ This page documents benchmark results and methodologies for evaluating Ray Data 
 - **Video Object Detection**: Processing 10k video frames from Hollywood2 action videos dataset using YOLOv11n for object detection. The pipeline loads video frames, resizes them to 640x640, runs batch inference with YOLO to detect objects, extracts individual object crops, and outputs object metadata and cropped images in Parquet format.
 - **Large-scale Image Embedding**: Processing 4TiB of base64-encoded images from a Parquet dataset using ViT for image embedding. The pipeline decodes base64 images, converts to RGB, preprocesses using ViTImageProcessor (resizing, normalization), runs GPU-accelerated batch inference with ViT to generate embeddings, and outputs results to Parquet format.
 
-We compare Ray Data with Daft, an open source multimodal data processing library built on Ray.
-
----
-
-## Results Summary
-
-![Multimodal Inference Benchmark Results](/data/images/multimodal_inference_results.png)
+We compare Ray Data 2.50 with Daft, an open source multimodal data processing library built on Ray.
 
 ---
 
@@ -60,8 +54,82 @@ We compare Ray Data with Daft, an open source multimodal data processing library
     - ...
 ```
 
----
+## Results Summary
 
-## Methodology
+![Multimodal Inference Benchmark Results](/data/images/multimodal_inference_results.png)
+
+```{list-table}
+:header-rows: 1
+:name: benchmark-results-summary
+-   - Workload
+    - **Daft**
+    - **Ray Data**
+-   - **Image Classification**
+    - 195.3 ± 2.5
+    - **111.2 ± 1.2**
+-   - **Document Embedding**
+    - 51.3 ± 1.3
+    - **29.4 ± 0.8**
+-   - **Audio Transcription**
+    - 510.5 ± 10.4
+    - **312.6 ± 3.1**
+-   - **Video Object Detection**
+    - 735.3 ± 7.6
+    - **623 ± 1.4**
+-   - **Large Scale Image Embedding**
+    - 752.75 ± 5.5
+    - **105.81 ± 0.79**
+```
+
 
 All benchmark results are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+
+### Image Classification
+
+We compare the performance of Ray Data with Daft across a variety of instance types. Each run is an average/std across 3 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+
+```{list-table}
+:header-rows: 1
+:name: image-classification-results
+-   -
+    - g6.xlarge (4 CPUs)
+    - g6.2xlarge (8 CPUs)
+    - g6.4xlarge (16 CPUs)
+    - g6.8xlarge (32 CPUs)
+-   - **Ray Data**
+    - 456.2 ± 39.9
+    - **195.5 ± 7.6**
+    - **144.8 ± 1.9**
+    - **111.2 ± 1.2**
+-   - **Daft**
+    - **315.0 ± 31.2**
+    - 202.0 ± 2.2
+    - 195.0 ± 6.6
+    - 195.3 ± 2.5
+```
+
+### Video Object Detection
+
+We compare the performance of Ray Data with Daft across a variety of instance types. Each run is an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+
+
+
+```{list-table}
+:header-rows: 1
+:name: video-object-detection-results
+-   -
+    - g6.xlarge (4 CPUs)
+    - g6.2xlarge (8 CPUs)
+    - g6.4xlarge (16 CPUs)
+    - g6.8xlarge (32 CPUs)
+-   - **Ray Data**
+    - 922 ± 13.8
+    - **704.8 ± 25.0**
+    - **629 ± 1.8**
+    - **623 ± 1.4**
+-   - **Daft**
+    - **758.8 ± 10.4**
+    - 735.3 ± 7.6
+    - 747.5 ± 13.4
+    - 771.3 ± 25.6
+```
