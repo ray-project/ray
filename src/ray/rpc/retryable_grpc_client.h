@@ -275,7 +275,7 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
     grpc_client->template CallMethod<Request, Reply>(
         prepare_async_function,
         request,
-        [weak_retryable_grpc_client, retryable_grpc_request, callback, call_name](
+        [weak_retryable_grpc_client, retryable_grpc_request, callback](
             const ray::Status &status, Reply &&reply) {
           auto current_retryable_grpc_client = weak_retryable_grpc_client.lock();
           if (status.ok() || !IsGrpcRetryableStatus(status) ||
