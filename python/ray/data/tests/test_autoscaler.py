@@ -217,7 +217,7 @@ def test_cluster_scaling():
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state1 = MagicMock(
-        _pending_dispatch_input_bundles_count=MagicMock(return_value=0),
+        has_pending_bundles=MagicMock(return_value=False),
         _scheduling_status=MagicMock(
             runnable=False,
         ),
@@ -230,7 +230,7 @@ def test_cluster_scaling():
         num_active_tasks=MagicMock(return_value=1),
     )
     op_state2 = MagicMock(
-        _pending_dispatch_input_bundles_count=MagicMock(return_value=1),
+        has_pending_bundles=MagicMock(return_value=True),
         _scheduling_status=MagicMock(
             runnable=False,
         ),
