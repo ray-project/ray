@@ -816,7 +816,7 @@ class DeploymentSnapshot(BaseModel):
             return f"{val * 1000:.0f}ms"
         return f"{val:.2f}s"
 
-    def is_scaling_equivalent(self, other: object) -> bool:
+    def is_scaling_equivalent(self, other: "DeploymentSnapshot") -> bool:
         """Return True if scaling-related fields are equal.
 
         Used for autoscaling snapshot log deduplication. Compares only:
