@@ -16,6 +16,37 @@ We compare Ray Data 2.50 with Daft, an open source multimodal data processing li
 
 ---
 
+## Results Summary
+
+![Multimodal Inference Benchmark Results](/data/images/multimodal_inference_results.png)
+
+```{list-table}
+:header-rows: 1
+:name: benchmark-results-summary
+-   - Workload
+    - **Daft**
+    - **Ray Data**
+-   - **Image Classification**
+    - 195.3 ± 2.5
+    - **111.2 ± 1.2**
+-   - **Document Embedding**
+    - 51.3 ± 1.3
+    - **29.4 ± 0.8**
+-   - **Audio Transcription**
+    - 510.5 ± 10.4
+    - **312.6 ± 3.1**
+-   - **Video Object Detection**
+    - 735.3 ± 7.6
+    - **623 ± 1.4**
+-   - **Large Scale Image Embedding**
+    - 752.75 ± 5.5
+    - **105.81 ± 0.79**
+```
+
+
+All benchmark results are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+
+
 ## Workload Configuration
 
 
@@ -54,39 +85,9 @@ We compare Ray Data 2.50 with Daft, an open source multimodal data processing li
     - ...
 ```
 
-## Results Summary
+## Image Classification across different instance types
 
-![Multimodal Inference Benchmark Results](/data/images/multimodal_inference_results.png)
-
-```{list-table}
-:header-rows: 1
-:name: benchmark-results-summary
--   - Workload
-    - **Daft**
-    - **Ray Data**
--   - **Image Classification**
-    - 195.3 ± 2.5
-    - **111.2 ± 1.2**
--   - **Document Embedding**
-    - 51.3 ± 1.3
-    - **29.4 ± 0.8**
--   - **Audio Transcription**
-    - 510.5 ± 10.4
-    - **312.6 ± 3.1**
--   - **Video Object Detection**
-    - 735.3 ± 7.6
-    - **623 ± 1.4**
--   - **Large Scale Image Embedding**
-    - 752.75 ± 5.5
-    - **105.81 ± 0.79**
-```
-
-
-All benchmark results are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
-
-### Image Classification
-
-We compare the performance of Ray Data with Daft across a variety of instance types. Each run is an average/std across 3 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+We compare the performance of Ray Data with Daft on the image classification workload across a variety of instance types. Each run is an average/std across 3 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
 
 ```{list-table}
 :header-rows: 1
@@ -108,9 +109,9 @@ We compare the performance of Ray Data with Daft across a variety of instance ty
     - 195.3 ± 2.5
 ```
 
-### Video Object Detection
+## Video Object Detection across different instance types
 
-We compare the performance of Ray Data with Daft across a variety of instance types. Each run is an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+We compare the performance of Ray Data with Daft on the video object detection workload across a variety of instance types. Each run is an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
 
 
 
