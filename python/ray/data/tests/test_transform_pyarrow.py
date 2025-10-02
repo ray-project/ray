@@ -10,7 +10,10 @@ import pytest
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2, _extension_array_concat_supported
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    _extension_array_concat_supported,
+)
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
