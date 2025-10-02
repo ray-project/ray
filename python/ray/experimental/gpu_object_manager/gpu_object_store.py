@@ -107,14 +107,16 @@ def __ray_recv__(
 def __ray_free__(self, obj_id: str):
     # Expected to be idempotent when called from `free_object_primary_copy` because the
     # primary copy holder should always only have one ref in the deque.
-    # try:
-    print(f"__ray_free__: {obj_id}")
-    # gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    # gpu_object_store.pop_object(obj_id)
-    # except AssertionError as e:
-    #     print(f"__ray_free__: {obj_id}, error: {e}")
-    #     # This could fail if this is a retry and it's already been freed.
-    #     pass
+    try:
+        from ray._private.worker import global_worker
+
+        print(f"__ray_free__: {obj_id}")
+        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+        gpu_object_store.pop_object(obj_id)
+    except AssertionError as e:
+        print(f"__ray_free__: {obj_id}, error: {e}")
+        # This could fail if this is a retry and it's already been freed.
+        pass
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
