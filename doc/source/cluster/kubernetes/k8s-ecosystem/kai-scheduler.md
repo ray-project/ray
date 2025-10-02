@@ -1,7 +1,7 @@
 (kuberay-kai-scheduler)=
 # Gang scheduling, queue priority, and GPU sharing for RayClusters using KAI Scheduler
 
-This guide demonstrates how to use KAI Scheduler for setting up hierarchical queues with quotas, gang scheduling and GPU sharing using RayClusters.
+This guide demonstrates how to use KAI Scheduler for setting up hierarchical queues with quotas, gang scheduling, and GPU sharing using RayClusters.
 
 
 ## KAI Scheduler
