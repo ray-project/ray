@@ -444,8 +444,10 @@ class ServeController:
             if last is not None and last.is_scaling_equivalent(deployment_snapshot):
                 continue
 
-            log_json = deployment_snapshot.model_dump_json(exclude_none=True)
-            self._autoscaling_logger.info("serve_autoscaling_snapshot " + log_json)
+            payload = deployment_snapshot.model_dump(exclude_none=True)
+            self._autoscaling_logger.info(
+                "", extra={"event": "autoscaling_snapshot", "snapshot": payload}
+            )
             self._last_autoscaling_snapshots[key] = deployment_snapshot
 
     async def run_control_loop(self) -> None:

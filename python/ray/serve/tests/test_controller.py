@@ -282,11 +282,11 @@ def test_get_deployment_config(serve_instance):
 
 
 def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
-    """Validate controller emits well-formed serve_autoscaling_snapshot logs.
+    """Validate controller emits well-formed autoscaling snapshot structured logs.
 
     This test deploys a simple autoscaling deployment and tails the controller
-    log until a `serve_autoscaling_snapshot` line appears, then validates the
-    JSON payload shape and a few key fields.
+    log until a structured JSON record with `event == "autoscaling_snapshot"`
+    appears, then validates the JSON payload shape and a few key fields.
     """
     controller = _get_global_client()._controller
 
@@ -340,17 +340,21 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
                     continue
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     for line in f:
-                        marker = "serve_autoscaling_snapshot "
-                        if marker in line:
-                            try:
-                                payload_str = line.split(marker, 1)[1].strip()
-                                payload_obj = json.loads(payload_str)
-                                if payload_obj.get("deployment") != DEPLOY_NAME:
-                                    continue
-                                collected.append(payload_obj)
-                            except Exception:
-                                pass
-            # Keep only in-order snapshots for this test
+                        # Each line is a JSON object emitted by JSONFormatter.
+                        try:
+                            rec = json.loads(line)
+                        except Exception:
+                            continue
+                        if rec.get("event") != "autoscaling_snapshot":
+                            continue
+                        snap = rec.get("snapshot", {})
+                        if not isinstance(snap, dict):
+                            continue
+                        if snap.get("deployment") != DEPLOY_NAME:
+                            continue
+                        collected.append(snap)
+                        if len(collected) >= 2:
+                            break
             if len(collected) == 2:
                 found["payloads"] = collected[:2]
                 return True
@@ -358,7 +362,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
         except Exception:
             return False
 
-    # Wait up to ~60s for the snapshot to appear.
+    # Wait up to ~15s for the snapshot to appear.
     wait_for_condition(_scan_for_snapshot, timeout=15)
 
     payloads = found["payloads"]

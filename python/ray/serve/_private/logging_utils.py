@@ -442,7 +442,7 @@ def configure_snapshot_logger(
     handler = logging.handlers.RotatingFileHandler(
         file_path, maxBytes=max_bytes, backupCount=backup_count
     )
-    handler.setFormatter(ServeFormatter("autoscaling_snapshot", component_id))
+    handler.setFormatter(JSONFormatter())
 
     logger_obj.addHandler(handler)
     return logger_obj
