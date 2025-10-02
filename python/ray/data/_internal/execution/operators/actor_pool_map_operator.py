@@ -531,6 +531,8 @@ class _MapWorker:
     ):
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
+        # Initialize the data context for this actor after setting the src_fn_name in order to not
+        # break __repr__. It's possible that logging setup fails.
         DataContext._set_current(ctx)
         # Initialize state for this actor.
         self._map_transformer.init()
