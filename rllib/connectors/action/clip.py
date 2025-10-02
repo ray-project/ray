@@ -5,9 +5,9 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.spaces.space_utils import clip_action, get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType
-from ray.rllib.utils.annotations import OldAPIStack
 
 
 @OldAPIStack
