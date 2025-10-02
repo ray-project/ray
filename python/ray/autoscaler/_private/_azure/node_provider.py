@@ -15,6 +15,7 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
+from ray._common.usage.usage_lib import get_cloud_from_metadata_requests
 from ray.autoscaler._private._azure.config import (
     bootstrap_azure,
     get_azure_sdk_function,
@@ -78,7 +79,20 @@ class AzureNodeProvider(NodeProvider):
                 f"to subscription_id from the logged in azure profile: {subscription_id}"
             )
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
-        credential = DefaultAzureCredential(exclude_shared_token_cache_credential=True)
+
+        # Detect cloud environment to optimize Azure credential chain.
+        # On non-Azure clouds (AWS, GCP), skip Azure-specific auth methods
+        # (managed identity, workload identity) to avoid IMDS timeout delays / failures.
+        on_azure = get_cloud_from_metadata_requests() == "azure"
+        logger.info(
+            f"Detected cloud environment: {'Azure' if on_azure else 'non-Azure'}"
+        )
+
+        credential = DefaultAzureCredential(
+            exclude_shared_token_cache_credential=True,
+            exclude_managed_identity_credential=not on_azure,
+            exclude_workload_identity_credential=not on_azure,
+        )
         self.compute_client = ComputeManagementClient(credential, subscription_id)
         self.network_client = NetworkManagementClient(credential, subscription_id)
         self.resource_client = ResourceManagementClient(credential, subscription_id)
