@@ -83,6 +83,19 @@ def test_custom_byod_build_missing_arg(mock_build_anyscale_custom_byod_image):
         in result.output
     )
 
+    result = runner.invoke(
+        main,
+        [
+            "--image-name",
+            "test-image",
+            "--base-image",
+            "test-base-image",
+            "--python-depset",
+            "python_depset.lock",
+        ],
+    )
+    assert result.exit_code == 0
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
