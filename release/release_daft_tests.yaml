@@ -64,11 +64,12 @@
 
 
 - name: audio_transcription
-
+  python: "3.10"
   cluster:
     cluster_compute: audio_transcription/compute.yaml
     byod:
       post_build_script: byod_install_daft_audio_transcription.sh
+      python_depset: audio_transcription_py3.10.lock
 
   run:
     timeout: 3600
