@@ -286,7 +286,7 @@ This shows that both workers have the same `NVIDIA_VISIBLE_DEVICES` (same physic
 
 If pods remain in `Pending` state, the most common issue is missing queue labels.
 
-Please check operator logs for KAI Scheduler errors and look for error messages like:
+Check operator logs for KAI Scheduler errors and look for error messages like:
 
 ```bash
 "Queue label missing from RayCluster; pods will remain pending"
