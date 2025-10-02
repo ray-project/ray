@@ -24,6 +24,7 @@ User-Spawned Process Killed on Worker Exit
 ------------------------------------------
 
 The following example uses a Ray Actor to spawn a user process. The user process is a sleep process.
+
 .. testcode::
 
   import ray
