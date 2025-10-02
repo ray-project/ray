@@ -139,7 +139,7 @@ def plan_project_op(
 
             computed_outputs: Dict[str, Any] = {}
 
-            # Phase 1: compute all outputs from the same input snapshot.
+            # Phase 1: compute all outputs from the same input schema.
             for expr in op.exprs:
                 output_name = expr.name
 
@@ -153,11 +153,12 @@ def plan_project_op(
                     rename_map[expr.expr.name] = output_name
 
                 computed_outputs[output_name] = eval_expr(expr, block)
-                if output_name not in seen_output_names:
-                    new_output_cols.append(output_name)
-                    seen_output_names.add(output_name)
+                if output_name in seen_output_names:
+                    raise ValueError(f"Column name '{output_name}' is a duplicate.")
+                new_output_cols.append(output_name)
+                seen_output_names.add(output_name)
 
-            # Phase 2: materialize outputs onto the block.
+            # Phase 2: Upsert columns onto the block.
             cur_block = block
             for output_name in new_output_cols:
                 cur_block = BlockAccessor.for_block(cur_block).fill_column(

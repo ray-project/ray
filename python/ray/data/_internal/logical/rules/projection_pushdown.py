@@ -117,7 +117,7 @@ def _pairwise_fuse_projects(
             if downstream_input_only_columns:
                 return None
         else:
-            # Preserve-existing: base columns are allowed except ones explicitly removed by rename.
+            # Preserve-existing: downstream_input_only_columns are allowed except ones explicitly removed by rename.
             if any(
                 base_col in columns_consumed_by_renames
                 for base_col in downstream_input_only_columns
