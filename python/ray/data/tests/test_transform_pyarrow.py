@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2, _extension_array_concat_supported
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
@@ -32,10 +32,6 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
 )
-
-
-def _extension_array_concat_supported() -> bool:
-    return get_pyarrow_version() >= MIN_PYARROW_VERSION_TYPE_PROMOTION
 
 
 def test_try_defragment_table():
