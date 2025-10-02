@@ -4,4 +4,4 @@
 set -exo pipefail
 
 # TODO: Pin these versions.
-pip3 install --no-cache-dir daft==0.6.2 numpy==1.26.4 accelerate==1.10.1 transformers==4.56.2 torchaudio==2.7.0 soundfile==0.13.1
+uv pip install -r audio_transcription_py3.10.lock --system --no-deps --index-strategy unsafe-best-match
