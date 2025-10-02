@@ -246,10 +246,11 @@ stop = {
     "mix_size": args.target_mix_size,
 }
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
+def test_main():
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    results = run_rllib_example_script_experiment(
+    run_rllib_example_script_experiment(
         base_config=config,
         args=args,
         stop=stop,
