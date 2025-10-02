@@ -983,7 +983,7 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorHandleRemovedForRegisteredA
   request.set_actor_id(actor_id.Binary());
   request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
 
-  std::atomic<int> callback_count(0);
+  int callback_count(0);
   rpc::WaitForActorRefDeletedReply reply1;
   rpc::WaitForActorRefDeletedReply reply2;
 
@@ -992,26 +992,34 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorHandleRemovedForRegisteredA
   core_worker_->HandleWaitForActorRefDeleted(
       request,
       &reply1,
-      [&callback_count](Status s,
-                        std::function<void()> success,
-                        std::function<void()> failure) { callback_count++; });
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
 
-  core_worker_->HandleWaitForActorRefDeleted(
-      request,
-      &reply2,
-      [&callback_count](Status s,
-                        std::function<void()> success,
-                        std::function<void()> failure) { callback_count++; });
-
-  ASSERT_EQ(callback_count.load(), 0);
   if (delete_actor_handle) {
     std::vector<ObjectID> deleted;
     // Triggers the send_reply_callback which is stored in the reference counter
     reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
     ASSERT_EQ(deleted.size(), 1u);
+  }
 
-    // Only last callback fires due to the first being overwritten
-    ASSERT_EQ(callback_count.load(), 1);
+  // The send_reply_callback is immediately triggered since the object has gone out of
+  // scope if delete_actor_handle is true. Otherwise, it is not triggered.
+  core_worker_->HandleWaitForActorRefDeleted(
+      request,
+      &reply2,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
+
+  if (delete_actor_handle) {
+    ASSERT_EQ(callback_count, 2);
+  } else {
+    ASSERT_EQ(callback_count, 0);
   }
 }
 
@@ -1063,7 +1071,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   request.set_actor_id(actor_id.Binary());
   request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
 
-  std::atomic<int> callback_count(0);
+  int callback_count(0);
   rpc::WaitForActorRefDeletedReply reply1;
   rpc::WaitForActorRefDeletedReply reply2;
 
@@ -1073,18 +1081,22 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   core_worker_->HandleWaitForActorRefDeleted(
       request,
       &reply1,
-      [&callback_count](Status s,
-                        std::function<void()> success,
-                        std::function<void()> failure) { callback_count++; });
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
 
   core_worker_->HandleWaitForActorRefDeleted(
       request,
       &reply2,
-      [&callback_count](Status s,
-                        std::function<void()> success,
-                        std::function<void()> failure) { callback_count++; });
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
 
-  ASSERT_EQ(callback_count.load(), 0);
+  ASSERT_EQ(callback_count, 0);
   register_callback(Status::OK());
   // Triggers the callbacks passed to AsyncWaitForActorRegisterFinish
   ASSERT_FALSE(actor_creator_->IsActorInRegistering(actor_id));
@@ -1095,7 +1107,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
     reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
     ASSERT_EQ(deleted.size(), 1u);
     // Only last callback fires due to the first being overwritten
-    ASSERT_EQ(callback_count.load(), 1);
+    ASSERT_EQ(callback_count, 1);
   }
 }
 
