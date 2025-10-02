@@ -260,7 +260,7 @@ kubectl apply -f ray-cluster.kai-gpu-sharing.yaml
 kubectl get pods -w
 ```
 
-Note: GPU sharing via time-slicing in this example occurs only at the Kubernetes layer, allowing multiple pods to share a single GPU device. Memory isolation is not enforced, so applications must manage their own usage to prevent interference. For other GPU sharing approaches (e.g., MPS), see the [the KAI documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/gpu-sharing).
+Note: GPU sharing with time slicing in this example occurs only at the Kubernetes layer, allowing multiple pods to share a single GPU device. The scheduler doesn't enforce memory isolation, so applications must manage their own usage to prevent interference. For other GPU sharing approaches (e.g., MPS), see the [the KAI documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/gpu-sharing).
 
 ### Verify GPU Sharing is Working
 
