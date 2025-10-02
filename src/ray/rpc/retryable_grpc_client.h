@@ -281,7 +281,6 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
           if (status.ok() || !IsGrpcRetryableStatus(status) ||
               !current_retryable_grpc_client) {
             callback(status, std::move(reply));
-            current_retryable_grpc_client->num_inflight_requests_--;
             return;
           }
           current_retryable_grpc_client->Retry(retryable_grpc_request);
