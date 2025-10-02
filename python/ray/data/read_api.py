@@ -2253,13 +2253,16 @@ def read_tfrecords(
 def read_mcap(
     paths: Union[str, List[str]],
     *,
-    channels: Optional[Set[str]] = None,
-    topics: Optional[Set[str]] = None,
+    channels: Optional[Union[List[str], Set[str]]] = None,
+    topics: Optional[Union[List[str], Set[str]]] = None,
     time_range: Optional[Tuple[int, int]] = None,
-    message_types: Optional[Set[str]] = None,
+    message_types: Optional[Union[List[str], Set[str]]] = None,
     include_metadata: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -2314,18 +2317,22 @@ def read_mcap(
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
-        channels: Optional set of channel names to include. If specified, only messages
-            from these channels will be read. Mutually exclusive with `topics`.
-        topics: Optional set of topic names to include. If specified, only messages
-            from these topics will be read. Mutually exclusive with `channels`.
+        channels: Optional list or set of channel names to include. If specified, only
+            messages from these channels will be read. Mutually exclusive with `topics`.
+        topics: Optional list or set of topic names to include. If specified, only
+            messages from these topics will be read. Mutually exclusive with `channels`.
         time_range: Optional tuple of (start_time, end_time) in nanoseconds for filtering
             messages by timestamp. Both values must be non-negative and start_time < end_time.
-        message_types: Optional set of message type names (schema names) to include.
-            Only messages with matching schema names will be read.
+        message_types: Optional list or set of message type names (schema names) to
+            include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
             Defaults to True. When True, includes schema, channel, and message metadata.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
@@ -2389,6 +2396,9 @@ def read_mcap(
     return read_datasource(
         datasource,
         parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
