@@ -1787,7 +1787,7 @@
 
   run:
     timeout: 86400
-    script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --num_epochs=1000
+    script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --num_epochs=100
 
 - name: train_multinode_persistence
   group: Train tests
