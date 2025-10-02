@@ -540,8 +540,8 @@ class GPUObjectManager:
         )
 
         try:
-            src_actor = self.managed_gpu_object_metadata[object_id].src_actor
             gpu_object_meta = self.managed_gpu_object_metadata[object_id]
+            src_actor = gpu_object_meta.src_actor
             tensor_transport_backend = gpu_object_meta.tensor_transport_backend
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
