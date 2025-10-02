@@ -1,0 +1,20 @@
+name: ray-java-build$ARCH_SUFFIX
+froms: ["cr.ray.io/rayproject/manylinux$ARCH_SUFFIX"]
+dockerfile: ci/docker/ray-java.Dockerfile
+srcs:
+  - .bazelversion
+  - .bazelrc
+  - WORKSPACE
+  - BUILD.bazel
+  - bazel/
+  - thirdparty/
+  - src/
+  - java/
+  - gen_ray_pkg.py
+  - release/BUILD.bazel
+  - release/requirements_buildkite.txt
+build_args:
+  - ARCH_SUFFIX
+  - BUILDKITE_BAZEL_CACHE_URL
+build_hint_args:
+  - BUILDKITE_CACHE_READONLY

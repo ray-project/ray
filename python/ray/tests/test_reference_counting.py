@@ -313,7 +313,13 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
     ray.get(signal.send.remote())
 
     # Reference should be gone, check that array gets evicted.
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
+    def check_is_evicted():
+        object_ref = ray.ObjectRef(array_oid_bytes)
+        return not ray._private.worker.global_worker.core_worker.object_exists(
+            object_ref
+        )
+
+    wait_for_condition(check_is_evicted, timeout=30)
 
 
 # Test that a passed reference held by an actor after the method finishes

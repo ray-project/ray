@@ -25,8 +25,9 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/gcs_client/accessor.h"
-#include "ray/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/pubsub/fake_subscriber.h"
 
 namespace ray {
@@ -34,7 +35,7 @@ namespace ray {
 using ::testing::_;
 using ::testing::Return;
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
       rpc::UpdateObjectLocationBatchRequest &&request,

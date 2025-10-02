@@ -162,8 +162,8 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "cgroup",
             # java build types
             "java",
-            # with cpp api
-            "with-cpp",
+            # with cpp and java worker support
+            "multi-lang",
             # do not build ray
             "skip",
         ]

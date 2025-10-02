@@ -18,7 +18,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 #include "ray/stats/metric_defs.h"
 
@@ -32,7 +31,6 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed)
     : io_service_(io_service),
       gcs_client_(gcs_client),
-      client_call_manager_(io_service, /*record_stats=*/true),
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
       kMaxObjectReportBatchSize(RayConfig::instance().max_object_report_batch_size()),

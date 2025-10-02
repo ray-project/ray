@@ -18,6 +18,7 @@
 #include <string>
 
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace pubsub {

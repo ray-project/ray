@@ -10,6 +10,11 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy a vision LLM
 
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fvision-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/vision-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 A vision LLM can interpret images as well as text, enabling tasks like answering questions about charts, analyzing photos, or combining visuals with instructions. It extends LLMs beyond language to support multimodal reasoning and richer applications.  
 
 This tutorial deploys a vision LLM using Ray Serve LLM.  
@@ -33,7 +38,7 @@ llm_config = LLMConfig(
         model_id="my-qwen-VL",
         model_source="qwen/Qwen2.5-VL-7B-Instruct",
     ),
-    accelerator_type="L40S",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
@@ -111,7 +116,7 @@ from openai import OpenAI
 API_KEY = "FAKE_KEY"
 BASE_URL = "http://localhost:8000"
 
-client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 response = client.chat.completions.create(
     model="my-qwen-VL",
@@ -146,7 +151,7 @@ from openai import OpenAI
 API_KEY = "FAKE_KEY"
 BASE_URL = "http://localhost:8000"
 
-client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 ### From an image locally saved as `example.jpg`
 # Load and encode image as base64

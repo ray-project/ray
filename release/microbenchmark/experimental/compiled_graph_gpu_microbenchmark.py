@@ -105,7 +105,7 @@ class NcclWorker:
                 input_buffer = torch.ones(shape, dtype=dtype, device=self.device) * i
                 self._send(input_buffer, input_buffer.numel(), other_rank)
             else:
-                input_buffer = torch.zeros(shape, dtype=dtype, device=self.device)
+                input_buffer = torch.empty(shape, dtype=dtype, device=self.device)
                 self._recv(input_buffer, input_buffer.numel(), other_rank)
 
             torch.cuda.synchronize()
