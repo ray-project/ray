@@ -15,8 +15,6 @@ from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
-RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX = "LLMServer:"
-
 
 def build_llm_deployment(
     llm_config: LLMConfig,
@@ -25,7 +23,7 @@ def build_llm_deployment(
     deployment_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
 ) -> Application:
-    name_prefix = name_prefix or RAY_SERVE_LLM_DEPLOYMENT_NAME_PREFIX
+    name_prefix = name_prefix or "LLMServer:"
     deployment_kwargs = deployment_kwargs or {}
 
     deployment_options = llm_config.get_serve_options(
