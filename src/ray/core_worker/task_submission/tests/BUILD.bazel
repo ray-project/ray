@@ -51,7 +51,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:actor_creator",
         "//src/ray/core_worker:fake_actor_creator",
-        "//src/ray/core_worker:reference_count",
+        "//src/ray/core_worker:reference_counter",
         "//src/ray/core_worker:task_manager",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "@com_google_googletest//:gtest",

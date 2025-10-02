@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 
 #include <memory>
 #include <string>
