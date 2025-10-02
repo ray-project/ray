@@ -533,10 +533,14 @@ class GPUObjectManager:
 
         try:
             src_actor = self.managed_gpu_object_metadata[object_id].src_actor
+            tensor_transport_meta = self.managed_gpu_object_metadata[
+                object_id
+            ].tensor_transport_meta
             print(f"free_object_primary_copy: {object_id}, src_actor: {src_actor}")
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                __ray_free__, object_id
+                __ray_free__, object_id, tensor_transport_meta
             )
+
             print("hi here")
         except Exception as e:
             print(f"free_object_primary_copy: {object_id}, error: {e}")

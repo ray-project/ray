@@ -38,6 +38,21 @@ BACKEND_CONFIG = {
         device=torch.device("cpu"),
         collective_group_backend=None,
     ),
+    "nixl_cpu": BackendConfig(
+        init_actor_kwargs={},
+        send_method_kwargs={"tensor_transport": "nixl"},
+        device=torch.device("cpu"),
+        collective_group_backend=None,
+    ),
+    "nixl_gpu": BackendConfig(
+        init_actor_kwargs={
+            "num_gpus": 1,
+            "num_cpus": 0,
+        },
+        send_method_kwargs={"tensor_transport": "nixl"},
+        device=torch.device("cuda"),
+        collective_group_backend=None,
+    ),
     "nccl": BackendConfig(
         init_actor_kwargs={
             "num_gpus": 1,
@@ -148,6 +163,24 @@ def _exec_p2p_transfer_nccl(
     )
 
 
+def _exec_p2p_transfer_nixl_cpu(
+    sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+    receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+):
+    return _exec_p2p_transfer_multiple_shapes(
+        "exec_p2p_transfer_nixl_cpu", "nixl_cpu", sender_hint, receiver_hint
+    )
+
+
+def _exec_p2p_transfer_nixl_gpu(
+    sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+    receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+):
+    return _exec_p2p_transfer_multiple_shapes(
+        "exec_p2p_transfer_nixl_gpu", "nixl_gpu", sender_hint, receiver_hint
+    )
+
+
 def to_dict_key(key: str):
     for r in [" ", ":", "-"]:
         key = key.replace(r, "_")
@@ -186,9 +219,11 @@ def main() -> None:
         )
 
     results = []
-    results.extend(_exec_p2p_transfer_object(sender_hint, receiver_hint))
-    results.extend(_exec_p2p_transfer_gloo(sender_hint, receiver_hint))
-    results.extend(_exec_p2p_transfer_nccl(sender_hint, receiver_hint))
+    # results.extend(_exec_p2p_transfer_object(sender_hint, receiver_hint))
+    # results.extend(_exec_p2p_transfer_gloo(sender_hint, receiver_hint))
+    # results.extend(_exec_p2p_transfer_nccl(sender_hint, receiver_hint))
+    # results.extend(_exec_p2p_transfer_nixl_cpu(sender_hint, receiver_hint))
+    results.extend(_exec_p2p_transfer_nixl_gpu(sender_hint, receiver_hint))
     result_dict = {
         f"{to_dict_key(v[0])}": (v[1], v[2]) for v in results if v is not None
     }
