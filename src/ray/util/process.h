@@ -107,7 +107,8 @@ class Process {
       bool decouple = false,
       const ProcessEnvironment &env = {},
       bool pipe_to_stdin = false,
-      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
+      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {},
+      bool new_process_group = false);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
@@ -134,7 +135,8 @@ class Process {
       const std::vector<std::string> &args,
       bool decouple,
       const std::string &pid_file = std::string(),
-      const ProcessEnvironment &env = {});
+      const ProcessEnvironment &env = {},
+      bool new_process_group = false);
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
@@ -155,6 +157,10 @@ static constexpr char kProcDirectory[] = "/proc";
 // Platform-specific kill for the specified process identifier.
 // Currently only supported on Linux. Returns nullopt for other platforms.
 std::optional<std::error_code> KillProc(pid_t pid);
+
+// Platform-specific kill for an entire process group. Currently only supported on
+// POSIX (non-Windows). Returns nullopt for other platforms.
+std::optional<std::error_code> KillProcessGroup(pid_t pgid, int sig);
 
 // Platform-specific utility to find the process IDs of all processes
 // that have the specified parent_pid as their parent.

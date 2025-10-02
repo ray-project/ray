@@ -843,6 +843,9 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 ///     export RAY_testing_rpc_failure="*=-1:25:50"
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 RAY_CONFIG(std::string, testing_rpc_failure, "")
+/// If this is set, when injecting RPC failures, we'll check if the server and client have
+/// the same address. If they do, we won't inject the failure.
+RAY_CONFIG(bool, testing_rpc_failure_avoid_intra_node_failures, false)
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
@@ -891,6 +894,11 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 // Only works on Linux>=3.4. On other platforms, this flag is ignored.
 // See https://github.com/ray-project/ray/pull/42992 for more info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
+
+// Enable per-worker process-group-based cleanup. When enabled, workers are
+// placed into their own process groups and can be cleaned up via killpg on
+// worker death. Cross-platform semantics on POSIX (no-op on Windows).
+RAY_CONFIG(bool, process_group_cleanup_enabled, false)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)

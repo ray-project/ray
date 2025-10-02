@@ -16,8 +16,8 @@ from ray.rllib.utils.spaces.space_utils import (
     get_dummy_batch_for_space,
 )
 from ray.rllib.utils.typing import (
-    EpisodeID,
     EnvID,
+    EpisodeID,
     TensorType,
     ViewRequirementsDict,
 )
