@@ -58,7 +58,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         logger.info(
             f"Building custom BYOD image: {image}, base image: {base_image}, post build script: {post_build_script}"
         )
-        if not post_build_script:
+        if not post_build_script and not python_depset:
             continue
         step_key = generate_custom_build_step_key(image)
         step_name = _get_step_name(image, step_key, custom_image_test_names_map[image])
