@@ -285,8 +285,8 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     """Validate controller emits well-formed autoscaling snapshot structured logs.
 
     This test deploys a simple autoscaling deployment and tails the controller
-    log until a structured JSON record with `event == "autoscaling_snapshot"`
-    appears, then validates the JSON payload shape and a few key fields.
+    log until a structured JSON record with `type == "deployment"` appears,
+    then validates the JSON payload shape and a few key fields.
     """
     controller = _get_global_client()._controller
 
@@ -345,7 +345,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
                             rec = json.loads(line)
                         except Exception:
                             continue
-                        if rec.get("event") != "autoscaling_snapshot":
+                        if rec.get("type") != "deployment":
                             continue
                         snap = rec.get("snapshot", {})
                         if not isinstance(snap, dict):
@@ -424,7 +424,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 
 # Test that no autoscaling snapshot logs are emitted for deployments without autoscaling_config
 def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
-    """Ensure no serve_autoscaling_snapshot logs are emitted without autoscaling_config."""
+    """Ensure no deployment-type autoscaling snapshot logs are emitted without autoscaling_config."""
     controller = _get_global_client()._controller
 
     DEPLOY_NAME = f"snap_no_auto_{int(time.time())}"
@@ -460,23 +460,25 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
     time.sleep(5)
 
     found = []
-    marker = "serve_autoscaling_snapshot "
     for path in candidate_paths:
         if not os.path.exists(path):
             continue
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                if line.startswith(marker):
-                    try:
-                        payload_str = line.split(marker, 1)[1].strip()
-                        payload_obj = json.loads(payload_str)
-                        if payload_obj.get("deployment") == DEPLOY_NAME:
-                            found.append(payload_obj)
-                    except Exception:
-                        pass
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                if rec.get("type") != "deployment":
+                    continue
+                snap = rec.get("snapshot", {})
+                if not isinstance(snap, dict):
+                    continue
+                if snap.get("deployment") == DEPLOY_NAME:
+                    found.append(snap)
 
     assert not found, (
-        f"Found serve_autoscaling_snapshot logs for deployment {DEPLOY_NAME} "
+        f"Found deployment-type autoscaling snapshot logs for deployment {DEPLOY_NAME} "
         f"even though no autoscaling_config was set: {found}"
     )
 

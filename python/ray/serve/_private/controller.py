@@ -446,7 +446,7 @@ class ServeController:
 
             payload = deployment_snapshot.model_dump(exclude_none=True)
             self._autoscaling_logger.info(
-                "", extra={"event": "autoscaling_snapshot", "snapshot": payload}
+                "", extra={"type": "deployment", "snapshot": payload}
             )
             self._last_autoscaling_snapshots[key] = deployment_snapshot
 
