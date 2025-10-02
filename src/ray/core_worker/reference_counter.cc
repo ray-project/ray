@@ -597,6 +597,24 @@ bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
+StatusSet<StatusT::NotFound> ReferenceCounter::HasOwner(
+    const std::vector<ObjectID> &object_ids) const {
+  absl::MutexLock lock(&mutex_);
+  std::ostringstream objects_missing_owners;
+  bool missing_owner = false;
+  for (const auto &object_id : object_ids) {
+    if (object_id_refs_.find(object_id) == object_id_refs_.end()) {
+      objects_missing_owners << object_id << ", ";
+      missing_owner = true;
+    }
+  }
+  if (missing_owner) {
+    return StatusT::NotFound(absl::StrFormat("Owners not found for objects [%s].",
+                                             objects_missing_owners.str()));
+  }
+  return StatusT::OK();
+}
+
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address) const {
   absl::MutexLock lock(&mutex_);
