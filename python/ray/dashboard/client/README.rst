@@ -20,6 +20,33 @@ Runs the app in the development mode. Open `http://localhost:3000
 The page will reload if you make edits. You will also see any lint errors in the
 console.
 
+Handling CORS Errors During Local Development
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When developing locally, you may encounter CORS (Cross-Origin Resource Sharing) errors. This is a browser security feature that prevents network connections when the domain name doesn't match the expected one. In this case, ``localhost`` is the domain name but ``console.anyscale.com`` (or your deployment domain) is expected.
+
+To work around this during local development, you can launch Chrome with web security disabled:
+
+**On macOS:**
+
+.. code-block:: bash
+
+   open -n -a /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --args --user-data-dir="/tmp/chrome_dev_test" --disable-web-security
+
+**On Linux:**
+
+.. code-block:: bash
+
+   google-chrome --user-data-dir="/tmp/chrome_dev_test" --disable-web-security
+
+**On Windows:**
+
+.. code-block:: bash
+
+   "C:\Program Files\Google\Chrome\Application\chrome.exe" --user-data-dir="C:\tmp\chrome_dev_test" --disable-web-security
+
+**Important Security Note:** CORS protection is there to protect the user, not the server. When running with web security disabled, only visit trusted sites (like your local development server). Do not use this browser instance for general web browsing, as it removes important security protections.
+
 ``npm test``
 ~~~~~~~~~~~~
 
