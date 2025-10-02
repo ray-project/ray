@@ -63,7 +63,7 @@ def convert_notebook(
                     # Regular Python cell:
                     code = cell.source.rstrip()
                     # Example of filtering cells by content
-                    #if "client.chat.completions.create" in code:
+                    # if "client.chat.completions.create" in code:
                     #    continue  # Model isn't deployed in CI so skip cells calling the service
                     # else, dump as-is
                     out.write(cell.source.rstrip() + "\n\n")

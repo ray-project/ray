@@ -23,6 +23,7 @@
 [Tt][Ll][Ss]
 [Vv]ision LMs
 admin
+agentic
 Alibaba
 Alpaca
 Anyscale
@@ -34,6 +35,7 @@ bool
 breakpoint
 BTS
 bursty
+Canva
 chatbot
 CLI
 configs
@@ -60,14 +62,19 @@ GGUF
 GKE
 GPTQ
 GPU(s)?
+GroupBy
 hostfile
+HPC
 http
 HTTP
+Instacart
+JVM
 KServe
 KTO
 kubectl
 Kubernetes
 Kueue
+Lakehouse
 LMs
 LSH
 MCP
@@ -77,13 +84,16 @@ MLflow
 MLOps
 namespace
 NER
+Niantic
 Nsight
 NumPy
 NVIDIA
+Nvidia
 NVLink
 OOM
 open-source
 PACK
+Pinterest
 pipelining
 Podman
 preemptible
@@ -107,6 +117,7 @@ streamable
 Softmax
 streamable
 subprocess
+TPC
 teardown
 uncaptured
 URI(s)?
@@ -117,3 +128,4 @@ verl
 VM(s)?
 VPC(s)?
 VS Code
+What is
