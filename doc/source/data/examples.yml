@@ -45,5 +45,5 @@ examples:
     frameworks:
       - pandas
     use_cases:
-      - etl
+      - ETL
     link: examples/ray-data-etl-tpch/README
