@@ -5980,7 +5980,7 @@ class Dataset:
         )
 
         # Get aggregators and compute results
-        feature_aggs = feature_aggregators_for_dataset(self, columns=columns)
+        feature_aggs = feature_aggregators_for_dataset(self.schema(), columns=columns)
         results = self.aggregate(*feature_aggs.aggregators)
         if not results:
             return DatasetSummary(

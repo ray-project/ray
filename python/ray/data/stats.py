@@ -20,7 +20,7 @@ from ray.data.aggregate import (
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.data.dataset import Schema
 
 
 logger = logging.getLogger(__name__)
@@ -230,17 +230,16 @@ class FeatureAggregators:
 
 @DeveloperAPI(stability="alpha")
 def feature_aggregators_for_dataset(
-    dataset: "Dataset", columns: Optional[List[str]] = None
+    schema: Optional["Schema"], columns: Optional[List[str]] = None
 ) -> FeatureAggregators:
     """Generate aggregators for all columns in a dataset.
 
     Args:
-        dataset: A Ray Dataset instance
+        schema: A Ray Schema instance
         columns: A list of columns to include in the summary. If None, all columns will be included.
     Returns:
         FeatureAggregators containing categorized column names and their aggregators
     """
-    schema = dataset.schema()
     if not schema:
         raise ValueError("Dataset must have a schema to determine numerical columns")
 

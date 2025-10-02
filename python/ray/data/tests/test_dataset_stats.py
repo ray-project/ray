@@ -36,7 +36,7 @@ class TestFeatureAggregatorsForDataset:
         ]
 
         ds = ray.data.from_items(data)
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Check that numerical columns are identified
         assert "int_col" in feature_aggs.numerical_columns
@@ -64,7 +64,7 @@ class TestFeatureAggregatorsForDataset:
         ]
 
         ds = ray.data.from_items(data)
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Check categorical columns
         assert "category" in feature_aggs.str_columns
@@ -87,7 +87,7 @@ class TestFeatureAggregatorsForDataset:
         ]
 
         ds = ray.data.from_items(data)
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Check vector columns
         assert "vector" in feature_aggs.vector_columns
@@ -121,7 +121,7 @@ class TestFeatureAggregatorsForDataset:
         ]
 
         ds = ray.data.from_items(data)
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Check column classification
         assert "int_val" in feature_aggs.numerical_columns
@@ -144,7 +144,9 @@ class TestFeatureAggregatorsForDataset:
         ds = ray.data.from_items(data)
 
         # Test with specific columns
-        feature_aggs = feature_aggregators_for_dataset(ds, columns=["col1", "col3"])
+        feature_aggs = feature_aggregators_for_dataset(
+            ds.schema(), columns=["col1", "col3"]
+        )
 
         # Should only include col1 and col3
         assert "col1" in feature_aggs.numerical_columns
@@ -161,7 +163,7 @@ class TestFeatureAggregatorsForDataset:
         ds = ray.data.from_items([])
 
         with pytest.raises(ValueError, match="Dataset must have a schema"):
-            feature_aggregators_for_dataset(ds)
+            feature_aggregators_for_dataset(ds.schema())
 
     def test_invalid_columns_parameter(self):
         """Test error handling when columns parameter contains non-existent columns."""
@@ -169,7 +171,9 @@ class TestFeatureAggregatorsForDataset:
         ds = ray.data.from_items(data)
 
         with pytest.raises(ValueError, match="Columns .* not found in dataset schema"):
-            feature_aggregators_for_dataset(ds, columns=["col1", "nonexistent_col"])
+            feature_aggregators_for_dataset(
+                ds.schema(), columns=["col1", "nonexistent_col"]
+            )
 
     @pytest.mark.skipif(
         get_pyarrow_version() < parse_version("20.0.0"),
@@ -188,7 +192,7 @@ class TestFeatureAggregatorsForDataset:
         )
 
         ds = ray.data.from_arrow(table)
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Only supported types should be included
         assert "supported_int" in feature_aggs.numerical_columns
@@ -211,7 +215,7 @@ class TestFeatureAggregatorsForDataset:
         ]
 
         ds = ray.data.from_items(data)
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Check that we have the right types of aggregators
         agg_names = [agg.name for agg in feature_aggs.aggregators]
@@ -243,7 +247,7 @@ class TestFeatureAggregatorsForDataset:
         """Test that the actual aggregator instances are of the correct types."""
         data = [{"num": 1, "cat": "a"}]
         ds = ray.data.from_items(data)
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Find aggregators for the numerical column
         num_aggs = [agg for agg in feature_aggs.aggregators if "num" in agg.name]
@@ -278,7 +282,7 @@ class TestFeatureAggregatorsForDataset:
         """Test that the function returns the correct FeatureAggregators dataclass."""
         data = [{"num": 1, "cat": "a", "vec": [1, 2]}]
         ds = ray.data.from_items(data)
-        result = feature_aggregators_for_dataset(ds)
+        result = feature_aggregators_for_dataset(ds.schema())
 
         # Should return a FeatureAggregators dataclass
         assert isinstance(result, FeatureAggregators)
@@ -306,8 +310,8 @@ class TestFeatureAggregatorsForDataset:
         ds = ray.data.from_items(data)
 
         # Test with None (should be same as not providing columns parameter)
-        result1 = feature_aggregators_for_dataset(ds, columns=None)
-        result2 = feature_aggregators_for_dataset(ds)
+        result1 = feature_aggregators_for_dataset(ds.schema(), columns=None)
+        result2 = feature_aggregators_for_dataset(ds.schema())
 
         # Compare the dataclass attributes
         assert result1.numerical_columns == result2.numerical_columns
@@ -320,7 +324,7 @@ class TestFeatureAggregatorsForDataset:
         data = [{"col1": 1, "col2": "a"}]
         ds = ray.data.from_items(data)
 
-        feature_aggs = feature_aggregators_for_dataset(ds, columns=[])
+        feature_aggs = feature_aggregators_for_dataset(ds.schema(), columns=[])
 
         # Should have no columns and no aggregators
         assert len(feature_aggs.numerical_columns) == 0
@@ -345,7 +349,7 @@ class TestFeatureAggregatorsForDataset:
         ds = ray.data.from_items(data)
 
         # Should complete without issues
-        feature_aggs = feature_aggregators_for_dataset(ds)
+        feature_aggs = feature_aggregators_for_dataset(ds.schema())
 
         # Verify results
         assert "id" in feature_aggs.numerical_columns
