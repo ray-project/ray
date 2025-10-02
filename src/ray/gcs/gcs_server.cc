@@ -73,6 +73,7 @@ GcsServer::GcsServer(
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
+                           config.node_ip_address,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       // NOTE: The raylet client server_unavailable_timeout_seconds is set to -1 because
@@ -133,6 +134,7 @@ GcsServer::GcsServer(
       event_aggregator_client_call_manager_(
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           /*record_stats=*/true,
+          config.node_ip_address,
           ClusterID::Nil(),
           RayConfig::instance().gcs_server_rpc_client_thread_num()),
       event_aggregator_client_(std::make_unique<rpc::EventAggregatorClientImpl>(
@@ -402,11 +404,14 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   periodical_runner_->RunFnPeriodically(
       [this] {
         for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
+          std::shared_ptr<ray::RayletClientInterface> raylet_client;
+
+          // When not connect, use GetOrConnectByAddress
           auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
               alive_node.first,
               alive_node.second->node_manager_address(),
               alive_node.second->node_manager_port());
-          auto raylet_client =
+          raylet_client =
               raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
 
           // GetResourceLoad will also get usage. Historically it didn't.

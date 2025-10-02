@@ -270,6 +270,10 @@ void GcsAutoscalerStateManager::GetClusterResourceConstraints(
 void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(node.node_id());
+  if (node_resource_info_.contains(node_id)) {
+    // early termination as we already know about this node
+    return;
+  }
   auto node_info =
       node_resource_info_
           .emplace(node_id, std::make_pair(absl::Now(), rpc::ResourcesData()))
@@ -343,7 +347,7 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
 void GcsAutoscalerStateManager::GetNodeStates(
     rpc::autoscaler::ClusterResourceState *state) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info) {
+  auto populate_node_state = [this, state](const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
@@ -372,8 +376,18 @@ void GcsAutoscalerStateManager::GetNodeStates(
 
     auto const node_id = NodeID::FromBinary(node_state_proto->node_id());
     // The node is alive. We need to check if the node is idle.
-    auto const node_resource_iter = node_resource_info_.find(node_id);
+    auto node_resource_iter = node_resource_info_.find(node_id);
 
+    if (node_resource_iter == node_resource_info_.end()) {
+      // TODO:(zac)  There exists a possibility that the GcsNodeManager node list is more
+      // up to date then the resource information within this class.  In the future all
+      // state will get updated transactionally together, but for now, we'll utilize this
+      // 'escape hatch' option and in place update the state. See
+      // https://github.com/ray-project/ray/issues/57009 and once resolved we can delete
+      // this logic
+      OnNodeAdd(gcs_node_info);
+      node_resource_iter = node_resource_info_.find(node_id);
+    }
     RAY_CHECK(node_resource_iter != node_resource_info_.end());
 
     auto const &node_resource_item = node_resource_iter->second;
