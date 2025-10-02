@@ -132,8 +132,13 @@ class RaySQL:
                     result = self._execute_with_datafusion(query)
                     if result is not None:
                         execution_time = time.time() - start_time
+                        self._logger.info(
+                            f"Query executed with DataFusion optimization in {execution_time:.3f}s"
+                        )
                         return result
                 except Exception as e:
+                    self._logger.info(
+                        f"DataFusion optimization failed ({e}), falling back to SQLGlot"
                     )
                     # Fall through to SQLGlot execution
 
