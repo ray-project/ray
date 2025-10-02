@@ -106,3 +106,28 @@ def register_pydantic_serializers(serialization_context):
         },
         custom_deserializer=lambda kwargs: ModelField(**kwargs),
     )
+
+
+def model_to_json(model: BaseModel):
+    if IS_PYDANTIC_2:
+        return model.model_dump_json()
+    else:
+        return model.json()
+
+
+def json_to_dict(json_str: str):
+    if IS_PYDANTIC_2:
+        from pydantic_core import from_json
+
+        return from_json(json_str)
+    else:
+        import json
+
+        return json.loads(json_str)
+
+
+def obj_to_model(model: BaseModel, json_dict: dict):
+    if IS_PYDANTIC_2:
+        return model.model_validate(json_dict)
+    else:
+        return model.parse_obj(json_dict)

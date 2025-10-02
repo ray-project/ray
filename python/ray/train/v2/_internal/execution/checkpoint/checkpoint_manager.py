@@ -21,8 +21,12 @@ from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 try:
-    from pydantic import BaseModel
-    from pydantic_core import from_json
+    from ray._common.pydantic_compat import (
+        BaseModel,
+        json_to_dict,
+        model_to_json,
+        obj_to_model,
+    )
 except (ImportError, ModuleNotFoundError) as exc:
     raise ImportError(
         "`ray.train.v2` requires the pydantic package, which is missing. "
@@ -235,14 +239,13 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             checkpoint_results=checkpoint_results,
             latest_checkpoint_result=latest_checkpoint_result,
         )
-        return manager_snapshot.model_dump_json()
+        return model_to_json(manager_snapshot)
 
     def _load_state(self, json_state: str):
         """Load the checkpoint manager state from a JSON str."""
         try:
-            manager_snapshot = _CheckpointManagerState.model_validate(
-                from_json(json_state)
-            )
+            json_dict = json_to_dict(json_state)
+            manager_snapshot = obj_to_model(_CheckpointManagerState, json_dict)
         except Exception as e:
             raise CheckpointManagerInitializationError(repr(e)) from e
         self._assert_checkpoints_exist()
