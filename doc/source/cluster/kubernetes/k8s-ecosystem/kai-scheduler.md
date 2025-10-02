@@ -207,7 +207,7 @@ spec:
 
 ```
 
-Please refer to documentation [here](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/priority)for more information.
+See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/priority)for more information.
 
 ## Step 5: Submitting Ray workers with GPU sharing 
 
