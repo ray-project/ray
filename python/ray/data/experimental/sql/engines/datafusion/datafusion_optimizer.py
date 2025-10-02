@@ -477,6 +477,7 @@ class DataFusionOptimizer:
                     if hasattr(logical_plan, "dag"):
                         # Estimated blocks can hint at size
                         # More blocks usually means larger dataset
+                        self._logger.debug(
                             f"Table '{table_name}': Using metadata-based estimation"
                         )
                         # Use larger sample for datasets with more blocks (heuristic)
@@ -493,6 +494,7 @@ class DataFusionOptimizer:
             if "read_parquet" in dataset_str or "read_csv" in dataset_str:
                 # Read operations likely have metadata
                 # Use larger sample for better statistics
+                self._logger.debug(
                     f"Table '{table_name}': Read operation detected, using larger sample"
                 )
                 return min(
