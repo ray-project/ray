@@ -1938,8 +1938,11 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
         mock_logger.assert_not_called()
 
 
-def test_per_task_row_limit_basic(ray_start_regular_shared):
+def test_per_task_row_limit_basic(ray_start_regular_shared, restore_data_context):
     """Test basic per-block limiting functionality."""
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     # Simple test that should work with the existing range datasource
     ds = ray.data.range(1000, override_num_blocks=10).limit(50)
     result = ds.take_all()
@@ -2009,8 +2012,13 @@ def test_per_task_row_limit_multiple_blocks_per_task(ray_start_regular_shared):
     assert all_ids == list(range(70))
 
 
-def test_per_task_row_limit_larger_than_data(ray_start_regular_shared):
+def test_per_task_row_limit_larger_than_data(
+    ray_start_regular_shared, restore_data_context
+):
     """Test per-block limiting when limit is larger than available data."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     total_rows = 50
     ds = ray.data.range(total_rows, override_num_blocks=5)
@@ -2021,8 +2029,13 @@ def test_per_task_row_limit_larger_than_data(ray_start_regular_shared):
     assert [row["id"] for row in result] == list(range(total_rows))
 
 
-def test_per_task_row_limit_exact_block_boundary(ray_start_regular_shared):
+def test_per_task_row_limit_exact_block_boundary(
+    ray_start_regular_shared, restore_data_context
+):
     """Test per-block limiting when limit exactly matches block boundaries."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     rows_per_block = 20
     num_blocks = 5
@@ -2037,8 +2050,13 @@ def test_per_task_row_limit_exact_block_boundary(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("limit", [1, 5, 10, 25, 50, 99])
-def test_per_task_row_limit_various_sizes(ray_start_regular_shared, limit):
+def test_per_task_row_limit_various_sizes(
+    ray_start_regular_shared, limit, restore_data_context
+):
     """Test per-block limiting with various limit sizes."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     total_rows = 100
     num_blocks = 10
@@ -2052,8 +2070,13 @@ def test_per_task_row_limit_various_sizes(ray_start_regular_shared, limit):
     assert [row["id"] for row in result] == list(range(expected_len))
 
 
-def test_per_task_row_limit_with_transformations(ray_start_regular_shared):
+def test_per_task_row_limit_with_transformations(
+    ray_start_regular_shared, restore_data_context
+):
     """Test that per-block limiting works correctly with transformations."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     # Test with map operation after limit
     ds = ray.data.range(100, override_num_blocks=10)
@@ -2072,8 +2095,11 @@ def test_per_task_row_limit_with_transformations(ray_start_regular_shared):
     assert [row["doubled"] for row in result] == [i * 2 for i in range(20)]
 
 
-def test_per_task_row_limit_with_filter(ray_start_regular_shared):
+def test_per_task_row_limit_with_filter(ray_start_regular_shared, restore_data_context):
     """Test per-block limiting with filter operations."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     # Filter before limit - per-block limiting should still work at read level
     ds = ray.data.range(200, override_num_blocks=10)
@@ -2111,8 +2137,11 @@ def test_per_task_row_limit_readtask_properties(ray_start_regular_shared):
     assert task_with_limit.per_task_row_limit == 10
 
 
-def test_per_task_row_limit_edge_cases(ray_start_regular_shared):
+def test_per_task_row_limit_edge_cases(ray_start_regular_shared, restore_data_context):
     """Test per-block limiting edge cases."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     # Test with single row
     ds = ray.data.range(1, override_num_blocks=1).limit(1)

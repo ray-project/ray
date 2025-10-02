@@ -14,7 +14,7 @@
 
 #pragma once
 #include "gmock/gmock.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 namespace ray {
 namespace core {
 

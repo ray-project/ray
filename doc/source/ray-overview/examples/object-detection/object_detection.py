@@ -3,6 +3,10 @@ import io
 from io import BytesIO
 from typing import Dict
 
+import boto3
+from botocore import UNSIGNED
+from botocore.config import Config
+
 import torch
 import requests
 import numpy as np
@@ -79,9 +83,28 @@ class ObjectDetection:
         """Loads the Faster R-CNN model from a remote source if not already available locally."""
         # Download model only once from the remote storage to the cluster path.
         if not os.path.exists(CLUSTER_MODEL_PATH):
-            with smart_open(REMOTE_MODEL_PATH, "rb") as s3_file:
-                with open(CLUSTER_MODEL_PATH, "wb") as local_file:
-                    local_file.write(s3_file.read())
+            os.makedirs(os.path.dirname(CLUSTER_MODEL_PATH), exist_ok=True)
+
+            # Create S3 client, falling back to unsigned for public buckets
+            session = boto3.Session()
+            # session.get_credentials() will return None if no credentials can be found.
+            if session.get_credentials():
+                # If credentials are found, use a standard signed client.
+                s3_client = session.client("s3")
+            else:
+                # No credentials found, fall back to an unsigned client for public buckets.
+                s3_client = boto3.client(
+                    "s3", config=Config(signature_version=UNSIGNED)
+                )
+
+            transport_params = {"client": s3_client}
+
+            # Stream-download from S3 to cluster storage
+            with smart_open(
+                REMOTE_MODEL_PATH, "rb", transport_params=transport_params
+            ) as src, open(CLUSTER_MODEL_PATH, "wb") as dst:
+                for chunk in iter(lambda: src.read(1024 * 1024), b""):
+                    dst.write(chunk)
 
         # Load the model with the correct number of classes and weights.
         loaded_model = models.detection.fasterrcnn_resnet50_fpn(

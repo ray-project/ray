@@ -176,23 +176,17 @@ ray_cc_library(
     srcs = [
         "worker_killing_policy.cc",
         "worker_killing_policy_group_by_owner.cc",
-        "worker_killing_policy_retriable_fifo.cc",
     ],
     hdrs = [
         "worker_killing_policy.h",
         "worker_killing_policy_group_by_owner.h",
-        "worker_killing_policy_retriable_fifo.h",
     ],
     visibility = [":__subpackages__"],
     deps = [
         ":worker",
         ":worker_pool",
-        "//src/ray/common:asio",
         "//src/ray/common:memory_monitor",
-        "@boost//:container_hash",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_prod",
     ],
 )
 

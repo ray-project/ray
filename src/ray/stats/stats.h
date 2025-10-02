@@ -101,7 +101,6 @@ static inline void Init(
         StatsConfig::instance().GetHarvestInterval());
     OpenCensusProtoExporter::Register(metrics_agent_port,
                                       (*metrics_io_service),
-                                      "127.0.0.1",
                                       worker_id,
                                       metrics_report_batch_size,
                                       max_grpc_payload_size);

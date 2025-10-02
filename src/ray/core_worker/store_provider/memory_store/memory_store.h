@@ -26,7 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/rpc/utils.h"
 

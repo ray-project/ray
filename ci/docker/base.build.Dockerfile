@@ -1,8 +1,6 @@
 ARG DOCKER_IMAGE_BASE_TEST=cr.ray.io/rayproject/oss-ci-base_test
 FROM $DOCKER_IMAGE_BASE_TEST
 
-ENV RAY_INSTALL_JAVA=1
-
 COPY . .
 
 RUN <<EOF

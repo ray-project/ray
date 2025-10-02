@@ -111,14 +111,13 @@ class RayEventPublisher(RayEventPublisherInterface):
                 await self._async_publish_with_retries(publish_batch)
         except asyncio.CancelledError:
             logger.info(f"Publisher {self._name} cancelled, shutting down gracefully")
-            self._started_event.clear()
-            await self._publish_client.close()
             raise
         except Exception as e:
             logger.error(f"Publisher {self._name} encountered error: {e}")
+            raise
+        finally:
             self._started_event.clear()
             await self._publish_client.close()
-            raise
 
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         """Wait until the publisher has started.

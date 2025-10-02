@@ -157,7 +157,7 @@ class WorkerPoolMock : public WorkerPool {
             [this]() { return absl::FromUnixMillis(current_time_ms_); }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
-        client_call_manager_(instrumented_io_service_, false),
+        client_call_manager_(instrumented_io_service_, false, /*local_address=*/""),
         mock_worker_rpc_clients_(mock_worker_rpc_clients) {
     SetNodeManagerPort(1);
   }

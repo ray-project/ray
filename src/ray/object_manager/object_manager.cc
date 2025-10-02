@@ -92,6 +92,7 @@ ObjectManager::ObjectManager(
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
+                           /*local_address=*/"always not local",
                            ClusterID::Nil(),
                            config_.rpc_service_threads_number),
       restore_spilled_object_(std::move(restore_spilled_object)),

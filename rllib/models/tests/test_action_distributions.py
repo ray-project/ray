@@ -1,7 +1,8 @@
-from gymnasium.spaces import Box
-import numpy as np
-from scipy.stats import norm
 import unittest
+
+import numpy as np
+from gymnasium.spaces import Box
+from scipy.stats import norm
 
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
@@ -9,9 +10,9 @@ from ray.rllib.models.torch.torch_action_dist import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import (
-    softmax,
-    SMALL_NUMBER,
     LARGE_INTEGER,
+    SMALL_NUMBER,
+    softmax,
 )
 from ray.rllib.utils.test_utils import check
 
@@ -191,7 +192,8 @@ class TestActionDistributions(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
