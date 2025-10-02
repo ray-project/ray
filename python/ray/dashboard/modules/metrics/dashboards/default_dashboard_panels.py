@@ -29,7 +29,7 @@ MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# IMPORTANT: Please keep this in sync with Metrics.tsx and ray-metrics.rst
+# IMPORTANT: Please keep this in sync with ray-metrics.rst
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 OVERVIEW_AND_HEALTH_PANELS = [
     Panel(
