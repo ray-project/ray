@@ -288,7 +288,6 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     log until a structured JSON record with `type == "deployment"` appears,
     then validates the JSON payload shape and a few key fields. This test validates only the earliest snapshot.
     """
-    controller = _get_global_client()._controller
 
     DEPLOY_NAME = f"snap_app_{int(time.time())}"
 
@@ -305,62 +304,31 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     # Deploy once; controller should immediately emit a snapshot.
     serve.run(snap_app.bind())
 
-    # Resolve the controller log file path. The actor returns a path relative
-    # to the Ray logs dir, so convert to absolute if needed.
-    controller_details = ray.get(controller.get_actor_details.remote())
-    log_rel = controller_details.log_file_path
+    # Get the base logs directory.
     base_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
-    log_path = (
-        log_rel if os.path.isabs(log_rel) else os.path.join(base_logs_dir, log_rel)
+    candidate_paths = sorted(
+        glob.glob(os.path.join(base_logs_dir, "serve", "autoscaling_snapshot_*.log"))
     )
-
-    candidate_paths = []
-    if os.path.exists(log_path):
-        candidate_paths.append(log_path)
-
-    autoscaling_glob = os.path.join(
-        base_logs_dir, "serve", "autoscaling_snapshot_*.log"
-    )
-    for p in glob.glob(autoscaling_glob):
-        if p not in candidate_paths:
-            candidate_paths.append(p)
-
-    # Helpful for debugging if the scan fails.
     assert (
         candidate_paths
-    ), f"No controller log candidates found; checked base {base_logs_dir}"
+    ), f"No autoscaling snapshot logs found; checked {os.path.join(base_logs_dir, 'serve')}"
 
     found = {"snapshot": None}
 
     def _scan_for_snapshot() -> bool:
-        try:
-            collected = []
-            for path in candidate_paths:
-                if not os.path.exists(path):
-                    continue
-                with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    for line in f:
-                        # Each line is a JSON object emitted by JSONFormatter.
-                        try:
-                            rec = json.loads(line)
-                        except Exception:
-                            continue
-                        if rec.get("type") != "deployment":
-                            continue
-                        snap = rec.get("snapshot", {})
-                        if not isinstance(snap, dict):
-                            continue
-                        if snap.get("deployment") != DEPLOY_NAME:
-                            continue
-                        collected.append(snap)
-            if not collected:
-                return False
-            # Pick the earliest snapshot by timestamp
-            collected.sort(key=lambda s: s.get("timestamp_str", ""))
-            found["snapshot"] = collected[0]
-            return True
-        except Exception:
+        snaps = [
+            rec.get("snapshot", {})
+            for path in candidate_paths
+            if os.path.exists(path)
+            for line in open(path, "r", encoding="utf-8", errors="ignore")
+            if (rec := json.loads(line)).get("type") == "deployment"
+            and isinstance(rec.get("snapshot", {}), dict)
+            and rec["snapshot"].get("deployment") == DEPLOY_NAME
+        ]
+        if not snaps:
             return False
+        found["snapshot"] = min(snaps, key=lambda s: s.get("timestamp_str", ""))
+        return True
 
     # Wait up to ~15s for the snapshot to appear.
     wait_for_condition(_scan_for_snapshot, timeout=15)
@@ -420,7 +388,6 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 # Test that no autoscaling snapshot logs are emitted for deployments without autoscaling_config
 def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
     """Ensure no deployment-type autoscaling snapshot logs are emitted without autoscaling_config."""
-    controller = _get_global_client()._controller
 
     DEPLOY_NAME = f"snap_no_auto_{int(time.time())}"
 
@@ -430,27 +397,13 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
 
     serve.run(app.bind())
 
-    controller_details = ray.get(controller.get_actor_details.remote())
-    log_rel = controller_details.log_file_path
     base_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
-    log_path = (
-        log_rel if os.path.isabs(log_rel) else os.path.join(base_logs_dir, log_rel)
+    candidate_paths = sorted(
+        glob.glob(os.path.join(base_logs_dir, "serve", "autoscaling_snapshot_*.log"))
     )
-
-    candidate_paths = []
-    if os.path.exists(log_path):
-        candidate_paths.append(log_path)
-
-    autoscaling_glob = os.path.join(
-        base_logs_dir, "serve", "autoscaling_snapshot_*.log"
-    )
-    for p in glob.glob(autoscaling_glob):
-        if p not in candidate_paths:
-            candidate_paths.append(p)
-
     assert (
         candidate_paths
-    ), f"No controller log candidates found; checked base {base_logs_dir}"
+    ), f"No autoscaling snapshot logs found; checked {os.path.join(base_logs_dir, 'serve')}"
 
     time.sleep(5)
 
