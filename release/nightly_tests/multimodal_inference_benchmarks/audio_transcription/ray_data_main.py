@@ -34,6 +34,8 @@ ray.get([warmup.remote() for _ in range(64)])
 
 
 def resample(item):
+    # NOTE: Remove the `audio` column since we don't need it anymore. This is done by
+    # the system automatically on Ray Data 2.51+ with the `with_column` API.
     audio = item.pop("audio")
     audio_bytes = audio["bytes"]
     waveform, sampling_rate = torchaudio.load(io.BytesIO(audio_bytes), format="flac")
@@ -81,6 +83,8 @@ class Transcriber:
 
 
 def decoder(batch):
+    # NOTE: Remove the `token_ids` column since we don't need it anymore. This is done by
+    # the system automatically on Ray Data 2.51+ with the `with_column` API.
     token_ids = batch.pop("token_ids")
     transcription = processor.batch_decode(token_ids, skip_special_tokens=True)
     batch["transcription"] = transcription

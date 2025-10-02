@@ -1,3 +1,4 @@
+# This file is adapted from https://github.com/Eventual-Inc/Daft/tree/9da265d8f1e5d5814ae871bed3cee1b0757285f5/benchmarking/ai/document_embedding
 from __future__ import annotations
 
 import time

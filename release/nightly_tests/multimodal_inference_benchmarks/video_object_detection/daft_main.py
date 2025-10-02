@@ -1,3 +1,4 @@
+# This file is adapted from https://github.com/Eventual-Inc/Daft/tree/9da265d8f1e5d5814ae871bed3cee1b0757285f5/benchmarking/ai/video_object_detection
 from __future__ import annotations
 
 import torch
