@@ -402,8 +402,11 @@ class RouterMetricsManager:
                 # as long as the handle is alive. To approximate the true average of ongoing requests,
                 # we should normalize by using the same number of data points for both queued and
                 # running request time series.
+                running_requests_sum = self.metrics_store.aggregate_sum([replica_id])[0]
+                if running_requests_sum is None:
+                    running_requests_sum = 0
                 avg_running_requests[replica_id] = (
-                    self.metrics_store.aggregate_sum([replica_id])[0] / num_data_points
+                    running_requests_sum / num_data_points
                 )
                 if avg_running_requests[replica_id] is None:
                     avg_running_requests[replica_id] = num_requests / num_data_points
