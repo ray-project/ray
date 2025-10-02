@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -226,7 +227,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // Total number of bytes of pending requests.
   size_t pending_requests_bytes_ = 0;
   // Total number of inflight requests.
-  size_t num_inflight_requests_ = 0;
+  std::atomic<size_t> num_inflight_requests_ = 0;
 };
 
 template <typename Service, typename Request, typename Reply>
@@ -280,6 +281,9 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
           auto current_retryable_grpc_client = weak_retryable_grpc_client.lock();
           if (status.ok() || !IsGrpcRetryableStatus(status) ||
               !current_retryable_grpc_client) {
+            if (current_retryable_grpc_client) {
+              current_retryable_grpc_client->num_inflight_requests_--;
+            }
             callback(status, std::move(reply));
             return;
           }
