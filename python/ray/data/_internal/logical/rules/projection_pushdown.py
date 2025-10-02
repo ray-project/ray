@@ -197,21 +197,16 @@ class ProjectionPushdown(Rule):
                 break
             current = fused
 
-        # Optional projection pushdown if the final fused op is a selection.
+        # Projection pushdown into operators that support projection pushdown. (ex: Read)
         ancestor = current.input_dependency
         if (
             not current.preserve_existing
             and isinstance(ancestor, LogicalOperatorSupportsProjectionPushdown)
             and ancestor.supports_projection_pushdown()
         ):
-            required = _collect_input_columns_from_exprs(list(current.exprs))
-            if required:
-                ancestor = ancestor.apply_projection(sorted(required))
-                current = Project(
-                    ancestor,
-                    exprs=list(current.exprs),
-                    preserve_existing=False,
-                    ray_remote_args=current._ray_remote_args,
-                )
+            input_columns = _collect_input_columns_from_exprs(list(current.exprs))
+            if input_columns:
+                ancestor = ancestor.apply_projection(sorted(input_columns))
+                return ancestor
 
         return current

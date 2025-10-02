@@ -620,9 +620,8 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
         "Project\n"
         "+- ReadParquet\n"
         "-------- Physical Plan --------\n"
-        "TaskPoolMapOperator[Project]\n"
-        "+- TaskPoolMapOperator[ReadParquet]\n"
-        "   +- InputDataBuffer[Input]"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]"
     )
 
     # Assert schema being appropriately projected
