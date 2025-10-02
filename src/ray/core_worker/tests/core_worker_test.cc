@@ -987,8 +987,6 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorHandleRemovedForRegisteredA
   rpc::WaitForActorRefDeletedReply reply1;
   rpc::WaitForActorRefDeletedReply reply2;
 
-  // For requests containing the same ActorID, the send_reply_callback is overwritten
-  // and only the last callback is triggered.
   core_worker_->HandleWaitForActorRefDeleted(
       request,
       &reply1,
@@ -1081,11 +1079,9 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   core_worker_->HandleWaitForActorRefDeleted(
       request,
       &reply1,
-      [&callback_count](
-          Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-        callback_count++;
-      });
+      [&callback_count](Status s,
+                        std::function<void()> success,
+                        std::function<void()> failure) { ASSERT_TRUE(false); });
 
   core_worker_->HandleWaitForActorRefDeleted(
       request,
