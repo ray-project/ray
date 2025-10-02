@@ -536,6 +536,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_ecosystem_dask.py"],
     tags = [
+        "custom_setup",
         "dask",
         "exclusive",
         "team:data",
@@ -690,6 +691,20 @@ py_test(
     name = "test_map",
     size = "large",
     srcs = ["tests/test_map.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_filter",
+    size = "medium",
+    srcs = ["tests/test_filter.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1604,6 +1619,34 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_custom_agg",
+    size = "small",
+    srcs = ["tests/test_custom_agg.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_stats",
+    size = "small",
+    srcs = ["tests/test_dataset_stats.py"],
     tags = [
         "exclusive",
         "team:data",
