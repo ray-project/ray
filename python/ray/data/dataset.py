@@ -1059,6 +1059,11 @@ class Dataset:
                 "This may indicate a schema determination issue."
             )
 
+        # Early return for empty datasets to avoid groupby issues with null schemas
+        # We need to materialize to check if empty, but this is necessary for correctness
+        if self.count() == 0:
+            return self
+
         # Validate keys parameter
         if keys is not None:
             if not keys:
@@ -5879,9 +5884,10 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundle: RefBundle = self._plan.execute()
-        block_refs: List[ObjectRef["pyarrow.Table"]] = (
-            _ref_bundles_iterator_to_block_refs_list([ref_bundle])
-        )
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+        ] _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        
         # Schema is safe to call since we have already triggered execution with
         # self._plan.execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
