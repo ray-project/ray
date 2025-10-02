@@ -144,7 +144,7 @@ def gen_expected_metrics(
             ),
             (
                 "'block_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s)}"
             ),
             (
                 "'task_completion_time_without_backpressure': "
@@ -152,11 +152,11 @@ def gen_expected_metrics(
             ),
             (
                 "'block_size_bytes': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes)}"
             ),
             (
                 "'block_size_rows': "
-                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_bucket_rows)}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -222,7 +222,7 @@ def gen_expected_metrics(
             ),
             (
                 "'block_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s)}"
             ),
             (
                 "'task_completion_time_without_backpressure': "
@@ -230,11 +230,11 @@ def gen_expected_metrics(
             ),
             (
                 "'block_size_bytes': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes)}"
             ),
             (
                 "'block_size_rows': "
-                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_bucket_rows)}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -769,8 +769,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        "      task_completion_time: N,\n"
+        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         "      task_completion_time_without_backpressure: N,\n"
+        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
+        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
