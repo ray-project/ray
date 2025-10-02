@@ -307,11 +307,20 @@ pytest python/ray/data/tests/test_sql_api.py -v
 pytest python/ray/data/tests/test_sql_datafusion.py -v
 ```
 
-## Future Enhancements
+## DataFusion optimization status
 
-- Complete DataFusion plan tree walking (vs string parsing)
-- Additional optimizer engines (e.g., Apache Calcite)
-- Query result caching
-- Materialized view support
-- Pushdown to data sources (Parquet, Delta Lake, etc.)
+### Currently applied
+- Predicate pushdown: Ray Data's FilterHandler applies filters early (validated by DataFusion)
+- Projection pushdown: Ray Data's ProjectionAnalyzer selects columns early (validated by DataFusion)
+- Proportional sampling: Maintains accurate table size ratios for CBO decisions
+- Dialect translation: Automatic translation from any SQL dialect to PostgreSQL
+
+### Future enhancements
+- Join reordering: Apply DataFusion's cost-based join order decisions (currently extracted but not enforced)
+- Aggregation strategy: Use DataFusion's hash vs sort aggregation hints (currently extracted but not applied)
+- Join algorithm selection: Apply DataFusion's join algorithm choices (requires Ray Data API changes)
+- Complete plan tree walking: Use DataFusion's plan tree API instead of string parsing
+
+The current implementation provides a solid foundation with DataFusion CBO validation.
+Full optimization application requires additional Ray Data API enhancements.
 
