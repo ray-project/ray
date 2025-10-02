@@ -122,6 +122,7 @@ class QueryExecutor:
                 result = self._execute_simple_query(ast)
 
             # Log execution success
+            self._logger.debug(
                 f"Query executed successfully (total: {self._queries_executed})"
             )
             return result
@@ -500,9 +501,7 @@ class QueryExecutor:
             aggregates, dataset
         )
 
-
         result = dataset.aggregate(*aggregates)
-
 
         if isinstance(result, dict):
             result = ray.data.from_items([result])

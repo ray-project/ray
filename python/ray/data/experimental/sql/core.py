@@ -121,6 +121,8 @@ class RaySQL:
             )
 
         start_time = time.time()
+        self._logger.info(
+            f"Executing SQL query: {query.strip()[:100]}{'...' if len(query.strip()) > 100 else ''}"
         )
 
         try:
