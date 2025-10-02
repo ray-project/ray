@@ -942,6 +942,11 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
           RAY_LOG(INFO) << "Worker " << owner_id
                         << " failed, destroying actor child, job id = "
                         << actor_id.JobId();
+          // Since WaitForActorRefDeleted is a retryable RPC, if it fails with a retryable
+          // grpc error we know that the owner is dead.
+          if (IsGrpcRetryableStatus(status)) {
+            return;
+          }
         } else {
           RAY_LOG(INFO) << "Actor " << actor_id
                         << " has no references, destroying actor, job id = "
