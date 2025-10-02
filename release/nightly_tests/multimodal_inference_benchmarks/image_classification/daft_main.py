@@ -13,8 +13,7 @@ from torchvision.models import ResNet18_Weights, resnet18
 
 
 NUM_GPU_NODES = 8
-# TODO: Copy this over to `s3://ray-example-data`.
-INPUT_PATH = "s3://ray-benchmark-data-internal-us-west-2/imagenet_metadata.parquet"
+INPUT_PATH = "s3://anonymous@s3://ray-example-data/imagenet/metadata_file"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BATCH_SIZE = 100
 IMAGE_DIM = (3, 224, 224)

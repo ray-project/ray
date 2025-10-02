@@ -14,8 +14,7 @@ import ray
 
 
 NUM_GPU_NODES = 8
-# TODO: Copy this over to `s3://ray-example-data`.
-INPUT_PATH = "s3://ray-benchmark-data-internal-us-west-2/imagenet_metadata.parquet"
+INPUT_PATH = "s3://anonymous@s3://ray-example-data/imagenet/metadata_file"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BATCH_SIZE = 100
 
@@ -48,7 +47,7 @@ def deserialize_image(row):
 def transform_image(row):
     row["norm_image"] = transform(row["image"]).numpy()
     # NOTE: Remove the `image` column since we don't need it anymore. This is done by
-    # the system automatically on Ray Data 2.50+ with the `with_column` API.
+    # the system automatically on Ray Data 2.51+ with the `with_column` API.
     del row["image"]
     return row
 
@@ -63,7 +62,7 @@ class ResNetActor:
     def __call__(self, batch):
         torch_batch = torch.from_numpy(batch["norm_image"]).to(self.device)
         # NOTE: Remove the `norm_image` column since we don't need it anymore. This is
-        # done by the system automatically on Ray Data 2.50+ with the `with_column`
+        # done by the system automatically on Ray Data 2.51+ with the `with_column`
         # API.
         del batch["norm_image"]
         with torch.inference_mode():

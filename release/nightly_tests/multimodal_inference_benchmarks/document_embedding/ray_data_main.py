@@ -38,7 +38,7 @@ ray.get([warmup.remote() for _ in range(64)])
 def extract_text_from_pdf(row):
     try:
         # NOTE: Remove the `bytes` column since we don't need it anymore. This is done by
-        # the system automatically on Ray Data 2.50+ with the `with_column` API.
+        # the system automatically on Ray Data 2.51+ with the `with_column` API.
         bs = row.pop("bytes")
         doc = pymupdf.Document(stream=bs, filetype="pdf")
         if len(doc) > MAX_PDF_PAGES:
