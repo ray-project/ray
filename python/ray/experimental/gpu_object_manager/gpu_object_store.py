@@ -117,7 +117,7 @@ def __ray_free__(
         tensor_transport_manager = get_tensor_transport_manager(
             tensor_transport_backend
         )
-        tensor_transport_manager.garbage_collect(tensor_transport_meta.nixl_reg_descs)
+        tensor_transport_manager.garbage_collect(tensor_transport_meta)
 
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         gpu_object_store.pop_object(obj_id)
