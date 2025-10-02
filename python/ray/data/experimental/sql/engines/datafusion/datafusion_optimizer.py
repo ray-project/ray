@@ -627,6 +627,7 @@ class DataFusionOptimizer:
             )
 
         except Exception as e:
+            self._logger.debug(f"Could not extract detailed optimizations: {e}")
             # Return basic optimizations on error
 
         return optimizations
