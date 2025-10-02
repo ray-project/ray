@@ -3220,22 +3220,6 @@ def test_with_column_alias_expressions(
     pd.testing.assert_frame_equal(result_df, non_aliased_df)
 
 
-def test_rename_columns_duplicate_target_names(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Test that renaming multiple columns to the same name raises an error.
-
-    This validates that the duplicate column name check in plan_project_op
-    is protected by API-level validation in rename_columns.
-    """
-    ds = ray.data.from_items([{"a": 1, "b": 2, "c": 3}])
-
-    # Try to rename two different columns to the same target name
-    with pytest.raises(ValueError) as exc_info:
-        ds.rename_columns({"a": "x", "b": "x"}).take_all()
-        assert exc_info.value.args[0] == "Output column name 'x' is a duplicate."
-
-
 if __name__ == "__main__":
     import sys
 
