@@ -212,18 +212,18 @@ Status RayletIpcClient::CancelGetRequest() {
   return WriteMessage(MessageType::CancelGetRequest, &fbb);
 }
 
-Status RayletIpcClient::NotifyDirectCallTaskBlocked() {
+Status RayletIpcClient::NotifyWorkerBlocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  auto message = protocol::CreateNotifyWorkerBlocked(fbb);
   fbb.Finish(message);
-  return WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
+  return WriteMessage(MessageType::NotifyWorkerBlocked, &fbb);
 }
 
-Status RayletIpcClient::NotifyDirectCallTaskUnblocked() {
+Status RayletIpcClient::NotifyWorkerUnblocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  auto message = protocol::CreateNotifyWorkerUnblocked(fbb);
   fbb.Finish(message);
-  return WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
+  return WriteMessage(MessageType::NotifyWorkerUnblocked, &fbb);
 }
 
 StatusOr<absl::flat_hash_set<ObjectID>> RayletIpcClient::Wait(
