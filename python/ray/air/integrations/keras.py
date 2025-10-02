@@ -166,7 +166,7 @@ class RayReportCallback(_Callback):
 
 
 @PublicAPI(stability="alpha")
-class ReportCheckpointCallback(_Callback):
+class ReportCheckpointCallback(RayReportCallback):
     """Keras callback for Ray Train reporting and checkpointing.
 
     .. note::
@@ -208,52 +208,3 @@ class ReportCheckpointCallback(_Callback):
     def _report_metrics(self, metrics: Dict):
         """Report metrics."""
         ray.train.report(metrics, checkpoint=None)
-
-    # def __init__(
-    #     self,
-    #     checkpoint_on: Union[str, List[str]] = "epoch_end",
-    #     report_metrics_on: Union[str, List[str]] = "epoch_end",
-    #     metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-    # ):
-    #     if isinstance(checkpoint_on, str):
-    #         checkpoint_on = [checkpoint_on]
-    #     if isinstance(report_metrics_on, str):
-    #         report_metrics_on = [report_metrics_on]
-
-    #     on = list(set(checkpoint_on + report_metrics_on))
-    #     super().__init__(on=on)
-
-    #     self._checkpoint_on: List[str] = checkpoint_on
-    #     self._report_metrics_on: List[str] = report_metrics_on
-    #     self._metrics = metrics
-
-    # def _handle(self, logs: Dict, when: str):
-    #     assert when in self._checkpoint_on or when in self._report_metrics_on
-
-    #     metrics = self._get_reported_metrics(logs)
-
-    #     should_checkpoint = when in self._checkpoint_on
-    #     if should_checkpoint:
-    #         checkpoint = TensorflowCheckpoint.from_model(self.model)
-    #         ray.train.report(metrics, checkpoint=checkpoint)
-    #         # Clean up temporary checkpoint
-    #         shutil.rmtree(checkpoint.path, ignore_errors=True)
-    #     else:
-    #         ray.train.report(metrics, checkpoint=None)
-
-    # def _get_reported_metrics(self, logs: Dict) -> Dict:
-    #     assert isinstance(self._metrics, (type(None), str, list, dict))
-
-    #     if self._metrics is None:
-    #         reported_metrics = logs
-    #     elif isinstance(self._metrics, str):
-    #         reported_metrics = {self._metrics: logs[self._metrics]}
-    #     elif isinstance(self._metrics, list):
-    #         reported_metrics = {metric: logs[metric] for metric in self._metrics}
-    #     elif isinstance(self._metrics, dict):
-    #         reported_metrics = {
-    #             key: logs[metric] for key, metric in self._metrics.items()
-    #         }
-
-    #     assert isinstance(reported_metrics, dict)
-    #     return reported_metrics
