@@ -107,7 +107,11 @@ class DataFusionOptimizer:
         if self.available:
             try:
                 self.df_ctx = df.SessionContext()
+                # Successfully initialized
+            except Exception as e:
+                self._logger.warning(f"DataFusion SessionContext init failed: {e}")
                 self.available = False
+                self.df_ctx = None
         else:
             self.df_ctx = None
 
@@ -269,6 +273,8 @@ class DataFusionOptimizer:
             # Very large datasets - use fraction that gives max_sample for largest table
             base_sample_fraction = DEFAULT_MAX_SAMPLE_SIZE / max_table_size
 
+        self._logger.info(
+            f"Sampling {len(datasets)} tables with {base_sample_fraction:.2%} fraction "
             f"(largest table: ~{max_table_size} rows)"
         )
 
@@ -298,6 +304,7 @@ class DataFusionOptimizer:
                 # Register with DataFusion
                 self.df_ctx.register_table(name, sample_arrow)
 
+                self._logger.debug(
                     f"Registered table '{name}' with DataFusion: "
                     f"{len(sample_arrow)} rows ({sample_size}/{estimated_rows} = "
                     f"{sample_size/max(estimated_rows,1):.1%}), "
@@ -397,6 +404,7 @@ class DataFusionOptimizer:
                             sample_size = int(
                                 estimated_rows * TINY_DATASET_SAMPLE_FRACTION
                             )
+                            self._logger.debug(
                                 f"Table '{table_name}': Full dataset "
                                 f"({estimated_rows} rows - tiny)"
                             )
@@ -409,6 +417,7 @@ class DataFusionOptimizer:
                                     int(estimated_rows * SMALL_DATASET_SAMPLE_FRACTION),
                                 ),
                             )
+                            self._logger.debug(
                                 f"Table '{table_name}': {int(SMALL_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
@@ -423,6 +432,7 @@ class DataFusionOptimizer:
                                     ),
                                 ),
                             )
+                            self._logger.debug(
                                 f"Table '{table_name}': {int(MEDIUM_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
@@ -435,12 +445,16 @@ class DataFusionOptimizer:
                                     int(estimated_rows * LARGE_DATASET_SAMPLE_FRACTION),
                                 ),
                             )
+                            self._logger.debug(
                                 f"Table '{table_name}': {int(LARGE_DATASET_SAMPLE_FRACTION*100)}% sample "
                                 f"({sample_size} of ~{estimated_rows} rows)"
                             )
                         else:
                             # Very large dataset - fixed max sample
                             sample_size = max_sample
+                            self._logger.info(
+                                f"Table '{table_name}': Max sample "
+                                f"({sample_size} rows from ~{estimated_rows} rows)"
                             )
 
                         return max(min_sample, min(sample_size, max_sample))
