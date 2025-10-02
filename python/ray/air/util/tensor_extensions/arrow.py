@@ -43,6 +43,9 @@ PYARROW_VERSION = get_pyarrow_version()
 
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+# Min version supporting ``ExtensionArray``s in ``pyarrow.concat``
+MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
+
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
@@ -62,6 +65,10 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
 
 
 logger = logging.getLogger(__name__)
+
+
+def _extension_array_concat_supported() -> bool:
+    return get_pyarrow_version() >= MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED
 
 
 def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):

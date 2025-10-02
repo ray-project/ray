@@ -28,7 +28,6 @@ except ImportError:
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES = parse_version("12.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
-MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
 
 # pyarrow.Table.slice is slow when the table has many chunks
