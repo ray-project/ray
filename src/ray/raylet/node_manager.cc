@@ -1042,11 +1042,11 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AsyncGetObjectsRequest: {
     HandleAsyncGetObjectsRequest(client, message_data);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    HandleDirectCallTaskBlocked(registered_worker);
+  case protocol::MessageType::NotifyWorkerBlocked: {
+    HandleNotifyWorkerBlocked(registered_worker);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    HandleDirectCallTaskUnblocked(registered_worker);
+  case protocol::MessageType::NotifyWorkerUnblocked: {
+    HandleNotifyWorkerUnblocked(registered_worker);
   } break;
   case protocol::MessageType::CancelGetRequest: {
     CancelGetRequest(client);
@@ -2018,7 +2018,7 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
     if (worker->IsBlocked()) {
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
-      HandleDirectCallTaskUnblocked(worker);
+      HandleNotifyWorkerUnblocked(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
     // If the worker is exiting, don't add it to our pool. The worker will cleanup
@@ -2184,7 +2184,7 @@ void NodeManager::MarkObjectsAsFailed(
   }
 }
 
-void NodeManager::HandleDirectCallTaskBlocked(
+void NodeManager::HandleNotifyWorkerBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->IsBlocked() || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
@@ -2194,7 +2194,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
-void NodeManager::HandleDirectCallTaskUnblocked(
+void NodeManager::HandleNotifyWorkerUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.

@@ -1,13 +1,14 @@
+import math
+import unittest
+
 import gymnasium as gym
 import numpy as np
-import unittest
-import ray
-import math
 
+import ray
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.test_utils import check
-from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
 class TestAgentCollector(unittest.TestCase):
@@ -334,7 +335,8 @@ class TestAgentCollector(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
