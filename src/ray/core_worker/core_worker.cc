@@ -1308,32 +1308,29 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
-  bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
-  std::ostringstream ids_stream;
 
-  for (size_t i = 0; i < ids.size(); i++) {
-    if (!HasOwner(ids[i])) {
-      ids_stream << ids[i] << " ";
-      got_exception = true;
-    }
+  StatusSet<StatusT::NotFound> objects_have_owners = reference_counter_->HasOwner(ids);
+
+  if (objects_have_owners.has_error()) {
+    return std::visit(
+        overloaded{[](const StatusT::NotFound &not_found) {
+          return Status::ObjectUnknownOwner(absl::StrFormat(
+              "You are trying to access Ray objects whose owner is "
+              "unknown. Please make sure that all Ray objects you are trying to access "
+              "are part of the current Ray session. Note that object IDs generated "
+              "randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because "
+              "Ray does not know which task created them. If this was not how your "
+              "object ID was generated, please file an issue at "
+              "https://github.com/ray-project/ray/issues/. %s",
+              not_found.message()));
+        }},
+        objects_have_owners.error());
   }
 
-  if (got_exception) {
-    std::ostringstream stream;
-    stream << "An application is trying to access Ray objects whose owner is unknown"
-           << "(" << ids_stream.str()
-           << "). "
-              "Please make sure that all Ray objects you are trying to access are part"
-              " of the current Ray session. Note that "
-              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
-              " Ray does not know which task created them. "
-              "If this was not how your object ID was generated, please file an issue "
-              "at https://github.com/ray-project/ray/issues/";
-    return Status::ObjectUnknownOwner(stream.str());
-  }
+  bool got_exception = false;
 
   if (!memory_object_ids.empty()) {
     RAY_RETURN_NOT_OK(memory_store_->Get(
@@ -1505,8 +1502,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
   if (fetch_local) {
     // With fetch_local we want to start fetching plasma_object_ids from other nodes'
-    // plasma stores. We make the request to the plasma store even if we have num_objects
-    // ready since we want to at least make the request to start pulling these objects.
+    // plasma stores. We make the request to the plasma store even if we have
+    // num_objects ready since we want to at least make the request to start pulling
+    // these objects.
     if (!plasma_object_ids.empty()) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
@@ -3658,7 +3656,8 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     const NodeID &spilled_node_id,
     const std::optional<ObjectID> &generator_id) {
   RAY_LOG(DEBUG).WithField(object_id).WithField(spilled_node_id)
-      << "Received object spilled location update for object, which has been spilled to "
+      << "Received object spilled location update for object, which has been spilled "
+         "to "
       << spilled_url << " on node";
   if (generator_id.has_value()) {
     // For dynamically generated return values, the raylet may spill the
@@ -3899,8 +3898,8 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                  caller_worker_id,
                  on_canceled = std::move(on_canceled),
                  is_async_actor]() {
-    // If the task was still queued (not running yet), `CancelQueuedActorTask` will cancel
-    // it. If it is already running, we attempt to cancel it.
+    // If the task was still queued (not running yet), `CancelQueuedActorTask` will
+    // cancel it. If it is already running, we attempt to cancel it.
     bool success = false;
     bool is_running = false;
     bool task_present = task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);

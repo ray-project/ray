@@ -112,8 +112,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   gcs::GcsClient &gcs_client_;
   /// Info about subscribers to object locations.
   absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
-  /// The client call manager used to create the RPC clients.
-  rpc::ClientCallManager client_call_manager_;
   /// The object location subscriber.
   pubsub::SubscriberInterface *object_location_subscriber_;
   /// Client pool to owners.
