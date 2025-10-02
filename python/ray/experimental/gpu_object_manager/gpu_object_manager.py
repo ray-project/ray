@@ -533,13 +533,10 @@ class GPUObjectManager:
 
         try:
             src_actor = self.managed_gpu_object_metadata[object_id].src_actor
-            print(f"free_object_primary_copy: {object_id}, src_actor: {src_actor}")
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 __ray_free__, object_id
             )
-            print("hi here")
-        except Exception as e:
-            print(f"free_object_primary_copy: {object_id}, error: {e}")
+        except Exception:
             # This could fail if this is a retry and it's already been freed.
             pass
 
