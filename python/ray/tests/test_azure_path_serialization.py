@@ -41,10 +41,22 @@ def test_azure_key_pair_string_conversion(tmp_path):
     # Process the config
     result_config = _configure_key_pair(config)
 
-    # Verify the paths were converted to strings
+    # Verify the private key path was converted to string
     assert isinstance(result_config["auth"]["ssh_private_key"], str)
-    assert isinstance(result_config["auth"]["ssh_public_key"], str)
-    assert isinstance(result_config["file_mounts"]["~/.ssh/id_rsa.pub"], str)
+
+    # Verify ssh_public_key was removed from auth (fix for bootstrap config)
+    assert "ssh_public_key" not in result_config["auth"]
+
+    # Verify public key content was injected into ARM parameters
+    head_node_config = result_config["available_node_types"]["ray.head.default"][
+        "node_config"
+    ]
+    assert "azure_arm_parameters" in head_node_config
+    assert "publicKey" in head_node_config["azure_arm_parameters"]
+    assert (
+        head_node_config["azure_arm_parameters"]["publicKey"]
+        == "ssh-rsa TEST_KEY user@example.com"
+    )
 
     # Verify we can serialize the config to JSON without errors
     json_str = json.dumps(result_config)
