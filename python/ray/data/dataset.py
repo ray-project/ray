@@ -86,7 +86,6 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.plan_write_op import gen_datasink_write_result
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
@@ -111,6 +110,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
+from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -4974,17 +4974,24 @@ class Dataset:
                     return
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-            # TODO: Get and handle the blocks with an iterator instead of getting
-            # everything in a blocking way, so some blocks can be freed earlier.
-            raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
-            write_result = gen_datasink_write_result(raw_write_results)
+
+            iter_, stats = self._write_ds._execute_to_iterator()
+            write_results = []
+
+            for bundle in iter_:
+                res = ray.get(bundle.block_refs)
+                # Generate write result report
+                write_results.append(_gen_datasink_write_result(res))
+
+            combined_write_result = WriteResult.combine(*write_results)
+
             logger.info(
                 "Data sink %s finished. %d rows and %s data written.",
                 datasink.get_name(),
-                write_result.num_rows,
-                memory_string(write_result.size_bytes),
+                combined_write_result.num_rows,
+                memory_string(combined_write_result.size_bytes),
             )
-            datasink.on_write_complete(write_result)
+            datasink.on_write_complete(combined_write_result)
 
         except Exception as e:
             datasink.on_write_failed(e)
