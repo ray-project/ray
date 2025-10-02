@@ -24,10 +24,10 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    histogram_buckets_s,
-    histogram_buckets_bytes,
-    histogram_bucket_rows,
     TaskDurationStats,
+    histogram_bucket_rows,
+    histogram_buckets_bytes,
+    histogram_buckets_s,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.stats import (

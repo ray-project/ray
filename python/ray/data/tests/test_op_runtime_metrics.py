@@ -1,4 +1,3 @@
-import threading
 import time
 from unittest.mock import MagicMock
 
@@ -9,11 +8,10 @@ import ray
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
-    RunningTaskInfo,
     find_bucket_index,
+    histogram_bucket_rows,
     histogram_buckets_bytes,
     histogram_buckets_s,
-    histogram_bucket_rows,
 )
 from ray.data.block import BlockExecStats, BlockMetadata
 
