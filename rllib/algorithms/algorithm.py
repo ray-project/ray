@@ -1552,7 +1552,7 @@ class Algorithm(Checkpointable, Trainable):
                     )
                 )
 
-                for wid, (env_s, ag_s, metrics, iter) in results:
+                for env_s, ag_s, metrics, iter in results:
                     # Ignore eval results kicked off in an earlier iteration.
                     # (those results would be outdated and thus misleading).
                     if iter != self.iteration:
@@ -1571,7 +1571,7 @@ class Algorithm(Checkpointable, Trainable):
                     )
                 )
 
-                for wid, (batch, metrics, iter) in results:
+                for batch, metrics, iter in results:
                     if iter != self.iteration:
                         continue
                     env_steps += batch.env_steps()
@@ -1688,7 +1688,7 @@ class Algorithm(Checkpointable, Trainable):
                 break
             elif results:
                 t_last_result = time_now
-            for wid, (met, iter) in results:
+            for met, iter in results:
                 if iter != self.iteration:
                     continue
                 all_metrics.append(met)
@@ -1796,7 +1796,7 @@ class Algorithm(Checkpointable, Trainable):
                     break
                 elif results:
                     t_last_result = time_now
-                for wid, (env_s, ag_s, met, iter) in results:
+                for env_s, ag_s, met, iter in results:
                     if iter != self.iteration:
                         continue
                     env_steps += env_s
@@ -1840,7 +1840,7 @@ class Algorithm(Checkpointable, Trainable):
                     break
                 elif results:
                     t_last_result = time_now
-                for wid, (batch, metrics, iter) in results:
+                for batch, metrics, iter in results:
                     if iter != self.iteration:
                         continue
                     env_steps += batch.env_steps()

@@ -577,6 +577,7 @@ class EnvRunnerGroup:
         mark_healthy: bool = False,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
+        return_actor_ids: bool = False,
     ) -> List[Union[Tuple[int, T], T]]:
         """Calls the given function asynchronously and returns previous results if any.
 
@@ -594,6 +595,7 @@ class EnvRunnerGroup:
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
+            return_actor_ids=return_actor_ids,
         )
 
     def sync_weights(

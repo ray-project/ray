@@ -803,6 +803,7 @@ class IMPALA(Algorithm):
                 func="sample_get_state_and_metrics",
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
+                return_actor_ids=True,
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.

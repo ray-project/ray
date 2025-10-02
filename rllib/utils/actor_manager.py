@@ -688,8 +688,9 @@ class FaultTolerantActorManager:
         mark_healthy: bool = False,
         healthy_only: bool = True,
         remote_actor_ids: Optional[List[int]] = None,
-        ignore_ray_errors: bool = False,
-    ) -> RemoteCallResults:
+        ignore_ray_errors: bool = True,
+        return_actor_ids: bool = False,
+    ) -> List[Union[Tuple[int, Any], Any]]:
         """Calls the given function asynchronously and returns previous results if any.
 
         This is a convenience function that calls `fetch_ready_async_reqs()` to get
@@ -715,7 +716,9 @@ class FaultTolerantActorManager:
             healthy_only: Apply `func` on known-to-be healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
             ignore_ray_errors: Whether to ignore RayErrors in results.
-
+            return_actor_ids: Whether to return actor IDs in the results.
+                If True, the results will be a list of (actor_id, result) tuples.
+                If False, the results will be a list of results.
         Returns:
             The results from previous async requests that were ready.
         """
@@ -742,8 +745,10 @@ class FaultTolerantActorManager:
             ignore_ray_errors=ignore_ray_errors,
         )
 
-        # Return the same format as before: list of (actor_id, result) tuples
-        return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
+        if return_actor_ids:
+            return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
+        else:
+            return [r.get() for r in remote_results.ignore_errors()]
 
     @staticmethod
     def handle_remote_call_result_errors(
