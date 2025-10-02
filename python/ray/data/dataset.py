@@ -105,7 +105,6 @@ from ray.data.aggregate import (
     Std,
     Sum,
     Unique,
-    _make_aggregator_name,
 )
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -5978,7 +5977,6 @@ class Dataset:
             ColumnType,
             DatasetSummary,
             feature_aggregators_for_dataset,
-            get_stat_names_for_column_type,
         )
 
         # Get aggregators and compute results
@@ -5991,46 +5989,29 @@ class Dataset:
                 vector=pd.DataFrame(),
             )
 
-        # Helper to extract stats for a column from aggregation results
-        def _extract_column_stats(column_name, stat_names):
-            """Extract statistics for a single column."""
-            column_stats = {}
-            for stat in stat_names:
-                # Aggregator names follow pattern: "stat_name(column_name)"
-                key = _make_aggregator_name(stat, column_name)
-                if key in results:
-                    column_stats[stat] = results[key]
-            return column_stats
+        # Build DataFrames using aggregator names directly
+        aggs_by_type = feature_aggs.aggregators_by_type
 
-        # Build separate DataFrames for each column type
-        column_data_map = {
-            ColumnType.NUMERICAL: {},
-            ColumnType.CATEGORICAL: {},
-            ColumnType.VECTOR: {},
-        }
-
-        # Process all column types using enum iteration
-        for column_type in ColumnType:
-            stat_names = get_stat_names_for_column_type(column_type)
-            columns_for_type = feature_aggs.columns_by_type[column_type]
-
-            for col in columns_for_type:
-                column_data_map[column_type][col] = _extract_column_stats(
-                    col, stat_names
-                )
-
-        # Create DataFrames for each column type
         dataframes = {}
-        for column_type in ColumnType:
-            data = column_data_map[column_type]
-            dataframes[column_type] = pd.DataFrame(data) if data else pd.DataFrame()
-            if not dataframes[column_type].empty:
-                dataframes[column_type] = dataframes[column_type].reindex(
-                    [
-                        stat
-                        for stat in STAT_ORDER
-                        if stat in dataframes[column_type].index
-                    ]
+        for col_type in ColumnType:
+            # Build column data for this type
+            col_data = {}
+            for col, agg_list in aggs_by_type[col_type].items():
+                col_stats = {}
+                for agg in agg_list:
+                    if agg.name in results:
+                        # Extract stat name from agg.name (e.g., "count(col)" -> "count")
+                        stat_name = agg.name.split("(")[0]
+                        col_stats[stat_name] = results[agg.name]
+                col_data[col] = col_stats
+
+            # Create DataFrame and reindex to match STAT_ORDER
+            dataframes[col_type] = (
+                pd.DataFrame(col_data) if col_data else pd.DataFrame()
+            )
+            if not dataframes[col_type].empty:
+                dataframes[col_type] = dataframes[col_type].reindex(
+                    [stat for stat in STAT_ORDER if stat in dataframes[col_type].index]
                 )
 
         return DatasetSummary(

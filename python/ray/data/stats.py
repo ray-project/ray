@@ -78,8 +78,7 @@ class DatasetSummary:
         df = pd.DataFrame(summary_data)
         df.columns = pd.MultiIndex.from_tuples(df.columns, names=["agg", "column"])
 
-        df = df.reindex(STAT_ORDER)
-        return df
+        return df.reindex(STAT_ORDER)
 
     def __repr__(self) -> str:
         """Return a string representation showing the combined MultiIndex DataFrame."""
@@ -206,6 +205,28 @@ class FeatureAggregators:
             ColumnType.VECTOR: self.vector_columns,
         }
 
+    @property
+    def aggregators_by_type(self) -> Dict[ColumnType, Dict[str, List[AggregateFnV2]]]:
+        """Get aggregators organized by column type and column name.
+
+        Returns:
+            Dict mapping ColumnType -> column name -> list of aggregators for that column
+        """
+        # Map column types to their aggregator functions
+        aggregator_fn_map = {
+            ColumnType.NUMERICAL: numerical_aggregators,
+            ColumnType.CATEGORICAL: categorical_aggregators,
+            ColumnType.VECTOR: vector_aggregators,
+        }
+
+        result = {}
+        for col_type, columns in self.columns_by_type.items():
+            result[col_type] = {}
+            for col in columns:
+                result[col_type][col] = aggregator_fn_map[col_type](col)
+
+        return result
+
 
 @DeveloperAPI(stability="alpha")
 def feature_aggregators_for_dataset(
@@ -219,8 +240,7 @@ def feature_aggregators_for_dataset(
     Returns:
         FeatureAggregators containing categorized column names and their aggregators
     """
-    # Avoid triggering execution.
-    schema = dataset.schema(fetch_if_missing=False)
+    schema = dataset.schema()
     if not schema:
         raise ValueError("Dataset must have a schema to determine numerical columns")
 
@@ -253,6 +273,9 @@ def feature_aggregators_for_dataset(
             )
             continue
 
+        if pa.types.is_dictionary(ftype):
+            ftype = ftype.value_type
+
         # Check for numerical types (including boolean as numerical)
         if _is_numerical_type(ftype):
             numerical_columns.append(name)
@@ -260,7 +283,7 @@ def feature_aggregators_for_dataset(
         elif _is_string_type(ftype):
             str_columns.append(name)
             all_aggs.extend(categorical_aggregators(name))
-        elif pa.types.is_list(_get_underlying_type(ftype)):
+        elif pa.types.is_list(ftype):
             vector_columns.append(name)
             all_aggs.extend(vector_aggregators(name))
         else:
@@ -272,32 +295,3 @@ def feature_aggregators_for_dataset(
         vector_columns=vector_columns,
         aggregators=all_aggs,
     )
-
-
-@DeveloperAPI(stability="alpha")
-def get_stat_names_for_column_type(column_type: ColumnType) -> List[str]:
-    """Extract stat names from aggregators for a given column type.
-
-    Args:
-        column_type: A ColumnType enum value
-
-    Returns:
-        List of stat names (e.g., ["count", "mean", "min", ...])
-    """
-    # Map column types to their aggregator functions
-    aggregator_map = {
-        ColumnType.NUMERICAL: numerical_aggregators,
-        ColumnType.CATEGORICAL: categorical_aggregators,
-        ColumnType.VECTOR: vector_aggregators,
-    }
-
-    sample_aggs = aggregator_map[column_type](RAY_DATA_DUMMY_COL)
-
-    # Extract the stat name from aggregator names like "count(dummy_col)" -> "count"
-    stat_names = []
-    for agg in sample_aggs:
-        agg_name = agg.name
-        # Remove "(dummy_col)" to get just the stat name
-        stat_name = agg_name.replace(f"({RAY_DATA_DUMMY_COL})", "")
-        stat_names.append(stat_name)
-    return stat_names
