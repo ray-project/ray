@@ -14,6 +14,6 @@ pip3 install --no-cache-dir \
     "flash-attn==2.8.3" \
     "liger-kernel==0.6.2" \
     "hf_transfer==0.1.9"
-    
+
 # Env vars
 export HF_HUB_ENABLE_HF_TRANSFER=1
