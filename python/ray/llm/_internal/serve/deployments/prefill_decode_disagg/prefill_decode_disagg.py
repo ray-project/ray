@@ -24,10 +24,10 @@ from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import (
     LLMConfig,
-    LLMRouter,
-    LLMServer,
     build_llm_deployment,
 )
+from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 
 logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
@@ -84,7 +84,7 @@ class PDProxyServer(LLMServer):
 
         # We pass `llm_config` here to let super() extract the model_id,
         # such that /v1/models endpoint can work correctly.
-        # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router
+        # TODO(lk-chen): refactor OpenAiIngress <-> LLMServer such that router
         # query model_id through API, instead of passing it in as an argument.
         # We can obtain llm_config from prefill_server for obtaining model_id
         # assuming there is no mismatch between prefill and decode server.
@@ -208,4 +208,4 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
     )
 
-    return LLMRouter.as_deployment().bind(llm_deployments=[proxy_server_deployment])
+    return OpenAiIngress.as_deployment().bind(llm_deployments=[proxy_server_deployment])

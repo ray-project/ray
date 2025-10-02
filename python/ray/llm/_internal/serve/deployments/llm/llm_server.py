@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import os
 from abc import ABC, abstractmethod
 from typing import (
@@ -42,6 +43,7 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
 )
+from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (
@@ -60,70 +62,8 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class _LLMServerBase(ABC):
-    """
-    This is the common interface between all the llm deployment. All llm deployments
-    need to implement a sync constructor, an async start method, and check_health method.
-    """
 
-    def __init__(self):
-        """
-        Constructor takes basic setup that doesn't require async operations.
-        """
-
-    @abstractmethod
-    async def start(self):
-        """
-        Start the underlying engine. This handles async initialization.
-        """
-        ...
-
-    @abstractmethod
-    async def chat(
-        self, request: "ChatCompletionRequest"
-    ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
-        """
-        Inferencing to the engine for chat, and return the response.
-        """
-        ...
-
-    @abstractmethod
-    async def completions(
-        self, request: "CompletionRequest"
-    ) -> AsyncGenerator[
-        Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
-    ]:
-        """
-        Inferencing to the engine for completion api, and return the response.
-        """
-        ...
-
-    @abstractmethod
-    async def check_health(self) -> None:
-        """
-        Check the health of the replica. Does not return anything.
-        Raise error when the engine is dead and needs to be restarted.
-        """
-        ...
-
-    @abstractmethod
-    async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
-
-    @abstractmethod
-    async def start_profile(self) -> None:
-        """Start profiling"""
-
-    @abstractmethod
-    async def stop_profile(self) -> None:
-        """Stop profiling"""
-
-    # TODO (Kourosh): This does not belong here.
-    async def llm_config(self) -> Optional[LLMConfig]:
-        return None
-
-
-class LLMServer(_LLMServerBase):
+class LLMServer(LLMServerProtocol):
     """This is a shim layer to decouple the LLM engine from the ingress
     deployment.
 
@@ -209,7 +149,7 @@ class LLMServer(_LLMServerBase):
             An unstarted LLMServer instance. Caller must call await start().
         """
         instance = cls.__new__(cls)
-        _LLMServerBase.__init__(instance)
+        LLMServerProtocol.__init__(instance)
         instance._init_shared(llm_config, engine_cls, model_downloader)
         return instance
 
@@ -466,22 +406,85 @@ class LLMServer(_LLMServerBase):
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
+    # # TODO (Kourosh): Deprecate this builder style
+    # @classmethod
+    # def as_deployment(
+    #     cls, deployment_options: Optional[Dict[str, Any]] = None
+    # ) -> serve.Deployment:
+    #     """Convert the LLMServer to a Ray Serve deployment.
+
+    #     Args:
+    #         deployment_options: A dictionary of deployment options.
+
+    #     Returns:
+    #         A Ray Serve deployment.
+    #     """
+    #     deployment_options = deployment_options or {}
+    #     return LLMDeployment.options(**deployment_options)
+    
+    # TODO: minimize the logic here. 
     @classmethod
-    def as_deployment(
-        cls, deployment_options: Optional[Dict[str, Any]] = None
-    ) -> serve.Deployment:
-        """Convert the LLMServer to a Ray Serve deployment.
+    def get_deployment_options(cls, llm_config: "LLMConfig", name_prefix: Optional[str] = None):
+        engine_config = llm_config.get_engine_config()
+        default_deployment_options = {
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "initial_replicas": 1,
+                "max_replicas": DEFAULT_MAX_REPLICAS,
+                "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+            },
+            "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+            "health_check_period_s": DEFAULT_HEALTH_CHECK_PERIOD_S,
+            "health_check_timeout_s": DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+        }
+        
+        deployment_options = copy.deepcopy(default_deployment_options)
+        
+        # TODO (Kourosh): This might need to be hierarchically merged.
+        deployment_options.update(llm_config.deployment_config)
+        
+        # Handle the ray_actor_options that could be passed in to 
+        # deployment_options
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
+        deployment_options["ray_actor_options"] = ray_actor_options
 
-        Args:
-            deployment_options: A dictionary of deployment options.
+        replica_actor_resources = {
+            "CPU": ray_actor_options.get("num_cpus", 1),
+            "GPU": ray_actor_options.get("num_gpus", 0),
+            **ray_actor_options.get("resources", {}),
+        }
+        if "memory" in ray_actor_options:
+            replica_actor_resources["memory"] = ray_actor_options["memory"]
 
-        Returns:
-            A Ray Serve deployment.
-        """
-        deployment_options = deployment_options or {}
-        return LLMDeployment.options(**deployment_options)
+        if "placement_group_bundles" in llm_config.deployment_config or "placement_group_strategy" in llm_config.deployment_config:
+            raise ValueError(
+                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can overide the default values by setting the `placement_group_config` in the LLMConfig."
+            )
+            
+        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a 
+        # more generic place.
+        pg_bundles = llm_config._merge_replica_actor_and_child_actor_bundles(
+            engine_config.placement_bundles, replica_actor_resources
+        )
+
+        deployment_options.update(
+            {
+                "placement_group_bundles": pg_bundles,
+                "placement_group_strategy": engine_config.placement_strategy,
+            }
+        )
+        
+        # Set the name of the deployment config to map to the model ID.
+        if "name" not in deployment_options:
+            # TODO: Should this API be public? Does it belong to LLMConfig?
+            deployment_options["name"] = llm_config._get_deployment_name()
+        if name_prefix:
+            deployment_options["name"] = name_prefix + deployment_options["name"]
+        
+        return deployment_options
 
 
+# TODO (Kourosh): remove this as well.
 @serve.deployment(
     autoscaling_config={
         "min_replicas": 1,

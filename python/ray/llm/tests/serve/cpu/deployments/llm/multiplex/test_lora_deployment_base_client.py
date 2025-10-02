@@ -10,7 +10,7 @@ from ray.llm._internal.serve.configs.openai_api_models import ModelCard
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve.handle import DeploymentHandle
-from ray.serve.llm import LLMConfig, LLMRouter, LoraConfig
+from ray.serve.llm import LLMConfig, OpenAiIngress, LoraConfig
 
 VLLM_APP_DEF = """
 model_loading_config:
@@ -70,7 +70,7 @@ async def test_lora_unavailable_base_model(
     """Getting the handle for an unavailable model should return a 404."""
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
+    router_deployment = OpenAiIngress.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     with pytest.raises(HTTPException) as e:
@@ -88,7 +88,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
+    router_deployment = OpenAiIngress.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     # Case 1: model does not exist.
@@ -115,7 +115,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
             "max_request_context_length": 4096,
         }
 
-    router_deployment = LLMRouter.as_deployment().bind(
+    router_deployment = OpenAiIngress.as_deployment().bind(
         llm_deployments=llm_deployments,
         _get_lora_model_metadata_func=fake_get_lora_model_metadata,
     )
@@ -138,7 +138,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve, disable_placement_bu
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
+    router_deployment = OpenAiIngress.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     models = (await router_handle.models.remote()).data
@@ -205,7 +205,7 @@ async def test_lora_include_adapters_in_list_models(
     app.lora_config = LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path)
 
     llm_deployments = get_mocked_llm_deployments([app])
-    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
+    router_deployment = OpenAiIngress.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     models = (await router_handle.models.remote()).data

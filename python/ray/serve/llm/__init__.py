@@ -14,7 +14,7 @@ from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer as _LLMServer,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter as _LLMRouter,
+    OpenAiIngress as _OpenAiIngress,
 )
 from ray.util.annotations import PublicAPI
 
@@ -79,7 +79,7 @@ class LLMServer(_LLMServer):
     new="ray.serve.llm.ingress.OpenAIIngress",
     error=False,
 )
-class LLMRouter(_LLMRouter):
+class LLMRouter(_OpenAiIngress):
     pass
 
 

@@ -12,7 +12,7 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter,
+    OpenAiIngress,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 
@@ -40,7 +40,7 @@ def create_llm_config(stream_batching_interval_ms: Optional[int] = None):
 @pytest.fixture(name="client")
 def create_router(llm_config: LLMConfig):
     ServerDeployment = LLMServer.as_deployment()
-    RouterDeployment = LLMRouter.as_deployment(llm_configs=[llm_config])
+    RouterDeployment = OpenAiIngress.as_deployment(llm_configs=[llm_config])
     server = ServerDeployment.bind(llm_config, engine_cls=MockVLLMEngine)
     router = RouterDeployment.bind(llm_deployments=[server])
     serve.run(router)
@@ -173,7 +173,7 @@ class TestRouter:
                 ),
             )
         ]
-        llm_router_deployment = LLMRouter.as_deployment(llm_configs=llm_configs)
+        llm_router_deployment = OpenAiIngress.as_deployment(llm_configs=llm_configs)
         autoscaling_config = llm_router_deployment._deployment_config.autoscaling_config
         assert autoscaling_config.min_replicas == 2
         assert autoscaling_config.initial_replicas == 2
@@ -198,7 +198,7 @@ class TestRouter:
                 },
             ),
         ]
-        llm_router_deployment = LLMRouter.as_deployment(llm_configs=llm_configs)
+        llm_router_deployment = OpenAiIngress.as_deployment(llm_configs=llm_configs)
         autoscaling_config = llm_router_deployment._deployment_config.autoscaling_config
         assert autoscaling_config.min_replicas == 5
         assert autoscaling_config.initial_replicas == 5
@@ -214,7 +214,7 @@ class TestRouter:
         server.check_health = MagicMock()
         server.check_health.remote = AsyncMock()
 
-        router = LLMRouter(llm_deployments=[server])
+        router = OpenAiIngress(llm_deployments=[server])
 
         await router.check_health()
 

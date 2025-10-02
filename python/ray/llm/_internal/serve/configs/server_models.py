@@ -501,6 +501,7 @@ class LLMConfig(BaseModelExtended):
     def _get_deployment_name(self) -> str:
         return self.model_id.replace("/", "--").replace(".", "_")
 
+    # TODO (Kourosh): We can remove this method after we migrated to the pattern of using DeploymentProtocol.get_deployment_options
     def get_serve_options(
         self,
         *,

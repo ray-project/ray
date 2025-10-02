@@ -7,7 +7,7 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter,
+    OpenAiIngress,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
@@ -76,6 +76,6 @@ def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
 
     llm_deployments = _get_llm_deployments(llm_configs)
 
-    return LLMRouter.as_deployment(llm_configs=llm_configs).bind(
+    return OpenAiIngress.as_deployment(llm_configs=llm_configs).bind(
         llm_deployments=llm_deployments
     )

@@ -1,11 +1,11 @@
 from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter as _LLMRouter,
+    OpenAiIngress as _OpenAiIngress,
 )
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class OpenAiIngress(_LLMRouter):
+class OpenAiIngress(_OpenAiIngress):
 
     """The implementation of the OpenAI compatiple model router.
 
