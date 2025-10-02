@@ -7,7 +7,7 @@ import os
 import pytest
 
 import ray
-from ray._private.prometheus_utils import (
+from ray._common.prometheus_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )

@@ -30,19 +30,19 @@ import ray._private.services as services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
-from ray._common.test_utils import wait_for_condition
-from ray._common.utils import get_or_create_event_loop
-from ray._private import (
-    ray_constants,
-)
-from ray._private.internal_api import memory_summary
-from ray._private.prometheus_utils import (
+from ray._common.prometheus_utils import (
     PrometheusTimeseries,
     Sample,
     fetch_prometheus,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_metrics,
 )
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import get_or_create_event_loop
+from ray._private import (
+    ray_constants,
+)
+from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
 from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor

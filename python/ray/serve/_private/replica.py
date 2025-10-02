@@ -397,7 +397,7 @@ class ReplicaMetricsManager:
         """
         Fetch metrics from the prometheus exporter endpoint, given a list of str metric_names
         """
-        from ray._private.prometheus_utils import (
+        from ray._common.prometheus_utils import (
             extract_metric_values,
             fetch_prometheus_metrics_async,
             filter_samples_by_label,

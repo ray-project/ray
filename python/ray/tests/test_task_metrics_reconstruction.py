@@ -4,10 +4,10 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.prometheus_utils import PrometheusTimeseries
 from ray._common.test_utils import (
     wait_for_condition,
 )
-from ray._private.prometheus_utils import PrometheusTimeseries
 from ray.tests.test_task_metrics import METRIC_CONFIG, tasks_by_all
 
 
