@@ -39,7 +39,7 @@ ray.get([warmup.remote() for _ in range(64)])
 def deserialize_image(row):
     image = Image.open(io.BytesIO(row["bytes"])).convert("RGB")
     # NOTE: Remove the `bytes` column since we don't need it anymore. This is done by
-    # the system automatically on Ray Data 2.50+ with the `with_column` API.
+    # the system automatically on Ray Data 2.51+ with the `with_column` API.
     del row["bytes"]
     row["image"] = np.array(image)
     return row
