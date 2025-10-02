@@ -110,7 +110,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
-from ray.data.datasource.datasink import WriteResult, gen_datasink_write_result
+from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -4931,7 +4931,7 @@ class Dataset:
             for bundle in iter_:
                 res = ray.get(bundle.block_refs)
                 # Generate write result report
-                write_results.append(gen_datasink_write_result(res))
+                write_results.append(_gen_datasink_write_result(res))
 
             combined_write_result = WriteResult.combine(*write_results)
 

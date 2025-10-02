@@ -177,7 +177,7 @@ class DummyOutputDatasink(Datasink[None]):
         self.num_failed += 1
 
 
-def gen_datasink_write_result(
+def _gen_datasink_write_result(
     write_result_blocks: List[Block],
 ) -> WriteResult:
     import pandas as pd
