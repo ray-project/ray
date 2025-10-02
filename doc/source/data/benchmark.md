@@ -4,142 +4,64 @@ This page documents benchmark results and methodologies for evaluating Ray Data 
 
 ---
 
-## 1. Image Classification
+## Workload Summary
 
-### Data and Cluster Environment
+- **Image Classification**: Processing 800k ImageNet images using ResNet18 for inference, with image loading, preprocessing, and GPU-based batch inference. The pipeline downloads images, deserializes them, applies transformations, runs ResNet18 inference on GPU, and outputs predicted labels.
+- **Document Embedding**: Processing 10k PDF documents from Digital Corpora using PyMuPDF for text extraction, chunking, and GPU-accelerated embedding via `all-MiniLM-L6-v2`. The pipeline reads PDFs, extracts text page-by-page, splits into chunks with overlap, embeds using a small model on GPU, and outputs embeddings with metadata.
+- **Audio Transcription**: Transcribing 113,800 audio files from Mozilla Common Voice 17 dataset using Whisper-tiny model. The pipeline loads FLAC audio files, resamples to 16kHz, extracts features using Whisper's processor, runs GPU-accelerated batch inference with the model, and outputs transcriptions with metadata.
+- **Video Object Detection**: Processing 10k video frames from Hollywood2 action videos dataset using YOLOv11n for object detection. The pipeline loads video frames, resizes them to 640x640, runs batch inference with YOLO to detect objects, extracts individual object crops, and outputs object metadata and cropped images in Parquet format.
+- **Large-scale Image Embedding**: Processing 4TiB of base64-encoded images from a Parquet dataset using ViT for image embedding. The pipeline decodes base64 images, converts to RGB, preprocesses using ViTImageProcessor (resizing, normalization), runs GPU-accelerated batch inference with ViT to generate embeddings, and outputs results to Parquet format.
 
-- **Dataset:** 800k images from ImageNet
-- **Data Path:** `s3://ray-example-data/imagenet/metadata_file`
-- **Cluster:** 1 head / 8 workers of varying instance types
-- **Code**: ...
-
-### Evaluation
-
-The numbers below are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
-
-```{list-table} Image Classification Benchmark Results
-:header-rows: 1
-:name: image-classification-results
--   -
-    - g6.xlarge (4 CPUs)
-    - g6.2xlarge (8 CPUs)
-    - g6.4xlarge (16 CPUs)
-    - g6.8xlarge (32 CPUs)
--   - **Ray Data (2.50)**
-    - 456.23 +/- 39.92
-    - 195.52 +/- 7.59
-    - 144.83 +/- 1.92
-    - 111.24 +/- 1.15
--   - **Daft (0.6.2)**
-    - 314.97 +/- 31.16
-    - 201.99 +/- 2.19
-    - 195.00 +/- 6.64
-    - 195.27 +/- 2.53
-```
-
+We compare Ray Data with Daft, an open source multimodal data processing library built on Ray.
 
 ---
 
-## 2. Document Embedding
+## Results Summary
 
-### Dataset and Methodology
+![Multimodal Inference Benchmark Results](/data/images/multimodal_inference_results.png)
 
-- **Dataset:** 10k PDFs from Digital Corpora
-- **Metadata Path:** `s3:/ray-example-data/pdf_dump/metadata`
-- **Cluster:** g6.xlarge head / 8 g6.xlarge workers
+---
 
-
-### Benchmark Results
-
-The numbers below are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+## Workload Configuration
 
 
-```{list-table} Document Embedding Benchmark Results
+```{list-table}
 :header-rows: 1
-:name: document-embedding-results
--   -
-    - Results (seconds)
--   - **Daft (0.6.2)**
-    - 51.30 +/- 1.34
--   - **Ray Data (2.50.0)**
-    - 31.45 +/- 4.54
+:name: workload-configuration
+-   - Workload
+    - Dataset
+    - Data Path
+    - Cluster Configuration
+    - Code
+-   - **Image Classification**
+    - 800k images from ImageNet
+    - s3://ray-example-data/imagenet/metadata_file
+    - 1 head / 8 workers of varying instance types
+    - ...
+-   - **Document Embedding**
+    - 10k PDFs from Digital Corpora
+    - s3://ray-example-data/digitalcorpora/metadata
+    - g6.xlarge head, 8 g6.xlarge workers
+    - ...
+-   - **Audio Transcription**
+    - 113,800 audio files from Mozilla Common Voice 17 en dataset
+    - s3://air-example-data/common_voice_17/parquet/
+    - g6.xlarge head,  8 g6.xlarge workers
+    - ...
+-   - **Video Object Detection**
+    - 1,000 videos from Hollywood-2 Human Actions dataset
+    - s3://ray-example-data/videos/Hollywood2-actions-videos/Hollywood2/AVIClips/
+    - 1 head, 8 workers of varying instance types
+    - ...
+-   - **Large-scale Image Embedding**
+    - 4 TiB of Parquet files containing base64 encoded images
+    - s3://ray-example-data/image-datasets/10TiB-b64encoded-images-in-parquet-v3/
+    - m5.24xlarge (head), 40 g6e.xlarge (gpu workers), 64 r6i.8xlarge (cpu workers)
+    - ...
 ```
 
 ---
 
-## 3. Audio Transcription
+## Methodology
 
-### Dataset and Methodology
-
-- **Dataset:** Mozilla Common Voice 17 en (113,800 files)
-- **Data Path:** `s3://air-example-data/common_voice_17/parquet/`
-- **Cluster:** g6.xlarge head / 8 g6.xlarge workers
-
-### Benchmark Results
-
-```{list-table} Audio Transcription Benchmark Results
-:header-rows: 1
-:name: audio-transcription-results
--   -
-    - Results (seconds)
--   - **Daft (0.6.2)**
-    - 510.5 +/- 10.38
--   - **Ray Data (2.50)**
-    - 306.47 +/- 0.74
-```
-
-
-
----
-
-## 4. Video Object Detection
-
-This workload
-
-### Dataset and Compute
-
-- **Dataset:**
-- **Compute Config:** 1 head / 8 workers of varying instance types
-
-### Benchmark Results
-
-The numbers below are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
-
-
-```{list-table} Video Object Detection Results
-:header-rows: 1
-:name: video-object-detection-results
--   -
-    - g6.xlarge (4 CPUs)
-    - g6.2xlarge (8 CPUs)
-    - g6.4xlarge (16 CPUs)
-    - g6.8xlarge (32 CPUs)
--   - **Ray Data (2.50.0)**
-    - 1590.5 +/- 116.67
-    - 908.75 +/- 13.7
-    - 663.5 +/- 23.67
-    - 644.5 +/- 24.34
--   - **Daft (0.6.2)**
-    - 758.75 +/- 10.37
-    - 735.25 +/- 7.59
-    - 747.5 +/- 13.43
-    - 771.25 +/- 25.63
-```
-
----
-## Large-scale image embedding
-
-
-
-The numbers below are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
-
-```{list-table} Large-scale Image Embedding Results
-:header-rows: 1
-:name: large-scale-image-embedding-results
--   -
-    - Results (seconds)
--   - **Ray Data (2.50)**
-    - 105.81 +/- 0.79
--   - **Daft (0.6.2)**
-    - 752.75 +/- 5.52
-```
+All benchmark results are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
