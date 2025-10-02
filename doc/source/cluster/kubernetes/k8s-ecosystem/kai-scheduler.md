@@ -7,7 +7,7 @@ This guide demonstrates how to use KAI Scheduler for setting up hierarchical que
 ## KAI Scheduler
 
 [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler) is a high-performance, scalable Kubernetes scheduler built for AI/ML workloads. Designed to orchestrate GPU clusters at massive scale, KAI optimizes GPU allocation and supports the full AI lifecycle - from interactive development to large distributed training and inference. Some of the key features are:
-- **Bin-packing & Spread Scheduling**: Optimize node usage either by minimizing fragmentation (bin-packing) or increasing resiliency and load balancing (spread scheduling)
+- **Bin packing and spread scheduling**: Optimize node usage either by minimizing fragmentation (bin packing) or increasing resiliency and load balancing (spread scheduling)
 - **GPU Sharing**: Allow multiple Ray workloads from across teams to be packed on the same GPU, letting your organization fit more work onto your existing hardware and reducing idle GPU time.
 - **Workload Autoscaling**: Scale Ray replicas/workers within min/max while respecting gang constraints
 - **Cluster Autoscaling**: Compatible with dynamic cloud infrastructures (including auto-scalers like Karpenter)
