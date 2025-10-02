@@ -785,7 +785,7 @@ class DeploymentSnapshot(BaseModel):
     policy_name: str
     look_back_period_s: Optional[float]
     queued_requests: Optional[float]
-    total_requests: float
+    ongoing_requests: float
     metrics_health: str
     errors: List[str]
     decisions: List[DecisionRecord]

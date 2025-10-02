@@ -682,7 +682,7 @@ class AutoscalingState:
             policy_name=ctx.config.policy.name,
             look_back_period_s=look_back_period_s,
             queued_requests=float(queued_requests),
-            total_requests=float(ctx.total_num_requests),
+            ongoing_requests=float(ctx.total_num_requests),
             metrics_health=metrics_health,
             errors=errors,
             decisions=decisions_summary,
