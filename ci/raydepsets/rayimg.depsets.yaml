@@ -11,14 +11,14 @@ build_arg_sets:
   py312:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
-  gpu_p39:
+  cu121_p39:
     PYTHON_VERSION: "3.9"
     PYTHON_SHORT: "39"
-    CUDA_CODE: "gpu"
-  gpu_p310:
+    CUDA_CODE: "cu121"
+  cu121_p310:
     PYTHON_VERSION: "3.10"
     PYTHON_SHORT: "310"
-    CUDA_CODE: "gpu"
+    CUDA_CODE: "cu121"
 
 
 depsets:
@@ -78,5 +78,5 @@ depsets:
       - --python-platform=linux
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
     build_arg_sets:
-      - gpu_p39
-      - gpu_p310
+      - cu121_p39
+      - cu121_p310
