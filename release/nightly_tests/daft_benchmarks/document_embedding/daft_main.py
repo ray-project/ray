@@ -13,7 +13,7 @@ import ray
 EMBED_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
 NUM_GPU_NODES = 8
-INPUT_PATH = "s3://ray-example-data/pdf_dump/metadata/**/"
+INPUT_PATH = "s3://anonymous@ray-example-data/digitalcorpora/metadata/**/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 MAX_PDF_PAGES = 100
 CHUNK_SIZE = 2048

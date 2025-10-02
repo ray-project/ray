@@ -12,10 +12,7 @@ from transformers import ViTImageProcessor, ViTForImageClassification
 import ray
 
 
-# TODO: Copy this over to `s3://ray-example-data`.
-INPUT_PREFIX = (
-    "s3://ray-benchmark-data-internal-us-west-2/10TiB-b64encoded-images-in-parquet-v3/"
-)
+INPUT_PREFIX = "s3://anonymous@ray-example-data/image-datasets/10TiB-b64encoded-images-in-parquet-v3/"
 OUTPUT_PREFIX = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 BATCH_SIZE = 1024
