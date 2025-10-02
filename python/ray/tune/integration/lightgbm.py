@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Optional
 
-from lightgbm.basic import Booster
+from lightgbm import Booster
 
 import ray.tune
 from ray.train.lightgbm._lightgbm_utils import RayReportCallback
@@ -75,7 +75,7 @@ class TuneReportCheckpointCallback(RayReportCallback):
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
-            yield Checkpoint(temp_checkpoint_dir)
+            yield Checkpoint.from_directory(temp_checkpoint_dir)
 
     def _save_and_report_checkpoint(self, report_dict: Dict, model: Booster):
         with self._get_checkpoint(model=model) as checkpoint:
