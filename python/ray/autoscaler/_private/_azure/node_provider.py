@@ -83,10 +83,20 @@ class AzureNodeProvider(NodeProvider):
         # Detect cloud environment to optimize Azure credential chain.
         # On non-Azure clouds (AWS, GCP), skip Azure-specific auth methods
         # (managed identity, workload identity) to avoid IMDS timeout delays / failures.
-        on_azure = get_cloud_from_metadata_requests() == "azure"
-        logger.info(
-            f"Detected cloud environment: {'Azure' if on_azure else 'non-Azure'}"
-        )
+        detected_cloud = get_cloud_from_metadata_requests()
+        on_azure = detected_cloud == "azure"
+
+        if on_azure:
+            logger.info(
+                "Initializing Azure node provider for Azure infrastructure "
+                "running on Azure cloud environment"
+            )
+        else:
+            logger.info(
+                f"Initializing Azure node provider for Azure infrastructure "
+                f"but detected this is running on a '{detected_cloud}' environment. "
+                f"Skipping Azure-specific authentication methods to avoid timeouts."
+            )
 
         credential = DefaultAzureCredential(
             exclude_shared_token_cache_credential=True,
