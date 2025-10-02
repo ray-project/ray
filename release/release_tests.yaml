@@ -4216,7 +4216,7 @@
 
   cluster:
     byod:
-      type: gpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
       post_build_script: byod_ray_data_etl_tpch.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

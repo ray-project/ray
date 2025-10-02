@@ -62,7 +62,6 @@ GGUF
 GKE
 GPTQ
 GPU(s)?
-GroupBy
 hostfile
 HPC
 http
