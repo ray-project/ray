@@ -324,7 +324,7 @@ Validating checkpoints asynchronously
 You can also asynchronously validate checkpoints that you :func:`~ray.train.report` as follows:
 
 * Define your own ``validation_fn`` whose inputs are the :class:`~ray.train.Checkpoint` to validate
-  and an optional config dict and whose output is a dict of metrics from the validation. We recommend
+  and an optional ``validate_config`` dict and whose output is a dict of metrics from the validation. We recommend
   performing the validation with an eval-only :ref:`Trainer <train-overview-trainers>` or with
   :func:`~ray.data.Dataset.map_batches` - see :ref:`train-validate-fn` for more details.
 * Call :func:`~ray.train.report` with your ``validation_fn`` and a ``validate_config`` dict.
@@ -345,7 +345,7 @@ Writing your own validation function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here is an example ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
-to calculate average cross entropy loss on a validation set. Note that this ``report``s
+to calculate average cross entropy loss on a validation set. Note that this ``report``\s
 a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
 
 .. literalinclude:: ../doc_code/checkpoints.py
@@ -365,13 +365,13 @@ calculate average cross entropy loss on a validation set. To learn more about ho
 You should use ``TorchTrainer`` if:
 
 * You don't want to add a dependency on Ray Data
-* You prefer Torch's metrics aggregation API to Ray Data's
+* You prefer PyTorch's metrics aggregation API to Ray Data's
 
 You should use ``map_batches`` if:
 
 * You care about validation performance. Preliminary benchmarks show that ``map_batches`` is
   faster and the Ray Data team will continue to work on OSS and proprietary performance improvements.
-* You prefer Ray Data's metrics aggregation API to Torch's
+* You prefer Ray Data's metrics aggregation API to PyTorch's
 
 Reporting with your validation function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

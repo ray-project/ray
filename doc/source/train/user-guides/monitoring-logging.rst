@@ -7,6 +7,7 @@ Ray Train provides an API for attaching metrics to :ref:`checkpoints <train-chec
 The results will be collected from the distributed workers and passed to the Ray Train driver process for book-keeping.
 
 The primary use cases for reporting are:
+
 * metrics (accuracy, loss, etc.) at the end of each training epoch. See :ref:`train-dl-saving-checkpoints` for usage examples.
 * validating checkpoints on a validation set with a user-defined validation function. See :ref:`train-validating-checkpoints` for usage examples.
 
