@@ -859,6 +859,8 @@ itsdangerous==2.1.2
     # via flask
 jax==0.4.25
     # via -r python/requirements/ml/train-test-requirements.txt
+jaxlib==0.4.25
+    # via -r python/requirements/ml/train-test-requirements.txt
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
@@ -1083,6 +1085,7 @@ ml-collections==0.1.1
 ml-dtypes==0.3.2
     # via
     #   jax
+    #   jaxlib
     #   tensorflow
 mlagents-envs==0.28.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -1256,6 +1259,7 @@ numpy==1.26.4
     #   hyperopt
     #   imageio
     #   jax
+    #   jaxlib
     #   labmaze
     #   lightgbm
     #   matplotlib
@@ -2005,6 +2009,7 @@ scipy==1.11.4
     #   hpbandster
     #   hyperopt
     #   jax
+    #   jaxlib
     #   lightgbm
     #   linear-operator
     #   mlflow
