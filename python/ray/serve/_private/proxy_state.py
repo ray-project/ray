@@ -312,8 +312,29 @@ class ActorProxyWrapper(ProxyWrapper):
                 future.cancel()
 
     def kill(self):
-        """Kill the proxy actor."""
-        ray.kill(self._actor_handle, no_restart=True)
+        """Kills the proxy actor after graceful shutdown."""
+        try:
+            # Shutdown the proxy and associated processes gracefully.
+            shutdown_ref = self._actor_handle.shutdown.remote()
+            ray.get(shutdown_ref, timeout=5)
+        except GetTimeoutError:
+            logger.warning(
+                f"Timed out waiting for proxy actor to shut down on {self._node_id}."
+            )
+        except RayActorError:
+            # Actor already dead, no need to kill
+            logger.debug(f"Proxy actor on {self._node_id} already terminated.")
+            return
+        except Exception as e:
+            logger.warning(
+                f"Error during proxy actor graceful shutdown on {self._node_id}: {e}"
+            )
+
+        # Kill the actor after shutdown completes or times out
+        try:
+            ray.kill(self._actor_handle, no_restart=True)
+        except Exception as e:
+            logger.debug(f"Failed to kill proxy actor: {e}")
 
 
 class ProxyState:

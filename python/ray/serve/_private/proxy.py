@@ -1120,6 +1120,11 @@ class ProxyActorInterface(ABC):
         """Get replicas for a route (for testing)."""
         pass
 
+    @abstractmethod
+    def shutdown(self):
+        """Shutdown the proxy to gracefully stop associated processes."""
+        pass
+
 
 @ray.remote(num_cpus=0)
 class ProxyActor(ProxyActorInterface):
@@ -1359,6 +1364,10 @@ class ProxyActor(ProxyActorInterface):
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""
         return self._http_options
+
+    def shutdown(self) -> None:
+        # Not implemented by proxy. May be implemented in the future.
+        return
 
 
 def _configure_gc_options():
