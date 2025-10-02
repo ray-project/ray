@@ -172,7 +172,11 @@ class DataFusionOptimizer:
                 optimized_logical, query, datasets
             )
 
-                f"{len(optimizations.filter_placement)} filters"
+            self._logger.info(
+                f"DataFusion optimization extracted: "
+                f"{len(optimizations.filter_placement)} filters, "
+                f"{len(optimizations.projection_columns)} projections, "
+                f"{len(optimizations.join_order)} joins"
             )
 
             return optimizations
