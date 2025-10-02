@@ -525,7 +525,9 @@ class GPUObjectManager:
 
     def free_object_primary_copy(self, object_id: str):
         """
-        Free the primary copy of the GPU object.
+        Free the primary copy of the GPU object. Expected to be idempotent when called from
+        free_actor_object_callback because the primary copy holder should always only have one ref
+        in the deque.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_free__,
@@ -536,14 +538,11 @@ class GPUObjectManager:
             tensor_transport_meta = self.managed_gpu_object_metadata[
                 object_id
             ].tensor_transport_meta
-            print(f"free_object_primary_copy: {object_id}, src_actor: {src_actor}")
+
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 __ray_free__, object_id, tensor_transport_meta
             )
-
-            print("hi here")
-        except Exception as e:
-            print(f"free_object_primary_copy: {object_id}, error: {e}")
+        except Exception:
             # This could fail if this is a retry and it's already been freed.
             pass
 

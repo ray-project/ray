@@ -105,7 +105,6 @@ def __ray_recv__(
 
 
 def __ray_free__(self, obj_id: str, tensor_transport_meta: TensorTransportMetadata):
-
     try:
         from ray._private.worker import global_worker
         from ray.experimental.collective import get_tensor_transport_manager
@@ -114,11 +113,9 @@ def __ray_free__(self, obj_id: str, tensor_transport_meta: TensorTransportMetada
         tensor_transport_manager = get_tensor_transport_manager(Backend.NIXL)
         tensor_transport_manager.deregister_memory(tensor_transport_meta.nixl_reg_descs)
 
-        print(f"__ray_free__: {obj_id}")
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         gpu_object_store.pop_object(obj_id)
-    except AssertionError as e:
-        print(f"__ray_free__: {obj_id}, error: {e}")
+    except AssertionError:
         # This could fail if this is a retry and it's already been freed.
         pass
 
@@ -276,9 +273,6 @@ class GPUObjectStore:
                 )
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
-        print(
-            f"pop_object: {obj_id}, self.is_primary_copy: {self.is_primary_copy(obj_id)}"
-        )
         with self._lock:
             assert self.has_object(
                 obj_id
