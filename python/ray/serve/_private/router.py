@@ -385,11 +385,13 @@ class RouterMetricsManager:
         look_back_period = self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
         avg_queued_requests = self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
-        # NOTE (abrar): If the queued requests timeseries is empty, we set the number of data points to 1.
+        if avg_queued_requests is None:
+            # If the queued requests timeseries is empty, we set the
+            # average to the current number of queued requests.
+            avg_queued_requests = self.num_queued_requests
+        # If the queued requests timeseries is empty, we set the number of data points to 1.
         # This is to avoid division by zero.
         num_data_points = self.metrics_store.timeseries_count(QUEUED_REQUESTS_KEY) or 1
-        if avg_queued_requests is None:
-            avg_queued_requests = self.num_queued_requests
         queued_requests = self.metrics_store.data.get(
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )
@@ -404,12 +406,12 @@ class RouterMetricsManager:
                 # running request time series.
                 running_requests_sum = self.metrics_store.aggregate_sum([replica_id])[0]
                 if running_requests_sum is None:
-                    running_requests_sum = 0
+                    # If the running requests timeseries is empty, we set the sum
+                    # to the current number of requests.
+                    running_requests_sum = num_requests
                 avg_running_requests[replica_id] = (
                     running_requests_sum / num_data_points
                 )
-                if avg_running_requests[replica_id] is None:
-                    avg_running_requests[replica_id] = num_requests / num_data_points
                 # Get running requests data
                 running_requests[replica_id] = self.metrics_store.data.get(
                     replica_id, [TimeStampedValue(timestamp, num_requests)]
