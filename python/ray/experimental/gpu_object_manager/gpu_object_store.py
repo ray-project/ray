@@ -105,6 +105,10 @@ def __ray_recv__(
 
 
 def __ray_free__(self, obj_id: str):
+    """
+    Called on the primary copy holder. Note that the primary copy holder should always only have one ref
+    in the gpu object store.
+    """
     try:
         from ray._private.worker import global_worker
 
