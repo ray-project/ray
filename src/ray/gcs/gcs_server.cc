@@ -404,14 +404,11 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   periodical_runner_->RunFnPeriodically(
       [this] {
         for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
-          std::shared_ptr<ray::RayletClientInterface> raylet_client;
-
-          // When not connect, use GetOrConnectByAddress
           auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
               alive_node.first,
               alive_node.second->node_manager_address(),
               alive_node.second->node_manager_port());
-          raylet_client =
+          auto raylet_client =
               raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
 
           // GetResourceLoad will also get usage. Historically it didn't.
