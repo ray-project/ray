@@ -137,15 +137,15 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="percent",
         targets=[
             Target(
-                expr="max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries[$interval]))))",
+                expr="max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval]))))",
                 legend="Max Hit Rate",
             ),
             Target(
-                expr="min(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries[$interval]))))",
+                expr="min(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval]))))",
                 legend="Min Hit Rate",
             ),
             Target(
-                expr="100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries[$interval])))",
+                expr="100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval])))",
                 legend="Hit Rate {{WorkerId}}",
             ),
         ],
