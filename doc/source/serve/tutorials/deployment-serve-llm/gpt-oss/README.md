@@ -10,7 +10,9 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy gpt-oss
 
-[gpt-oss](https://huggingface.co/collections/openai/gpt-oss-68911959590a1634ba11c7a4) is a family of open-source models designed for general-purpose language understanding and generation. The 20&nbsp;B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency, making it well-suited for local or specialized use cases. The larger 120&nbsp;B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
+*gpt-oss* is a family of open-source models designed for general-purpose language understanding and generation. The 20 B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency. This makes it well-suited for local or specialized use cases. The larger 120 B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
+
+For more information, see the [gpt-oss collection](https://huggingface.co/collections/openai/gpt-oss-68911959590a1634ba11c7a4).
 
 ---
 
@@ -84,21 +86,23 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to using a Serve config file to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. For an example, see [_](/serve/llm/quick-start.md#production-deployment).
 
 ---
 
 ## Deploy locally
 
-**Prerequisites**
+**Prerequisites:**
 
 * Access to GPU compute.
 
 **Dependencies:**
-gpt-oss integration is available starting from `ray>=2.49.0` and `vllm>=0.10.1`
+
+gpt-oss integration is available starting from `ray>=2.49.0` and `vllm==0.10.1`.
+
 ```bash
 pip install "ray[serve,llm]>=2.49.0"
-pip install "vllm>=0.10.1"
+pip install "vllm==0.10.1"
 ```
 
 ---
@@ -175,7 +179,7 @@ for chunk in response:
 
 ### Shutdown
 
-Shutdown your LLM service: 
+To shutdown your LLM service: 
 
 
 ```bash
@@ -238,25 +242,28 @@ anyscale service deploy -f service.yaml
 ### Send requests 
 
 The `anyscale service deploy` command output shows both the endpoint and authentication token:
+
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
+
 You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+For instructions on enabling LLM-specific logging, see [Enable LLM monitoring](#enable-llm-monitoring). To open the Ray Serve LLM Dashboard from an Anyscale Service:
+
 1. In the Anyscale console, go to your **Service** or **Workspace**.
-2. Navigate to the **Metrics** tab.
-3. Expand **View in Grafana** and click **Serve LLM Dashboard**.
+1. Navigate to the **Metrics** tab.
+1. Expand **View in Grafana** and click **Serve LLM Dashboard**.
 
 ---
 
 ### Shutdown
 
-Shutdown your Anyscale Service:
+To shutdown your Anyscale Service:
 
 
 ```bash
