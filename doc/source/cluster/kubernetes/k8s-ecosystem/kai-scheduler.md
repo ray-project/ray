@@ -273,10 +273,12 @@ kubectl get pods -l ray.io/cluster=raycluster-half-gpu -o custom-columns="NAME:.
 
 You should see both worker pods on the same node with `GPU-FRACTION: 0.5` and the same `GPU-GROUP` ID:
 
+```bash
 NAME                                          NODE               GPU-FRACTION   GPU-GROUP
 raycluster-half-gpu-head                      ip-xxx-xx-xx-xxx   <none>         <none>
 raycluster-half-gpu-shared-gpu-worker-67tvw   ip-xxx-xx-xx-xxx   0.5            3e456911-a6ea-4b1a-8f55-e90fba89ad76
 raycluster-half-gpu-shared-gpu-worker-v5tpp   ip-xxx-xx-xx-xxx   0.5            3e456911-a6ea-4b1a-8f55-e90fba89ad76
+```
 
 This shows that both workers have the same `NVIDIA_VISIBLE_DEVICES` (same physical GPU) and `GPU-FRACTION: 0.50`.
 
