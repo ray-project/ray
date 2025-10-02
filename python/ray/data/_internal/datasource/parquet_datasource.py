@@ -784,6 +784,10 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
             resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
                 paths, filesystem=None
             )
+            resolved_filesystem = RetryingPyFileSystem.wrap(
+                resolved_filesystem,
+                retryable_errors=DataContext.get_current().retried_io_errors,
+            )
             dataset = pq.ParquetDataset(
                 resolved_paths,
                 **dataset_kwargs,
