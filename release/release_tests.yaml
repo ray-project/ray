@@ -2322,7 +2322,7 @@
       cluster:
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
-- name: core_microbenchmark
+- name: microbenchmark
   python: "3.10"
   group: core-daily-test
   team: core
@@ -2350,7 +2350,7 @@
       frequency: weekly
       python: "3.12"
 
-- name: core_compiled_graphs
+- name: compiled_graphs
   python: "3.10"
   group: core-daily-test
   team: core
@@ -2365,7 +2365,7 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
-- name: core_compiled_graphs_GPU
+- name: compiled_graphs_GPU
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2380,7 +2380,7 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
-- name: core_compiled_graphs_GPU_multinode
+- name: compiled_graphs_GPU_multinode
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2395,7 +2395,7 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
-- name: core_gpu_object_GPU
+- name: gpu_object_GPU
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2410,7 +2410,7 @@
     timeout: 1800
     script: python experimental/gpu_object_microbenchmark.py
 
-- name: core_gpu_object_GPU_multinode
+- name: gpu_object_GPU_multinode
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2425,7 +2425,7 @@
     timeout: 1800
     script: python experimental/gpu_object_microbenchmark.py --distributed
 
-- name: core_benchmark_worker_startup
+- name: benchmark_worker_startup
   python: "3.10"
   group: core-daily-test
   team: core
@@ -2559,7 +2559,7 @@
         frequency: manual
 
 
-- name: core_shuffle_20gb_with_state_api
+- name: shuffle_20gb_with_state_api
   python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
@@ -2586,7 +2586,7 @@
       cluster:
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
-- name: core_stress_test_many_tasks
+- name: stress_test_many_tasks
   python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
@@ -2627,7 +2627,7 @@
       smoke_test:
         frequency: manual
 
-- name: core_stress_test_dead_actors
+- name: stress_test_dead_actors
   python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
@@ -2671,7 +2671,7 @@
 
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
-- name: core_threaded_actors_stress_test
+- name: threaded_actors_stress_test
   python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
@@ -2731,7 +2731,7 @@
 #         num_nodes: 5
 #         timeout: 600
 
-- name: core_stress_test_many_runtime_envs
+- name: stress_test_many_runtime_envs
   python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
@@ -2869,7 +2869,7 @@
 #      num_nodes: 251
 #
 
-- name: core_pg_autoscaling_regression_test
+- name: pg_autoscaling_regression_test
   python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
@@ -2892,7 +2892,7 @@
       cluster:
         cluster_compute: placement_group_tests/compute_gce.yaml
 
-- name: core_placement_group_performance_test
+- name: placement_group_performance_test
   python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
