@@ -855,6 +855,10 @@ def test_tensor_type_equality_checks():
     assert vs_tensor_type != fs_tensor_type_v2
 
 
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
+)
 def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     """Test that ArrowTensorType and ArrowTensorTypeV2 __eq__ methods work correctly
     when concatenating Arrow arrays with the same tensor type."""
@@ -908,6 +912,10 @@ def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     np.testing.assert_array_equal(concatenated_v2.to_numpy(), expected)
 
 
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
+)
 def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     """Test that ArrowVariableShapedTensorType __eq__ method works correctly
     when concatenating Arrow arrays with variable shaped tensors."""
