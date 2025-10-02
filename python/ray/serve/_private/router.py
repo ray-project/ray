@@ -384,27 +384,32 @@ class RouterMetricsManager:
         avg_running_requests = dict()
         look_back_period = self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
-        avg_queued_requests = (
-            self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
-            or self.num_queued_requests
-        )
+        avg_queued_requests = self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
+        num_data_points = self.metrics_store.timeseries_count(QUEUED_REQUESTS_KEY)
+        if avg_queued_requests is None:
+            avg_queued_requests = self.num_queued_requests
+            num_data_points = 1
         queued_requests = self.metrics_store.data.get(
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
-                # Calculate avg running requests
+                # Calculate avg running requests.
+                # NOTE (abrar): The number of data points from queued requests is often higher than
+                # those from running requests. This is because replica metrics are only collected
+                # once a replica is up, whereas queued request metrics are collected continuously
+                # as long as the handle is alive. To approximate the true average of ongoing requests,
+                # we should normalize by using the same number of data points for both queued and
+                # running request time series.
                 avg_running_requests[replica_id] = (
-                    self.metrics_store.aggregate_avg([replica_id])[0]
-                    # If data hasn't been recorded yet, return current
-                    # number of queued and ongoing requests.
-                    or num_requests
+                    self.metrics_store.aggregate_sum([replica_id])[0] / num_data_points
                 )
+                if avg_running_requests[replica_id] is None:
+                    avg_running_requests[replica_id] = num_requests / num_data_points
                 # Get running requests data
                 running_requests[replica_id] = self.metrics_store.data.get(
                     replica_id, [TimeStampedValue(timestamp, num_requests)]
                 )
-
         handle_metric_report = HandleMetricReport(
             deployment_id=self._deployment_id,
             handle_id=self._handle_id,

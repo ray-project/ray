@@ -147,11 +147,7 @@ class TestAutoscalingMetrics:
             },
             max_ongoing_requests=25,
             version="v1",
-            # With RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE=1, ongoing requests may be
-            # double-counted, causing the count to exceed 50. This can temporarily trigger
-            # the autoscaler to scale above 5 replicas. Once the autoscaler stabilizes at 5,
-            # the extra replicas need to shut down. If graceful_shutdown_timeout_s is large,
-            # the test may hang during shutdown and eventually fail.
+            # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
             graceful_shutdown_timeout_s=0.1,
         )
         class A:
@@ -173,16 +169,7 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_queued_requests_eq, handle=handle, expected=0)
         tlog("Confirmed all requests are assigned to replicas.")
 
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # When running requests are counted at the handle, overcounting is inevitable.
-            # This inflates the calculated number of replicas beyond the desired value.
-            # One might assume the replica count would eventually converge to the expected value,
-            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
-            # that already has active requests. This causes the in-flight request count to drop
-            # below the target, resulting in fewer replicas than expected.
-            wait_for_condition(check_num_replicas_gte, name="A", target=5)
-        else:
-            wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
         tlog("Confirmed deployment scaled to 5 replicas.")
         tlog("Releasing signal.")
         signal.send.remote()
@@ -244,20 +231,7 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         print("Confirmed many queries are inflight.")
 
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # When running requests are counted at the handle, overcounting is inevitable.
-            # This inflates the calculated number of replicas beyond the desired value.
-            # One might assume the replica count would eventually converge to the expected value,
-            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
-            # that already has active requests. This causes the in-flight request count to drop
-            # below the target, resulting in fewer replicas than expected.
-            wait_for_condition(
-                check_num_replicas_gte, name="A", target=5, app_name="app1"
-            )
-        else:
-            wait_for_condition(
-                check_num_replicas_eq, name="A", target=5, app_name="app1"
-            )
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Wait for all requests to be scheduled to replicas so they'll be failed
@@ -333,24 +307,9 @@ class TestAutoscalingMetrics:
         handle = serve.run(app)
         [handle.remote() for _ in range(20)]
 
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # When running requests are counted at the handle, overcounting is inevitable.
-            # This inflates the calculated number of replicas beyond the desired value.
-            # One might assume the replica count would eventually converge to the expected value,
-            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
-            # that already has active requests. This causes the in-flight request count to drop
-            # below the target, resulting in fewer replicas than expected.
-            wait_for_condition(check_num_replicas_gte, name="A", target=5)
-            # Wait for deployment A to scale up
-            wait_for_condition(
-                check_num_requests_ge, client=client, id=dep_id, expected=20
-            )
-        else:
-            wait_for_condition(check_num_replicas_eq, name="A", target=5)
-            # Wait for deployment A to scale up
-            wait_for_condition(
-                check_num_requests_eq, client=client, id=dep_id, expected=20
-            )
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        # Wait for deployment A to scale up
+        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
         print("Confirmed deployment scaled to 5 replicas.")
 
         router_info = [
@@ -425,22 +384,8 @@ class TestAutoscalingMetrics:
         [caller.call.remote() for _ in range(20)]
 
         # Wait for deployment A to scale up
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            # When running requests are counted at the handle, overcounting is inevitable.
-            # This inflates the calculated number of replicas beyond the desired value.
-            # One might assume the replica count would eventually converge to the expected value,
-            # but that’s not guaranteed. When the autoscaler evicts a replica, it might choose one
-            # that already has active requests. This causes the in-flight request count to drop
-            # below the target, resulting in fewer replicas than expected.
-            wait_for_condition(check_num_replicas_gte, name="A", target=5)
-            wait_for_condition(
-                check_num_requests_ge, client=client, id=dep_id, expected=20
-            )
-        else:
-            wait_for_condition(check_num_replicas_eq, name="A", target=5)
-            wait_for_condition(
-                check_num_requests_eq, client=client, id=dep_id, expected=20
-            )
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Kill CallerActor
