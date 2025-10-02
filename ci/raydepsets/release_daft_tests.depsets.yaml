@@ -7,7 +7,7 @@ build_arg_sets:
     PYTHON_SHORT: "310"
 
 depsets:
-  - name: ray_data_release_depset_py${PYTHON_SHORT}
+  - name: audio_transcription_py${PYTHON_SHORT}
     operation: compile
     requirements:
       - release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
