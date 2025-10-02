@@ -935,7 +935,7 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
   it->second.client_->WaitForActorRefDeleted(
-      wait_request,
+      std::move(wait_request),
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorRefDeletedReply &reply) {
         if (!status.ok()) {

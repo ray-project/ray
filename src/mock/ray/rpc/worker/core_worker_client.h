@@ -53,7 +53,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               WaitForActorRefDeleted,
-              (const WaitForActorRefDeletedRequest &request,
+              (WaitForActorRefDeletedRequest && request,
                const ClientCallback<WaitForActorRefDeletedReply> &callback),
               (override));
   MOCK_METHOD(void,
