@@ -472,14 +472,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       gcs_client,
       task_by_state_counter_);
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id,
+                                   const std::string &actor_name,
+                                   uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
     auto core_worker = GetCoreWorker();
     std::ostringstream stream;
     stream << "Warning: More than " << num_queued
-           << " tasks are pending submission to actor " << actor_id
+           << " tasks are pending submission to actor " << actor_name << " with actor_id"
+           << actor_id
            << ". To reduce memory usage, wait for these tasks to finish before sending "
               "more.";
     RAY_CHECK_OK(core_worker->PushError(core_worker->options_.job_id,
