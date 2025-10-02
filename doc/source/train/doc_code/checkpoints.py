@@ -601,12 +601,6 @@ import ray.train
 import ray.train.torch
 
 
-def get_datasets():
-    train_dataset = ray.data.read_parquet(...)
-    validation_dataset = ray.data.read_parquet(...)
-    return train_dataset, validation_dataset
-
-
 def train_func(config):
     ...
     epochs = ...
@@ -640,10 +634,15 @@ def train_func(config):
             ray.train.report({}, None)
 
 
-trainer = ray.train.torch.TorchTrainer(
-    train_func,
-    train_loop_config={"validation_dataset": ...},
-    datasets={"train": ...},
-)
+def run_trainer():
+    train_dataset = ray.data.read_parquet(...)
+    validation_dataset = ray.data.read_parquet(...)
+    trainer = ray.train.torch.TorchTrainer(
+        train_func,
+        train_loop_config={"validation_dataset": validation_dataset},
+        datasets={"train": train_dataset},
+    )
+    return trainer.fit()
+
 
 # __validation_fn_report_end__
