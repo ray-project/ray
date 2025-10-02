@@ -23,7 +23,12 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
     BackpressurePolicy,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    histogram_buckets_s,
+    histogram_buckets_bytes,
+    histogram_bucket_rows,
+    TaskDurationStats,
+)
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.stats import (
     DatasetStats,
@@ -63,6 +68,20 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
 
         assert profiler.estimate_max_uss() > array_nbytes
+
+
+def gen_histogram_metrics_value_str(histogram_buckets: List[float], *vals):
+    """
+    For a histogram with 5 buckets, generate a string like:
+    [Z, Z, Z, Z, Z, Z]
+    (The extra element is for the +Inf bucket)
+
+    *vals can be used to prefill the elements in the list starting from the first element.
+    For example, if *vals is [N, N, N, N, N], the string will be:
+    [N, N, N, N, N, Z]
+
+    """
+    return f"[{', '.join([*vals, *['Z' for _ in range(len(histogram_buckets) + 1 - len(vals))]])}]"
 
 
 def gen_expected_metrics(
@@ -119,7 +138,10 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
+            (
+                "'task_completion_time': "
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+            ),
             (
                 "'task_completion_time_without_backpressure': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -182,10 +204,25 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
+            (
+                "'task_completion_time': "
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+            ),
+            (
+                "'block_completion_time': "
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+            ),
             (
                 "'task_completion_time_without_backpressure': "
                 f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'block_size_bytes': "
+                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N' if task_backpressure else 'Z')}"
+            ),
+            (
+                "'block_size_rows': "
+                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N' if task_backpressure else 'Z')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
