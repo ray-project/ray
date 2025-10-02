@@ -8,7 +8,7 @@ set -euxo pipefail
 SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${SCRIPT_DIR}/../.."
 
-sudo apt-get install -y maven openjdk-8-jre openjdk-8-jdk
+sudo apt-get install -y maven openjdk-17-jre openjdk-17-jdk
 "${WORKSPACE_DIR}"/java/build-jar-multiplatform.sh linux
 
 # Pop caller's shell options (quietly)
