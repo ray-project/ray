@@ -319,6 +319,10 @@ class PrepareImageUDF(StatefulStageUDF):
 
         Returns:
             List of _ImageType.
+
+        Note:
+            The optional 'detail' parameter from the OpenAI schema is not
+            passed forward to downstream templates.
         """
 
         image_info: List[_ImageType] = []
@@ -343,8 +347,10 @@ class PrepareImageUDF(StatefulStageUDF):
                 if content_item["type"] == "image_url" and isinstance(image_data, dict):
                     # OpenAI nested format: {"image_url": {"url": "..."}}
                     image = image_data.get("url")
-                    if image is None:
-                        raise ValueError("image_url dict must contain 'url' key")
+                    if not isinstance(image, str) or not image:
+                        raise ValueError(
+                            "image_url must be an object with a non-empty 'url' string"
+                        )
                 else:
                     # Simple format: {"image": "..."} or {"image_url": "..."}
                     image = image_data

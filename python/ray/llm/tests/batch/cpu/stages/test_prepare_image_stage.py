@@ -280,5 +280,37 @@ def test_extract_image_info(messages, expected_images, test_description):
     assert image_info == expected_images
 
 
+@pytest.mark.parametrize(
+    "image_url_value,test_description",
+    [
+        ({}, "missing_url"),
+        ({"url": 12345}, "non_string_url"),
+        ({"url": ""}, "empty_string_url"),
+    ],
+    ids=lambda x: x if isinstance(x, str) else None,
+)
+def test_extract_image_info_invalid_nested_image_url(image_url_value, test_description):
+    """Test that invalid nested image_url objects raise ValueError with proper message."""
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": image_url_value,
+                },
+                {"type": "text", "text": "Describe this image"},
+            ],
+        }
+    ]
+
+    with pytest.raises(
+        ValueError, match="image_url must be an object with a non-empty 'url' string"
+    ):
+        udf.extract_image_info(messages)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
