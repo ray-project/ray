@@ -1989,6 +1989,10 @@ ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
 s3fs==2023.12.1
     # via -r python/requirements/ml/core-requirements.txt
+s3torchconnector==1.4.3
+    # via -r python/requirements/ml/train-test-requirements.txt
+s3torchconnectorclient==1.4.3
+    # via s3torchconnector
 s3transfer==0.8.0
     # via boto3
 safetensors==0.4.3
@@ -2293,6 +2297,7 @@ torch==2.3.0
     #   pyro-ppl
     #   pytorch-lightning
     #   pytorch-ranger
+    #   s3torchconnector
     #   tensordict
     #   timm
     #   torch-optimizer
