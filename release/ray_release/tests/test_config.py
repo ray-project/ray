@@ -16,6 +16,7 @@ from ray_release.test import Test
 _TEST_COLLECTION_FILES = [
     "release/release_tests.yaml",
     "release/release_data_tests.yaml",
+    "release/release_multimodal_inference_benchmarks_tests.yaml",
     "release/ray_release/tests/test_collection_data.yaml",
 ]
 

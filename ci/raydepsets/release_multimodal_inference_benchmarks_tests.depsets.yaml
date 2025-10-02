@@ -1,0 +1,21 @@
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+
+depsets:
+  - name: audio_transcription_py${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
+      - release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
+    output: release/ray_release/byod/audio_transcription_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
