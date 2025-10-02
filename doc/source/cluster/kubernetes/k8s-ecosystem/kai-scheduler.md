@@ -39,7 +39,7 @@ PodGrouper ensures all 5 pods (1 head + 4 workers) are scheduled together or non
 
 Queues can be arranged hierarchically for organizations with multiple teams (e.g. departments with multiple teams).
 
-## Prerequisites
+## [Prerequisites](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#prerequisites)
 
 * Kubernetes cluster with GPU nodes
 * NVIDIA GPU Operator 
@@ -47,7 +47,7 @@ Queues can be arranged hierarchically for organizations with multiple teams (e.g
 
 ## Step 1: Install KAI Scheduler
 
-Install KAI Scheduler with gpu-sharing enabled:
+Install [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler/releases) with gpu-sharing enabled.
 
 ```bash
 # Install KAI Scheduler
