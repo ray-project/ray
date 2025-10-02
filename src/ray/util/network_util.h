@@ -79,4 +79,9 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 /// }
 std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::string url);
 
+inline bool IsLocalHost(std::string_view address, std::string_view host_address) {
+  return address == "127.0.0.1" || address == "::1" || address == "localhost" ||
+         address == host_address;
+}
+
 }  // namespace ray
