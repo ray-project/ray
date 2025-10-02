@@ -506,6 +506,7 @@ class DataFusionOptimizer:
             return default_sample
 
         except Exception as e:
+            self._logger.debug(
                 f"Could not determine smart sample size for '{table_name}': {e}, "
                 f"using default ({default_sample})"
             )
