@@ -1,4 +1,5 @@
 import os
+import sys
 import uuid
 from unittest.mock import patch
 
@@ -46,3 +47,7 @@ class TestNixlConnectorBackend:
             assert "VLLM_NIXL_SIDE_CHANNEL_PORT" in os.environ
             assert "VLLM_NIXL_SIDE_CHANNEL_HOST" in os.environ
             assert engine_id in nixl_backend.kv_transfer_config["engine_id"]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.lmcache_connector_v1 import (
@@ -84,3 +86,7 @@ class TestLMCacheConnectorV1Backend:
         ]["lmcache_rpc_port"]
         assert new_port.startswith(original_port)
         assert len(new_port) > len(original_port)  # Should have random string appended
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
