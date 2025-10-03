@@ -51,6 +51,16 @@ class MockParam(object):
         return val
 
 
+class DummyTrial:
+    def __init__(self, trial_id, finished=False):
+        self.trial_id = trial_id
+        self._finished = finished
+        self.config = {}
+
+    def is_finished(self):
+        return self._finished
+
+
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=1, object_store_memory=100 * MB)
@@ -683,10 +693,6 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
         }, filtered_params
 
     def testSummarizeHyperparamChanges(self):
-        class DummyTrial:
-            def __init__(self, config):
-                self.config = config
-
         def test_config(
             hyperparam_mutations,
             old_config,
@@ -802,6 +808,95 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
             },
             resample_probability=0,
         )
+
+
+class DummyState:
+    def __init__(self, last_score):
+        self.last_score = last_score
+
+
+class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
+    def test_pbt_with_nan_scores(self):
+        # Create three trials: one with nan, two with valid scores
+        t1 = DummyTrial("t1")
+        t2 = DummyTrial("t2")
+        t3 = DummyTrial("t3")
+        # Patch _trial_state with dummy states
+        # Note: list.sort does not change the order if nan is present
+        max_states = {
+            t1: DummyState(last_score=20.0),
+            t2: DummyState(last_score=float("nan")),
+            t3: DummyState(last_score=10.0),
+        }
+        min_states = {
+            t2: DummyState(last_score=10.0),
+            t3: DummyState(last_score=float("nan")),
+            t1: DummyState(last_score=20.0),
+        }
+
+        for scheduler_class in (PopulationBasedTraining, PB2):
+            with self.subTest(scheduler_class=scheduler_class.__name__):
+                if scheduler_class is PopulationBasedTraining:
+                    hp_kwargs = {"hyperparam_mutations": {"lr": [1e-3, 1e-4]}}
+                else:
+                    hp_kwargs = {"hyperparam_bounds": {"lr": [1e-4, 1e-3]}}
+                # test max mode
+                max_scheduler = scheduler_class(
+                    metric="reward",
+                    mode="max",
+                    quantile_fraction=0.5,
+                    **hp_kwargs,
+                )
+                max_scheduler._trial_state = max_states
+                for t, state in max_states.items():
+                    max_scheduler._save_trial_state(
+                        state, 100, {"reward": state.last_score}, t
+                    )
+
+                # Should not raise, but nan disrupts sorting
+                max_bottom, max_top = max_scheduler._quantiles()
+                max_other_trials = [
+                    t
+                    for t in max_scheduler._trial_state
+                    if t not in max_bottom + max_top
+                ]
+                max_ordered_results = [
+                    max_scheduler._trial_state[t].last_score
+                    for t in [*max_bottom, *max_other_trials, *max_top]
+                ]
+
+                self.assertIn(t1, max_top)
+                self.assertIn(t2, max_other_trials)
+                self.assertIn(t3, max_bottom)
+                self.assertEqual(max_ordered_results[-1], 20)
+
+                # Test min mode
+                min_scheduler = scheduler_class(
+                    metric="reward",
+                    mode="min",
+                    quantile_fraction=0.5,
+                    **hp_kwargs,
+                )
+                min_scheduler._trial_state = min_states
+                for t, state in min_states.items():
+                    min_scheduler._save_trial_state(
+                        state, 100, {"reward": state.last_score}, t
+                    )
+                min_bottom, min_top = min_scheduler._quantiles()
+                min_other_trials = [
+                    t
+                    for t in min_scheduler._trial_state
+                    if t not in min_bottom + min_top
+                ]
+                min_ordered_results = [
+                    min_scheduler._trial_state[t].last_score
+                    for t in [*min_bottom, *min_other_trials, *min_top]
+                ]
+
+                self.assertIn(t1, min_bottom)
+                self.assertIn(t2, min_other_trials)
+                self.assertIn(t3, min_top)
+                self.assertEqual(abs(min_ordered_results[-1]), 10)
 
 
 def _create_pb2_scheduler(
