@@ -1,17 +1,19 @@
 from typing import Any, Dict, List, Optional, Sequence, overload
+from ray import serve
 
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LLMServingArgs,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.deployments.routers.router import (
-    OpenAiIngress,
+    OpenAiIngress, make_fastapi_ingress,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+
 
 logger = get_logger(__name__)
 
@@ -25,15 +27,13 @@ def build_llm_deployment(
 ) -> Application:
     name_prefix = name_prefix or "LLMServer:"
     deployment_kwargs = deployment_kwargs or {}
-
-    deployment_options = llm_config.get_serve_options(
-        name_prefix=name_prefix,
-    )
+    
+    deployment_options = LLMServer.get_deployment_options(llm_config, name_prefix=name_prefix)
 
     if override_serve_options:
         deployment_options.update(override_serve_options)
 
-    return LLMDeployment.options(**deployment_options).bind(
+    return serve.deployment(LLMServer).options(**deployment_options).bind(
         llm_config=llm_config, **deployment_kwargs
     )
 
@@ -75,7 +75,10 @@ def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
         )
 
     llm_deployments = _get_llm_deployments(llm_configs)
-
-    return OpenAiIngress.as_deployment(llm_configs=llm_configs).bind(
+    
+    ingress_options = OpenAiIngress.get_deployment_options(llm_configs)
+    ingress_cls = make_fastapi_ingress(OpenAiIngress)
+    
+    return serve.deployment(ingress_cls).options(**ingress_options).bind(
         llm_deployments=llm_deployments
     )

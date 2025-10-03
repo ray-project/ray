@@ -26,7 +26,7 @@ from ray.serve.llm import (
     LLMConfig,
     build_llm_deployment,
 )
-from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
+from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress, make_fastapi_ingress
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 
 logger = logging.getLogger(__name__)
@@ -168,10 +168,10 @@ class PDProxyServer(LLMServer):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return self._handle_request(request)
 
-    @classmethod
-    def as_deployment(cls) -> serve.Deployment:
-        """Turns PDProxyServer into a Ray Serve deployment."""
-        return serve.deployment()(cls)
+    # @classmethod
+    # def as_deployment(cls) -> serve.Deployment:
+    #     """Turns PDProxyServer into a Ray Serve deployment."""
+    #     return serve.deployment()(cls)
 
 
 def build_pd_openai_app(pd_serving_args: dict) -> Application:
@@ -200,12 +200,16 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     )
 
     proxy_server_deployment = (
-        PDProxyServer.as_deployment()
+        serve.deployment(PDProxyServer)
         .options(**pd_config.proxy_deployment_config)
         .bind(
             prefill_server=prefill_deployment,
             decode_server=decode_deployment,
         )
     )
-
-    return OpenAiIngress.as_deployment().bind(llm_deployments=[proxy_server_deployment])
+    
+    ingress_options = OpenAiIngress.get_deployment_options()
+    ingress_cls = make_fastapi_ingress(OpenAiIngress)
+    return serve.deployment(ingress_cls).options(**ingress_options).bind(
+        llm_deployments=[proxy_server_deployment]
+    )

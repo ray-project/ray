@@ -205,7 +205,7 @@ class LLMConfig(BaseModelExtended):
         "requests together. This config decides how long to wait for the "
         "batch before processing the requests. Defaults to "
         f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
-        "- `num_router_replicas`: The number of replicas for the router. Ray "
+        "- `num_ingress_replicas`: The number of replicas for the router. Ray "
         "Serve will take the max amount all the replicas. Default would be 2 "
         "router replicas per model replica.\n",
     )
@@ -524,8 +524,10 @@ class LLMConfig(BaseModelExtended):
                     accelerator_type="L4",
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
-                serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
+                serve_options = LLMServer.get_deployment_options(
+                    llm_config, name_prefix="Test:")
+                llm_app = serve.deployment(LLMServer).options(
+                    **serve_options).bind(llm_config)
                 serve.run(llm_app)
 
         Args:

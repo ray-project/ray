@@ -484,21 +484,21 @@ class LLMServer(LLMServerProtocol):
         return deployment_options
 
 
-# TODO (Kourosh): remove this as well.
-@serve.deployment(
-    autoscaling_config={
-        "min_replicas": 1,
-        "initial_replicas": 1,
-        "max_replicas": DEFAULT_MAX_REPLICAS,
-        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-    },
-    max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
-    health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
-    health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-)
-class LLMDeployment(LLMServer):
-    # Note (genesu): We are separating the LLMServer and LLMDeployment just
-    # to give developers an ability to test the implementation outside the Ray Serve.
-    # But in practice we should always test the LLMDeployment class as a Serve
-    # deployment to ensure all functionalities can be run remotely asynchronously.
-    pass
+# # TODO (Kourosh): remove this as well.
+# @serve.deployment(
+#     autoscaling_config={
+#         "min_replicas": 1,
+#         "initial_replicas": 1,
+#         "max_replicas": DEFAULT_MAX_REPLICAS,
+#         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+#     },
+#     max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
+#     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
+#     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+# )
+# class LLMDeployment(LLMServer):
+#     # Note (genesu): We are separating the LLMServer and LLMDeployment just
+#     # to give developers an ability to test the implementation outside the Ray Serve.
+#     # But in practice we should always test the LLMDeployment class as a Serve
+#     # deployment to ensure all functionalities can be run remotely asynchronously.
+#     pass

@@ -589,7 +589,7 @@ class OpenAiIngress(DeploymentProtocol):
     #     min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
     #     initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
     #     max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
-    #     num_router_replicas = 0
+    #     num_ingress_replicas = 0
 
     #     # Note (genesu): Based on our internal benchmark, we are currently bottleneck
     #     # by the router replicas during high concurrency situation. We are setting the
@@ -599,9 +599,9 @@ class OpenAiIngress(DeploymentProtocol):
     #         model_initial_replicas = 0
     #         model_max_replicas = 0
     #         for llm_config in llm_configs:
-    #             num_router_replicas = max(
-    #                 num_router_replicas,
-    #                 llm_config.experimental_configs.get("num_router_replicas", 0),
+    #             num_ingress_replicas = max(
+    #                 num_ingress_replicas,
+    #                 llm_config.experimental_configs.get("num_ingress_replicas", 0),
     #             )
 
     #             if "autoscaling_config" in llm_config.deployment_config:
@@ -621,13 +621,13 @@ class OpenAiIngress(DeploymentProtocol):
     #                 or autoscaling_config.min_replicas
     #             )
     #             model_max_replicas += autoscaling_config.max_replicas
-    #         min_replicas = num_router_replicas or int(
+    #         min_replicas = num_ingress_replicas or int(
     #             model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
     #         )
-    #         initial_replicas = num_router_replicas or int(
+    #         initial_replicas = num_ingress_replicas or int(
     #             model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
     #         )
-    #         max_replicas = num_router_replicas or int(
+    #         max_replicas = num_ingress_replicas or int(
     #             model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
     #         )
 
@@ -664,7 +664,7 @@ class OpenAiIngress(DeploymentProtocol):
         min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
         initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
         max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
-        num_router_replicas = 0
+        num_ingress_replicas = 0
 
         # Note (genesu): Based on our internal benchmark, we are currently bottleneck
         # by the router replicas during high concurrency situation. We are setting the
@@ -674,9 +674,9 @@ class OpenAiIngress(DeploymentProtocol):
             model_initial_replicas = 0
             model_max_replicas = 0
             for llm_config in llm_configs:
-                num_router_replicas = max(
-                    num_router_replicas,
-                    llm_config.experimental_configs.get("num_router_replicas", 0),
+                num_ingress_replicas = max(
+                    num_ingress_replicas,
+                    llm_config.experimental_configs.get("num_ingress_replicas", 0),
                 )
 
                 if "autoscaling_config" in llm_config.deployment_config:
@@ -696,13 +696,13 @@ class OpenAiIngress(DeploymentProtocol):
                     or autoscaling_config.min_replicas
                 )
                 model_max_replicas += autoscaling_config.max_replicas
-            min_replicas = num_router_replicas or int(
+            min_replicas = num_ingress_replicas or int(
                 model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
-            initial_replicas = num_router_replicas or int(
+            initial_replicas = num_ingress_replicas or int(
                 model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
-            max_replicas = num_router_replicas or int(
+            max_replicas = num_ingress_replicas or int(
                 model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
         
