@@ -669,19 +669,25 @@ _stats_actor_lock: threading.RLock = threading.RLock()
 
 
 def _get_or_create_stats_actor():
-    label_selector = {}
+    actor_options = {
+        "name": STATS_ACTOR_NAME,
+        "namespace": STATS_ACTOR_NAMESPACE,
+        "get_if_exists": True,
+        "lifetime": "detached",
+    }
+
     if not ray.util.client.ray.is_connected():
         # Pin the stats actor to the local node
         # so it fate-shares with the driver.
-        label_selector = {"ray.io/node-id": ray.get_runtime_context().get_node_id()}
+        actor_options["label_selector"] = {
+            "ray.io/node-id": ray.get_runtime_context().get_node_id()
+        }
+    else:
+        ctx = DataContext.get_current()
+        actor_options["scheduling_strategy"] = ctx.scheduling_strategy
+
     with _stats_actor_lock:
-        return _StatsActor.options(
-            name=STATS_ACTOR_NAME,
-            namespace=STATS_ACTOR_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-            label_selector=label_selector,
-        ).remote()
+        return _StatsActor.options(**actor_options).remote()
 
 
 class _StatsManager:
