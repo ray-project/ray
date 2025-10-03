@@ -167,7 +167,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   size_t NumPendingRequests() const { return pending_requests_.size(); }
 
   // Return the number of inflight requests.
-  size_t NumInflightRequests() const { return num_inflight_requests_.load(); }
+  size_t NumInflightRequests() const { return num_inflight_requests_; }
 
   ~RetryableGrpcClient();
 
