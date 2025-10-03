@@ -1538,7 +1538,7 @@ python/ray/runtime_env/runtime_env.py
     DOC101: Method `RuntimeEnvConfig.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `RuntimeEnvConfig.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [log_files: Optional[List[str]]].
     DOC101: Method `RuntimeEnv.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `RuntimeEnv.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , _validate: bool, mpi: Optional[Dict], py_executable: Optional[str]].
+    DOC103: Method `RuntimeEnv.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , _validate: bool, py_executable: Optional[str]].
 --------------------
 python/ray/scripts/scripts.py
     DOC101: Function `kill_procs`: Docstring contains fewer arguments than in function signature.
