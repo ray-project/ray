@@ -103,14 +103,18 @@ test_coverage() {
 }
 
 api_annotations() {
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  bazel run --config=ci //:gen_ray_pkg
+  SKIP_BAZEL_BUILD=1 pip install -v -e "python[all]" -c python/requirements_compiled.txt
+
   ./ci/lint/check_api_annotations.py
 }
 
 api_policy_check() {
   # install ray and compile doc to generate API files
+  bazel run --config=ci //:gen_py_proto
+  SKIP_BAZEL_BUILD=1 pip install -v -e "python[all]" -c python/requirements_compiled.txt
   make -C doc/ html
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  bazel run --config=ci //:gen_ray_pkg
 
   # validate the API files
   bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
