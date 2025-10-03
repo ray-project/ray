@@ -345,8 +345,17 @@ CoreWorker::CoreWorker(
       task_counter_(task_by_state_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
-      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
-      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+      actor_shutdown_callback_(options_.actor_shutdown_callback),
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap),
+      free_actor_object_callback_(
+          [this, free_actor_object_callback = options_.free_actor_object_callback](
+              const ObjectID &object_id) {
+            // Need to post to the io service to prevent deadlock because this submits a
+            // task and therefore needs to acquire the reference counter lock.
+            io_service_.post([free_actor_object_callback,
+                              object_id]() { free_actor_object_callback(object_id); },
+                             "CoreWorker.FreeActorObjectCallback");
+          }) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -1023,8 +1032,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
 
     // Register the callback to free the GPU object when it is out of scope.
     if (tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
-      reference_counter_->AddObjectOutOfScopeOrFreedCallback(
-          *object_id, options_.free_actor_object_callback);
+      reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
+                                                             free_actor_object_callback_);
     }
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
@@ -4344,14 +4353,6 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
     // to be ready).
     callback();
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                                       rpc::FreeActorObjectReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  options_.free_actor_object_callback(object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

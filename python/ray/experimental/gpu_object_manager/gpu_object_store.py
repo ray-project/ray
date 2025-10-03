@@ -104,6 +104,21 @@ def __ray_recv__(
     gpu_object_store.add_object(obj_id, tensors)
 
 
+def __ray_free__(self, obj_id: str):
+    """
+    Called on the primary copy holder. Note that the primary copy holder should always only have one ref
+    in the gpu object store.
+    """
+    try:
+        from ray._private.worker import global_worker
+
+        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+        gpu_object_store.pop_object(obj_id)
+    except AssertionError:
+        # This could fail if this is a retry and it's already been freed.
+        pass
+
+
 def __ray_fetch_gpu_object__(self, obj_id: str):
     """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
     from ray._private.worker import global_worker
@@ -255,15 +270,6 @@ class GPUObjectStore:
                 raise TimeoutError(
                     f"ObjectRef({obj_id}) not found in RDT object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
-
-    def free_object_primary_copy(self, obj_id: str) -> None:
-        # Expected to be idempotent when called from HandleFreeActorObject because the
-        # primary copy holder should always only have one ref in the deque.
-        try:
-            self.pop_object(obj_id)
-        except AssertionError:
-            # This could fail if this is a retry and it's already been freed.
-            pass
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:

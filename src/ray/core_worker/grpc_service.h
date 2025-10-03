@@ -141,10 +141,6 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
   virtual void HandleNumPendingTasks(NumPendingTasksRequest request,
                                      NumPendingTasksReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleFreeActorObject(FreeActorObjectRequest request,
-                                     FreeActorObjectReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 class CoreWorkerGrpcService : public GrpcService {
