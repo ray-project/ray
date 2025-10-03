@@ -112,7 +112,7 @@ class DatasetCache:
         try:
             result = ray.get(object_ref)
             with self._lock:
-                # Re-check cache_key still exists (could be evicted while we were getting)
+                # Re-check cache_key still exists (could be evicted while getting)
                 if cache_key in self._ray_cache and validate_cached_value(
                     operation_name, result
                 ):

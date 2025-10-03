@@ -544,10 +544,6 @@ class DataContext:
     # Dataset caching configuration
     enable_dataset_caching: bool = True
     dataset_cache_max_size_bytes: int = 1024 * 1024 * 1024  # 1GB default
-    cache_location: Optional[str] = None  # None = use default temp location
-    memory_spill_threshold_bytes: int = (
-        100 * 1024 * 1024
-    )  # 100MB threshold for spilling to disk
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
