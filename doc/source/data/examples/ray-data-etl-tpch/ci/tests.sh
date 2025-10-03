@@ -6,6 +6,6 @@
 
 set -exo pipefail
 
-python ci/nb2py.py README.ipynb README.py
+python ci/nb2py.py notebook.ipynb README.py
 python README.py
 rm README.py
