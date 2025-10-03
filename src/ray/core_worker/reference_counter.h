@@ -27,6 +27,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
@@ -296,6 +297,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The ID of the object.
   /// \return if the object has an owner.
   bool HasOwner(const ObjectID &object_id) const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  //// Checks to see if objects have an owner.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return StatusT::OK if all objects have owners.
+  /// \return StatusT::NotFound if any object does not have an owner. The error message
+  /// contains objects without owners.
+  StatusSet<StatusT::NotFound> HasOwner(const std::vector<ObjectID> &object_ids) const
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner addresses of the given objects. The owner address
   /// must be registered for these objects.
