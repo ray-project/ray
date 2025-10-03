@@ -446,7 +446,17 @@ class ApplicationState:
             and self._build_app_task_info.finished
         )
 
-    def autoscale(self) -> bool:
+    def should_update_deployment_scaling(self) -> bool:
+        deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
+        for name, _ in deployments.items():
+            if self._autoscaling_state_manager.should_autoscale_deployment(
+                DeploymentID(name=name, app_name=self._name)
+            ):
+                return True
+
+        return False
+
+    def update_deployment_scaling_decision(self) -> bool:
         deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
         decisions: Dict[
             DeploymentID, int
@@ -1177,8 +1187,10 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
-            if app.should_autoscale():
-                any_target_state_changed = app.autoscale() or any_target_state_changed
+            if app.should_autoscale() or app.should_update_deployment_scaling():
+                any_target_state_changed = (
+                    app.update_deployment_scaling_decision() or any_target_state_changed
+                )
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed

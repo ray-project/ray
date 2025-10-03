@@ -650,13 +650,14 @@ class ApplicationAutoscalingState:
     def __init__(
         self,
         app_name: ApplicationName,
-        deployment_autoscaling_states: Dict[DeploymentID, DeploymentAutoscalingState],
     ):
         self._app_name = app_name
-        self._deployment_autoscaling_states = deployment_autoscaling_states
         self._config: Optional[ServeApplicationSchema] = None
         self._policy: Optional[AutoscalingPolicy] = None
         self._policy_state: Optional[Dict[str, Dict]] = None
+        self._deployment_autoscaling_states: Dict[
+            DeploymentID, DeploymentAutoscalingState
+        ] = {}
 
     @property
     def deployments(self):
@@ -672,7 +673,7 @@ class ApplicationAutoscalingState:
     ):
         """Register or update application-level autoscaling config and deployments."""
         self._config = config
-        self._policy = self._config.get_autoscaling_policy()
+        self._policy = config.get_autoscaling_policy()
         self._policy_state = {}
 
         for deployment_name in config.deployment_names:
@@ -869,7 +870,7 @@ class AutoscalingStateManager:
 
         app_name = deployment_id.app_name
         app_state = self._app_autoscaling_states.setdefault(
-            app_name, ApplicationAutoscalingState(app_name, {})
+            app_name, ApplicationAutoscalingState(app_name)
         )
         return app_state.register_deployment(
             deployment_id, info, curr_target_num_replicas
@@ -888,7 +889,7 @@ class AutoscalingStateManager:
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
     ):
         app_state = self._app_autoscaling_states.setdefault(
-            app_name, ApplicationAutoscalingState(app_name, {})
+            app_name, ApplicationAutoscalingState(app_name)
         )
         app_state.register(config, deployment_infos)
 
@@ -908,7 +909,10 @@ class AutoscalingStateManager:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return (
             deployment_id.app_name in self._app_autoscaling_states
-            and not self.has_application_level_autoscaling(deployment_id)
+            and deployment_id
+            in self._app_autoscaling_states[
+                deployment_id.app_name
+            ]._deployment_autoscaling_states
         )
 
     def has_application_level_autoscaling(self, deployment_id: DeploymentID):
@@ -919,11 +923,13 @@ class AutoscalingStateManager:
         self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
     ):
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
-        app_state.update_running_replica_ids(deployment_id, running_replicas)
+        if app_state:
+            app_state.update_running_replica_ids(deployment_id, running_replicas)
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         app_state = self._app_autoscaling_states.get(replica_id.deployment_id.app_name)
-        app_state.on_replica_stopped(replica_id)
+        if app_state:
+            app_state.on_replica_stopped(replica_id)
 
     def get_metrics(self) -> Dict[DeploymentID, float]:
         return {
@@ -967,7 +973,8 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(
             replica_metric_report.replica_id.deployment_id.app_name
         )
-        app_state.record_request_metrics_for_replica(replica_metric_report)
+        if app_state:
+            app_state.record_request_metrics_for_replica(replica_metric_report)
 
     def record_request_metrics_for_handle(
         self,
@@ -976,7 +983,8 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(
             handle_metric_report.deployment_id.app_name
         )
-        app_state.record_request_metrics_for_handle(handle_metric_report)
+        if app_state:
+            app_state.record_request_metrics_for_handle(handle_metric_report)
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():

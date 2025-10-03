@@ -3341,12 +3341,17 @@ class DeploymentStateManager:
         # STEP 1: Update current state
         for deployment_id, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
-                decision_num_replicas = self._scaling_decisions[deployment_id]
-                target_state_changed = (
-                    deployment_state.scale(decision_num_replicas)
-                    or target_state_changed
-                )
-
+                if deployment_id in self._scaling_decisions:
+                    target_state_changed = (
+                        deployment_state.scale(
+                            decision_num_replicas=self._scaling_decisions[deployment_id]
+                        )
+                        or target_state_changed
+                    )
+                else:
+                    target_state_changed = (
+                        deployment_state.autoscale() or target_state_changed
+                    )
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status
