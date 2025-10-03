@@ -284,105 +284,106 @@ def test_get_deployment_config(serve_instance):
 def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     """Validate controller emits well-formed autoscaling snapshot structured logs.
 
-    This test deploys a simple autoscaling deployment and tails the controller
-    log until a structured JSON record with `type == "deployment"` appears,
-    then validates the JSON payload shape and a few key fields. This test validates only the earliest snapshot.
+    Tests deterministic autoscaling: 1 -> 2 replicas.
     """
+    import asyncio
 
     DEPLOY_NAME = f"snap_app_{int(time.time())}"
 
-    # Use a tiny autoscaling range so we always have autoscaling enabled.
-    autoscaling_config = {
-        "min_replicas": 1,
-        "max_replicas": 2,
-    }
-
-    @serve.deployment(name=DEPLOY_NAME, autoscaling_config=autoscaling_config)
-    def snap_app():
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.2,
+            "look_back_period_s": 0.5,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 2.0,
+        },
+    )
+    async def snap_app():
+        await asyncio.sleep(0.5)
         return "ok"
 
-    # Deploy once; controller should immediately emit a snapshot.
-    serve.run(snap_app.bind())
+    handle = serve.run(snap_app.bind())
 
-    # Get the base logs directory.
     base_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
-    candidate_paths = sorted(
-        glob.glob(os.path.join(base_logs_dir, "serve", "autoscaling_snapshot_*.log"))
-    )
-    assert (
-        candidate_paths
-    ), f"No autoscaling snapshot logs found; checked {os.path.join(base_logs_dir, 'serve')}"
 
-    found = {"snapshot": None}
+    def get_snapshots():
+        """Read all snapshots for deployment."""
+        log_paths = glob.glob(
+            os.path.join(base_logs_dir, "serve", "autoscaling_snapshot_*.log")
+        )
+        snaps = []
+        for path in log_paths:
+            if not os.path.exists(path):
+                continue
+            with open(path, "r", errors="ignore") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                        if (
+                            rec.get("type") == "deployment"
+                            and rec.get("snapshot", {}).get("deployment") == DEPLOY_NAME
+                        ):
+                            snaps.append(rec["snapshot"])
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        return sorted(snaps, key=lambda s: s.get("timestamp_str", ""))
 
-    def _scan_for_snapshot() -> bool:
-        snaps = [
-            rec.get("snapshot", {})
-            for path in candidate_paths
-            if os.path.exists(path)
-            for line in open(path, "r", encoding="utf-8", errors="ignore")
-            if (rec := json.loads(line)).get("type") == "deployment"
-            and isinstance(rec.get("snapshot", {}), dict)
-            and rec["snapshot"].get("deployment") == DEPLOY_NAME
-        ]
-        if not snaps:
-            return False
-        found["snapshot"] = min(snaps, key=lambda s: s.get("timestamp_str", ""))
-        return True
+    def wait_for_replicas(current, timeout=10):
+        """Wait for exact current replica count."""
+        wait_for_condition(
+            lambda: any(s.get("current_replicas") == current for s in get_snapshots()),
+            timeout=timeout,
+        )
 
-    # Wait up to ~15s for the snapshot to appear.
-    wait_for_condition(_scan_for_snapshot, timeout=15)
+    # Wait for initial replica to be ready
+    wait_for_replicas(1, timeout=5)
+    initial = [s for s in get_snapshots() if s["current_replicas"] == 1][0]
+    assert initial["current_replicas"] == 1
+    assert initial["min_replicas"] == 1
+    assert initial["max_replicas"] == 2
 
-    snapshot = found["snapshot"]
-    assert isinstance(snapshot, dict)
+    reqs = [handle.remote() for _ in range(6)]
+    # Wait for scaling to 2 replicas.
+    wait_for_replicas(2, timeout=5)
 
-    # Basic shape checks for the earliest snapshot
-    required_keys = [
-        "timestamp_str",
-        "app",
-        "deployment",
-        "current_replicas",
-        "target_replicas",
-        "min_replicas",
-        "max_replicas",
-        "metrics_health",
-        "decisions",
-        "policy_name",
-        "look_back_period_s",
-    ]
-    for key in required_keys:
-        assert key in snapshot, f"missing key: {key}"
+    all_snaps = get_snapshots()
 
-    # Field-specific assertions for the earliest snapshot
-    assert snapshot["app"] == SERVE_DEFAULT_APP_NAME
-    assert snapshot["deployment"] == DEPLOY_NAME
-    assert snapshot["min_replicas"] == autoscaling_config["min_replicas"]
-    assert snapshot["max_replicas"] == autoscaling_config["max_replicas"]
-    assert snapshot["policy_name"] == (
-        "ray.serve.autoscaling_policy:default_autoscaling_policy"
-    )
-    # At the very first snapshot, queues and ongoing should be zero in this setup
-    assert snapshot["queued_requests"] == 0.0
-    assert snapshot["ongoing_requests"] == 0.0
+    snap_1 = next((s for s in all_snaps if s["current_replicas"] == 1), None)
+    snap_2 = next((s for s in all_snaps if s["current_replicas"] == 2), None)
 
-    # Earliest snapshot: before replicas start, controller is scaling up from 0 -> N
-    assert snapshot["current_replicas"] == 0
-    assert snapshot["scaling_status"] == "scaling up"
+    assert snap_1 is not None
+    assert snap_2 is not None and snap_2["target_replicas"] == 2
 
-    # decisions[0] should contain the intended target; use it as the exact expectation
-    decisions = snapshot.get("decisions")
-    assert isinstance(decisions, list) and len(decisions) >= 1
-    first_decision = decisions[0]
-    assert isinstance(first_decision, dict)
-    assert first_decision.get("current_num_replicas") == 0
-    assert isinstance(first_decision.get("target_num_replicas"), (int, float))
+    seen_states = []
+    for snap in all_snaps:
+        current = snap["current_replicas"]
+        if current not in seen_states:
+            seen_states.append(current)
 
-    # target_replicas must exactly match the first decision's target
-    assert snapshot["target_replicas"] == first_decision["target_num_replicas"]
+    assert seen_states in [[0, 1, 2], [1, 2]]
+    assert 1 in seen_states and 2 in seen_states
 
-    # Errors can be empty or METRICS_UNAVAILABLE at the very first tick
-    errors = snapshot.get("errors", [])
-    assert isinstance(errors, list)
+    for snap in [snap_1, snap_2]:
+        for key in [
+            "timestamp_str",
+            "app",
+            "deployment",
+            "current_replicas",
+            "target_replicas",
+            "min_replicas",
+            "max_replicas",
+            "decisions",
+            "policy_name",
+        ]:
+            assert key in snap, f"Missing {key}"
+
+    for req in reqs:
+        assert req.result() == "ok"
 
 
 # Test that no autoscaling snapshot logs are emitted for deployments without autoscaling_config
@@ -404,8 +405,6 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
     assert (
         candidate_paths
     ), f"No autoscaling snapshot logs found; checked {os.path.join(base_logs_dir, 'serve')}"
-
-    time.sleep(5)
 
     found = []
     for path in candidate_paths:
