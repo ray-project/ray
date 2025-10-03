@@ -217,7 +217,7 @@ apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     libc6-dev \
-    liblua5.4-dev \
+    liblua5.3-dev \
     libpcre3-dev \
     libssl-dev \
     zlib1g-dev
