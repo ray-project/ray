@@ -81,6 +81,25 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
     return cleaned_args
 
 
+def is_current_node_head(resolved_gcs_host: str, min_nodes: int) -> bool:
+    my_ips = []
+    for iface, addrs in psutil.net_if_addrs().items():
+        for addr in addrs:
+            # Look for AF_INET (IPv4) or AF_INET6 (IPv6)
+            if addr.family in [
+                socket.AddressFamily.AF_INET,
+                socket.AddressFamily.AF_INET6,
+            ]:
+                my_ips.append(addr.address)
+
+    if min_nodes > 1:
+        # Ban localhost ips if we are not running on a single node
+        # to avoid starting N head nodes
+        my_ips = [ip for ip in my_ips if ip not in ("127.0.0.1", "::1")]
+
+    return resolved_gcs_host in my_ips
+
+
 @click.command(
     name="symmetric_run",
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
@@ -177,22 +196,7 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     except socket.gaierror:
         raise click.ClickException(f"Could not resolve hostname: {gcs_host}")
 
-    my_ips = []
-    for iface, addrs in psutil.net_if_addrs().items():
-        for addr in addrs:
-            # Look for AF_INET (IPv4) or AF_INET6 (IPv6)
-            if addr.family in [
-                socket.AddressFamily.AF_INET,
-                socket.AddressFamily.AF_INET6,
-            ]:
-                my_ips.append(addr.address)
-
-    if min_nodes > 1:
-        # Ban localhost ips if we are not running on a single node
-        # to avoid starting N head nodes
-        my_ips = [ip for ip in my_ips if ip != "127.0.0.1" and ip != "::1"]
-
-    is_head = resolved_gcs_host in my_ips
+    is_head = is_current_node_head(resolved_gcs_host, min_nodes)
 
     result = None
     # 2. Start Ray and run commands.
