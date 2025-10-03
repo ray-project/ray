@@ -747,7 +747,7 @@ void TaskEventBufferImpl::WriteExportData(
 }
 
 void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data) {
-  gcs::TaskInfoAccessor *task_accessor = nullptr;
+  gcs::TaskInfoAccessorInterface *task_accessor = nullptr;
   {
     // Sending the protobuf to GCS.
     absl::MutexLock lock(&mutex_);

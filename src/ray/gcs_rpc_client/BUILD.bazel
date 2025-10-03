@@ -3,14 +3,15 @@ load("//bazel:ray.bzl", "ray_cc_library")
 ray_cc_library(
     name = "gcs_client",
     srcs = [
-        "accessor.cc",
         "gcs_client.cc",
     ],
     hdrs = [
-        "accessor.h",
         "gcs_client.h",
     ],
     deps = [
+        ":accessor_interfaces",
+        ":gcs_client_context",
+        ":gcs_client_defaults",
         ":rpc_client",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -23,6 +24,111 @@ ray_cc_library(
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
         "//src/ray/util:sequencer",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_client_context",
+    hdrs = [
+        "gcs_client_context.h",
+    ],
+    deps = [
+        ":rpc_client",
+        "//src/ray/pubsub:gcs_subscriber",
+    ],
+)
+
+ray_cc_library(
+    name = "accessor_interfaces",
+    hdrs = [
+        "accessor_factory_interface.h",
+        "accessors/actor_info_accessor_interface.h",
+        "accessors/autoscaler_state_accessor_interface.h",
+        "accessors/error_info_accessor_interface.h",
+        "accessors/internal_kv_accessor_interface.h",
+        "accessors/job_info_accessor_interface.h",
+        "accessors/node_info_accessor_interface.h",
+        "accessors/node_resource_info_accessor_interface.h",
+        "accessors/placement_group_info_accessor_interface.h",
+        "accessors/publisher_accessor_interface.h",
+        "accessors/runtime_env_accessor_interface.h",
+        "accessors/task_info_accessor_interface.h",
+        "accessors/worker_info_accessor_interface.h",
+    ],
+    deps = [
+        "//src/ray/common:gcs_callback_types",
+        "//src/ray/common:id",
+        "//src/ray/common:placement_group",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "accessor_implementations",
+    srcs = [
+        "accessors/actor_info_accessor.cc",
+        "accessors/autoscaler_state_accessor.cc",
+        "accessors/error_info_accessor.cc",
+        "accessors/internal_kv_accessor.cc",
+        "accessors/job_info_accessor.cc",
+        "accessors/node_info_accessor.cc",
+        "accessors/node_resource_info_accessor.cc",
+        "accessors/placement_group_info_accessor.cc",
+        "accessors/publisher_accessor.cc",
+        "accessors/runtime_env_accessor.cc",
+        "accessors/task_info_accessor.cc",
+        "accessors/worker_info_accessor.cc",
+    ],
+    hdrs = [
+        "accessors/actor_info_accessor.h",
+        "accessors/autoscaler_state_accessor.h",
+        "accessors/error_info_accessor.h",
+        "accessors/internal_kv_accessor.h",
+        "accessors/job_info_accessor.h",
+        "accessors/node_info_accessor.h",
+        "accessors/node_resource_info_accessor.h",
+        "accessors/placement_group_info_accessor.h",
+        "accessors/publisher_accessor.h",
+        "accessors/runtime_env_accessor.h",
+        "accessors/task_info_accessor.h",
+        "accessors/worker_info_accessor.h",
+    ],
+    deps = [
+        ":accessor_interfaces",
+        ":gcs_client_context",
+        ":rpc_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:placement_group",
+        "//src/ray/common:protobuf_utils",
+        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/protobuf:usage_cc_proto",
+        "//src/ray/pubsub:gcs_subscriber",
+        "//src/ray/pubsub:subscriber",
+        "//src/ray/util:container_util",
+        "//src/ray/util:network_util",
+        "//src/ray/util:sequencer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_client_defaults",
+    srcs = [
+        "default_accessor_factory.cc",
+        "default_gcs_client_context.cc",
+    ],
+    hdrs = [
+        "default_accessor_factory.h",
+        "default_gcs_client_context.h",
+    ],
+    deps = [
+        ":accessor_implementations",
+        ":accessor_interfaces",
+        ":gcs_client_context",
     ],
 )
 

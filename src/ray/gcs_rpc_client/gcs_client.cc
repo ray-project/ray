@@ -22,9 +22,23 @@
 #include <utility>
 #include <vector>
 
+#include "accessor_factory_interface.h"
+#include "default_accessor_factory.h"
+#include "default_gcs_client_context.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/autoscaler_state_accessor.h"
+#include "ray/gcs_rpc_client/accessors/error_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor.h"
+#include "ray/gcs_rpc_client/accessors/job_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/node_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/node_resource_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/placement_group_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/publisher_accessor.h"
+#include "ray/gcs_rpc_client/accessors/runtime_env_accessor.h"
+#include "ray/gcs_rpc_client/accessors/task_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/worker_info_accessor.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/util/network_util.h"
 
@@ -96,8 +110,22 @@ bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
   }
 }
 
-GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
-    : options_(options), gcs_client_id_(gcs_client_id) {}
+GcsClient::GcsClient(const GcsClientOptions &options,
+                     UniqueID gcs_client_id,
+                     std::unique_ptr<AccessorFactoryInterface> accessor_factory,
+                     std::shared_ptr<GcsClientContext> client_context)
+    : options_(options), gcs_client_id_(gcs_client_id) {
+  if (accessor_factory == nullptr) {
+    accessor_factory_ = std::make_unique<DefaultAccessorFactory>();
+  } else {
+    accessor_factory_ = std::move(accessor_factory);
+  }
+  if (client_context == nullptr) {
+    client_context_ = std::make_shared<DefaultGcsClientContext>();
+  } else {
+    client_context_ = client_context;
+  }
+}
 
 Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
   if (timeout_ms < 0) {
@@ -106,8 +134,37 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
       io_service, /*record_stats=*/false, options_.cluster_id_);
-  gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
-      options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
+
+  // Only initialize the RPC client and subscriber if needed
+  if (!client_context_->isInitialized()) {
+    auto gcs_rpc_client = std::make_shared<rpc::GcsRpcClient>(
+        options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
+
+    rpc::Address gcs_address;
+    gcs_address.set_ip_address(options_.gcs_address_);
+    gcs_address.set_port(options_.gcs_port_);
+    /// TODO(mwtian): refactor pubsub::Subscriber to avoid faking worker ID.
+    gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
+
+    auto subscriber = std::make_unique<pubsub::Subscriber>(
+        /*subscriber_id=*/gcs_client_id_,
+        /*channels=*/
+        std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                                      rpc::ChannelType::GCS_JOB_CHANNEL,
+                                      rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+                                      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+        /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
+        /*get_client=*/
+        [gcs_rpc_client](const rpc::Address &) {
+          return std::make_shared<GcsSubscriberClient>(gcs_rpc_client);
+        },
+        /*callback_service*/ &io_service);
+
+    // Init GCS subscriber instance.
+    client_context_->setGcsSubscriber(
+        std::make_unique<pubsub::GcsSubscriber>(gcs_address, std::move(subscriber)));
+    client_context_->setGcsRpcClient(gcs_rpc_client);
+  }
 
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
@@ -117,42 +174,23 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     worker_accessor_->AsyncResubscribe();
   };
 
-  rpc::Address gcs_address;
-  gcs_address.set_ip_address(options_.gcs_address_);
-  gcs_address.set_port(options_.gcs_port_);
-  /// TODO(mwtian): refactor pubsub::Subscriber to avoid faking worker ID.
-  gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
-
-  auto subscriber = std::make_unique<pubsub::Subscriber>(
-      /*subscriber_id=*/gcs_client_id_,
-      /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-                                    rpc::ChannelType::GCS_JOB_CHANNEL,
-                                    rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
-      /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      /*get_client=*/
-      [this](const rpc::Address &) {
-        return std::make_shared<GcsSubscriberClient>(gcs_rpc_client_);
-      },
-      /*callback_service*/ &io_service);
-
-  // Init GCS subscriber instance.
-  gcs_subscriber_ =
-      std::make_unique<pubsub::GcsSubscriber>(gcs_address, std::move(subscriber));
-
-  job_accessor_ = std::make_unique<JobInfoAccessor>(this);
-  actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
-  node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
-  node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
-  error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
-  worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
-  placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
-  internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
-  task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
-  runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
-  autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
-  publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
+  job_accessor_ = accessor_factory_->CreateJobInfoAccessor(client_context_.get());
+  actor_accessor_ = accessor_factory_->CreateActorInfoAccessor(client_context_.get());
+  node_accessor_ = accessor_factory_->CreateNodeInfoAccessor(client_context_.get());
+  node_resource_accessor_ =
+      accessor_factory_->CreateNodeResourceInfoAccessor(client_context_.get());
+  error_accessor_ = accessor_factory_->CreateErrorInfoAccessor(client_context_.get());
+  worker_accessor_ = accessor_factory_->CreateWorkerInfoAccessor(client_context_.get());
+  placement_group_accessor_ =
+      accessor_factory_->CreatePlacementGroupInfoAccessor(client_context_.get());
+  internal_kv_accessor_ =
+      accessor_factory_->CreateInternalKVAccessor(client_context_.get());
+  task_accessor_ = accessor_factory_->CreateTaskInfoAccessor(client_context_.get());
+  runtime_env_accessor_ =
+      accessor_factory_->CreateRuntimeEnvAccessor(client_context_.get());
+  autoscaler_state_accessor_ =
+      accessor_factory_->CreateAutoscalerStateAccessor(client_context_.get());
+  publisher_accessor_ = accessor_factory_->CreatePublisherAccessor(client_context_.get());
 
   RAY_LOG(DEBUG) << "GcsClient connected "
                  << BuildAddress(options_.gcs_address_, options_.gcs_port_);
@@ -171,10 +209,11 @@ Status GcsClient::FetchClusterId(int64_t timeout_ms) {
   rpc::GetClusterIdReply reply;
   RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
 
-  Status s = gcs_rpc_client_->SyncGetClusterId(std::move(request), &reply, timeout_ms);
+  Status s = client_context_->GetGcsRpcClient().SyncGetClusterId(
+      std::move(request), &reply, timeout_ms);
   if (!s.ok()) {
     RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
-    gcs_rpc_client_.reset();
+    client_context_->Disconnect();
     client_call_manager_.reset();
     return s;
   }
@@ -185,13 +224,13 @@ Status GcsClient::FetchClusterId(int64_t timeout_ms) {
 }
 
 void GcsClient::Disconnect() {
-  if (gcs_rpc_client_) {
-    gcs_rpc_client_.reset();
+  if (client_context_) {
+    client_context_->Disconnect();
   }
 }
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
-  return gcs_rpc_client_->GetAddress();
+  return client_context_->GetGcsRpcClient().GetAddress();
 }
 
 ClusterID GcsClient::GetClusterId() const {

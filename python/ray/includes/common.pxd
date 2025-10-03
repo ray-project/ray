@@ -410,8 +410,8 @@ cdef extern from "ray/gcs_rpc_client/python_callbacks.h" namespace "ray::gcs":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
-    cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h" nogil:
+    cdef cppclass CActorInfoAccessorInterface "ray::gcs::ActorInfoAccessorInterface":
         void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
             const optional[CJobID] &job_id,
@@ -425,7 +425,8 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
                                   const StatusPyCallback &callback,
                                   int64_t timeout_ms)
 
-    cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/job_info_accessor_interface.h" nogil:
+    cdef cppclass CJobInfoAccessorInterface "ray::gcs::JobInfoAccessorInterface":
         CRayStatus GetAll(
             const optional[c_string] &job_or_submission_id,
             c_bool skip_submission_job_info_field,
@@ -440,7 +441,8 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const MultiItemPyCallback[CJobTableData] &callback,
             int64_t timeout_ms)
 
-    cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/node_info_accessor_interface.h" nogil:
+    cdef cppclass CNodeInfoAccessorInterface "ray::gcs::NodeInfoAccessorInterface":
         CRayStatus CheckAlive(
             const c_vector[CNodeID] &node_ids,
             int64_t timeout_ms,
@@ -466,12 +468,14 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_vector[CNodeID] node_ids)
 
-    cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/node_resource_info_accessor_interface.h" nogil:
+    cdef cppclass CNodeResourceInfoAccessorInterface "ray::gcs::NodeResourceInfoAccessorInterface":
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,
             CGetAllResourceUsageReply &serialized_reply)
 
-    cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/internal_kv_accessor_interface.h" nogil:
+    cdef cppclass CInternalKVAccessorInterface "ray::gcs::InternalKVAccessorInterface":
         CRayStatus Keys(
             const c_string &ns,
             const c_string &prefix,
@@ -550,13 +554,15 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             int64_t timeout_ms,
             const OptionalItemPyCallback[int] &callback)
 
-    cdef cppclass CRuntimeEnvAccessor "ray::gcs::RuntimeEnvAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/runtime_env_accessor_interface.h" nogil:
+    cdef cppclass CRuntimeEnvAccessorInterface "ray::gcs::RuntimeEnvAccessorInterface":
         CRayStatus PinRuntimeEnvUri(
             const c_string &uri,
             int expiration_s,
             int64_t timeout_ms)
 
-    cdef cppclass CAutoscalerStateAccessor "ray::gcs::AutoscalerStateAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/autoscaler_state_accessor_interface.h" nogil:
+    cdef cppclass CAutoscalerStateAccessorInterface "ray::gcs::AutoscalerStateAccessorInterface":
 
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
@@ -598,7 +604,8 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             c_string &rejection_reason_message
         )
 
-    cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/publisher_accessor_interface.h" nogil:
+    cdef cppclass CPublisherAccessorInterface "ray::gcs::PublisherAccessorInterface":
         CRayStatus PublishError(
             c_string key_id,
             CErrorTableData data,
@@ -635,14 +642,14 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
         c_pair[c_string, int] GetGcsServerAddress() const
         CClusterID GetClusterId() const
 
-        CActorInfoAccessor& Actors()
-        CJobInfoAccessor& Jobs()
-        CInternalKVAccessor& InternalKV()
-        CNodeInfoAccessor& Nodes()
-        CNodeResourceInfoAccessor& NodeResources()
-        CRuntimeEnvAccessor& RuntimeEnvs()
-        CAutoscalerStateAccessor& Autoscaler()
-        CPublisherAccessor& Publisher()
+        CActorInfoAccessorInterface& Actors()
+        CJobInfoAccessorInterface& Jobs()
+        CInternalKVAccessorInterface& InternalKV()
+        CNodeInfoAccessorInterface& Nodes()
+        CNodeResourceInfoAccessorInterface& NodeResources()
+        CRuntimeEnvAccessorInterface& RuntimeEnvs()
+        CAutoscalerStateAccessorInterface& Autoscaler()
+        CPublisherAccessorInterface& Publisher()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 

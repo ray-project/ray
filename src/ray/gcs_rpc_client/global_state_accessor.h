@@ -183,6 +183,11 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupInfo(
       const PlacementGroupID &placement_group_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
+  int64_t GetGcsTimeoutMs() {
+    return absl::ToInt64Milliseconds(
+        absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
+  }
+
   /// Get information of a placement group from GCS Service by name.
   ///
   /// \param placement_group_name The name of placement group to look up in the GCS

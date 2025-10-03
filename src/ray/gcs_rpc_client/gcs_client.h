@@ -23,17 +23,27 @@
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_split.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessor_factory_interface.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/autoscaler_state_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/error_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/job_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/node_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/node_resource_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/placement_group_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/publisher_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/runtime_env_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/task_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/worker_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/gcs_client_context.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/pubsub/gcs_subscriber.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
-#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
 
@@ -105,7 +115,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   ///    This potentially will be used to tell GCS who is client connecting
   ///    to GCS.
   explicit GcsClient(const GcsClientOptions &options,
-                     UniqueID gcs_client_id = UniqueID::FromRandom());
+                     UniqueID gcs_client_id = UniqueID::FromRandom(),
+                     std::unique_ptr<AccessorFactoryInterface> accessor_factory = nullptr,
+                     std::shared_ptr<GcsClientContext> client_context = nullptr);
 
   virtual ~GcsClient() { Disconnect(); };
 
@@ -149,69 +161,69 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get the sub-interface for accessing actor information in GCS.
   /// This function is thread safe.
-  ActorInfoAccessor &Actors() {
+  ActorInfoAccessorInterface &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
 
   /// Get the sub-interface for accessing job information in GCS.
   /// This function is thread safe.
-  JobInfoAccessor &Jobs() {
+  JobInfoAccessorInterface &Jobs() {
     RAY_CHECK(job_accessor_ != nullptr);
     return *job_accessor_;
   }
 
   /// Get the sub-interface for accessing node information in GCS.
   /// This function is thread safe.
-  NodeInfoAccessor &Nodes() {
+  NodeInfoAccessorInterface &Nodes() {
     RAY_CHECK(node_accessor_ != nullptr);
     return *node_accessor_;
   }
 
   /// Get the sub-interface for accessing node resource information in GCS.
   /// This function is thread safe.
-  NodeResourceInfoAccessor &NodeResources() {
+  NodeResourceInfoAccessorInterface &NodeResources() {
     RAY_CHECK(node_resource_accessor_ != nullptr);
     return *node_resource_accessor_;
   }
 
   /// Get the sub-interface for accessing error information in GCS.
   /// This function is thread safe.
-  ErrorInfoAccessor &Errors() {
+  ErrorInfoAccessorInterface &Errors() {
     RAY_CHECK(error_accessor_ != nullptr);
     return *error_accessor_;
   }
 
-  TaskInfoAccessor &Tasks() {
+  TaskInfoAccessorInterface &Tasks() {
     RAY_CHECK(task_accessor_ != nullptr);
     return *task_accessor_;
   }
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
-  WorkerInfoAccessor &Workers() {
+  WorkerInfoAccessorInterface &Workers() {
     RAY_CHECK(worker_accessor_ != nullptr);
     return *worker_accessor_;
   }
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
-  PlacementGroupInfoAccessor &PlacementGroups() {
+  PlacementGroupInfoAccessorInterface &PlacementGroups() {
     RAY_CHECK(placement_group_accessor_ != nullptr);
     return *placement_group_accessor_;
   }
 
-  RuntimeEnvAccessor &RuntimeEnvs() {
+  RuntimeEnvAccessorInterface &RuntimeEnvs() {
     RAY_CHECK(runtime_env_accessor_ != nullptr);
     return *runtime_env_accessor_;
   }
 
-  AutoscalerStateAccessor &Autoscaler() {
+  AutoscalerStateAccessorInterface &Autoscaler() {
     RAY_CHECK(autoscaler_state_accessor_ != nullptr);
     return *autoscaler_state_accessor_;
   }
 
-  PublisherAccessor &Publisher() {
+  PublisherAccessorInterface &Publisher() {
     RAY_CHECK(publisher_accessor_ != nullptr);
     return *publisher_accessor_;
   }
@@ -221,27 +233,33 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
-  virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
+  virtual InternalKVAccessorInterface &InternalKV() { return *internal_kv_accessor_; }
 
-  virtual pubsub::GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
+  virtual pubsub::GcsSubscriber &GetGcsSubscriber() {
+    return client_context_->GetGcsSubscriber();
+  }
 
-  virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
+  virtual rpc::GcsRpcClient &GetGcsRpcClient() {
+    return client_context_->GetGcsRpcClient();
+  }
 
  protected:
   GcsClientOptions options_;
 
-  std::unique_ptr<ActorInfoAccessor> actor_accessor_;
-  std::unique_ptr<JobInfoAccessor> job_accessor_;
-  std::unique_ptr<NodeInfoAccessor> node_accessor_;
-  std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
-  std::unique_ptr<ErrorInfoAccessor> error_accessor_;
-  std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
-  std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
-  std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
-  std::unique_ptr<TaskInfoAccessor> task_accessor_;
-  std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
-  std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
-  std::unique_ptr<PublisherAccessor> publisher_accessor_;
+  std::shared_ptr<GcsClientContext> client_context_;
+  std::unique_ptr<AccessorFactoryInterface> accessor_factory_;
+  std::unique_ptr<ActorInfoAccessorInterface> actor_accessor_;
+  std::unique_ptr<JobInfoAccessorInterface> job_accessor_;
+  std::unique_ptr<NodeInfoAccessorInterface> node_accessor_;
+  std::unique_ptr<NodeResourceInfoAccessorInterface> node_resource_accessor_;
+  std::unique_ptr<ErrorInfoAccessorInterface> error_accessor_;
+  std::unique_ptr<WorkerInfoAccessorInterface> worker_accessor_;
+  std::unique_ptr<PlacementGroupInfoAccessorInterface> placement_group_accessor_;
+  std::unique_ptr<InternalKVAccessorInterface> internal_kv_accessor_;
+  std::unique_ptr<TaskInfoAccessorInterface> task_accessor_;
+  std::unique_ptr<RuntimeEnvAccessorInterface> runtime_env_accessor_;
+  std::unique_ptr<AutoscalerStateAccessorInterface> autoscaler_state_accessor_;
+  std::unique_ptr<PublisherAccessorInterface> publisher_accessor_;
 
  private:
   /// If client_call_manager_ does not have a cluster ID, fetches it from GCS. The
@@ -250,10 +268,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
-  std::unique_ptr<pubsub::GcsSubscriber> gcs_subscriber_;
-
   // Gcs rpc client
-  std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
 };
