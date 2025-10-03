@@ -47,7 +47,6 @@ from ray.core.generated import (
     node_manager_pb2,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
