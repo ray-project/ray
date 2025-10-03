@@ -3,7 +3,7 @@ import dataclasses
 import os
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
@@ -38,7 +38,7 @@ class BundleConfig(BaseModelExtended):
     Note: Counts are floats to align with Ray resource typing.
     """
 
-    CPU: float = Field(default=1.0, ge=0.0, description="Number of CPUs per bundle")
+    CPU: float = Field(default=0.0, ge=0.0, description="Number of CPUs per bundle")
     GPU: float = Field(default=1.0, ge=0.0, description="Number of GPUs per bundle")
 
     class Config:
@@ -52,6 +52,13 @@ class PlacementGroupConfig(BaseModelExtended):
     strategy: Literal["PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"] = Field(
         default="PACK", description="Placement group strategy"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_bundles_exist(cls, values):
+        if isinstance(values, dict) and "bundles" not in values:
+            raise ValueError("placement_group_config must contain 'bundles'")
+        return values
 
 
 class VLLMEngineConfig(BaseModelExtended):
@@ -69,17 +76,11 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="Configuration for cloud storage mirror. This is for where the weights are downloaded from.",
     )
-    resources_per_bundle: Optional[Dict[str, float]] = Field(
-        default=None,
-        deprecated=True,
-        description="DEPRECATED: Use placement_group_config instead. "
-        "This overrides the vLLM engine worker's default resource configuration.",
-    )
     accelerator_type: Optional[GPUType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
-    placement_group_config: Optional[PlacementGroupConfig] = Field(
+    placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
             "Ray placement group configuration for scheduling vLLM engine workers. "
@@ -87,6 +88,16 @@ class VLLMEngineConfig(BaseModelExtended):
             "Defaults to PACK strategy with automatic bundle generation based on TP/PP sizes."
         ),
     )
+
+    @field_validator("placement_group_config")
+    @classmethod
+    def validate_placement_group_config(cls, value):
+        if value is None:
+            return None
+        # Validate through PlacementGroupConfig, then dump back to dict
+        validated = PlacementGroupConfig(**value)
+        return validated.model_dump()
+
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
     frontend_kwargs: Dict[str, Any] = {}
@@ -181,22 +192,13 @@ class VLLMEngineConfig(BaseModelExtended):
             else:
                 raise ValueError(f"Unknown engine argument: {key}")
 
-        # Convert placement_group_config from dict to schema if provided
-        placement_group_config = None
-        if llm_config.placement_group_config:
-            # Ensure bundles exist before schema validation
-            if "bundles" not in llm_config.placement_group_config:
-                raise ValueError("placement_group_config must contain 'bundles'")
-            # PlacementGroupConfig handles strategy default
-            placement_group_config = PlacementGroupConfig(
-                **llm_config.placement_group_config
-            )
+        # placement_group_config is already validated and stored as dict in LLMConfig
+        placement_group_config = llm_config.placement_group_config
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
-            resources_per_bundle=llm_config.resources_per_bundle,
             accelerator_type=llm_config.accelerator_type,
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
@@ -224,7 +226,7 @@ class VLLMEngineConfig(BaseModelExtended):
     def placement_strategy(self) -> str:
         # Use custom strategy if placement_group_config is provided
         if self.placement_group_config:
-            return self.placement_group_config.strategy
+            return self.placement_group_config.get("strategy", "PACK")
         # Default to PACK (cross-node best-effort placement)
         # DP deployments overridden to STRICT_PACK in Serve config
         return "PACK"
@@ -232,29 +234,17 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
         if self.placement_group_config:
-            # Convert schema to dict format
+            # placement_group_config is validated dict; extract bundles
             bundles = []
-            for bundle_schema in self.placement_group_config.bundles:
-                bundle = bundle_schema.dict()
+            for bundle_dict in self.placement_group_config["bundles"]:
+                bundle = bundle_dict.copy()
                 if self.accelerator_type:
                     bundle.setdefault(self.ray_accelerator_type(), 0.001)
                 bundles.append(bundle)
             return bundles
 
-        # Legacy support with deprecation warning
-        if self.resources_per_bundle:
-            import warnings
-
-            warnings.warn(
-                "resources_per_bundle is deprecated. Use placement_group_config instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            bundle = self.resources_per_bundle.copy()
-        else:
-            # Default to GPU-only bundles; the replica actor contributes CPU to the
-            # first bundle via merge, matching legacy Serve expectations.
-            bundle = {"GPU": 1}
+        # Default bundles: GPU-only; replica actor contributes CPU to first bundle via merge
+        bundle = {"GPU": 1}
 
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
@@ -264,11 +254,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def use_gpu(self) -> bool:
-        """
-        Returns True if vLLM is configured to use GPU resources.
-        """
-        if self.resources_per_bundle and self.resources_per_bundle.get("GPU", 0) > 0:
-            return True
+        """Returns True if vLLM is configured to use GPU resources."""
         if not self.accelerator_type:
             # By default, GPU resources are used
             return True

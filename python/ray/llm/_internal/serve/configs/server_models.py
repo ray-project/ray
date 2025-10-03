@@ -166,13 +166,6 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    resources_per_bundle: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="This will override the default resource bundles for placement groups. "
-        "You can specify a custom device label e.g. {'NPU': 1}. "
-        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
-    )
-
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
@@ -473,8 +466,8 @@ class LLMConfig(BaseModelExtended):
         ray_actor_options = deployment_config.get("ray_actor_options", {})
         deployment_config["ray_actor_options"] = ray_actor_options
 
-        # Default replica actor CPU to 1, but do not double-count CPU in the
-        # tail bundles; only the first bundle should gain replica CPU.
+        # Replica actor resources: default 1 CPU for coordination/routing
+        # Will be merged into first PG bundle for co-location
         replica_actor_resources = {
             "CPU": ray_actor_options.get("num_cpus", 1),
             "GPU": ray_actor_options.get("num_gpus", 0),
