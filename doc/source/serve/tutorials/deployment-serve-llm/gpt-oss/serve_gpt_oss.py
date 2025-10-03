@@ -1,7 +1,8 @@
 # serve_gpt_oss.py
+import os
 from ray.serve.llm import LLMConfig, build_openai_app
 
-GPT_OSS_SIZE = "20b"  # or "120b"
+GPT_OSS_SIZE = os.environ.get("GPT_OSS_SIZE", "20b") # set to "20b" or "120b"
 
 if GPT_OSS_SIZE == "20b":
     llm_config = LLMConfig(
