@@ -230,7 +230,7 @@ steps:
         --test-arg --framework=tf
         --skip-ray-installation # reuse the same docker image as the previous run
 
-      # tf2-eager-tracing
+      # tf2-eager-tracing-1
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests
         --only-tags tf2_only
         --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing,gpu
