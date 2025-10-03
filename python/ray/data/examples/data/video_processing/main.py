@@ -25,71 +25,6 @@ EXAMPLE_MODEL_PATH = "/vllm-workspace/tmp/vlm"
 DEFAULT_PROMPT = "Summarize the content of this video"
 
 
-async def process_video_with_vlm(video_path: str, model_path: str) -> None:
-    processor = VideoProcessor(
-        sampling={"num_frames": 4},
-        output_format="pil",
-        preprocess={"resize": {"size": [384, 384]}, "convert": "RGB"},
-    )
-    frames_and_meta = await processor.process([video_path])
-    frames = frames_and_meta[0]["frames"]
-    print(f"Extracted {len(frames)} frames from {video_path}")
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        image_paths: List[str] = []
-        for idx, frame in enumerate(frames):
-            temp_path = os.path.join(tmp_dir, f"frame_{idx}.jpg")
-            frame.save(temp_path)
-            image_paths.append(temp_path)
-
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {
-                "role": "user",
-                "content": [
-                    *[{"type": "image", "image": path} for path in image_paths],
-                    {"type": "text", "text": DEFAULT_PROMPT},
-                ],
-            },
-        ]
-
-        hf_processor = transformers.AutoProcessor.from_pretrained(
-            model_path, trust_remote_code=True
-        )
-        llm = vllm.LLM(
-            model=model_path,
-            limit_mm_per_prompt={"image": 10},
-            trust_remote_code=True,
-            enforce_eager=True,
-        )
-        sampling_params = vllm.SamplingParams(
-            temperature=0.1, top_p=0.001, max_tokens=512
-        )
-        process_vision_info = qwen_vl_utils.process_vision_info
-
-        prompt = hf_processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-        image_inputs, _ = process_vision_info(messages)
-
-        generations = llm.generate(
-            [
-                {
-                    "prompt": prompt,
-                    "multi_modal_data": {"image": image_inputs},
-                }
-            ],
-            sampling_params=sampling_params,
-        )
-        text = generations[0].outputs[0].text
-        print("Generated result:", text)
-        if hasattr(llm, "close"):
-            try:
-                llm.close()
-            except Exception:
-                pass
-
-
 def decode_frames_stage(batch: Any):
     if isinstance(batch, pa.Table):
         records = batch.to_pylist()
@@ -215,8 +150,6 @@ def run_dataset_pipeline(
 
 
 def main() -> None:
-    asyncio.run(process_video_with_vlm(EXAMPLE_VIDEO_PATH, EXAMPLE_MODEL_PATH))
-
     run_dataset_pipeline(EXAMPLE_MODEL_PATH, batch_size=4)
 
 
