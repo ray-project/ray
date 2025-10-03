@@ -57,7 +57,7 @@ ray start --head --labels="cpu-family=amd,test-label=test-value"
 # Example 2: Start a head node with labels from a label file
 ray start --head --labels-files='./test-labels-file'
 
-# And the file content can be the following (should be a valid yaml file):
+# The file content can be the following (should be a valid YAML file):
 # "test-label": "test-value"
 # "test-label-2": "test-value-2"
 ```
@@ -83,16 +83,16 @@ The following table shows the basic syntax for label selector operator logic:
 | --- | --- | --- |
 | Equals | Label matches exactly one value. | `{“key”: “value”}`
 | Not equal | Label matches anything by one value. | `{“key”: “!value”}`
-| In | Label matches on of the provided values. | `{“key”: “in(val1,val2)”}`
+| In | Label matches one of the provided values. | `{“key”: “in(val1,val2)”}`
 | Not in | Label matches none of the provided values. | `{“key”: “!in(val1,val2)”}`
 
-You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require node id to be 123:
+You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require node ID to be 123:
 
 ```python
 label_selector={"instance_type": "m5.16xlarge", "ray.io/node-id": "123"}  
 ```
 
-## Specify label requirements for Tasks & Actors
+## Specify label requirements for tasks and actors
 
 Use the following syntax to add label selectors to tasks and actors:
 
@@ -143,7 +143,7 @@ ray.util.placement_group(
 ```
 ## Using labels with autoscaler
 
-Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up nodes to fulfill label requirements, you need to create multiple worker groups for different label requirement combinations and specify the all the corresponding labels in the `rayStartParams` field in the Ray cluster configuration. For example:
+Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up nodes to fulfill label requirements, you need to create multiple worker groups for different label requirement combinations and specify all the corresponding labels in the `rayStartParams` field in the Ray cluster configuration. For example:
 
 ```python
     rayStartParams: {
