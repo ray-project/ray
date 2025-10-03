@@ -17,10 +17,13 @@ from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated.usage_pb2 import TagKey
 from ray.util.placement_group import (
     placement_group,
-    placement_group_table,
     remove_placement_group,
 )
-from ray.util.state.api import list_actors, list_placement_groups, list_tasks
+from ray.util.state.api import (
+    list_actors,
+    list_placement_groups,
+    list_tasks,
+)
 
 
 def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
@@ -638,7 +641,9 @@ assert all(ray.get(results))
         assert proc.returncode == 0, "The driver script failed."
 
         # Validate Tasks are scheduled on nodes with required labels.
-        tasks = list_tasks()
+        tasks_by_name = {
+            task.name: task for task in list_tasks(detail=True) if hasattr(task, "name")
+        }
         nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
         task_selectors = {
             "task_0": {"accelerator-type": "A100"},
@@ -647,14 +652,34 @@ assert all(ray.get(results))
             "task_3": {"market-type": "!spot"},
         }
 
-        for task in tasks:
-            task_name = task["name"]
-            if task_name in task_selectors:
-                node_id = task["node_id"]
-                node_labels = nodes[node_id]
-                assert _verify_node_labels_for_selector(
-                    node_labels, task_selectors[task_name]
-                )
+        for task_name, expected_selector in task_selectors.items():
+            assert (
+                task_name in tasks_by_name
+            ), f"Task with name '{task_name}' was not found."
+            task = tasks_by_name[task_name]
+
+            # Verify actual label selector from the Task matches the expected.
+            actual_selector = task.get("label_selector")
+            assert (
+                actual_selector is not None
+            ), f"Task '{task_name}' did not have a 'label_selector' field."
+
+            assert actual_selector == expected_selector, (
+                f"Task '{task_name}' has an incorrect label selector. "
+                f"Expected: {expected_selector}, Got: {actual_selector}"
+            )
+
+            # Verify Ray node created for Task.
+            node_id = task["node_id"]
+            assert (
+                node_id in nodes
+            ), f"Node with ID '{node_id}' for task '{task_name}' was not found."
+
+            # Validate node labels satisfy `label_selector` for Task.
+            node_labels = nodes[node_id]
+            assert _verify_node_labels_for_selector(
+                node_labels, actual_selector
+            ), f"Verification failed for task '{task_name}' on node '{node_id}'"
 
     finally:
         ray.shutdown()
@@ -759,7 +784,11 @@ ray.get([a.ready.remote() for a in actors])
         assert proc.returncode == 0, "The driver script failed to submit actors."
 
         # Finally, validate the Actors are scheduled on the node with matching labels.
-        actors = list_actors(filters=[("state", "=", "ALIVE")])
+        actors_by_name = {
+            actor.name: actor
+            for actor in list_actors(detail=True)
+            if hasattr(actor, "name")
+        }
         nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
         actor_selectors = {
             "actor_0": {"accelerator-type": "A100"},
@@ -768,14 +797,34 @@ ray.get([a.ready.remote() for a in actors])
             "actor_3": {"market-type": "!spot"},
         }
 
-        for actor in actors:
-            actor_name = actor["name"]
-            if actor_name in actor_selectors:
-                node_id = actor["node_id"]
-                node_labels = nodes[node_id]
-                assert _verify_node_labels_for_selector(
-                    node_labels, actor_selectors[actor_name]
-                )
+        for actor_name, expected_selector in actor_selectors.items():
+            assert (
+                actor_name in actors_by_name
+            ), f"Actor with name '{actor_name}' was not found."
+            actor = actors_by_name[actor_name]
+
+            # Verify actual label selector from the Actor matches the expected.
+            actual_selector = actor.get("label_selector")
+            assert (
+                actual_selector is not None
+            ), f"Actor '{actor_name}' did not have a 'label_selector' field."
+
+            assert actual_selector == expected_selector, (
+                f"Actor '{actor_name}' has an incorrect label selector. "
+                f"Expected: {expected_selector}, Got: {actual_selector}"
+            )
+
+            # Verify Ray node created for Actor.
+            node_id = actor["node_id"]
+            assert (
+                node_id in nodes
+            ), f"Node with ID '{node_id}' for Actor '{actor_name}' was not found."
+
+            # Validate node labels satisfy `label_selector` for Actor.
+            node_labels = nodes[node_id]
+            assert _verify_node_labels_for_selector(
+                node_labels, actual_selector
+            ), f"Verification failed for Actor '{actor_name}' on node '{node_id}'"
 
     finally:
         ray.shutdown()
@@ -845,21 +894,39 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
         assert actual_node_types == expected_node_types
 
         # Validate the placement group is scheduled to nodes with the required labels.
-        pg_data = placement_group_table(pg)
-        nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
+        pgs = list_placement_groups(detail=True)
+        assert len(pgs) == 1
+        pg_state = pgs[0]
+        bundles_list = pg_state.bundles
+        assert (
+            bundles_list is not None
+        ), "PlacementGroupState did not have a 'bundles' field."
 
-        bundle_selectors = [
+        actual_bundle_selectors = []
+        for bundle in bundles_list:
+            actual_bundle_selectors.append(bundle["label_selector"])
+
+        expected_bundle_selectors = [
             {"accelerator-type": "A100"},
             {"accelerator-type": "TPU_V6E"},
         ]
+        assert actual_bundle_selectors == expected_bundle_selectors, (
+            f"Placement group has incorrect bundle selectors. "
+            f"Expected: {expected_bundle_selectors}, Got: {actual_bundle_selectors}"
+        )
 
-        for bundle_index_str, node_id_hex in pg_data["bundles_to_node_id"].items():
-            bundle_index = int(bundle_index_str)
-            node_labels = nodes[node_id_hex]
+        nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
+        for bundle_index, bundle in enumerate(bundles_list):
+            # Verify bundle placed on expected node.
+            bundle_node_id = bundle.get("node_id")
+            assert (
+                bundle_node_id in nodes
+            ), f"Node with ID '{bundle_node_id}' for bundle {bundle_index} was not found."
 
-            assert _verify_node_labels_for_selector(
-                node_labels, bundle_selectors[bundle_index]
-            )
+            # Verify node's labels satisfy the bundle's label_selector.
+            bundle_selector = actual_bundle_selectors[bundle_index]
+            node_labels = nodes[bundle_node_id]
+            assert _verify_node_labels_for_selector(node_labels, bundle_selector)
 
     finally:
         ray.shutdown()
