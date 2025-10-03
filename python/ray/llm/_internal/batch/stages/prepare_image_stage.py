@@ -1,5 +1,4 @@
 """Prepare Image Stage"""
-
 import asyncio
 import base64
 import importlib
@@ -312,17 +311,13 @@ class PrepareImageUDF(StatefulStageUDF):
         self.image_processor = ImageProcessor()
 
     def extract_image_info(self, messages: List[Dict]) -> List[_ImageType]:
-        """Extract image information from chat messages.
+        """Extract vision information such as image and video from chat messages.
 
         Args:
             messages: List of chat messages.
 
         Returns:
             List of _ImageType.
-
-        Note:
-            The optional 'detail' parameter from the OpenAI schema is not
-            passed forward to downstream templates.
         """
 
         image_info: List[_ImageType] = []
@@ -341,20 +336,7 @@ class PrepareImageUDF(StatefulStageUDF):
             for content_item in content:
                 if content_item["type"] not in ("image", "image_url"):
                     continue
-
-                image_data = content_item[content_item["type"]]
-
-                if content_item["type"] == "image_url" and isinstance(image_data, dict):
-                    # OpenAI nested format: {"image_url": {"url": "..."}}
-                    image = image_data.get("url")
-                    if not isinstance(image, str) or not image:
-                        raise ValueError(
-                            "image_url must be an object with a non-empty 'url' string"
-                        )
-                else:
-                    # Simple format: {"image": "..."} or {"image_url": "..."}
-                    image = image_data
-
+                image = content_item[content_item["type"]]
                 if not isinstance(image, str) and not isinstance(
                     image, self.Image.Image
                 ):
