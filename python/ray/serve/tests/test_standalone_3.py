@@ -21,6 +21,22 @@ from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
+# Skip tests on Windows due to Ray infrastructure failures.
+# See: "Ray cluster mode is currently experimental and untested on Windows"
+skip_on_windows_node_timeout = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Ray node fails to register with GCS within 30s timeout on Windows. "
+    "Cluster has zero CPU resources available: {} after test operations. "
+    "Root cause: Worker crashes (error 10054, SIGSEGV) leave resources allocated.",
+)
+
+skip_on_windows_cluster_reinit = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Ray.init() fails when cluster from previous test persists on Windows. "
+    "ValueError: _system_config cannot be provided when connecting to existing cluster. "
+    "Root cause: Ray cluster cleanup/isolation issues on Windows between tests.",
+)
+
 
 # Some tests are not possible to run if proxy is not available on every node.
 # We skip them if proxy is not available.
@@ -55,6 +71,7 @@ def start_and_shutdown_ray_cli_function():
         yield
 
 
+@skip_on_windows_cluster_reinit
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -333,6 +350,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     ray.shutdown()
 
 
+@skip_on_windows_node_timeout
 @pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
 def test_controller_shutdown_gracefully(
     shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
