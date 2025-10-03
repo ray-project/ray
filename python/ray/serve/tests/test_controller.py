@@ -379,6 +379,8 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
             "max_replicas",
             "decisions",
             "policy_name",
+            "metrics_health",
+            "look_back_period_s",
         ]:
             assert key in snap, f"Missing {key}"
 
