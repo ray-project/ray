@@ -446,6 +446,8 @@ steps:
   - label: ":core: core: spark-on-ray tests"
     tags:
       - spark_on_ray
+      - java
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
