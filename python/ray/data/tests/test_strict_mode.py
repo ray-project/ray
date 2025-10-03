@@ -258,6 +258,7 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
     [
         (pd.ArrowDtype(pa.int32()), pa.int32()),
         (np.dtype("int64"), pa.int64()),
+        (pd.Int64Dtype(), pa.int64()),
     ],
 )
 def test_schema_types_property(input_dtype, expected_arrow_type):
