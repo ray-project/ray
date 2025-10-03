@@ -211,7 +211,20 @@ def configure_logging() -> None:
 
         config = _get_logging_config()
 
+        # Preserve the propagate settings for loggers if they've been explicitly set
+        # (e.g., by test fixtures). This ensures test logging capture works correctly.
+        logger_names = list(config.get("loggers", {}).keys())
+        propagate_settings = {
+            name: logging.getLogger(name).propagate for name in logger_names
+        }
+
         logging.config.dictConfig(config)
+
+        # Restore propagate settings if they were True (likely set by test fixtures)
+        for name, should_propagate in propagate_settings.items():
+            if should_propagate:
+                logging.getLogger(name).propagate = True
+
         _logging_configured = True
 
         # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
