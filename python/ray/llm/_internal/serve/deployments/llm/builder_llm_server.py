@@ -42,13 +42,13 @@ def build_llm_deployment(
     deployment_cls: Optional[Type[LLMServer]] = LLMServer,
 ) -> Application:
     """Build an LLMServer deployment.
-    
+
     Args:
         llm_config: The LLMConfig to build the deployment.
         name_prefix: The prefix to add to the deployment name.
-        bind_kwargs: The optional extra kwargs to pass to the deployment. 
+        bind_kwargs: The optional extra kwargs to pass to the deployment.
             Used for customizing the deployment.
-        override_serve_options: The optional serve options to override the 
+        override_serve_options: The optional serve options to override the
             default options.
         deployment_cls: The deployment class to use. Defaults to LLMServer.
 
@@ -66,17 +66,16 @@ def build_llm_deployment(
     if name_prefix:
         deployment_options["name"] = name_prefix + deployment_options["name"]
 
-
     if override_serve_options:
         deployment_options.update(override_serve_options)
 
     deployment_options = deep_merge_dicts(
-        DEFAULT_DEPLOYMENT_OPTIONS, deployment_options)
+        DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
+    )
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
 
-    return (
-        serve.deployment(deployment_cls, **deployment_options)
-        .bind(llm_config=llm_config, **bind_kwargs)
+    return serve.deployment(deployment_cls, **deployment_options).bind(
+        llm_config=llm_config, **bind_kwargs
     )

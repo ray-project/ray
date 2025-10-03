@@ -83,12 +83,9 @@ def _merge_replica_actor_and_child_actor_bundles(
     bundle_key_set = set(first_bundle.keys()) | set(replica_actor_bundle.keys())
 
     for key in bundle_key_set:
-        first_bundle[key] = replica_actor_bundle.get(key, 0) + first_bundle.get(
-            key, 0
-        )
+        first_bundle[key] = replica_actor_bundle.get(key, 0) + first_bundle.get(key, 0)
 
     return [first_bundle] + child_actor_bundles[1:]
-
 
 
 class LLMServer(LLMServerProtocol):
@@ -434,7 +431,6 @@ class LLMServer(LLMServerProtocol):
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
-
     # TODO: minimize the logic here.
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
@@ -489,7 +485,6 @@ class LLMServer(LLMServerProtocol):
             **(llm_config.runtime_env if llm_config.runtime_env else {}),
         }
         deployment_options["ray_actor_options"] = ray_actor_options
-
 
         return deployment_options
 

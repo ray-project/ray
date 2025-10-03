@@ -40,14 +40,12 @@ DEFAULT_INGRESS_OPTIONS = {
 }
 
 
-
 def _is_yaml_file(filename: str) -> bool:
     yaml_extensions = [".yml", ".yaml", ".json"]
     for s in yaml_extensions:
         if filename.endswith(s):
             return True
     return False
-
 
 
 def _parse_path_args(path: str) -> List[LLMConfig]:
@@ -160,14 +158,14 @@ def _get_llm_deployments(
 
 def _infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -> dict:
     """Infer the number of ingress replicas based on the LLM configs.
-    
+
     Based on our internal benchmark, we are currently bottleneck
     by the router replicas during high concurrency situation. We are setting the
     router replicas to be ~2x the total model replicas and making it scale faster.
-    
+
     Args:
         llm_configs: The LLM configs to infer the number of ingress replicas from.
-    
+
     Returns:
         A dictionary containing the autoscaling config for the ingress deployment.
     """
@@ -176,7 +174,6 @@ def _infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -
     initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
     max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
     num_ingress_replicas = 0
-
 
     if llm_configs:
         model_min_replicas = 0
@@ -189,9 +186,7 @@ def _infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -
             )
 
             if "autoscaling_config" in llm_config.deployment_config:
-                autoscaling_config = llm_config.deployment_config[
-                    "autoscaling_config"
-                ]
+                autoscaling_config = llm_config.deployment_config["autoscaling_config"]
                 if isinstance(autoscaling_config, dict):
                     autoscaling_config = AutoscalingConfig(
                         **llm_config.deployment_config["autoscaling_config"]
@@ -201,8 +196,7 @@ def _infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -
                 autoscaling_config = AutoscalingConfig()
             model_min_replicas += autoscaling_config.min_replicas
             model_initial_replicas += (
-                autoscaling_config.initial_replicas
-                or autoscaling_config.min_replicas
+                autoscaling_config.initial_replicas or autoscaling_config.min_replicas
             )
             model_max_replicas += autoscaling_config.max_replicas
         min_replicas = num_ingress_replicas or int(
@@ -230,7 +224,8 @@ def build_openai_app(
     *,
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
-    ingress_cls: Optional[Type[OpenAiIngress]] = OpenAiIngress) -> Application:
+    ingress_cls: Optional[Type[OpenAiIngress]] = OpenAiIngress,
+) -> Application:
     ...
 
 
@@ -239,7 +234,8 @@ def build_openai_app(
     *,
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
-    ingress_cls: Optional[Type[OpenAiIngress]] = OpenAiIngress) -> Application:
+    ingress_cls: Optional[Type[OpenAiIngress]] = OpenAiIngress,
+) -> Application:
 
     bind_kwargs = bind_kwargs or {}
     rayllm_args = LLMServingArgs.model_validate(llm_serving_args).parse_args()
@@ -261,15 +257,12 @@ def build_openai_app(
     if override_serve_options:
         ingress_options = ingress_options.update(override_serve_options)
 
-    ingress_options = deep_merge_dicts(
-        DEFAULT_INGRESS_OPTIONS, ingress_options)
+    ingress_options = deep_merge_dicts(DEFAULT_INGRESS_OPTIONS, ingress_options)
     ingress_cls = make_fastapi_ingress(ingress_cls)
-
 
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
-    return (
-        serve.deployment(ingress_cls, **ingress_options)
-        .bind(llm_deployments=llm_deployments, **bind_kwargs)
+    return serve.deployment(ingress_cls, **ingress_options).bind(
+        llm_deployments=llm_deployments, **bind_kwargs
     )

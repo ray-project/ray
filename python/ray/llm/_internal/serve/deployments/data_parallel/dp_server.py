@@ -75,9 +75,7 @@ class DPServer(LLMServer):
     #     return serve.deployment(cls).options(**deployment_options)
 
     @classmethod
-    def get_deployment_options(
-        cls, llm_config: "LLMConfig"
-    ):
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
         deployment_options = super().get_deployment_options(llm_config)
 
         dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)

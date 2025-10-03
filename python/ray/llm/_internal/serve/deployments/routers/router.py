@@ -167,7 +167,7 @@ def make_fastapi_ingress(
     Args:
         cls: The class to convert into an ingress deployment
         endpoint_map: Dictionary mapping method names to FastAPI route
-            decorators. Each value is a lambda that takes a FastAPI app and 
+            decorators. Each value is a lambda that takes a FastAPI app and
             returns a route decorator.
 
     Returns:
