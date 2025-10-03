@@ -1028,42 +1028,42 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
             boost::posix_time::milliseconds(graceful_shutdown_timeout_ms));
         graceful_shutdown_timers_[worker_id] = timer;
 
-        timer->async_wait([this,
-                           actor_id,
-                           worker_id,
-                           node_id,
-                           death_cause,
-                           timer,
-                           graceful_shutdown_timeout_ms](
-                              const boost::system::error_code &error) {
-          if (error == boost::asio::error::operation_aborted) {
-            return;
-          }
+        timer->async_wait(
+            [this,
+             actor_id,
+             worker_id,
+             node_id,
+             death_cause,
+             timer,
+             graceful_shutdown_timeout_ms](const boost::system::error_code &error) {
+              if (error == boost::asio::error::operation_aborted) {
+                return;
+              }
 
-          auto node_it = created_actors_.find(node_id);
-          if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
-            RAY_LOG(WARNING).WithField(actor_id).WithField(worker_id)
-                << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
-                << "ms) exceeded. Worker still alive. Falling back to force kill.";
+              // Verify this is still the same actor instance before force-killing.
+              auto node_iter = created_actors_.find(node_id);
+              if (node_iter != created_actors_.end()) {
+                auto worker_iter = node_iter->second.find(worker_id);
+                if (worker_iter != node_iter->second.end() &&
+                    worker_iter->second == actor_id) {
+                  RAY_LOG(WARNING).WithField(actor_id).WithField(worker_id)
+                      << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
+                      << "ms) exceeded. Worker still alive. Falling back to force kill.";
 
-            auto it = registered_actors_.find(actor_id);
-            if (it != registered_actors_.end()) {
-              NotifyCoreWorkerToKillActor(it->second, death_cause, /*force_kill=*/true);
-            }
+                  auto actor_iter = registered_actors_.find(actor_id);
+                  if (actor_iter != registered_actors_.end()) {
+                    NotifyCoreWorkerToKillActor(
+                        actor_iter->second, death_cause, /*force_kill=*/true);
+                  }
 
-            node_it->second.erase(worker_id);
-            if (node_it->second.empty()) {
-              created_actors_.erase(node_it);
-            }
-          }
-          graceful_shutdown_timers_.erase(worker_id);
-        });
-      } else {
-        // No timeout, but still graceful - remove from created_actors_ immediately
-        RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
-        if (node_it->second.empty()) {
-          created_actors_.erase(node_it);
-        }
+                  node_iter->second.erase(worker_id);
+                  if (node_iter->second.empty()) {
+                    created_actors_.erase(node_iter);
+                  }
+                }
+              }
+              graceful_shutdown_timers_.erase(worker_id);
+            });
       }
     } else {
       if (!worker_id.IsNil()) {
