@@ -122,6 +122,16 @@ def start(
         logging_config: logging config options for the serve component (
             controller & proxy).
     """
+
+    logger.info(
+        f"Starting serve with config public api: "
+        f"proxy_location: `{proxy_location}` "
+        f"http_options: `{http_options}` "
+        f"grpc_options: `{grpc_options}` "
+        f"logging_config: `{logging_config}` "
+        f"kwargs: `{kwargs}` "
+    )
+
     http_options = _prepare_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
