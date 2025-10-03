@@ -17,8 +17,6 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover
     requests = None  # type: ignore
 
-_USER_AGENT = "Ray-Video-Example/1.0"
-
 
 class HTTPConnection:
     """Small helper around ``requests``/``aiohttp`` for reuseable HTTP clients."""
@@ -52,7 +50,7 @@ class HTTPConnection:
             raise ValueError("Invalid HTTP URL: scheme must be 'http' or 'https'.")
 
     def _headers(self, **extras: str) -> MutableMapping[str, str]:
-        return {"User-Agent": _USER_AGENT, **extras}
+        return dict(extras)
 
     def get_response(
         self,
