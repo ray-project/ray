@@ -6,7 +6,7 @@ import pytest
 
 if __name__ == "__main__":
     curr_dir = Path(__file__).parent
-    test_paths = curr_dir.rglob("test_failure.py")
+    test_paths = curr_dir.rglob("test_*.py")
     sorted_path = sorted(map(lambda path: str(path.absolute()), test_paths))
     serve_tests_files = list(sorted_path)
 
