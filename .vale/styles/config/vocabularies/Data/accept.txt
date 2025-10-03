@@ -6,7 +6,7 @@ Dask
 [Dd]atasource(s)?
 [Dd]iscretizer(s)?
 dtype
-[Gg]roupby
+[Gg]roup[bB]y
 [Hh]asher(s)?
 [Hh]udi
 [Ii]ndexable
