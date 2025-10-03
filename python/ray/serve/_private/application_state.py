@@ -1317,8 +1317,8 @@ def build_serve_application(
 def override_deployment_info(
     deployment_infos: Dict[str, DeploymentInfo],
     override_config: Optional[ServeApplicationSchema],
-    deployment_to_serialized_autoscaling_policy_def: Dict[str, bytes],
-    deployment_to_serialized_request_router_cls: Dict[str, bytes],
+    deployment_to_serialized_autoscaling_policy_def: Optional[Dict[str, bytes]] = None,
+    deployment_to_serialized_request_router_cls: Optional[Dict[str, bytes]] = None,
 ) -> Dict[str, DeploymentInfo]:
     """Override deployment infos with options from app config.
 
@@ -1375,7 +1375,10 @@ def override_deployment_info(
             if autoscaling_config:
                 new_config.update(autoscaling_config)
 
-            if deployment_name in deployment_to_serialized_autoscaling_policy_def:
+            if (
+                deployment_to_serialized_autoscaling_policy_def
+                and deployment_name in deployment_to_serialized_autoscaling_policy_def
+            ):
                 # By setting the serialized policy def, AutoscalingConfig constructor will not
                 # try to import the policy from the string import path
                 new_config[
@@ -1434,7 +1437,10 @@ def override_deployment_info(
         if "request_router_config" in options:
             request_router_config = options.get("request_router_config")
             if request_router_config:
-                if deployment_name in deployment_to_serialized_request_router_cls:
+                if (
+                    deployment_to_serialized_request_router_cls
+                    and deployment_name in deployment_to_serialized_request_router_cls
+                ):
                     # By setting the serialized request router cls, RequestRouterConfig constructor will not
                     # try to import the request router cls from the string import path
                     request_router_config[

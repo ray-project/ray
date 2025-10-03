@@ -8,7 +8,11 @@ import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
@@ -102,11 +106,25 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Returns: a hash of the import path and (application level) runtime env representing
             the code version of the application.
     """
+    autoscaling_policy_names = [
+        deployment.autoscaling_config.get("policy", {}).get(
+            "name", DEFAULT_AUTOSCALING_POLICY_NAME
+        )
+        for deployment in app_config.deployments
+    ]
+    request_router_cls_names = [
+        deployment.request_router_config.get(
+            "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
+        )
+        for deployment in app_config.deployments
+    ]
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
+            "autoscaling_policy_names": autoscaling_policy_names,
+            "request_router_cls_names": request_router_cls_names,
         },
         sort_keys=True,
     ).encode("utf-8")
