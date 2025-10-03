@@ -7,15 +7,8 @@ from pathlib import Path
 from typing import Any, Mapping, MutableMapping, Optional
 from urllib.parse import urlparse
 
-try:  # pragma: no cover - optional dependency
-    import aiohttp  # type: ignore
-except Exception:  # pragma: no cover
-    aiohttp = None  # type: ignore
-
-try:  # pragma: no cover - optional dependency
-    import requests  # type: ignore
-except Exception:  # pragma: no cover
-    requests = None  # type: ignore
+import aiohttp
+import requests
 
 _USER_AGENT = "Ray-Video-Example/1.0"
 

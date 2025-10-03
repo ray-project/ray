@@ -23,14 +23,12 @@ def _int_env_getter(name: str, default: int) -> Callable[[], int]:
 
 
 _ENVIRONMENT_VARIABLES: Dict[str, Callable[[], Any]] = {
-    # Video example knobs.
     "RAY_VIDEO_EXAMPLE_MAX_TARGETS": _int_env_getter(
         "RAY_VIDEO_EXAMPLE_MAX_TARGETS", 10_000
     ),
     "RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES": _int_env_getter(
         "RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES", 100_000
     ),
-    # Backwards compatibility with previous LLM-oriented naming.
     "RAY_LLM_BATCH_MAX_TARGETS": _int_env_getter("RAY_LLM_BATCH_MAX_TARGETS", 10_000),
     "RAY_LLM_BATCH_MAX_DECODE_FRAMES": _int_env_getter(
         "RAY_LLM_BATCH_MAX_DECODE_FRAMES", 100_000
@@ -38,14 +36,14 @@ _ENVIRONMENT_VARIABLES: Dict[str, Callable[[], Any]] = {
 }
 
 
-def __getattr__(name: str) -> Any:  # pragma: no cover - trivial forwarding
+def __getattr__(name: str) -> Any:
     getter = _ENVIRONMENT_VARIABLES.get(name)
     if getter is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     return getter()
 
 
-def __dir__() -> Iterable[str]:  # pragma: no cover - introspection helper
+def __dir__() -> Iterable[str]:
     return sorted(_ENVIRONMENT_VARIABLES.keys())
 
 

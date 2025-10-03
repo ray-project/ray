@@ -6,6 +6,11 @@ implementation lives in `video_processor.py`; it focuses on being a small,
 re-usable utility that you can compose inside `map_batches` or call directly from
 an async workflow.
 
+Capabilities:
+- Decode and sample frames from a video with a single asynchronous call.
+- Compose a two-stage Ray Data pipeline (decode → VLM inference).
+- Run multimodal generation on GPU using vLLM.
+
 ## What the module does
 
 `VideoProcessor` performs three high-level tasks:
@@ -51,33 +56,30 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-### Example driver and walkthrough
+### Example walkthrough and use cases
 
-`main.py` is a concise example driver (not a full CLI). It hard-codes a local
-demo video path and VLM model path to illustrate end-to-end composition:
+`main.py` shows a minimal, reproducible flow without CLI plumbing:
 
-1. `process_video_with_vlm(video, model)`
-   - Uses `VideoProcessor` to sample a small set of frames from
-     `EXAMPLE_VIDEO_PATH`.
-   - Saves the sampled frames to a temporary directory, constructs a
-     multi-image chat prompt, and invokes a VLM via vLLM to generate a summary.
+1) Single video summary
+   - Decode a handful of frames, materialize them as images, build a chat-style
+     prompt, and generate a summary with a multimodal model through vLLM.
 
-2. `run_dataset_pipeline(model)`
-   - Builds a Ray Data dataset from a single item
-     `{"video_url": EXAMPLE_VIDEO_PATH, "prompt": DEFAULT_PROMPT}`.
-   - Applies `map_batches(decode_videos)` to decode and sample frames using
-     `VideoProcessor`.
-   - Applies `map_batches(vlm_generate)` to perform VLM inference per item and
-     prints the generated text.
+2) Dataset pipeline (decode → VLM)
+  - Start from a small in-memory dataset with items like `{ "video_url": EXAMPLE_VIDEO_PATH, "prompt": DEFAULT_PROMPT }`.
+  - The first stage returns PyArrow batches with frames encoded as JPEG bytes.
+  - The second stage runs vLLM on GPU to produce a text summary per item.
 
-In production, the dataset is typically created from a streaming source (e.g.,
-Kafka) using Ray Data's streaming datasources, and the same `map_batches`
-operators are preserved. The example file intentionally omits streaming code for
-clarity; only the compositional pattern is demonstrated.
+Where it’s useful
+- Batch/offline summarization, highlight generation, safety/QA scanning.
+- Low-latency multimodal pre-processing before model inference.
+- The same stages can be applied to streaming inputs (e.g., Kafka) by swapping
+  the source with a streaming dataset.
 
-Because the script assumes optional dependencies exist at runtime, missing
-packages will raise the usual `ImportError`. Install `av`, `Pillow`, `numpy`,
-`transformers`, `vllm`, `qwen-vl-utils`, and `ray[data]` before trying the demo.
+Dependencies
+- `av` (PyAV with FFmpeg)
+- `Pillow`
+- `transformers`, `vllm`, `qwen-vl-utils`
+- `ray[data]`
 
 ## Configuration reference
 
@@ -194,25 +196,17 @@ The module also accepts legacy aliases `RAY_LLM_BATCH_MAX_TARGETS` and
 
 ## Integration patterns
 
-- Map-batches composition (static datasets): construct a dataset with items of
-  the form `{ "video_url": ..., "prompt": ... }`, then chain:
-  1) `map_batches(decode_videos)` → returns sampled frames and metadata,
-  2) `map_batches(vlm_generate)` → performs VLM inference and emits text.
-
-- Streaming composition (production): read from a streaming datasource (e.g.,
-  Kafka) to construct a streaming dataset and apply the same `map_batches`
-  stages. This keeps the decoding and model execution colocated with Ray Data's
-  scheduling, backpressure, and failure semantics.
+- Static datasets: items like `{ "video_url": ..., "prompt": ... }`, then
+  `map_batches(decode)` → `map_batches(vlm)`.
+- Streaming datasets: swap in a streaming source (e.g., Kafka) and reuse the
+  same two stages.
 
 ## Performance notes
 
-- Use `ActorPoolStrategy` for stateful `map_batches` stages to reuse VLM/runtime
-  state across batches.
-- Tune `batch_size` based on your model latency and node memory.
-- Raise `max_concurrency` carefully to avoid CPU oversubscription when many
-  videos are decoded concurrently.
-- Prefer `output_format="pil"` when frames are fed directly into models that
-  accept PIL; prefer `numpy` when tensor conversion and stacking are required.
+- For higher throughput, wrap vLLM in a Ray Actor to reuse the engine across
+  batches and shutdown explicitly at teardown.
+- Tune `batch_size` based on model latency and memory.
+- Increase `max_concurrency` carefully to balance decode throughput and CPU use.
 
 ## Limitations
 

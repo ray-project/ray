@@ -408,7 +408,7 @@ class VideoProcessor:
             except Exception:
                 method = None
             if method is None:
-                method = 2  # PIL.Image.BILINEAR numeric fallback
+                method = 2
             img = img.resize(tuple(r["size"]), method)
         c = self._preprocess.get("crop")
         if c and isinstance(c, dict) and "box" in c:
