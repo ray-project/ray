@@ -845,12 +845,13 @@ class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
                     metric="reward",
                     mode="max",
                     quantile_fraction=0.5,
+                    time_attr="iter",
                     **hp_kwargs,
                 )
                 max_scheduler._trial_state = max_states
                 for t, state in max_states.items():
                     max_scheduler._save_trial_state(
-                        state, 100, {"reward": state.last_score}, t
+                        state, 100, {"reward": state.last_score, "iter": 100}, t
                     )
 
                 # Should not raise, but nan disrupts sorting
@@ -875,12 +876,13 @@ class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
                     metric="reward",
                     mode="min",
                     quantile_fraction=0.5,
+                    time_attr="iter",
                     **hp_kwargs,
                 )
                 min_scheduler._trial_state = min_states
                 for t, state in min_states.items():
                     min_scheduler._save_trial_state(
-                        state, 100, {"reward": state.last_score}, t
+                        state, 100, {"reward": state.last_score, "iter": 100}, t
                     )
                 min_bottom, min_top = min_scheduler._quantiles()
                 min_other_trials = [
