@@ -166,9 +166,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // Return the number of pending requests waiting for retry.
   size_t NumPendingRequests() const { return pending_requests_.size(); }
 
-  // Return the number of inflight requests.
-  size_t NumInflightRequests() const { return num_inflight_requests_; }
-
   ~RetryableGrpcClient();
 
  private:
@@ -226,8 +223,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       pending_requests_;
   // Total number of bytes of pending requests.
   size_t pending_requests_bytes_ = 0;
-  // Total number of inflight requests.
-  std::atomic<size_t> num_inflight_requests_ = 0;
 };
 
 template <typename Service, typename Request, typename Reply>
@@ -270,9 +265,6 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
                    request = std::move(request),
                    callback](std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>
                                  retryable_grpc_request) {
-    auto retryable_grpc_client = weak_retryable_grpc_client.lock();
-    RAY_CHECK(retryable_grpc_client);
-    retryable_grpc_client->num_inflight_requests_++;
     grpc_client->template CallMethod<Request, Reply>(
         prepare_async_function,
         request,
@@ -281,14 +273,10 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
           auto current_retryable_grpc_client = weak_retryable_grpc_client.lock();
           if (status.ok() || !IsGrpcRetryableStatus(status) ||
               !current_retryable_grpc_client) {
-            if (current_retryable_grpc_client) {
-              current_retryable_grpc_client->num_inflight_requests_--;
-            }
             callback(status, std::move(reply));
             return;
           }
           current_retryable_grpc_client->Retry(retryable_grpc_request);
-          current_retryable_grpc_client->num_inflight_requests_--;
         },
         call_name,
         retryable_grpc_request->GetTimeoutMs());
