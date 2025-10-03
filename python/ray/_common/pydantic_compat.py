@@ -115,7 +115,7 @@ def model_dump_json(model: BaseModel) -> Dict:
         return model.json()
 
 
-def json_to_dict(json_str: str):
+def from_json(json_str: str) -> BaseModel:
     if IS_PYDANTIC_2:
         from pydantic_core import from_json
 
