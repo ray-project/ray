@@ -86,7 +86,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-**Note:** Before moving to a production setup, migrate to using a Serve config file to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. For an example, see [_](/serve/llm/quick-start.md#production-deployment).
+**Note:** Before moving to a production setup, migrate to using a Serve config file to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. For an example, see [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment).
 
 ---
 
