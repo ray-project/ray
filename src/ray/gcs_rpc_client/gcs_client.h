@@ -21,11 +21,8 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <vector>
 
-#include "absl/strings/str_split.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs_rpc_client/accessor.h"
@@ -33,7 +30,6 @@
 #include "ray/pubsub/gcs_subscriber.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
-#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
 
@@ -45,12 +41,12 @@ namespace gcs {
 // TODO(ryw): eventually we will always have fetch_cluster_id_if_nil = true.
 class GcsClientOptions {
  public:
-  GcsClientOptions(const std::string &gcs_address,
+  GcsClientOptions(std::string gcs_address,
                    int port,
                    const ClusterID &cluster_id,
                    bool allow_cluster_id_nil,
                    bool fetch_cluster_id_if_nil)
-      : gcs_address_(gcs_address),
+      : gcs_address_(std::move(gcs_address)),
         gcs_port_(port),
         cluster_id_(cluster_id),
         should_fetch_cluster_id_(ShouldFetchClusterId(
@@ -73,7 +69,7 @@ class GcsClientOptions {
     gcs_port_ = std::stoi((*address)[1]);
   }
 
-  GcsClientOptions() {}
+  GcsClientOptions() = default;
 
   // - CHECK-fails if invalid (cluster_id_ is nil but !allow_cluster_id_nil_)
   // - Returns false if no need to fetch (cluster_id_ is not nil, or
@@ -101,11 +97,15 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  /// \param gcs_client_id The unique ID for the owner of this object.
-  ///    This potentially will be used to tell GCS who is client connecting
-  ///    to GCS.
-  explicit GcsClient(const GcsClientOptions &options,
+  /// \param local_address The local address of the client. (Used to decide whether to
+  /// inject RPC failures for testing)
+  /// \param gcs_client_id This is used to give subscribers Unique ID's.
+  explicit GcsClient(GcsClientOptions options,
+                     std::string local_address = "",
                      UniqueID gcs_client_id = UniqueID::FromRandom());
+
+  GcsClient(const GcsClient &) = delete;
+  GcsClient &operator=(const GcsClient &) = delete;
 
   virtual ~GcsClient() { Disconnect(); };
 
@@ -256,6 +256,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
+  std::string local_address_;
 };
 
 // Connects a GcsClient to the GCS server, on a shared lazy-initialized singleton
