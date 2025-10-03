@@ -1689,9 +1689,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """Finds a free port on the node that this worker runs on."""
         from ray.air._internal.util import find_free_port
 
-        return find_free_port(
-            socket.AF_INET6 if is_ipv6(self.get_node_ip()) else socket.AF_INET
-        )
+        return find_free_port(socket.AF_INET)
 
     def _update_policy_map(
         self,
