@@ -6480,6 +6480,9 @@ class Schema:
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype
+            elif isinstance(dtype, pd.StringDtype):
+                # StringDtype is not a BaseMaskedDtype, handle separately
+                return pa.string()
             elif isinstance(dtype, BaseMaskedDtype):
                 dtype = dtype.numpy_dtype
             return pa.from_numpy_dtype(dtype)
