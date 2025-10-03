@@ -802,7 +802,7 @@ class InactiveWorkerGroupError(Exception):
 
 
 class InactiveWorkerGroup:
-    # TODO: fix inheritence. perhaps create BaseWorkerGroup.
+    # TODO: fix inheritence. perhaps create WorkerGroupInterface.
 
     # Need to define getstate and setstate so that getattr does not screwup
     # pickling. See https://stackoverflow.com/a/50888571/11249691
