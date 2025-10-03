@@ -255,7 +255,7 @@ def get_file_module_imports(
         The module names are derived from the file paths, and the import statements
         are filtered based on the optional module_match_string.
     """
-    module_imports: Dict[str, List[str]] = {}
+    module_imports: Dict[str, List[Import]] = {}
 
     # Collect the imports for each python file
     for py_file in files:
