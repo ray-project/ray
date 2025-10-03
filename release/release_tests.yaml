@@ -4063,7 +4063,7 @@
     byod:
       type: gpu
       post_build_script: byod_distributing_pytorch.sh
-      python_depset: distributing_pytorch_py39_gpu.lock
+      python_depset: distributing_pytorch_py39_cu121.lock
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
