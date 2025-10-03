@@ -42,6 +42,7 @@ py_test_module_list(
 )
 
 py_test_module_list_with_env_variants(
+    size = "small",
     env_variants = {
         "metr_disab": {
             "env": {
