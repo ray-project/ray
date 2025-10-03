@@ -108,7 +108,7 @@ def register_pydantic_serializers(serialization_context):
     )
 
 
-def model_dump_json(model: BaseModel) -> dict:
+def model_dump_json(model: BaseModel) -> str:
     if IS_PYDANTIC_2:
         return model.model_dump_json()
     else:
