@@ -13,7 +13,7 @@ Labels
 
 Labels provide a simplified solution for controlling scheduling for tasks, actors, and placement group bundles using default and custom labels. See :doc:`./labels`.
 
-Labels are currently offered as an beta feature. As this feature becomes stable, the Ray team recommends using labels instead of the following patterns:
+Labels are a beta feature. As this feature becomes stable, the Ray team recommends using labels to replace the following patterns:
 
 - NodeAffinitySchedulingStrategy when `soft=false`. Use the default `ray.io/node-id` label instead.
 - The `accelerator_type` option for tasks and actors. Use the default `ray.io/accelerator-type` label instead.
