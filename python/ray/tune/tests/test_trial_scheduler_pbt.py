@@ -52,10 +52,10 @@ class MockParam(object):
 
 
 class DummyTrial:
-    def __init__(self, trial_id, config=None, finished=False):
+    def __init__(self, trial_id, finished=False, config: dict = None):
         self.trial_id = trial_id
         self._finished = finished
-        self.config = config or {}
+        self.config = config if config is not None else {}
 
     def is_finished(self):
         return self._finished
