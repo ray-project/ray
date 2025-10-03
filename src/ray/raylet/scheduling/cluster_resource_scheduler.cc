@@ -18,8 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/id.h"
-
 namespace ray {
 
 using namespace ::ray::raylet_scheduling_policy;  // NOLINT
