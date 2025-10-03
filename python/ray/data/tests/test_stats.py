@@ -140,11 +140,11 @@ def gen_expected_metrics(
             ),
             (
                 "'task_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
             ),
             (
                 "'block_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
             ),
             (
                 "'task_completion_time_without_backpressure': "
@@ -152,11 +152,11 @@ def gen_expected_metrics(
             ),
             (
                 "'block_size_bytes': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')}"
             ),
             (
                 "'block_size_rows': "
-                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -218,11 +218,11 @@ def gen_expected_metrics(
             ),
             (
                 "'task_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N' if task_backpressure else 'Z')}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
             ),
             (
                 "'block_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s)}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
             ),
             (
                 "'task_completion_time_without_backpressure': "
@@ -230,11 +230,11 @@ def gen_expected_metrics(
             ),
             (
                 "'block_size_bytes': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes)}"
+                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')}"
             ),
             (
                 "'block_size_rows': "
-                f"{gen_histogram_metrics_value_str(histogram_bucket_rows)}"
+                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
