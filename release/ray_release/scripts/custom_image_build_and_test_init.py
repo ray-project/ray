@@ -172,7 +172,7 @@ def main(
     # If the build is manually triggered and there are more than 5 tests
     # Ask user to confirm before launching the tests.
     block_step = None
-    if test_filters and len(tests) >= 5:
+    if test_filters and len(tests) >= 5 and not os.environ.get("AUTOMATIC"):
         block_step = generate_block_step(len(tests))
 
     steps = get_step_for_test_group(
