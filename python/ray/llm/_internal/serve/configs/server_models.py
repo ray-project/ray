@@ -492,41 +492,26 @@ class LLMConfig(BaseModelExtended):
                 "Use scaling_config to configure replica placement group."
             )
 
-        # Handle custom placement group configuration
-        if self.placement_group_config:
-            # Use validated placement_bundles and placement_strategy from engine_config
+        # Get placement bundles and strategy from engine_config
+        # This handles both custom placement_group_config and default behavior
+        try:
             pg_bundles = engine_config.placement_bundles
+        except ValueError:
+            # May happen if all bundles are empty
+            pg_bundles = []
 
-            # Merge replica actor resources with the first bundle
-            if pg_bundles:
-                merged_bundles = self._merge_replica_actor_and_child_actor_bundles(
-                    pg_bundles, replica_actor_resources
-                )
-                pg_bundles = merged_bundles
-
-            deployment_config.update(
-                {
-                    "placement_group_bundles": pg_bundles,
-                    "placement_group_strategy": engine_config.placement_strategy,
-                }
-            )
-        else:
-            # Use default placement group configuration
-            try:
-                child_actor_bundles = engine_config.placement_bundles
-            except ValueError:
-                # May happen if all bundles are empty.
-                child_actor_bundles = []
-
+        # Merge replica actor resources with the first bundle
+        if pg_bundles:
             pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
-                child_actor_bundles, replica_actor_resources
+                pg_bundles, replica_actor_resources
             )
-            deployment_config.update(
-                {
-                    "placement_group_bundles": pg_bundles,
-                    "placement_group_strategy": engine_config.placement_strategy,
-                }
-            )
+
+        deployment_config.update(
+            {
+                "placement_group_bundles": pg_bundles,
+                "placement_group_strategy": engine_config.placement_strategy,
+            }
+        )
 
         return deployment_config
 

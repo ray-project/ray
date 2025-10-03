@@ -32,8 +32,8 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
-class BundleSchema(BaseModelExtended):
-    """Schema for placement group bundle configuration.
+class BundleConfig(BaseModelExtended):
+    """Configuration for placement group bundle.
 
     Note: Counts are floats to align with Ray resource typing.
     """
@@ -45,10 +45,10 @@ class BundleSchema(BaseModelExtended):
         extra = "allow"  # Allow arbitrary resource types
 
 
-class PlacementGroupSchema(BaseModelExtended):
-    """Schema for placement group configuration."""
+class PlacementGroupConfig(BaseModelExtended):
+    """Configuration for placement group."""
 
-    bundles: List[BundleSchema] = Field(description="List of resource bundles")
+    bundles: List[BundleConfig] = Field(description="List of resource bundles")
     strategy: Literal["PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"] = Field(
         default="PACK", description="Placement group strategy"
     )
@@ -79,7 +79,7 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
-    placement_group_config: Optional[PlacementGroupSchema] = Field(
+    placement_group_config: Optional[PlacementGroupConfig] = Field(
         default=None,
         description=(
             "Ray placement group configuration for scheduling vLLM engine workers. "
@@ -187,8 +187,8 @@ class VLLMEngineConfig(BaseModelExtended):
             # Ensure bundles exist before schema validation
             if "bundles" not in llm_config.placement_group_config:
                 raise ValueError("placement_group_config must contain 'bundles'")
-            # PlacementGroupSchema handles strategy default
-            placement_group_config = PlacementGroupSchema(
+            # PlacementGroupConfig handles strategy default
+            placement_group_config = PlacementGroupConfig(
                 **llm_config.placement_group_config
             )
 
@@ -225,8 +225,8 @@ class VLLMEngineConfig(BaseModelExtended):
         # Use custom strategy if placement_group_config is provided
         if self.placement_group_config:
             return self.placement_group_config.strategy
-        # Default to PACK  (cross-node best-effort placement)
-        # DP deployments overriden to STRICT_PACK in Serve config
+        # Default to PACK (cross-node best-effort placement)
+        # DP deployments overridden to STRICT_PACK in Serve config
         return "PACK"
 
     @property
@@ -313,28 +313,13 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            # Use custom placement group configuration if provided
-            if self.placement_group_config:
-                # Convert schema to placement group arguments
-                bundles = []
-                for bundle_schema in self.placement_group_config.bundles:
-                    bundle = bundle_schema.dict()
-                    if self.accelerator_type:
-                        bundle.setdefault(self.ray_accelerator_type(), 0.001)
-                    bundles.append(bundle)
-
-                pg = placement_group(
-                    bundles=bundles,
-                    strategy=self.placement_group_config.strategy,
-                    name=name,
-                )
-            else:
-                # Use default placement group configuration
-                pg = placement_group(
-                    bundles=self.placement_bundles,
-                    strategy=self.placement_strategy,
-                    name=name,
-                )
+            # Use placement_bundles and placement_strategy properties which handle
+            # both custom and default placement group configurations
+            pg = placement_group(
+                bundles=self.placement_bundles,
+                strategy=self.placement_strategy,
+                name=name,
+            )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
