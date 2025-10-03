@@ -1,10 +1,3 @@
-import argparse
-import ast
-import os
-import sys
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
-
 """
 The Ray Train Circular Import Linter is designed to address the intricate issue of circular dependencies within the Ray Train framework. Circular import errors arise when two or more modules depend on each other, creating a loop that Python's import system cannot resolve. In the context of Ray Train, this problem is particularly pronounced due to the interdependencies between the `ray.train` and `ray.train.v2` modules.
 
@@ -38,6 +31,13 @@ The decision to build a custom linter was driven by the need for a tool that cou
 
 By implementing these strategies, the Ray Train Circular Import Linter effectively identifies and helps developers resolve circular import issues, ensuring smoother operation and integration of the Ray Train framework.
 """
+
+import argparse
+import ast
+import os
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 TRAIN_PACKAGES = set()
 
