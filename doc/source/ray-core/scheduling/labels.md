@@ -89,7 +89,7 @@ The following table shows the basic syntax for label selector operator logic:
 You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require node id to be 123:
 
 ```python
-label_selector={"instance_type": "m5.16xlarge", “ray.io/node-id”: “123”}  
+label_selector={"instance_type": "m5.16xlarge", "ray.io/node-id": "123"}  
 ```
 
 ## Specify label requirements for Tasks & Actors
