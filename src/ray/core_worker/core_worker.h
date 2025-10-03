@@ -181,7 +181,7 @@ class CoreWorker {
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
-             std::shared_ptr<ReferenceCounter> reference_counter,
+             std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
              std::shared_ptr<experimental::MutableObjectProviderInterface>
@@ -997,7 +997,7 @@ class CoreWorker {
   /// \param[out] The serialized handle.
   /// \param[out] The ID used to track references to the actor handle. If the
   /// serialized actor handle in the language frontend is stored inside an
-  /// object, then this must be recorded in the worker's ReferenceCounter.
+  /// object, then this must be recorded in the worker's ReferenceCounterInterface.
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id,
                               std::string *output,
@@ -1425,7 +1425,7 @@ class CoreWorker {
   /// Record metric for executed and owned tasks. Will be run periodically.
   void RecordMetrics();
 
-  /// Check if there is an owner of the object from the ReferenceCounter.
+  /// Check if there is an owner of the object from the ReferenceCounterInterface.
   bool HasOwner(const ObjectID &object_id) const;
 
   /// Helper method to fill in object status reply given an object.
@@ -1770,7 +1770,7 @@ class CoreWorker {
   boost::thread &io_thread_;
 
   // Keeps track of object ID reference counts.
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
   ///
   /// Fields related to storing and retrieving objects.
