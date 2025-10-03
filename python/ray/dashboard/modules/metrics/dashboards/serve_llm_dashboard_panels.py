@@ -6,7 +6,6 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Panel,
     PanelTemplate,
     Target,
-    TargetTemplate,
 )
 
 SERVE_LLM_GRAFANA_PANELS = [
@@ -134,7 +133,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         id=31,
         title="vLLM: KV Cache Hit Rate",
         description="",
-        unit="percent",
+        unit="percentunit",
         targets=[
             Target(
                 expr="max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval]))))",
@@ -146,7 +145,7 @@ SERVE_LLM_GRAFANA_PANELS = [
             ),
             Target(
                 expr="100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval])))",
-                legend="Hit Rate {{WorkerId}}",
+                legend="Hit Rate: worker {{WorkerId}}",
             ),
         ],
         fill=1,
@@ -217,12 +216,12 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
-                legend="P50-{{WorkerId}}",
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P50-{{model_name}}-{{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
-                legend="P90-{{WorkerId}}",
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P90-{{model_name}}-{{WorkerId}}",
             ),
         ],
         fill=1,
@@ -237,54 +236,18 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='histogram_quantile(0.50, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
-                legend="P50-{{WorkerId}}",
+                expr='histogram_quantile(0.50, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P50-{{model_name}}-{{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~".*", WorkerId=~".*", {global_filters}}}[$interval])))',
-                legend="P90-{{WorkerId}}",
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P90-{{model_name}}-{{WorkerId}}",
             ),
         ],
         fill=1,
         linewidth=1,
         stack=False,
         grid_pos=GridPos(12, 32, 12, 8),
-    ),
-    Panel(
-        id=8,
-        title="vLLM: Request Prompt Length",
-        description="Heatmap of request prompt length",
-        unit="Requests",
-        targets=[
-            Target(
-                expr='sum by(le, model_name, WorkerId) (increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
-                legend="{{le}}",
-                template=TargetTemplate.HEATMAP,
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(0, 40, 12, 8),
-        template=PanelTemplate.HEATMAP,
-    ),
-    Panel(
-        id=9,
-        title="vLLM: Request Generation Length",
-        description="Heatmap of request generation length",
-        unit="Requests",
-        targets=[
-            Target(
-                expr='sum by(le, model_name, WorkerId) (increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
-                legend="{{le}}",
-                template=TargetTemplate.HEATMAP,
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(12, 40, 12, 8),
-        template=PanelTemplate.HEATMAP,
     ),
     Panel(
         id=10,
