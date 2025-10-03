@@ -1,7 +1,7 @@
-"""Abstract interface for WorkerGroup implementations.
+"""Abstract base class for WorkerGroup implementations.
 
-This module defines the common interface that both V1 and V2 WorkerGroup
-implementations should provide to ensure backend compatibility.
+This module defines the common base class that both V1 and V2 WorkerGroup
+implementations should inherit from to ensure backend compatibility.
 """
 
 import abc
@@ -14,12 +14,12 @@ T = TypeVar("T")
 
 
 @DeveloperAPI
-class WorkerGroupInterface(abc.ABC):
-    """Abstract interface for WorkerGroup implementations.
+class BaseWorkerGroup(abc.ABC):
+    """Abstract base class for WorkerGroup implementations.
 
-    This interface defines the minimal set of methods that backend classes
+    This base class defines the minimal set of methods that backend classes
     expect from WorkerGroup implementations. Both V1 and V2 WorkerGroup
-    classes should implement this interface to ensure compatibility with
+    classes should inherit from this base class to ensure compatibility with
     all backend configurations.
 
     The interface focuses on the core operations that backends need:

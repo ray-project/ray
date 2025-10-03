@@ -12,7 +12,7 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
-from ray.train._internal.worker_group_interface import WorkerGroupInterface
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
     DEFAULT_REPORT_BARRIER_TIMEOUT_S,
     DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
@@ -101,7 +101,7 @@ class WorkerGroupContext:
     bundle_label_selector: Optional[Dict[str, str]] = None
 
 
-class WorkerGroup(WorkerGroupInterface):
+class WorkerGroup(BaseWorkerGroup):
     _worker_cls = RayTrainWorker
 
     @classmethod
