@@ -1049,7 +1049,7 @@ def _fetch_file_infos(
     *,
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-    local_scheduling: Optional[bool],
+    local_scheduling: Optional[Dict[str, str]],
 ) -> List[Optional[_ParquetFileInfo]]:
     fetch_file_info = cached_remote_fn(_fetch_parquet_file_info)
     futures = []
