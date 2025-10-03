@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import ray
 from ray.train._internal.utils import get_address_and_port
-from ray.train._internal.worker_group import WorkerGroup
+from ray.train._internal.worker_group_interface import WorkerGroupInterface
 from ray.train.backend import Backend
 from ray.train.torch import TorchConfig
 from ray.util import PublicAPI
@@ -120,7 +120,9 @@ def _neuron_compile_extracted_graphs():
 class _TorchAwsNeuronXLABackend(Backend):
     unique_run_id: str = str(uuid.uuid4())
 
-    def on_start(self, worker_group: WorkerGroup, backend_config: TorchXLAConfig):
+    def on_start(
+        self, worker_group: WorkerGroupInterface, backend_config: TorchXLAConfig
+    ):
         """Logic ran right before training is started."""
 
         # On previous worker failure, we don't run graceful shutdown on workers.
@@ -145,7 +147,7 @@ class _TorchAwsNeuronXLABackend(Backend):
             worker_group.execute(_set_neuron_parallel_compile_env_vars)
 
     def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: TorchXLAConfig
+        self, worker_group: WorkerGroupInterface, backend_config: TorchXLAConfig
     ):
         """
         Configure the environment variables for the worker group.
@@ -156,7 +158,9 @@ class _TorchAwsNeuronXLABackend(Backend):
         worker_group.execute(_set_xla_env_vars)
         worker_group.execute(_setup_xla_torch_process_group)
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchXLAConfig):
+    def on_shutdown(
+        self, worker_group: WorkerGroupInterface, backend_config: TorchXLAConfig
+    ):
         """
         Logic ran right after training is finished.
         This is a sanity cleanup to kill xrt server, and to optionally

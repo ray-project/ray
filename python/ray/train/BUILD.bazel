@@ -975,6 +975,14 @@ py_test(
 )
 
 py_test(
+    name = "test_worker_group_interface",
+    size = "small",
+    srcs = ["tests/test_worker_group_interface.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_windows",
     size = "small",
     srcs = ["tests/test_windows.py"],

@@ -11,6 +11,7 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
+from ray.train._internal.worker_group_interface import WorkerGroupInterface
 from ray.train.v2._internal.constants import (
     DEFAULT_REPORT_BARRIER_TIMEOUT_S,
     DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
@@ -99,7 +100,7 @@ class WorkerGroupContext:
     bundle_label_selector: Optional[Dict[str, str]] = None
 
 
-class WorkerGroup:
+class WorkerGroup(WorkerGroupInterface):
     _worker_cls = RayTrainWorker
 
     @classmethod
@@ -713,6 +714,10 @@ class WorkerGroup:
     def __len__(self) -> int:
         self._assert_active()
         return len(self.get_workers())
+
+    def get_resources_per_worker(self) -> dict:
+        """Get the resources allocated per worker."""
+        return self._worker_group_context.resources_per_worker.copy()
 
     #########################################################################################
     # Static Utility Methods

@@ -3,7 +3,7 @@ from contextlib import nullcontext
 from typing import TypeVar
 
 from ray.train._internal.utils import Singleton
-from ray.train._internal.worker_group import WorkerGroup
+from ray.train._internal.worker_group_interface import WorkerGroupInterface
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import make_table_html_repr
 
@@ -42,16 +42,20 @@ class Backend(metaclass=Singleton):
 
     share_cuda_visible_devices: bool = False
 
-    def on_start(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+    def on_start(
+        self, worker_group: WorkerGroupInterface, backend_config: BackendConfig
+    ):
         """Logic for starting this backend."""
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+    def on_shutdown(
+        self, worker_group: WorkerGroupInterface, backend_config: BackendConfig
+    ):
         """Logic for shutting down the backend."""
         pass
 
     def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: BackendConfig
+        self, worker_group: WorkerGroupInterface, backend_config: BackendConfig
     ):
         """Logic ran right before training is started.
 
