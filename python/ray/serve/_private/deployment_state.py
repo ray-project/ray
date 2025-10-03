@@ -2996,6 +2996,7 @@ class DeploymentStateManager:
             create_placement_group_fn_override,
         )
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._scaling_decisions: Dict[DeploymentID, int] = {}
 
         self._shutting_down = False
 
@@ -3338,10 +3339,12 @@ class DeploymentStateManager:
         target_state_changed = False
 
         # STEP 1: Update current state
-        for deployment_state in self._deployment_states.values():
+        for deployment_id, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
+                decision_num_replicas = self._scaling_decisions[deployment_id]
                 target_state_changed = (
-                    deployment_state.autoscale() or target_state_changed
+                    deployment_state.scale(decision_num_replicas)
+                    or target_state_changed
                 )
 
             deployment_state.check_and_update_replicas()
@@ -3438,12 +3441,14 @@ class DeploymentStateManager:
 
         return any_recovering
 
-    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
+    def update_scaling_decision(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ) -> bool:
         if deployment_id not in self._deployment_states:
             return False
-        return self._deployment_states[deployment_id].scale(
-            decision_num_replicas=target_num_replicas
-        )
+
+        self._scaling_decisions[deployment_id] = target_num_replicas
+        return True
 
     def _handle_scheduling_request_failures(
         self,

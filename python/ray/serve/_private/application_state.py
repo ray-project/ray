@@ -457,7 +457,7 @@ class ApplicationState:
         target_state_changed = False
         for deployment_id, decision_num_replicas in decisions.items():
             target_state_changed = (
-                self._deployment_state_manager.autoscale(
+                self._deployment_state_manager.update_scaling_decision(
                     deployment_id, decision_num_replicas
                 )
                 or target_state_changed
