@@ -263,6 +263,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
+        "minimal",
         "team:serve",
     ],
     deps = [
@@ -281,6 +282,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
+        "minimal",
         "team:serve",
     ],
     deps = [
