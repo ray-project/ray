@@ -28,6 +28,7 @@
 					"type": "string",
 					"enum": [
 						"3.9",
+						"3.10",
 						"3.11",
 						"3.12"
 					]
@@ -106,6 +107,9 @@
 					"type": "string"
 				},
 				"post_build_script": {
+					"type": "string"
+				},
+				"python_depset": {
 					"type": "string"
 				},
 				"pip": {
