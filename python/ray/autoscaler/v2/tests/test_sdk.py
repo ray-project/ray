@@ -251,7 +251,7 @@ def test_request_cluster_resources_basic(shutdown_only):
     gcs_address = ctx.address_info["gcs_address"]
 
     # Request one
-    request_cluster_resources(gcs_address, [{"CPU": 1}])
+    request_cluster_resources(gcs_address, [{"resources": {"CPU": 1}}])
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -261,7 +261,9 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
     # Request another overrides the previous request
-    request_cluster_resources(gcs_address, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+    request_cluster_resources(
+        gcs_address, [{"resources": {"CPU": 2, "GPU": 1}}, {"resources": {"CPU": 1}}]
+    )
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -271,7 +273,7 @@ def test_request_cluster_resources_basic(shutdown_only):
         return True
 
     # Request multiple is aggregated by shape.
-    request_cluster_resources(gcs_address, [{"CPU": 1}] * 100)
+    request_cluster_resources(gcs_address, [{"resources": {"CPU": 1}}] * 100)
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -709,7 +711,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
 
     # Request resources through SDK
     request_cluster_resources(
-        gcs_address=cluster.address, to_request=[{"GPU": 1, "CPU": 2}]
+        gcs_address=cluster.address, to_request=[{"resources": {"GPU": 1, "CPU": 2}}]
     )
 
     def verify_cluster_constraint_demand():

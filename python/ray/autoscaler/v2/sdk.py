@@ -47,13 +47,8 @@ def request_cluster_resources(
     normalized: List[ResourceRequest] = []
     for r in to_request:
         if isinstance(r, dict):
-            if "resources" in r:
-                resources = r["resources"]
-                selector = r.get("label_selector", {})
-            else:
-                # Support legacy format where `to_request` is a list of resource bundles.
-                resources = r
-                selector = {}
+            resources = r.get("resources", {})
+            selector = r.get("label_selector", {})
             normalized.append(ResourceRequest(resources, selector))
         else:
             raise TypeError("Each element must be a dict")
