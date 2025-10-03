@@ -860,6 +860,7 @@ class ServeController:
                 )
             ),
         )
+        logger.info(f"self.kv_store.put with `{CONFIG_CHECKPOINT_KEY}`")
 
         # Declaratively apply the new set of applications.
         # This will delete any applications no longer in the config that were

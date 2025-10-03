@@ -33,16 +33,18 @@ def _check_http_options(
             if isinstance(http_options, HTTPOptions)
             else HTTPOptions.parse_obj(http_options)
         )
-        different_fields = []
+        diff_http_options = {}
         all_http_option_fields = new_http_options.__dict__
         for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
-                different_fields.append(field)
+            new_value = getattr(new_http_options, field)
+            prev_value = getattr(client_http_options, field)
+            if new_value != prev_value:
+                diff_http_options[field] = {"previous": prev_value, "new": new_value}
 
-        if len(different_fields):
+        if diff_http_options:
             logger.warning(
                 "The new client HTTP config differs from the existing one "
-                f"in the following fields: {different_fields}. "
+                f"in the following fields: {diff_http_options}. "
                 "The new HTTP config is ignored."
             )
 
