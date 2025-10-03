@@ -111,12 +111,14 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
             "name", DEFAULT_AUTOSCALING_POLICY_NAME
         )
         for deployment in app_config.deployments
+        if isinstance(deployment.autoscaling_config, dict)
     ]
     request_router_cls_names = [
         deployment.request_router_config.get(
             "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
         )
         for deployment in app_config.deployments
+        if isinstance(deployment.request_router_config, dict)
     ]
     encoded = json.dumps(
         {
