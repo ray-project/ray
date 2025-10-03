@@ -20,7 +20,8 @@ py_test_run_all_subdirectory(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "small",
+    timeout = "short",
     env = {
         "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1",
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
