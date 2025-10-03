@@ -283,10 +283,10 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
           auto current_retryable_grpc_client = weak_retryable_grpc_client.lock();
           if (status.ok() || !IsGrpcRetryableStatus(status) ||
               !current_retryable_grpc_client) {
+            callback(status, std::move(reply));
             if (current_retryable_grpc_client) {
               current_retryable_grpc_client->num_inflight_requests_--;
             }
-            callback(status, std::move(reply));
             return;
           }
           current_retryable_grpc_client->Retry(retryable_grpc_request);
