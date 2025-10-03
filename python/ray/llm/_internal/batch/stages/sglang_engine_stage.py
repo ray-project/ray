@@ -380,12 +380,12 @@ class SGLangEngineStage(StatefulStage):
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 
-        # Setup num_gpus required per SGLang engine.
+        # Set up num_gpus required
         tp_size = engine_kwargs.get("tp_size", 1)
         dp_size = engine_kwargs.get("dp_size", 1)
         num_gpus = tp_size * dp_size
 
-        map_batches_kwargs["num_gpus"] = num_gpus
+        ray_remote_args["num_gpus"] = num_gpus
         map_batches_kwargs.update(ray_remote_args)
         return values
 
@@ -396,7 +396,7 @@ class SGLangEngineStage(StatefulStage):
         if task_type == SGLangTaskType.GENERATE:
             ret[
                 "sampling_params"
-            ] = "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.htmlfor details."
+            ] = "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.html for details."
         return ret
 
     def get_optional_input_keys(self) -> Dict[str, str]:
