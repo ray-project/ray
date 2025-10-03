@@ -89,9 +89,10 @@ class DataParallelTrainer:
 
         self.running_in_local_mode = self.scaling_config.num_workers == 0
         self._controller: Optional[ActorHandle[TrainController]] = None
-        
+
         # Track this trainer instance for cleanup in Tune
         from ray.train._internal.session import get_session
+
         session = get_session()
         if session:
             session._attached_trainer = self
@@ -156,6 +157,7 @@ class DataParallelTrainer:
 
             # Clear the attached trainer reference since training completed normally
             from ray.train._internal.session import get_session
+
             session = get_session()
             if session:
                 session._attached_trainer = None
@@ -173,6 +175,18 @@ class DataParallelTrainer:
             ray.get(controller.abort.remote())
         finally:
             self._controller = None
+
+    def shutdown(self) -> None:
+        """Shutdown the trainer and clean up resources."""
+        # Abort the controller if it exists
+        self._abort_controller()
+
+        # Clear the session reference
+        from ray.train._internal.session import get_session
+
+        session = get_session()
+        if session:
+            session._attached_trainer = None
 
     def _get_local_controller(self) -> LocalController:
         return LocalController(

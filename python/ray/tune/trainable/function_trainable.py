@@ -150,20 +150,25 @@ class FunctionTrainable(Trainable):
 
     def cleanup(self):
         session = get_session()
-        
+
         # Abort attached trainer controller if present (for Train V2)
         trainer = getattr(session, "_attached_trainer", None) if session else None
         if trainer and hasattr(trainer, "_abort_controller"):
             try:
-                print(f">>>>> aborting controller during cleanup for {trainer}")
+                print(
+                    f">>>>> aborting controller during cleanup for trial {self.trial_id}: {trainer}"
+                )
                 trainer._abort_controller()
             except Exception:
+                print(
+                    f">>>>> failed to abort controller during cleanup for trial {self.trial_id}: {trainer}"
+                )
                 logger.debug(
                     "Failed to abort controller during cleanup for %s",
                     trainer,
                     exc_info=logger.isEnabledFor(logging.DEBUG),
                 )
-        
+
         try:
             # session.finish raises any Exceptions from training.
             # Do not wait for thread termination here (timeout=0).
