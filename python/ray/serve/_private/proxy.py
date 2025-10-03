@@ -1041,12 +1041,7 @@ class ProxyActorInterface(ABC):
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
 
-        configure_component_logger(
-            component_name="proxy",
-            component_id=node_ip_address,
-            logging_config=logging_config,
-            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-        )
+        self._update_logging_config(logging_config)
 
     @abstractmethod
     async def ready(self) -> str:
