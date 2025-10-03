@@ -21,7 +21,7 @@ def _get_cache() -> DatasetCache:
     return _global_cache
 
 
-def cache_result(operation_name: str, include_params: List[str] = None):
+def cache_result(operation_name: str, include_params: Optional[List[str]] = None):
     """Decorator to cache Dataset operation results."""
 
     def decorator(func: Callable) -> Callable:
@@ -72,7 +72,6 @@ def invalidate_cache_on_transform(operation_name: str):
             if getattr(context, "enable_dataset_caching", True) and hasattr(
                 result, "_logical_plan"
             ):
-
                 cache = _get_cache()
                 # Simple parameter extraction
                 transform_params = {"args": args, "kwargs": kwargs}
