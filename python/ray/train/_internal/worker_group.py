@@ -169,10 +169,12 @@ class WorkerGroup(WorkerGroupInterface):
             )
 
         self.num_workers = num_workers
-        self.resources_per_worker = resources_per_worker.copy()
-        self.num_cpus_per_worker = resources_per_worker.pop("CPU", 0)
-        self.num_gpus_per_worker = resources_per_worker.pop("GPU", 0)
-        self.memory_per_worker = resources_per_worker.pop("memory", 0)
+        self.resources_per_worker = resources_per_worker
+
+        _resources_per_worker = resources_per_worker.deepcopy()
+        self.num_cpus_per_worker = _resources_per_worker.pop("CPU", 0)
+        self.num_gpus_per_worker = _resources_per_worker.pop("GPU", 0)
+        self.memory_per_worker = _resources_per_worker.pop("memory", 0)
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
         assert issubclass(self._base_cls, RayTrainWorker)

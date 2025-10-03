@@ -717,7 +717,7 @@ class WorkerGroup(WorkerGroupInterface):
 
     def get_resources_per_worker(self) -> dict:
         """Get the resources allocated per worker."""
-        return self._worker_group_context.resources_per_worker.copy()
+        return self._worker_group_context.resources_per_worker.deepcopy()
 
     #########################################################################################
     # Static Utility Methods
