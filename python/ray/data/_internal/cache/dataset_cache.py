@@ -14,10 +14,15 @@ _global_cache: Optional[DatasetCache] = None
 
 
 def _get_cache() -> DatasetCache:
-    """Get global cache instance."""
+    """Get global cache instance with DataContext configuration."""
     global _global_cache
     if _global_cache is None:
-        _global_cache = DatasetCache()
+        from .core_cache import CacheConfiguration
+        from ray.data.context import DataContext
+
+        context = DataContext.get_current()
+        config = CacheConfiguration.from_data_context(context)
+        _global_cache = DatasetCache(config)
     return _global_cache
 
 

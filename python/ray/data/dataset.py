@@ -1761,6 +1761,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @transform("random_sample")
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset":
@@ -3149,6 +3150,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
+    @combine()
     def zip(self, other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 

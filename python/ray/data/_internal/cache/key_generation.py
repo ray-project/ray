@@ -9,7 +9,7 @@ import hashlib
 import json
 from typing import Any, Dict
 
-from ray.data._internal.logical.interfaces import LogicalPlan, LogicalOperator
+from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan
 
 # Configuration constants
 
@@ -158,8 +158,20 @@ def _get_function_signature(fn: Any) -> str:
         return "unknown_function"
 
 
-def _serialize_params(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Serialize parameters to a stable, hashable representation."""
+def _serialize_params(params: Dict[str, Any], _depth: int = 0) -> Dict[str, Any]:
+    """Serialize parameters to a stable, hashable representation.
+
+    Args:
+        params: Parameters to serialize
+        _depth: Current recursion depth (internal parameter)
+
+    Returns:
+        Serialized parameters dictionary
+    """
+    # Prevent infinite recursion
+    if _depth > 10:
+        return {"<max_depth_exceeded>": True}
+
     serialized: Dict[str, Any] = {}
 
     for key, value in params.items():
@@ -168,12 +180,24 @@ def _serialize_params(params: Dict[str, Any]) -> Dict[str, Any]:
             if value is None or isinstance(value, (bool, int, float, str)):
                 serialized[key] = value
             elif isinstance(value, (list, tuple)):
-                serialized[key] = [_serialize_value(v) for v in value]
+                # Limit list size to prevent huge serializations
+                if len(value) > 100:
+                    serialized[key] = f"<list_length_{len(value)}>"
+                else:
+                    serialized[key] = [_serialize_value(v, _depth + 1) for v in value]
             elif isinstance(value, dict):
-                serialized[key] = _serialize_params(value)
+                # Limit dict size to prevent huge serializations
+                if len(value) > 50:
+                    serialized[key] = f"<dict_length_{len(value)}>"
+                else:
+                    serialized[key] = _serialize_params(value, _depth + 1)
             else:
-                # For complex objects, use string representation
-                serialized[key] = str(value)
+                # For complex objects, use string representation with length limit
+                str_repr = str(value)
+                if len(str_repr) > 1000:
+                    serialized[key] = f"<{type(value).__name__}_length_{len(str_repr)}>"
+                else:
+                    serialized[key] = str_repr
         except Exception:
             # Fallback for problematic values
             serialized[key] = f"<{type(value).__name__}>"
@@ -181,16 +205,38 @@ def _serialize_params(params: Dict[str, Any]) -> Dict[str, Any]:
     return serialized
 
 
-def _serialize_value(value: Any) -> Any:
-    """Serialize a single value to a stable representation."""
+def _serialize_value(value: Any, _depth: int = 0) -> Any:
+    """Serialize a single value to a stable representation.
+
+    Args:
+        value: Value to serialize
+        _depth: Current recursion depth (internal parameter)
+
+    Returns:
+        Serialized value
+    """
+    # Prevent infinite recursion
+    if _depth > 10:
+        return "<max_depth_exceeded>"
+
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     elif isinstance(value, (list, tuple)):
-        return [_serialize_value(v) for v in value]
+        if len(value) > 100:
+            return f"<{type(value).__name__}_length_{len(value)}>"
+        return [_serialize_value(v, _depth + 1) for v in value]
     elif isinstance(value, dict):
-        return _serialize_params(value)
+        if len(value) > 50:
+            return f"<dict_length_{len(value)}>"
+        return _serialize_params(value, _depth + 1)
     else:
-        return str(value)
+        try:
+            str_repr = str(value)
+            if len(str_repr) > 1000:
+                return f"<{type(value).__name__}_length_{len(str_repr)}>"
+            return str_repr
+        except Exception:
+            return f"<{type(value).__name__}>"
 
 
 def _serialize_relevant_context(logical_plan: LogicalPlan) -> Dict[str, Any]:
