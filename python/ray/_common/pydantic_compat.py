@@ -126,7 +126,7 @@ def from_json(json_str: str) -> Any:
         return json.loads(json_str)
 
 
-def obj_to_model(model: BaseModel, json_dict: dict):
+def obj_to_model(model_cls: Type[BaseModel], json_dict: dict):
     if IS_PYDANTIC_2:
         return model.model_validate(json_dict)
     else:
