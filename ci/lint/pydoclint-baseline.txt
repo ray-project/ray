@@ -415,7 +415,6 @@ python/ray/air/util/tensor_extensions/arrow.py
     DOC101: Function `pyarrow_table_from_pydict`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `pyarrow_table_from_pydict`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [pydict: Dict[str, Union[List[Any], pa.Array]]].
     DOC201: Function `pyarrow_table_from_pydict` does not have a return section in docstring
-    DOC201: Method `ArrowTensorArray._concat_same_type` does not have a return section in docstring
 --------------------
 python/ray/air/util/tensor_extensions/pandas.py
     DOC101: Method `TensorDtype.__init__`: Docstring contains fewer arguments than in function signature.

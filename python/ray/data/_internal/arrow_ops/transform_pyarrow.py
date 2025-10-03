@@ -1,3 +1,4 @@
+import itertools
 import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -11,7 +12,10 @@ from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
+    get_arrow_extension_fixed_shape_tensor_types,
     get_arrow_extension_tensor_types,
+    unify_tensor_arrays,
+    unify_tensor_types,
 )
 
 try:
@@ -230,34 +234,20 @@ def _reconcile_field(
     """
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
         get_arrow_extension_tensor_types,
     )
 
     if not non_null_types:
         return None
 
-    tensor_types = get_arrow_extension_tensor_types()
-
     # Handle special cases in priority order
 
     # 1. Tensor fields
+    tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
-    if tensor_field_types:
-        needs_variable_shape = ArrowTensorType._need_variable_shaped_tensor_array(
-            tensor_field_types
-        )
 
-        if needs_variable_shape:
-            first_tensor = tensor_field_types[0]
-            if isinstance(first_tensor, ArrowVariableShapedTensorType):
-                return first_tensor
-            else:
-                # Convert fixed-shape to variable-shape
-                return ArrowVariableShapedTensorType(
-                    dtype=first_tensor.scalar_type, ndim=len(first_tensor.shape)
-                )
+    if tensor_field_types:
+        return unify_tensor_types(tensor_field_types)
 
     # 2. Object fields
     if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
@@ -443,9 +433,7 @@ def _backfill_missing_fields(
     import pyarrow as pa
 
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
         ArrowVariableShapedTensorType,
-        get_arrow_extension_tensor_types,
     )
 
     # Flatten chunked arrays into a single array if necessary
@@ -467,8 +455,6 @@ def _backfill_missing_fields(
     if column.type == unified_struct_type:
         return column
 
-    tensor_types = get_arrow_extension_tensor_types()
-
     aligned_fields = []
 
     # Iterate over the fields in the unified struct type schema
@@ -488,15 +474,13 @@ def _backfill_missing_fields(
                 )
 
             # Handle tensor extension type mismatches
-            elif isinstance(field_type, tensor_types) and isinstance(
-                current_array.type, tensor_types
+            elif isinstance(field_type, ArrowVariableShapedTensorType) and isinstance(
+                current_array.type, get_arrow_extension_fixed_shape_tensor_types()
             ):
                 # Convert to variable-shaped if needed
-                if ArrowTensorType._need_variable_shaped_tensor_array(
-                    [current_array.type, field_type]
-                ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
-                    # Only convert if it's not already a variable-shaped tensor array
-                    current_array = current_array.to_variable_shaped_tensor_array()
+                current_array = current_array.to_var_shaped_tensor_array(
+                    ndim=field_type.ndim
+                )
 
             # The schema should already be unified by unify_schemas, so types
             # should be compatible. If not, let the error propagate up.
@@ -612,7 +596,6 @@ def concat(
     from ray.data.extensions import (
         ArrowPythonObjectArray,
         ArrowPythonObjectType,
-        ArrowTensorArray,
         get_arrow_extension_tensor_types,
     )
 
@@ -630,7 +613,13 @@ def concat(
     try:
         schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
     except Exception as e:
-        raise ArrowConversionError(str(blocks)) from e
+        raise ArrowConversionError(
+            f"Failed to unify schemas: {str(e)}\n"
+            f"{'-' * 16}\n"
+            f"Schemas:\n"
+            f"{'-' * 16}\n"
+            f"{schemas_to_unify}"
+        ) from e
 
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
@@ -660,9 +649,13 @@ def concat(
                 # homogeneous-shaped block columns having different shapes across
                 # blocks: if tensor element shapes differ across blocks, a
                 # variable-shaped tensor array will be returned.
-                col = ArrowTensorArray._chunk_tensor_arrays(
-                    [chunk for ca in col_chunked_arrays for chunk in ca.chunks]
+                combined_chunks = list(
+                    itertools.chain(
+                        *[chunked.iterchunks() for chunked in col_chunked_arrays]
+                    )
                 )
+
+                col = pa.chunked_array(unify_tensor_arrays(combined_chunks))
             elif isinstance(schema.field(col_name).type, ArrowPythonObjectType):
                 chunks_to_concat = []
                 # Cast everything to objects if concatenated with an object column
