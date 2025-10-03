@@ -4,7 +4,8 @@ Terminating Actors
 Actor processes will be terminated automatically when all copies of the
 actor handle have gone out of scope in Python, or if the original creator
 process dies. When actors terminate gracefully, Ray calls the actor's
-``__ray_shutdown__()`` method if defined, allowing for cleanup of resources.
+``__ray_shutdown__()`` method if defined, allowing for cleanup of resources
+(see :ref:`actor-cleanup` for details).
 
 Note that automatic termination of actors is not yet supported in Java or C++.
 
@@ -193,12 +194,13 @@ You could see the actor is dead as a result of the user's `exit_actor()` call:
       repr_name: ''
 
 
-Actor cleanup with __ray_shutdown__
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. _actor-cleanup:
+
+Actor cleanup with `__ray_shutdown__`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 When an actor terminates gracefully, Ray calls the ``__ray_shutdown__()`` method
-if it exists. Use this method to clean up resources like database connections,
-file handles, or other external resources.
+if it exists, allowing cleanup of resources like database connections or file handles.
 
 .. tab-set::
 
@@ -214,7 +216,6 @@ file handles, or other external resources.
                     self.db_connection = connect_to_database()
                     
                 def __ray_shutdown__(self):
-                    """Called automatically before actor terminates."""
                     if self.db_connection:
                         self.db_connection.close()
                 
@@ -234,4 +235,9 @@ When ``__ray_shutdown__()`` is **NOT** called:
 
 - **Force kill**: When you use ``ray.kill(actor)`` - the actor is killed immediately without cleanup
 
-Exceptions in ``__ray_shutdown__()`` are caught and logged but don't prevent actor termination.
+**Important notes:**
+
+- ``__ray_shutdown__()`` runs after all actor tasks complete and the actor is idle.
+- By default, Ray waits 30 seconds for ``__ray_shutdown__()`` to complete. If it doesn't finish within this timeout, the actor is force killed. Configure this with ``ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 60000})``.
+- Exceptions in ``__ray_shutdown__()`` are caught and logged but don't prevent actor termination.
+- For async actors, ``__ray_shutdown__()`` should be a regular (non-async) method.
