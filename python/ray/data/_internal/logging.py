@@ -211,13 +211,6 @@ def configure_logging() -> None:
 
         config = _get_logging_config()
 
-        # Verify that disable_existing_loggers is False to avoid interfering
-        # with other logging configurations (e.g., Ray Serve)
-        assert config.get("disable_existing_loggers", False) is False, (
-            "Ray Data logging configuration must have 'disable_existing_loggers' "
-            "set to False to avoid conflicts with other Ray components."
-        )
-
         logging.config.dictConfig(config)
         _logging_configured = True
 
@@ -248,7 +241,8 @@ def reset_logging() -> None:
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
-    _logging_configured = False  # Reset the flag to allow reconfiguration
+    with _logging_lock:
+        _logging_configured = False  # Reset the flag to allow reconfiguration
 
 
 def get_log_directory() -> Optional[str]:
