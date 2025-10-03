@@ -111,47 +111,30 @@ def test_llm_serve_placement_group_validation():
     serve_options = llm_config.get_serve_options()
     assert serve_options["placement_group_strategy"] == "PACK"
 
-    # Test multiple GPUs allowed per bundle (lift restriction at Ray Serve LLM level)
-    # Note: This will cause engine to crash in practice because vLLM still enforces one GPU
-    # max per bundle (desired behavior). TP/PP optimal placement is done from within
-    # the vLLM engine here: https://github.com/vllm-project/vllm/blob/main/vllm/executor/ray_distributed_executor.py#L259-L285
+
+def test_llm_serve_multi_gpu_per_bundle_passes_through():
+    """Test multiple GPUs per bundle pass through Serve validation.
+    
+    Serve allows GPU>1 per bundle in placement_group_config. vLLM will enforce
+    its own GPU<=1 restriction during engine creation (not tested here).
+    This confirms Serve doesn't block it, allowing vLLM to manage its constraints.
+    """
     llm_config = get_llm_config_with_placement_group(
-        placement_group_config={"bundles": [{"GPU": 2, "CPU": 1}], "strategy": "PACK"}
+        tensor_parallel_size=1,
+        pipeline_parallel_size=1,
+        placement_group_config={
+            "bundles": [{"GPU": 2, "CPU": 4}],
+            "strategy": "PACK",
+        }
     )
+    
+    # Serve should accept and pass through GPU=2 to placement group
     serve_options = llm_config.get_serve_options()
     assert serve_options["placement_group_bundles"][0]["GPU"] == 2
-
-
-def test_llm_serve_accelerator_type_integration():
-    """Test that accelerator types are properly integrated with custom placement groups."""
-    placement_group_config = {
-        "bundles": [{"GPU": 1, "CPU": 1}] * 4,
-        "strategy": "PACK",
-    }
-
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            model_id="test_model",
-            model_source="facebook/opt-1.3b",
-        ),
-        deployment_config=dict(
-            autoscaling_config=dict(min_replicas=1, max_replicas=1),
-        ),
-        engine_kwargs=dict(
-            tensor_parallel_size=2,
-            pipeline_parallel_size=2,
-            distributed_executor_backend="ray",
-        ),
-        accelerator_type="L4",
-        placement_group_config=placement_group_config,
-    )
-
-    serve_options = llm_config.get_serve_options()
-
-    # Check that accelerator type is added to bundles
-    for bundle in serve_options["placement_group_bundles"]:
-        assert "accelerator_type:L4" in bundle
-        assert bundle["accelerator_type:L4"] == 0.001
+    assert serve_options["placement_group_bundles"][0]["CPU"] >= 4
+    
+    # vLLM will reject this during actual engine creation with a validation error
+    # (not tested here since this is a config-only CPU test)
 
 
 @pytest.mark.parametrize(
@@ -166,7 +149,7 @@ def test_llm_serve_accelerator_type_integration():
     ],
 )
 def test_llm_serve_bundle_count(tp_size, pp_size, expected_bundles):
-    """Test that the correct number of bundles are created for different TP/PP configurations."""
+    """Test that correct number of bundles are created for different TP/PP configs."""
     llm_config = get_llm_config_with_placement_group(
         tensor_parallel_size=tp_size,
         pipeline_parallel_size=pp_size,
@@ -176,8 +159,8 @@ def test_llm_serve_bundle_count(tp_size, pp_size, expected_bundles):
     assert len(serve_options["placement_group_bundles"]) == expected_bundles
 
 
-def test_llm_serve_resource_merging():
-    """Test that replica actor resources are properly merged with placement group bundles."""
+def test_llm_serve_accelerator_and_resource_merging():
+    """Test accelerator type injection and replica actor resource merging."""
     placement_group_config = {
         "bundles": [{"GPU": 1, "CPU": 1}] * 2,
         "strategy": "PACK",
@@ -201,21 +184,25 @@ def test_llm_serve_resource_merging():
             pipeline_parallel_size=1,
             distributed_executor_backend="ray",
         ),
+        accelerator_type="L4",
         placement_group_config=placement_group_config,
     )
 
     serve_options = llm_config.get_serve_options()
 
-    # First bundle should have merged resources (replica + child)
+    # First bundle: merged replica actor resources
     first_bundle = serve_options["placement_group_bundles"][0]
-    assert first_bundle["CPU"] >= 2  # At least the replica actor resources
+    assert first_bundle["CPU"] >= 2
     assert first_bundle["GPU"] >= 1
     assert "memory" in first_bundle
+    assert "accelerator_type:L4" in first_bundle
 
-    # Other bundles should have the original configuration
+    # Tail bundles: original config + accelerator type
     for bundle in serve_options["placement_group_bundles"][1:]:
         assert bundle["CPU"] == 1
         assert bundle["GPU"] == 1
+        assert "accelerator_type:L4" in bundle
+        assert bundle["accelerator_type:L4"] == 0.001
 
 
 def test_llm_serve_data_parallel_placement_override():

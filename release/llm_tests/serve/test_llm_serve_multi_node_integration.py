@@ -94,49 +94,6 @@ def test_llm_serve_multi_node_deployment(tp_size, pp_size, placement_strategy):
     # Cleanup handled by autouse fixture
 
 
-@pytest.mark.skip(
-    reason="Requires autoscaler/multi-node resources; covered in release jobs."
-)
-def test_llm_serve_placement_group_failure_recovery():
-    """Test that deployment handles placement group creation failures gracefully."""
-    # Create a configuration that's likely to fail (too many resources)
-    placement_group_config = {
-        "bundles": [{"GPU": 1, "CPU": 100}] * 16,  # Excessive CPU requirements
-        "strategy": "STRICT_PACK",
-    }
-
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            model_id="test_model",
-            model_source="facebook/opt-1.3b",
-        ),
-        deployment_config=dict(
-            autoscaling_config=dict(
-                min_replicas=1,
-                max_replicas=1,
-            ),
-        ),
-        engine_kwargs=dict(
-            tensor_parallel_size=4,
-            pipeline_parallel_size=4,
-            distributed_executor_backend="ray",
-        ),
-        placement_group_config=placement_group_config,
-    )
-
-    app_name = "test_placement_group_failure"
-    app = build_openai_app(llm_serving_args=LLMServingArgs(llm_configs=[llm_config]))
-
-    # This should either fail gracefully or handle resource constraints
-    try:
-        serve.run(app, name=app_name)
-        # If it succeeds, clean up
-        serve.delete(app_name)
-    except Exception as e:
-        # Failure is acceptable for this test - we're testing graceful failure handling
-        print(f"Expected failure occurred: {e}")
-
-
 @pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
 def test_llm_serve_mixed_parallelism_strategies(placement_strategy: str):
     """Test different placement strategies for the same TP/PP configuration.

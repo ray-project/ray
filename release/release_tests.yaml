@@ -3674,7 +3674,10 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
 
-# Multi-node TP/PP integration tests (actual deployments with custom placement groups)
+# Multi-node TP/PP integration tests with custom placement groups
+# Tests: TP-only (2,1), PP-only (1,2), TP+PP (2,2) across worker nodes
+# Validates: PACK strategy forces cross-node when needed, SPREAD distributes across nodes
+# Cluster: 2 worker nodes × 4 L4 GPUs = 8 total GPUs distributed across nodes
 - name: llm_serve_multi_node_integration
   frequency: nightly
   python: "3.11"
@@ -3685,7 +3688,7 @@
   cluster:
     byod:
       type: llm-cu128
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    cluster_compute: llm_2x_2xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -3693,7 +3696,6 @@
   run:
     timeout: 3600
     long_running: false
-    # Test actual multi-node deployments with custom placement groups
     script: pytest -vs test_llm_serve_multi_node_integration.py
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator

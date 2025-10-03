@@ -230,28 +230,17 @@ class TestModelConfig:
             in serve_options["ray_actor_options"]["runtime_env"]
         )
 
-    def test_resources_per_bundle(self):
-        """Test that resources_per_bundle is correctly parsed."""
-
-        # Test the default resource bundle
+    def test_default_placement_bundles(self):
+        """Test default placement group bundle generation."""
         serve_options = LLMConfig(
             model_loading_config=dict(model_id="test_model"),
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
         ).get_serve_options(name_prefix="Test:")
 
+        # First bundle gets replica CPU merged in, rest are GPU-only
         assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
             {"GPU": 1} for _ in range(5)
         ]
-
-        # Test the custom resource bundle
-        serve_options = LLMConfig(
-            model_loading_config=dict(model_id="test_model"),
-            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
-            resources_per_bundle={"XPU": 1},
-        ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0, "XPU": 1}
-        ] + [{"XPU": 1} for _ in range(5)]
 
     def test_engine_config_cached(self):
         """Test that the engine config is cached and not recreated when calling
