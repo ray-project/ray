@@ -6,13 +6,13 @@ This page documents benchmark results and methodologies for evaluating Ray Data 
 
 ## Workload Summary
 
-- **Image Classification**: Processing 800k ImageNet images using ResNet18 for inference, with image loading, preprocessing, and GPU-based batch inference. The pipeline downloads images, deserializes them, applies transformations, runs ResNet18 inference on GPU, and outputs predicted labels.
-- **Document Embedding**: Processing 10k PDF documents from Digital Corpora using PyMuPDF for text extraction, chunking, and GPU-accelerated embedding via `all-MiniLM-L6-v2`. The pipeline reads PDFs, extracts text page-by-page, splits into chunks with overlap, embeds using a small model on GPU, and outputs embeddings with metadata.
-- **Audio Transcription**: Transcribing 113,800 audio files from Mozilla Common Voice 17 dataset using Whisper-tiny model. The pipeline loads FLAC audio files, resamples to 16kHz, extracts features using Whisper's processor, runs GPU-accelerated batch inference with the model, and outputs transcriptions with metadata.
+- **Image Classification**: Processing 800k ImageNet images using ResNet18. The pipeline downloads images, deserializes them, applies transformations, runs ResNet18 inference on GPU, and outputs predicted labels.
+- **Document Embedding**: Processing 10k PDF documents from Digital Corpora. The pipeline reads PDF documents, extracts text page-by-page, splits into chunks with overlap, embeds using a `all-MiniLM-L6-v2` model on GPU, and outputs embeddings with metadata.
+- **Audio Transcription**: Transcribing 113,800 audio files from Mozilla Common Voice 17 dataset using a Whisper-tiny model. The pipeline loads FLAC audio files, resamples to 16kHz, extracts features using Whisper's processor, runs GPU-accelerated batch inference with the model, and outputs transcriptions with metadata.
 - **Video Object Detection**: Processing 10k video frames from Hollywood2 action videos dataset using YOLOv11n for object detection. The pipeline loads video frames, resizes them to 640x640, runs batch inference with YOLO to detect objects, extracts individual object crops, and outputs object metadata and cropped images in Parquet format.
 - **Large-scale Image Embedding**: Processing 4TiB of base64-encoded images from a Parquet dataset using ViT for image embedding. The pipeline decodes base64 images, converts to RGB, preprocesses using ViTImageProcessor (resizing, normalization), runs GPU-accelerated batch inference with ViT to generate embeddings, and outputs results to Parquet format.
 
-We compare Ray Data 2.50 with Daft, an open source multimodal data processing library built on Ray.
+Ray Data 2.50 is compared with Daft 0.6.2, an open source multimodal data processing library built on Ray.
 
 ---
 
@@ -24,8 +24,8 @@ We compare Ray Data 2.50 with Daft, an open source multimodal data processing li
 :header-rows: 1
 :name: benchmark-results-summary
 -   - Workload
-    - **Daft**
-    - **Ray Data**
+    - **Daft (s)**
+    - **Ray Data (s)**
 -   - **Image Classification**
     - 195.3 ± 2.5
     - **111.2 ± 1.2**
@@ -44,7 +44,7 @@ We compare Ray Data 2.50 with Daft, an open source multimodal data processing li
 ```
 
 
-All benchmark results are taken from an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+All benchmark results are taken from an average/std across 4 runs. A warmup was also run to download the model and remove any startup overheads that would affect the result.
 
 
 ## Workload Configuration
@@ -62,32 +62,32 @@ All benchmark results are taken from an average/std across 4 runs. We also ran 1
     - 800k images from ImageNet
     - s3://ray-example-data/imagenet/metadata_file
     - 1 head / 8 workers of varying instance types
-    - ...
+    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/image_classification)
 -   - **Document Embedding**
     - 10k PDFs from Digital Corpora
     - s3://ray-example-data/digitalcorpora/metadata
     - g6.xlarge head, 8 g6.xlarge workers
-    - ...
+    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/document_embedding)
 -   - **Audio Transcription**
     - 113,800 audio files from Mozilla Common Voice 17 en dataset
     - s3://air-example-data/common_voice_17/parquet/
     - g6.xlarge head,  8 g6.xlarge workers
-    - ...
+    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/audio_transcription)
 -   - **Video Object Detection**
     - 1,000 videos from Hollywood-2 Human Actions dataset
     - s3://ray-example-data/videos/Hollywood2-actions-videos/Hollywood2/AVIClips/
     - 1 head, 8 workers of varying instance types
-    - ...
+    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/video_object_detection)
 -   - **Large-scale Image Embedding**
     - 4 TiB of Parquet files containing base64 encoded images
     - s3://ray-example-data/image-datasets/10TiB-b64encoded-images-in-parquet-v3/
     - m5.24xlarge (head), 40 g6e.xlarge (gpu workers), 64 r6i.8xlarge (cpu workers)
-    - ...
+    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/large_image_embedding)
 ```
 
 ## Image Classification across different instance types
 
-We compare the performance of Ray Data with Daft on the image classification workload across a variety of instance types. Each run is an average/std across 3 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+This experiment compares the performance of Ray Data with Daft on the image classification workload across a variety of instance types. Each run is an average/std across 3 runs. A warmup was also run to download the model and remove any startup overheads that would affect the result.
 
 ```{list-table}
 :header-rows: 1
@@ -97,12 +97,12 @@ We compare the performance of Ray Data with Daft on the image classification wor
     - g6.2xlarge (8 CPUs)
     - g6.4xlarge (16 CPUs)
     - g6.8xlarge (32 CPUs)
--   - **Ray Data**
+-   - **Ray Data (s)**
     - 456.2 ± 39.9
     - **195.5 ± 7.6**
     - **144.8 ± 1.9**
     - **111.2 ± 1.2**
--   - **Daft**
+-   - **Daft (s)**
     - **315.0 ± 31.2**
     - 202.0 ± 2.2
     - 195.0 ± 6.6
@@ -111,7 +111,7 @@ We compare the performance of Ray Data with Daft on the image classification wor
 
 ## Video Object Detection across different instance types
 
-We compare the performance of Ray Data with Daft on the video object detection workload across a variety of instance types. Each run is an average/std across 4 runs. We also ran 1 warmup run to download the model and remove any startup overheads that would affect the result.
+This experiment compares the performance of Ray Data with Daft on the video object detection workload across a variety of instance types. Each run is an average/std across 4 runs. A warmup was also run to download the model and remove any startup overheads that would affect the result.
 
 
 
@@ -123,12 +123,12 @@ We compare the performance of Ray Data with Daft on the video object detection w
     - g6.2xlarge (8 CPUs)
     - g6.4xlarge (16 CPUs)
     - g6.8xlarge (32 CPUs)
--   - **Ray Data**
+-   - **Ray Data (s)**
     - 922 ± 13.8
     - **704.8 ± 25.0**
     - **629 ± 1.8**
     - **623 ± 1.4**
--   - **Daft**
+-   - **Daft (s)**
     - **758.8 ± 10.4**
     - 735.3 ± 7.6
     - 747.5 ± 13.4
