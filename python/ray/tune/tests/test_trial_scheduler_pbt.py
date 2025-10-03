@@ -829,8 +829,8 @@ class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
             t3: DummyState(last_score=10.0),
         }
         min_states = {
-            t2: DummyState(last_score=10.0),
-            t3: DummyState(last_score=float("nan")),
+            t3: DummyState(last_score=10.0),
+            t2: DummyState(last_score=float("nan")),
             t1: DummyState(last_score=20.0),
         }
 
