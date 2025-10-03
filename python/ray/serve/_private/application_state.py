@@ -23,7 +23,12 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import RAY_SERVE_ENABLE_TASK_EVENTS, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -42,7 +47,7 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
@@ -570,6 +575,26 @@ class ApplicationState:
             ) or self._target_state.config.runtime_env.get("image_uri"):
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
+            deployment_to_autoscaling_policy_name = {}
+            for deployment in config.deployments:
+                # Since we are using configs to extract the autoscaling policy name, it is guaranteed that the the type of policy name is a string
+                if isinstance(deployment.autoscaling_config, dict):
+                    deployment_to_autoscaling_policy_name[
+                        deployment.name
+                    ] = deployment.autoscaling_config.get("policy", {}).get(
+                        "name", DEFAULT_AUTOSCALING_POLICY_NAME
+                    )
+
+            deployment_to_request_router_cls = {}
+            for deployment in config.deployments:
+                # Since we are using configs to extract the request router cls, it is guaranteed that the the type of request router cls is a string
+                if isinstance(deployment.request_router_config, dict):
+                    deployment_to_request_router_cls[
+                        deployment.name
+                    ] = deployment.request_router_config.get(
+                        "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
+                    )
+
             # Kick off new build app task
             logger.info(f"Importing and building app '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
@@ -581,6 +606,8 @@ class ApplicationState:
                 config.name,
                 config.args,
                 self._logging_config,
+                deployment_to_autoscaling_policy_name,
+                deployment_to_request_router_cls,
             )
             self._build_app_task_info = BuildAppTaskInfo(
                 obj_ref=build_app_obj_ref,
@@ -707,8 +734,21 @@ class ApplicationState:
                 )
                 for params in args
             }
+            deployment_to_serialized_autoscaling_policy_def = {
+                params["deployment_name"]: params["serialized_autoscaling_policy_def"]
+                for params in args
+                if params["serialized_autoscaling_policy_def"] is not None
+            }
+            deployment_to_serialized_request_router_cls = {
+                params["deployment_name"]: params["serialized_request_router_cls"]
+                for params in args
+                if params["serialized_request_router_cls"] is not None
+            }
             overrided_infos = override_deployment_info(
-                deployment_infos, self._build_app_task_info.config
+                deployment_infos,
+                self._build_app_task_info.config,
+                deployment_to_serialized_autoscaling_policy_def,
+                deployment_to_serialized_request_router_cls,
             )
             self._route_prefix = self._check_routes(overrided_infos)
             return overrided_infos, BuildAppStatus.SUCCEEDED, ""
@@ -1180,6 +1220,8 @@ def build_serve_application(
     name: str,
     args: Dict,
     logging_config: LoggingConfig,
+    deployment_to_autoscaling_policy_name: Dict[str, str],
+    deployment_to_request_router_cls: Dict[str, str],
 ) -> Tuple[Optional[List[Dict]], Optional[str]]:
     """Import and build a Serve application.
 
@@ -1191,6 +1233,8 @@ def build_serve_application(
             without removing existing applications.
         args: Arguments to be passed to the application builder.
         logging_config: the logging config for the build app task.
+        deployment_to_autoscaling_policy_name: a dictionary mapping deployment names to autoscaling policy names
+        deployment_to_request_router_cls: a dictionary mapping deployment names to request router classe names
     Returns:
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
@@ -1226,6 +1270,16 @@ def build_serve_application(
             ):
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
+            deployment_to_serialized_autoscaling_policy_def = None
+            deployment_to_serialized_request_router_cls = None
+            if deployment.name in deployment_to_autoscaling_policy_name:
+                deployment_to_serialized_autoscaling_policy_def = cloudpickle.dumps(
+                    import_attr(deployment_to_autoscaling_policy_name[deployment.name])
+                )
+            if deployment.name in deployment_to_request_router_cls:
+                deployment_to_serialized_request_router_cls = cloudpickle.dumps(
+                    import_attr(deployment_to_request_router_cls[deployment.name])
+                )
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,
@@ -1234,6 +1288,8 @@ def build_serve_application(
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
+                    serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
+                    serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                 )
             )
         if num_ingress_deployments > 1:
@@ -1261,6 +1317,8 @@ def build_serve_application(
 def override_deployment_info(
     deployment_infos: Dict[str, DeploymentInfo],
     override_config: Optional[ServeApplicationSchema],
+    deployment_to_serialized_autoscaling_policy_def: Dict[str, bytes],
+    deployment_to_serialized_request_router_cls: Dict[str, bytes],
 ) -> Dict[str, DeploymentInfo]:
     """Override deployment infos with options from app config.
 
@@ -1269,6 +1327,8 @@ def override_deployment_info(
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
+        deployment_to_serialized_autoscaling_policy_def: serialized autoscaling policy def for each deployment
+        deployment_to_serialized_request_router_cls: serialized request router cls for each deployment
 
     Returns: the updated deployment infos.
 
@@ -1314,6 +1374,13 @@ def override_deployment_info(
             )
             if autoscaling_config:
                 new_config.update(autoscaling_config)
+
+            if deployment_name in deployment_to_serialized_autoscaling_policy_def:
+                # By setting the serialized policy def, AutoscalingConfig constructor will not
+                # try to import the policy from the string import path
+                new_config[
+                    "_serialized_policy_def"
+                ] = deployment_to_serialized_autoscaling_policy_def[deployment_name]
 
             options["autoscaling_config"] = AutoscalingConfig(**new_config)
 
@@ -1363,6 +1430,19 @@ def override_deployment_info(
             max_replicas_per_node=override_max_replicas_per_node,
         )
         override_options["replica_config"] = replica_config
+
+        if "request_router_config" in options:
+            request_router_config = options.get("request_router_config")
+            if request_router_config:
+                if deployment_name in deployment_to_serialized_request_router_cls:
+                    # By setting the serialized request router cls, RequestRouterConfig constructor will not
+                    # try to import the request router cls from the string import path
+                    request_router_config[
+                        "_serialized_request_router_cls"
+                    ] = deployment_to_serialized_request_router_cls[deployment_name]
+                options["request_router_config"] = RequestRouterConfig(
+                    **request_router_config
+                )
 
         # Override deployment config options
         options.pop("name", None)

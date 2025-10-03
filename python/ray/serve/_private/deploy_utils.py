@@ -22,6 +22,8 @@ def get_deploy_args(
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
+    serialized_autoscaling_policy_def: Optional[bytes] = None,
+    serialized_request_router_cls: Optional[bytes] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -44,6 +46,8 @@ def get_deploy_args(
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
+        "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
+        "serialized_request_router_cls": serialized_request_router_cls,
     }
 
     return controller_deploy_args
