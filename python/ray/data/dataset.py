@@ -87,7 +87,6 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.plan_write_op import gen_datasink_write_result
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
@@ -112,6 +111,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
+from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.expressions import Expr
 from ray.data.iterator import DataIterator
@@ -1512,7 +1512,7 @@ class Dataset:
     def filter(
         self,
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
-        expr: Optional[str] = None,
+        expr: Optional[Union[str, Expr]] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -1528,30 +1528,40 @@ class Dataset:
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
 
-        You can use either a function or a callable class or an expression string to
+        You can use either a function or a callable class or an expression to
         perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
-           If you use the `expr` parameter with a Python expression string, Ray Data
+           If you use the `expr` parameter with a predicate expression, Ray Data
            optimizes your filter with native Arrow interfaces.
+
+        .. deprecated::
+           String expressions are deprecated and will be removed in a future version.
+           Use predicate expressions from `ray.data.expressions` instead.
 
         Examples:
 
             >>> import ray
+            >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
+            >>> # String expressions (deprecated - will warn)
             >>> ds.filter(expr="id <= 4").take_all()
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
+            >>> # Using predicate expressions (preferred)
+            >>> ds.filter(expr=(col("id") > 10) & (col("id") < 20)).take_all()
+            [{'id': 11}, {'id': 12}, {'id': 13}, {'id': 14}, {'id': 15}, {'id': 16}, {'id': 17}, {'id': 18}, {'id': 19}]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            expr: An expression string needs to be a valid Python expression that
-                will be converted to ``pyarrow.dataset.Expression`` type.
+            expr: An expression that represents a predicate (boolean condition) for filtering.
+                Can be either a string expression (deprecated) or a predicate expression
+                from `ray.data.expressions`.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -1600,10 +1610,12 @@ class Dataset:
                 :func:`ray.remote` for details.
         """
         # Ensure exactly one of fn or expr is provided
-        resolved_expr = None
-        if not ((fn is None) ^ (expr is None)):
+        provided_params = sum([fn is not None, expr is not None])
+        if provided_params != 1:
             raise ValueError("Exactly one of 'fn' or 'expr' must be provided.")
-        elif expr is not None:
+
+        # Helper function to check for incompatible function parameters
+        def _check_fn_params_incompatible(param_type):
             if (
                 fn_args is not None
                 or fn_kwargs is not None
@@ -1611,57 +1623,95 @@ class Dataset:
                 or fn_constructor_kwargs is not None
             ):
                 raise ValueError(
-                    "when 'expr' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' can not be used."
-                )
-            from ray.data._internal.compute import TaskPoolStrategy
-            from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
-                ExpressionEvaluator,
-            )
-
-            # TODO: (srinathk) bind the expression to the actual schema.
-            # If fn is a string, convert it to a pyarrow.dataset.Expression
-            # Initialize ExpressionEvaluator with valid columns, if available
-            resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
-
-            compute = TaskPoolStrategy(size=concurrency)
-        else:
-            warnings.warn(
-                "Use 'expr' instead of 'fn' when possible for performant filters."
-            )
-
-            if callable(fn):
-                compute = get_compute_strategy(
-                    fn=fn,
-                    fn_constructor_args=fn_constructor_args,
-                    compute=compute,
-                    concurrency=concurrency,
-                )
-            else:
-                raise ValueError(
-                    f"fn must be a UserDefinedFunction, but got "
-                    f"{type(fn).__name__} instead."
+                    f"when '{param_type}' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used."
                 )
 
+        # Merge ray remote args early
         ray_remote_args = merge_resources_to_ray_remote_args(
             num_cpus,
             num_gpus,
             memory,
             ray_remote_args,
         )
-        plan = self._plan.copy()
-        op = Filter(
-            input_op=self._logical_plan.dag,
-            fn=fn,
-            fn_args=fn_args,
-            fn_kwargs=fn_kwargs,
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-            filter_expr=resolved_expr,
-            compute=compute,
+
+        # Initialize Filter operator arguments with proper types
+        input_op = self._logical_plan.dag
+        predicate_expr: Optional[Expr] = None
+        filter_fn: Optional[UserDefinedFunction] = None
+        filter_fn_args: Optional[Iterable[Any]] = None
+        filter_fn_kwargs: Optional[Dict[str, Any]] = None
+        filter_fn_constructor_args: Optional[Iterable[Any]] = None
+        filter_fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+        filter_compute: Optional[ComputeStrategy] = None
+
+        if expr is not None:
+            _check_fn_params_incompatible("expr")
+            from ray.data._internal.compute import TaskPoolStrategy
+
+            # Check if expr is a string (deprecated) or Expr object
+            if isinstance(expr, str):
+                warnings.warn(
+                    "String expressions are deprecated and will be removed in a future version. "
+                    "Use predicate expressions from ray.data.expressions instead. "
+                    "For example: from ray.data.expressions import col; "
+                    "ds.filter(expr=col('column_name') > 5)",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
+                from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
+                    ExpressionEvaluator,
+                )
+
+                # TODO: (srinathk) bind the expression to the actual schema.
+                # If expr is a string, convert it to a pyarrow.dataset.Expression
+                # Initialize ExpressionEvaluator with valid columns, if available
+                # str -> Ray Data's Expression
+                predicate_expr = ExpressionEvaluator.parse_native_expression(expr)
+            else:
+                # expr is an Expr object (predicate expression)
+                predicate_expr = expr
+
+            filter_compute = TaskPoolStrategy(size=concurrency)
+        else:
+            warnings.warn(
+                "Use 'expr' instead of 'fn' when possible for performant filters."
+            )
+
+            if not callable(fn):
+                raise ValueError(
+                    f"fn must be a UserDefinedFunction, but got "
+                    f"{type(fn).__name__} instead."
+                )
+
+            filter_fn = fn
+            filter_fn_args = fn_args
+            filter_fn_kwargs = fn_kwargs
+            filter_fn_constructor_args = fn_constructor_args
+            filter_fn_constructor_kwargs = fn_constructor_kwargs
+            filter_compute = get_compute_strategy(
+                fn=fn,
+                fn_constructor_args=fn_constructor_args,
+                compute=compute,
+                concurrency=concurrency,
+            )
+
+        # Create Filter operator with explicitly typed arguments
+        filter_op = Filter(
+            input_op=input_op,
+            predicate_expr=predicate_expr,
+            fn=filter_fn,
+            fn_args=filter_fn_args,
+            fn_kwargs=filter_fn_kwargs,
+            fn_constructor_args=filter_fn_constructor_args,
+            fn_constructor_kwargs=filter_fn_constructor_kwargs,
+            compute=filter_compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op, self.context)
+
+        plan = self._plan.copy()
+        logical_plan = LogicalPlan(filter_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -1690,7 +1740,7 @@ class Dataset:
 
              * When ``num_blocks`` and ``shuffle=True`` are specified Ray Data performs a full distributed shuffle producing exactly ``num_blocks`` blocks.
              * When ``num_blocks`` and ``shuffle=False`` are specified, Ray Data does NOT perform full shuffle, instead opting in for splitting and combining of the blocks attempting to minimize the necessary data movement (relative to full-blown shuffle). Exactly ``num_blocks`` will be produced.
-             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block``. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
+             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block`` rows. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
@@ -2826,7 +2876,7 @@ class Dataset:
                 import ray
 
                 def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
-                    for feature in group.drop("variety").columns:
+                    for feature in group.drop(columns=["variety"]).columns:
                         group[feature] = group[feature] / group[feature].abs().max()
                     return group
 
@@ -5045,17 +5095,24 @@ class Dataset:
                     return
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-            # TODO: Get and handle the blocks with an iterator instead of getting
-            # everything in a blocking way, so some blocks can be freed earlier.
-            raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
-            write_result = gen_datasink_write_result(raw_write_results)
+
+            iter_, stats = self._write_ds._execute_to_iterator()
+            write_results = []
+
+            for bundle in iter_:
+                res = ray.get(bundle.block_refs)
+                # Generate write result report
+                write_results.append(_gen_datasink_write_result(res))
+
+            combined_write_result = WriteResult.combine(*write_results)
+
             logger.info(
                 "Data sink %s finished. %d rows and %s data written.",
                 datasink.get_name(),
-                write_result.num_rows,
-                memory_string(write_result.size_bytes),
+                combined_write_result.num_rows,
+                memory_string(combined_write_result.size_bytes),
             )
-            datasink.on_write_complete(write_result)
+            datasink.on_write_complete(combined_write_result)
 
         except Exception as e:
             datasink.on_write_failed(e)
@@ -6533,9 +6590,15 @@ class Schema:
 
         For non-Arrow compatible types, we return "object".
         """
+        import pandas as pd
         import pyarrow as pa
 
         from ray.data.extensions import ArrowTensorType, TensorDtype
+
+        def _convert_to_pa_type(dtype: Union[np.dtype, pd.ArrowDtype]) -> pa.DataType:
+            if isinstance(dtype, pd.ArrowDtype):
+                return dtype.pyarrow_dtype
+            return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
             return list(self.base_schema.types)
@@ -6551,13 +6614,13 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
+                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
                     )
                 )
 
             else:
                 try:
-                    arrow_types.append(pa.from_numpy_dtype(dtype))
+                    arrow_types.append(_convert_to_pa_type(dtype))
                 except pa.ArrowNotImplementedError:
                     arrow_types.append(object)
                 except Exception:

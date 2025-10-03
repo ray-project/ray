@@ -12,7 +12,6 @@ from ray.rllib.connectors.common.batch_individual_items import BatchIndividualIt
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.connectors.common.tensor_to_numpy import TensorToNumpy
 
-
 __all__ = [
     "AddObservationsFromEpisodesToBatch",
     "AddStatesFromEpisodesToBatch",
