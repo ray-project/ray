@@ -38,19 +38,19 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
-#include "ray/ipc/fake_raylet_ipc_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
+#include "ray/raylet_ipc_client/fake_raylet_ipc_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 namespace core {
@@ -95,8 +95,8 @@ class CoreWorkerTest : public ::testing::Test {
       return Status::OK();
     };
 
-    auto client_call_manager =
-        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+    auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+        io_service_, /*record_stats=*/false, /*local_address=*/"");
 
     auto core_worker_client_pool =
         std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {

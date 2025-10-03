@@ -47,9 +47,6 @@ apt-get install -y docker-ce-cli
 
 echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
 
-# TODO(aslonnie): allow caching on trusted pipeline builds.
-echo "build --remote_upload_local_results=false" >> /root/.bazelrc
-
 EOF
 
 # System conf for tests
@@ -62,7 +59,6 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 RUN mkdir /ray
 WORKDIR /ray
 
-# Below should be re-run each time
 COPY . .
 
 RUN bash --login -ie -c '\
