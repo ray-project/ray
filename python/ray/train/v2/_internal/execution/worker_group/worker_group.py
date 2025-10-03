@@ -1,4 +1,5 @@
 import collections
+import copy
 import logging
 import os
 import traceback
@@ -717,7 +718,7 @@ class WorkerGroup(WorkerGroupInterface):
 
     def get_resources_per_worker(self) -> dict:
         """Get the resources allocated per worker."""
-        return self._worker_group_context.resources_per_worker.deepcopy()
+        return copy.deepcopy(self._worker_group_context.resources_per_worker)
 
     #########################################################################################
     # Static Utility Methods
