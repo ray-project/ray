@@ -22,6 +22,9 @@ all_modules = [
     "api",
     "runtime",
     "serve",
+]
+
+all_modules_with_test = all_modules + [
     "test",
     "performance_test",
 ]
@@ -34,13 +37,29 @@ java_import(
     ] + [
         "libio_ray_ray_" + module + "-src.jar"
         for module in all_modules
+    ],
+    deps = [
+        ":io_ray_ray_" + module
+        for module in all_modules
+    ],
+)
+
+java_import(
+    name = "all_modules_with_test",
+    testonly = 1,
+    jars = [
+        "libio_ray_ray_" + module + ".jar"
+        for module in all_modules_with_test
+    ] + [
+        "libio_ray_ray_" + module + "-src.jar"
+        for module in all_modules_with_test
     ] + [
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
     ],
     deps = [
         ":io_ray_ray_" + module
-        for module in all_modules
+        for module in all_modules_with_test
     ] + [
         ":all_tests",
     ],
