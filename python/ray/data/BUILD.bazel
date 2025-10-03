@@ -466,7 +466,7 @@ py_test(
 
 py_test(
     name = "test_consumption",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_consumption.py"],
     tags = [
         "exclusive",
@@ -689,7 +689,7 @@ py_test(
 
 py_test(
     name = "test_map",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_map.py"],
     tags = [
         "exclusive",
@@ -1197,7 +1197,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_stats.py"],
     tags = [
         "exclusive",
