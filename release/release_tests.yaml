@@ -2931,7 +2931,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: single_node.yaml
@@ -2959,7 +2958,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store.yaml
@@ -2988,7 +2986,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/small_objects.yaml
@@ -3012,7 +3009,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/large_objects.yaml
@@ -3036,7 +3032,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3064,7 +3059,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -3086,7 +3080,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3115,7 +3108,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3144,7 +3136,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -3166,7 +3157,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: many_nodes.yaml
@@ -3194,7 +3184,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: scheduling.yaml
