@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
@@ -33,3 +35,7 @@ async def test_vllm_engine_start_with_custom_resource_bundle(
     await engine.start()
     await engine.check_health()
     engine.shutdown()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
