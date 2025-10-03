@@ -191,7 +191,7 @@ class WorkerGroup(BaseWorkerGroup):
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
             memory=self.memory_per_worker,
-            resources=resources_per_worker,
+            resources=_resources_per_worker,
         )(self._base_cls)
         self.start()
 
