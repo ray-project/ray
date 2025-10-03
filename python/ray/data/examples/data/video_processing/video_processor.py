@@ -27,11 +27,11 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
-from ray.llm._internal.batch.envs import (
+from python.ray.data.examples.data.video_processing.envs import (
     RAY_LLM_BATCH_MAX_DECODE_FRAMES,
     RAY_LLM_BATCH_MAX_TARGETS,
 )
-from ray.llm._internal.batch.stages._util import HTTPConnection
+from python.ray.data.examples.data.video_processing._util import HTTPConnection
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
 try:  # pragma: no cover - availability depends on environment
