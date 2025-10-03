@@ -17,6 +17,7 @@ from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 
 logger = get_logger(__name__)
 
+import pprint
 
 def build_llm_deployment(
     llm_config: LLMConfig,
@@ -29,6 +30,8 @@ def build_llm_deployment(
     deployment_kwargs = deployment_kwargs or {}
     
     deployment_options = LLMServer.get_deployment_options(llm_config, name_prefix=name_prefix)
+    print("============== Deployment Options ==============")
+    pprint.pprint(deployment_options)
 
     if override_serve_options:
         deployment_options.update(override_serve_options)

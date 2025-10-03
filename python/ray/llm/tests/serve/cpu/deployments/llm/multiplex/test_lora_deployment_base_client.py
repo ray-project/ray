@@ -7,10 +7,11 @@ from fastapi import HTTPException
 
 from ray import serve
 from ray.llm._internal.serve.configs.openai_api_models import ModelCard
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve.handle import DeploymentHandle
-from ray.serve.llm import LLMConfig, OpenAiIngress, LoraConfig
+from ray.serve.llm import LLMConfig, LoraConfig
+from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 
 VLLM_APP_DEF = """
 model_loading_config:
@@ -53,7 +54,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     for llm_config in llm_configs:
         model_id = llm_config.model_id
         deployment_args = llm_config.get_serve_options(name_prefix=f"{model_id}:")
-        deployment = LLMDeployment.options(**deployment_args)
+        deployment = serve.deployment(LLMServer).options(**deployment_args)
         llm_deployments.append(
             deployment.bind(
                 llm_config=llm_config,

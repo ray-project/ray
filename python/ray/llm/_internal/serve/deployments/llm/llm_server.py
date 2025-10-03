@@ -14,6 +14,7 @@ from typing import (
     Union,
 )
 
+import ray
 from ray import serve
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.configs.constants import (
@@ -25,6 +26,7 @@ from ray.llm._internal.serve.configs.constants import (
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
+    ENABLE_WORKER_PROCESS_SETUP_HOOK,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -473,6 +475,23 @@ class LLMServer(LLMServerProtocol):
                 "placement_group_strategy": engine_config.placement_strategy,
             }
         )
+        
+        # Handle env vars from runtime_env
+        default_runtime_env = ray.get_runtime_context().runtime_env
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            default_runtime_env[
+                "worker_process_setup_hook"
+            ] = "ray.llm._internal.serve._worker_process_setup_hook"
+
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
+        ray_actor_options["runtime_env"] = {
+            **default_runtime_env,
+            # Existing runtime_env should take precedence over the default.
+            **ray_actor_options.get("runtime_env", {}),
+            **(llm_config.runtime_env if llm_config.runtime_env else {}),
+        }
+        deployment_options["ray_actor_options"] = ray_actor_options
+
         
         # Set the name of the deployment config to map to the model ID.
         if "name" not in deployment_options:
