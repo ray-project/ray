@@ -1500,5 +1500,48 @@ def test_actor_ray_shutdown_called_on_scope_exit(
         assert f.read() == "shutdown_called_on_scope_exit"
 
 
+def test_actor_graceful_shutdown_timeout_fallback(shutdown_only, tempfile_factory):
+    """Test that actor is force killed if __ray_shutdown__ exceeds timeout."""
+    shutdown_started_file = tempfile_factory()
+    shutdown_completed_file = tempfile_factory()
+
+    ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 1000})
+
+    @ray.remote
+    class HangingShutdownActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_started_file, "w") as f:
+                f.write("shutdown_started")
+                f.flush()
+
+            # Hang indefinitely - simulating buggy cleanup code
+            time.sleep(600)
+
+            # This should never be reached due to timeout fallback
+            with open(shutdown_completed_file, "w") as f:
+                f.write("should_not_reach")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = HangingShutdownActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    # Verify that shutdown started
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_started_file), timeout=5
+    )
+    with open(shutdown_started_file, "r") as f:
+        assert f.read() == "shutdown_started"
+
+    # Wait for timeout + buffer time
+    time.sleep(2)
+
+    # Verify that shutdown did NOT complete (force killed before completion)
+    assert not check_file_exists_and_not_empty(shutdown_completed_file)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

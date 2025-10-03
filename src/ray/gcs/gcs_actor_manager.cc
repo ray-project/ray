@@ -274,12 +274,15 @@ void GcsActorManager::HandleReportActorOutOfScope(
       return;
     }
 
-    DestroyActor(actor_id,
-                 GenActorOutOfScopeCause(actor),
-                 /*force_kill=*/false,
-                 [reply, send_reply_callback]() {
-                   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-                 });
+    int64_t timeout_ms = RayConfig::instance().actor_graceful_shutdown_timeout_ms();
+    DestroyActor(
+        actor_id,
+        GenActorOutOfScopeCause(actor),
+        /*force_kill=*/false,
+        [reply, send_reply_callback]() {
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        },
+        timeout_ms);
   } else {
     RAY_LOG(INFO).WithField(actor_id) << "The out of scope actor is already dead";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -962,7 +965,8 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
 void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    const rpc::ActorDeathCause &death_cause,
                                    bool force_kill,
-                                   std::function<void()> done_callback) {
+                                   std::function<void()> done_callback,
+                                   int64_t graceful_shutdown_timeout_ms) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Destroying actor";
   actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
@@ -994,9 +998,40 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     const auto &worker_id = actor->GetWorkerID();
     auto node_it = created_actors_.find(node_id);
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
-      // The actor has already been created. Destroy the process by force-killing
-      // it.
+      // The actor has already been created. Send kill request.
       NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
+
+      if (!force_kill && graceful_shutdown_timeout_ms > 0) {
+        auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
+        auto timeout_duration =
+            boost::posix_time::milliseconds(graceful_shutdown_timeout_ms);
+        timer->expires_from_now(timeout_duration);
+
+        RAY_LOG(DEBUG).WithField(actor_id)
+            << "Starting graceful shutdown with timeout: " << graceful_shutdown_timeout_ms
+            << "ms";
+
+        timer->async_wait(
+            [this, actor_id, death_cause, timer, graceful_shutdown_timeout_ms](
+                const boost::system::error_code &error) {
+              if (error) {
+                return;
+              }
+
+              // Timeout expired - check if actor is still alive
+              auto it = registered_actors_.find(actor_id);
+              if (it != registered_actors_.end() &&
+                  it->second->GetState() != rpc::ActorTableData::DEAD) {
+                RAY_LOG(WARNING).WithField(actor_id)
+                    << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
+                    << "ms) exceeded. Actor did not exit. Falling back to force kill.";
+
+                // Retry with force_kill=true
+                NotifyCoreWorkerToKillActor(it->second, death_cause, /*force_kill=*/true);
+              }
+            });
+      }
+
       RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
       if (node_it->second.empty()) {
         created_actors_.erase(node_it);

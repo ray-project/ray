@@ -310,10 +310,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
   /// \param[in] done_callback Called when destroy finishes.
+  /// \param[in] graceful_shutdown_timeout_ms Timeout for graceful shutdown in ms.
+  ///            Only used when force_kill=false. If graceful shutdown doesn't complete
+  ///            within this timeout, falls back to force kill. -1 means no timeout.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
                     bool force_kill = true,
-                    std::function<void()> done_callback = nullptr);
+                    std::function<void()> done_callback = nullptr,
+                    int64_t graceful_shutdown_timeout_ms = -1);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
