@@ -206,7 +206,7 @@ if it exists, allowing cleanup of resources like database connections or file ha
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             import ray
 
