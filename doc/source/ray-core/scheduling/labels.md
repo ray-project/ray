@@ -23,7 +23,7 @@ The following is a high-level overview of how you use labels to control scheduli
 - You define custom labels as key-value pairs. See [](custom).
 - You specify *label selectors* in your Ray code to define label requirements. You can specify these requirements at the task, actor, or placement group bundle level. See [](label-selectors).
 - Ray schedules tasks, actors or placement group bundles based on the specified label selectors.
-- If you're using a dynamic cluster with autoscaler V2 enabled, the cluster scales up to add new nodes from a designated worker group to fulfill label requirements.
+- In Ray 2.50.0 and above, if you're using a dynamic cluster with autoscaler V2 enabled, the cluster scales up to add new nodes from a designated worker group to fulfill label requirements.
 
 (defaults)=
 ## Default node labels 
@@ -50,6 +50,17 @@ The following are examples of default labels:
 
 You can add custom labels to your nodes using the `--labels` or `--labels-file` parameter when running `ray start`.
 
+```{shell}
+# Examples 1: Start a head node with cpu-family and test-label labels
+ray start --head --labels="cpu-family=amd,test-label=test-value"
+
+# Example 2: Start a head node with labels from a label file
+ray start --head --labels-files='./test-labels-file'
+
+# And the file content can be the following (should be a valid yaml file):
+# "test-label": "test-value"
+# "test-label-2": "test-value-2"
+```
 ```{note} 
 You can't set labels using `ray.init()`. Local Ray clusters don't support labels.
 ```
