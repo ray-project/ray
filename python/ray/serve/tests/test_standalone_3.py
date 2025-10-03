@@ -27,14 +27,14 @@ skip_on_windows_node_timeout = pytest.mark.skipif(
     sys.platform == "win32",
     reason="Ray node fails to register with GCS within 30s timeout on Windows. "
     "Cluster has zero CPU resources available: {} after test operations. "
-    "Root cause: Worker crashes (error 10054, SIGSEGV) leave resources allocated.",
+    "Cause: Worker crashes (error 10054, SIGSEGV) leave resources allocated.",
 )
 
 skip_on_windows_cluster_reinit = pytest.mark.skipif(
     sys.platform == "win32",
     reason="Ray.init() fails when cluster from previous test persists on Windows. "
     "ValueError: _system_config cannot be provided when connecting to existing cluster. "
-    "Root cause: Ray cluster cleanup/isolation issues on Windows between tests.",
+    "Cause: Ray cluster cleanup/isolation issues on Windows between tests.",
 )
 
 
