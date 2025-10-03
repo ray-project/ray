@@ -4,7 +4,6 @@ from ray._common.deprecation import Deprecated
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
-    LLMServingArgs as _LLMServingArgs,
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
 )
@@ -12,6 +11,9 @@ from ray.llm._internal.serve.configs.server_models import (
 # For backward compatibility
 from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer as _LLMServer,
+)
+from ray.llm._internal.serve.deployments.routers.build_ingress import (
+    LLMServingArgs as _LLMServingArgs,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
     OpenAiIngress as _OpenAiIngress,
@@ -155,7 +157,9 @@ def build_llm_deployment(
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.builders import build_llm_deployment
+    from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+        build_llm_deployment,
+    )
 
     return build_llm_deployment(
         llm_config=llm_config,
@@ -265,7 +269,9 @@ def build_openai_app(
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.builders import build_openai_app
+    from ray.llm._internal.serve.deployments.routers.build_ingress import (
+        build_openai_app,
+    )
 
     return build_openai_app(llm_serving_args=llm_serving_args)
 

@@ -28,12 +28,6 @@ from ray.llm._internal.common.utils.lora_utils import (
 )
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
-    DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
-    DEFAULT_LLM_ROUTER_MAX_REPLICAS,
-    DEFAULT_LLM_ROUTER_MIN_REPLICAS,
-    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -71,7 +65,6 @@ from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     get_lora_model_metadata,
 )
-from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version
@@ -173,8 +166,9 @@ def make_fastapi_ingress(
 
     Args:
         cls: The class to convert into an ingress deployment
-        endpoint_map: Dictionary mapping method names to FastAPI route decorators.
-            Each value is a lambda that takes a FastAPI app and returns a route decorator.
+        endpoint_map: Dictionary mapping method names to FastAPI route
+            decorators. Each value is a lambda that takes a FastAPI app and 
+            returns a route decorator.
 
     Returns:
         A class decorated with @serve.ingress
@@ -585,146 +579,6 @@ class OpenAiIngress(DeploymentProtocol):
             if isinstance(result, ScoreResponse):
                 return JSONResponse(content=result.model_dump())
 
-    # @classmethod
-    # def as_deployment(
-    #     cls, llm_configs: Optional[List[LLMConfig]] = None
-    # ) -> serve.Deployment:
-    #     """Converts this class to a Ray Serve deployment with ingress.
-
-    #     Returns:
-    #         A Ray Serve deployment.
-    #     """
-    #     min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
-    #     initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
-    #     max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
-    #     num_ingress_replicas = 0
-
-    #     # Note (genesu): Based on our internal benchmark, we are currently bottleneck
-    #     # by the router replicas during high concurrency situation. We are setting the
-    #     # router replicas to be ~2x the total model replicas and making it scale faster.
-    #     if llm_configs:
-    #         model_min_replicas = 0
-    #         model_initial_replicas = 0
-    #         model_max_replicas = 0
-    #         for llm_config in llm_configs:
-    #             num_ingress_replicas = max(
-    #                 num_ingress_replicas,
-    #                 llm_config.experimental_configs.get("num_ingress_replicas", 0),
-    #             )
-
-    #             if "autoscaling_config" in llm_config.deployment_config:
-    #                 autoscaling_config = llm_config.deployment_config[
-    #                     "autoscaling_config"
-    #                 ]
-    #                 if isinstance(autoscaling_config, dict):
-    #                     autoscaling_config = AutoscalingConfig(
-    #                         **llm_config.deployment_config["autoscaling_config"]
-    #                     )
-    #             else:
-    #                 # When autoscaling config is not provided, we use the default.
-    #                 autoscaling_config = AutoscalingConfig()
-    #             model_min_replicas += autoscaling_config.min_replicas
-    #             model_initial_replicas += (
-    #                 autoscaling_config.initial_replicas
-    #                 or autoscaling_config.min_replicas
-    #             )
-    #             model_max_replicas += autoscaling_config.max_replicas
-    #         min_replicas = num_ingress_replicas or int(
-    #             model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-    #         )
-    #         initial_replicas = num_ingress_replicas or int(
-    #             model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-    #         )
-    #         max_replicas = num_ingress_replicas or int(
-    #             model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-    #         )
-
-    #     ingress_cls = serve.ingress(fastapi_router_app)(cls)
-    #     deployment_decorator = serve.deployment(
-    #         autoscaling_config={
-    #             "min_replicas": min_replicas,
-    #             "initial_replicas": initial_replicas,
-    #             "max_replicas": max_replicas,
-    #             "target_ongoing_requests": DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
-    #         },
-    #         max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
-    #     )
-
-    #     deployment_cls = deployment_decorator(ingress_cls)
-
-    #     return deployment_cls
-
-    # TODO: simplify this logic.
-    # 1. Do we need name_prefix?
-    # 2. Do we need to automatically infer, the min, initial, and max replicas?
-    # 3. Do we need the llm_configs? Or should we simply document the ingress config best practices?
-    # 4. Maybe these defaults should go to the specific builder example.
-    # Output of this limits the max_replicas: e.g.
-    # {'autoscaling_config': {'initial_replicas': 2,
-    #                     'max_replicas': 2,
-    #                     'min_replicas': 2,
-    #                     'target_ongoing_requests': 1000000000},
-    # 'max_ongoing_requests': 1000000000}
     @classmethod
-    def get_deployment_options(
-        cls,
-        llm_configs: Optional[List[LLMConfig]] = None,
-        name_prefix: Optional[str] = None,
-    ) -> Dict[str, Any]:
-
-        min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
-        initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
-        max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
-        num_ingress_replicas = 0
-
-        # Note (genesu): Based on our internal benchmark, we are currently bottleneck
-        # by the router replicas during high concurrency situation. We are setting the
-        # router replicas to be ~2x the total model replicas and making it scale faster.
-        if llm_configs:
-            model_min_replicas = 0
-            model_initial_replicas = 0
-            model_max_replicas = 0
-            for llm_config in llm_configs:
-                num_ingress_replicas = max(
-                    num_ingress_replicas,
-                    llm_config.experimental_configs.get("num_ingress_replicas", 0),
-                )
-
-                if "autoscaling_config" in llm_config.deployment_config:
-                    autoscaling_config = llm_config.deployment_config[
-                        "autoscaling_config"
-                    ]
-                    if isinstance(autoscaling_config, dict):
-                        autoscaling_config = AutoscalingConfig(
-                            **llm_config.deployment_config["autoscaling_config"]
-                        )
-                else:
-                    # When autoscaling config is not provided, we use the default.
-                    autoscaling_config = AutoscalingConfig()
-                model_min_replicas += autoscaling_config.min_replicas
-                model_initial_replicas += (
-                    autoscaling_config.initial_replicas
-                    or autoscaling_config.min_replicas
-                )
-                model_max_replicas += autoscaling_config.max_replicas
-            min_replicas = num_ingress_replicas or int(
-                model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-            )
-            initial_replicas = num_ingress_replicas or int(
-                model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-            )
-            max_replicas = num_ingress_replicas or int(
-                model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-            )
-
-        default_deployment_options = {
-            "autoscaling_config": {
-                "min_replicas": min_replicas,
-                "initial_replicas": initial_replicas,
-                "max_replicas": max_replicas,
-                "target_ongoing_requests": DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
-            },
-            "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
-        }
-
-        return default_deployment_options
+    def get_deployment_options(cls) -> Dict[str, Any]:
+        raise ValueError("This method is not needed for OpenAiIngress.")

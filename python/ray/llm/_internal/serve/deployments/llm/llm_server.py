@@ -5,6 +5,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Dict,
     List,
     Optional,
     Type,
@@ -16,11 +17,6 @@ import ray
 from ray import serve
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_HEALTH_CHECK_PERIOD_S,
-    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_MAX_REPLICAS,
-    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
@@ -60,6 +56,39 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
+
+
+def _merge_replica_actor_and_child_actor_bundles(
+    child_actor_bundles: List[Dict[str, float]],
+    replica_actor_bundle: Dict[str, float],
+) -> List[Dict[str, float]]:
+    """Sum up the bundles from replica actor bundles with the first bundle from child actor bundles.
+
+    This is because the replica actor will use the first bundle in the list, and we want to collocate the replica actor with the child actor.
+    So we need to group them together.
+
+    So for example:
+    child_actor_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1, "CPU": 1}]
+    replica_actor_bundle = {"GPU": 0, "CPU": 1, "memory": 100}
+    return [{"GPU": 1, "CPU": 2, "memory": 100}, {"GPU": 1, "CPU": 1}]
+    """
+
+    if not child_actor_bundles:
+        return [replica_actor_bundle]
+
+    if not replica_actor_bundle:
+        return child_actor_bundles
+
+    first_bundle = child_actor_bundles[0]
+    bundle_key_set = set(first_bundle.keys()) | set(replica_actor_bundle.keys())
+
+    for key in bundle_key_set:
+        first_bundle[key] = replica_actor_bundle.get(key, 0) + first_bundle.get(
+            key, 0
+        )
+
+    return [first_bundle] + child_actor_bundles[1:]
+
 
 
 class LLMServer(LLMServerProtocol):
@@ -405,49 +434,16 @@ class LLMServer(LLMServerProtocol):
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
-    # # TODO (Kourosh): Deprecate this builder style
-    # @classmethod
-    # def as_deployment(
-    #     cls, deployment_options: Optional[Dict[str, Any]] = None
-    # ) -> serve.Deployment:
-    #     """Convert the LLMServer to a Ray Serve deployment.
-
-    #     Args:
-    #         deployment_options: A dictionary of deployment options.
-
-    #     Returns:
-    #         A Ray Serve deployment.
-    #     """
-    #     deployment_options = deployment_options or {}
-    #     return LLMDeployment.options(**deployment_options)
 
     # TODO: minimize the logic here.
     @classmethod
-    def get_deployment_options(
-        cls, llm_config: "LLMConfig", name_prefix: Optional[str] = None
-    ):
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
         engine_config = llm_config.get_engine_config()
-        default_deployment_options = {
-            "autoscaling_config": {
-                "min_replicas": 1,
-                "initial_replicas": 1,
-                "max_replicas": DEFAULT_MAX_REPLICAS,
-                "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-            },
-            "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
-            "health_check_period_s": DEFAULT_HEALTH_CHECK_PERIOD_S,
-            "health_check_timeout_s": DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-        }
-
-        deployment_options = copy.deepcopy(default_deployment_options)
-
-        # TODO (Kourosh): This might need to be hierarchically merged.
-        deployment_options.update(llm_config.deployment_config)
+        deployment_options = copy.deepcopy(llm_config.deployment_config)
 
         # Handle the ray_actor_options that could be passed in to
         # deployment_options
         ray_actor_options = deployment_options.get("ray_actor_options", {})
-        deployment_options["ray_actor_options"] = ray_actor_options
 
         replica_actor_resources = {
             "CPU": ray_actor_options.get("num_cpus", 1),
@@ -467,7 +463,7 @@ class LLMServer(LLMServerProtocol):
 
         # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
         # more generic place.
-        pg_bundles = llm_config._merge_replica_actor_and_child_actor_bundles(
+        pg_bundles = _merge_replica_actor_and_child_actor_bundles(
             engine_config.placement_bundles, replica_actor_resources
         )
 
@@ -494,12 +490,6 @@ class LLMServer(LLMServerProtocol):
         }
         deployment_options["ray_actor_options"] = ray_actor_options
 
-        # Set the name of the deployment config to map to the model ID.
-        if "name" not in deployment_options:
-            # TODO: Should this API be public? Does it belong to LLMConfig?
-            deployment_options["name"] = llm_config._get_deployment_name()
-        if name_prefix:
-            deployment_options["name"] = name_prefix + deployment_options["name"]
 
         return deployment_options
 

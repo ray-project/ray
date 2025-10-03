@@ -424,38 +424,9 @@ class LLMConfig(BaseModelExtended):
         if self._engine_config:
             self._engine_config.engine_kwargs.update(kwargs)
 
-    def _merge_replica_actor_and_child_actor_bundles(
-        self,
-        child_actor_bundles: List[Dict[str, float]],
-        replica_actor_bundle: Dict[str, float],
-    ) -> List[Dict[str, float]]:
-        """Sum up the bundles from replica actor bundles with the first bundle from child actor bundles.
+    # TODO (Kourosh): remove
 
-        This is because the replica actor will use the first bundle in the list, and we want to collocate the replica actor with the child actor.
-        So we need to group them together.
-
-        So for example:
-        child_actor_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1, "CPU": 1}]
-        replica_actor_bundle = {"GPU": 0, "CPU": 1, "memory": 100}
-        return [{"GPU": 1, "CPU": 2, "memory": 100}, {"GPU": 1, "CPU": 1}]
-        """
-
-        if not child_actor_bundles:
-            return [replica_actor_bundle]
-
-        if not replica_actor_bundle:
-            return child_actor_bundles
-
-        first_bundle = child_actor_bundles[0]
-        bundle_key_set = set(first_bundle.keys()) | set(replica_actor_bundle.keys())
-
-        for key in bundle_key_set:
-            first_bundle[key] = replica_actor_bundle.get(key, 0) + first_bundle.get(
-                key, 0
-            )
-
-        return [first_bundle] + child_actor_bundles[1:]
-
+    # TODO (Kourosh): remove
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
         deployment_config = self.deployment_config
         engine_config = self.get_engine_config()
@@ -497,9 +468,6 @@ class LLMConfig(BaseModelExtended):
         )
 
         return deployment_config
-
-    def _get_deployment_name(self) -> str:
-        return self.model_id.replace("/", "--").replace(".", "_")
 
     # TODO (Kourosh): We can remove this method after we migrated to the pattern of using DeploymentProtocol.get_deployment_options
     def get_serve_options(
@@ -687,29 +655,6 @@ def parse_args(
         models += parsed_models
 
     return models
-
-
-class LLMServingArgs(BaseModelExtended):
-    llm_configs: List[Union[str, LLMConfig]] = Field(
-        description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
-    )
-
-    def parse_args(self) -> "LLMServingArgs":
-        """Converts this LLMServingArgs object into an DeployArgs object."""
-
-        llm_configs = []
-        for config in self.llm_configs:
-            parsed_config = parse_args(config)[0]
-            if not isinstance(parsed_config, LLMConfig):
-                raise ValueError(
-                    "When using the new Serve config format, all model "
-                    "configs must also use the new model config format. Got "
-                    "a model config that doesn't match new format. Type: "
-                    f"{type(parsed_config)}. Contents: {parsed_config}."
-                )
-            llm_configs.append(parsed_config)
-
-        return LLMServingArgs(llm_configs=llm_configs)
 
 
 class DiskMultiplexConfig(BaseModelExtended):

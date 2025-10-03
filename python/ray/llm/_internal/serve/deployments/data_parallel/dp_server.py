@@ -76,9 +76,9 @@ class DPServer(LLMServer):
 
     @classmethod
     def get_deployment_options(
-        cls, llm_config: "LLMConfig", name_prefix: Optional[str] = None
+        cls, llm_config: "LLMConfig"
     ):
-        deployment_options = super().get_deployment_options(llm_config, name_prefix)
+        deployment_options = super().get_deployment_options(llm_config)
 
         dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
         if not (isinstance(dp_size, int) and dp_size > 0):
@@ -94,8 +94,7 @@ class DPServer(LLMServer):
             if "autoscaling_config" in deployment_options:
                 raise ValueError(
                     "autoscaling_config is not supported for DP deployment, "
-                    f"use engine_kwargs.data_parallel_size={dp_size} to set a "
-                    "fixed number of replicas instead."
+                    "remove autoscaling_config instead."
                 )
             deployment_options["num_replicas"] = dp_size
             deployment_options["max_ongoing_requests"] = DEFAULT_MAX_ONGOING_REQUESTS
