@@ -1,18 +1,27 @@
 (kuberay-kueue)=
-# Gang scheduling and priority scheduling for RayJob with Kueue
+# Gang scheduling and Priority scheduling for KubeRay CRDs with Kueue
 
-This guide demonstrates the integration of KubeRay and Kueue for gang and priority scheduling using RayJob on a local Kind cluster.
-Refer to [Priority Scheduling with RayJob and Kueue](kuberay-kueue-priority-scheduling-example) and [Gang Scheduling with RayJob and Kueue](kuberay-kueue-gang-scheduling-example) for real-world use cases.
+This guide demonstrates how to integrate KubeRay with [Kueue](https://kueue.sigs.k8s.io/) to enable advanced scheduling capabilities including gang scheduling and priority scheduling for Ray applications on Kubernetes.
 
-## Kueue
+For real-world use cases with RayJob, see [Priority Scheduling with RayJob and Kueue](kuberay-kueue-priority-scheduling-example) and [Gang Scheduling with RayJob and Kueue](kuberay-kueue-gang-scheduling-example).
 
-[Kueue](https://kueue.sigs.k8s.io/) is a Kubernetes-native job queueing system that manages quotas and how jobs consume them. Kueue decides when:
+## What is Kueue?
+[Kueue](https://kueue.sigs.k8s.io/) is a Kubernetes-native job queueing system that manages resource quotas and job lifecycle. Kueue decides when:
 * To make a job wait.
 * To admit a job to start, which triggers Kubernetes to create pods.
 * To preempt a job, which triggers Kubernetes to delete active pods.
 
-Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue to manage resources consumed by RayJob and RayCluster.
-See the [Kueue documentation](https://kueue.sigs.k8s.io/docs/overview/) to learn more.
+## Supported KubeRay CRDs
+Kueue has native support for the following KubeRay APIs:
+- **RayJob**: Ideal for batch processing and model training workloads (covered in this guide)
+- **RayCluster**: Perfect for managing long-running Ray clusters
+- **RayService**: Designed for serving models and applications
+
+*Note: This guide focuses on a detailed RayJob example on a kind cluster. For RayCluster and RayService examples, see the ["Working with RayCluster and RayService"](#working-with-raycluster-and-rayservice) section.*
+
+## Prerequisites
+
+Before you begin, ensure you have a Kubernetes cluster. This guide uses a local Kind cluster.
 
 ## Step 0: Create a Kind cluster
 
@@ -27,14 +36,17 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the lates
 ## Step 2: Install Kueue
 
 ```bash
-VERSION=v0.6.0
+VERSION=v0.13.4
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/$VERSION/manifests.yaml
 ```
 
 See [Kueue Installation](https://kueue.sigs.k8s.io/docs/installation/#install-a-released-version) for more details on installing Kueue.
-Some limitations exist between Kueue and RayJob. See the [limitations of Kueue](https://kueue.sigs.k8s.io/docs/tasks/run_rayjobs/#c-limitations) for more details.
+**Note**: Some limitations exist between Kueue and RayJob. See the [limitations of Kueue](https://kueue.sigs.k8s.io/docs/tasks/run_rayjobs/#c-limitations) for more details.
 
-## Step 3: Create Kueue resources
+
+## Step 3: Create Kueue Resources
+
+This manifest creates the necessary Kueue resources to manage scheduling and resource allocation.
 
 ```yaml
 # kueue-resources.yaml
@@ -132,7 +144,6 @@ Note these important points for RayJob custom resources:
 
 ```yaml
 kubectl create -f ray-job.kueue-toy-sample.yaml
-kubectl create -f ray-job.kueue-toy-sample.yaml
 ```
 
 Each RayJob custom resource requests 2 CPUs and 4G of memory in total.
@@ -219,3 +230,12 @@ kubectl create -f ray-job.kueue-toy-sample.yaml
 ```
 
 You can see that KubeRay operator deletes the Pods belonging to the RayJob with the lower priority class `dev-priority` and creates the Pods belonging to the RayJob with the higher priority class `prod-priority`.
+
+## Working with RayCluster and RayService
+
+### RayCluster with Kueue
+For gang scheduling with RayCluster resources, Kueue ensures that all cluster components (head and worker nodes) are provisioned together. This prevents partial cluster creation and resource waste.
+**For detailed RayCluster integration**: See the [Kueue documentation for RayCluster](https://kueue.sigs.k8s.io/docs/tasks/run/rayclusters/).
+### RayService with Kueue
+RayService integration with Kueue enables gang scheduling for model serving workloads, ensuring consistent resource allocation for serving infrastructure.
+**For detailed RayService integration**: See the [Kueue documentation for RayService](https://kueue.sigs.k8s.io/docs/tasks/run/rayservices/).
