@@ -1264,11 +1264,6 @@ class CoreWorker {
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
 
-  // Free GPU objects from the in-actor GPU object store.
-  void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                             rpc::FreeActorObjectReply *reply,
-                             rpc::SendReplyCallback send_reply_callback);
-
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using async mode.
@@ -1946,5 +1941,8 @@ class CoreWorker {
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
+
+  /// Callback to free an RDT object when it is out of scope.
+  std::function<void(const ObjectID &)> free_actor_object_callback_;
 };
 }  // namespace ray::core
