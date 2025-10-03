@@ -983,7 +983,7 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorHandleRemovedForRegisteredA
   request.set_actor_id(actor_id.Binary());
   request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
 
-  int callback_count(0);
+  size_t callback_count = 0;
   rpc::WaitForActorRefDeletedReply reply1;
   rpc::WaitForActorRefDeletedReply reply2;
 
@@ -1069,7 +1069,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   request.set_actor_id(actor_id.Binary());
   request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
 
-  int callback_count(0);
+  size_t callback_count = 0;
   rpc::WaitForActorRefDeletedReply reply1;
   rpc::WaitForActorRefDeletedReply reply2;
 
@@ -1079,9 +1079,9 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   core_worker_->HandleWaitForActorRefDeleted(
       request,
       &reply1,
-      [&callback_count](Status s,
-                        std::function<void()> success,
-                        std::function<void()> failure) { ASSERT_TRUE(false); });
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(false);
+      });
 
   core_worker_->HandleWaitForActorRefDeleted(
       request,
