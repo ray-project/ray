@@ -21,7 +21,6 @@ import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util import log_once
@@ -70,6 +69,14 @@ logger = logging.getLogger(__name__)
 class BlockType(Enum):
     ARROW = "arrow"
     PANDAS = "pandas"
+
+
+@DeveloperAPI
+class BatchFormat(str, Enum):
+    # NOTE: This is to maintain compatibility w/ existing APIs
+    ARROW = "pyarrow"
+    PANDAS = "pandas"
+    NUMPY = "numpy"
 
 
 # User-facing data batch type. This is the data type for data that is supplied to and
@@ -459,6 +466,8 @@ class BlockAccessor:
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
+                from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+
                 try:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:

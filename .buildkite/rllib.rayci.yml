@@ -180,6 +180,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - rllib_flaky
       - skip-on-premerge
     instance_type: gpu-large
     commands:
@@ -196,7 +197,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
-      - flaky
+      - rllib_flaky
       - skip-on-premerge
     instance_type: gpu
     commands:
@@ -212,7 +213,7 @@ steps:
     key: rllib_flaky_tests_01
     tags:
       - rllib
-      - flaky
+      - rllib_flaky
       - skip-on-premerge
     instance_type: large
     commands:
@@ -242,7 +243,7 @@ steps:
     key: rllib_flaky_tests_02
     tags:
       - rllib
-      - flaky
+      - rllib_flaky
       - skip-on-premerge
     instance_type: large
     commands:

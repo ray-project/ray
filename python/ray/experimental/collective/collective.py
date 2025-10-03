@@ -150,7 +150,7 @@ def create_collective_group(
         raise ValueError(f"All actors must be unique, got: {actors}")
 
     metadata_key = None
-    if backend == Backend.TORCH_GLOO:
+    if backend == Backend.GLOO:
         # Perform extra setup for torch.distributed.
         # torch.distributed requires a master address and port. Find a suitable
         # port on one of the actors.
@@ -178,7 +178,9 @@ def create_collective_group(
             internal_kv._internal_kv_del(metadata_key)
 
     # Group was successfully created.
-    comm = CommunicatorHandle(actors, name, backend)
+    # Register GLOO groups under TORCH_GLOO since GLOO uses torch.distributed.
+    registration_backend = Backend.TORCH_GLOO if backend == Backend.GLOO else backend
+    comm = CommunicatorHandle(actors, name, registration_backend)
     manager.add_remote_communicator(comm)
     return comm
 
@@ -205,10 +207,15 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     group = manager.remove_remote_communicator(name)
     if group is not None:
         destroy_tasks = [
-            actor.__ray_call__.remote(_do_destroy_collective_group, name)
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                _do_destroy_collective_group, name
+            )
             for actor in group.actors
         ]
-        ray.get(destroy_tasks)
+        try:
+            ray.get(destroy_tasks)
+        except ray.exceptions.ActorDiedError:
+            pass
     else:
         raise ValueError(f"No group with name {name} found.")
 

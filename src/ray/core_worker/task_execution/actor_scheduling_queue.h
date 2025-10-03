@@ -31,7 +31,7 @@
 #include "ray/core_worker/task_execution/scheduling_queue.h"
 #include "ray/core_worker/task_execution/scheduling_util.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -73,6 +73,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() override;
+
+  /// Cancel all pending (not yet accepted/executing) requests in the queue.
+  void CancelAllPending(const Status &status) override;
 
  private:
   /// Accept the given InboundRequest or reject it if a task id is canceled via

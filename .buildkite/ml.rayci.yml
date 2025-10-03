@@ -76,6 +76,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 3
         --only-tags train_v2
+        --except-tags gpu_only
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: {{matrix.python}} tests ({{matrix.worker_id}})"

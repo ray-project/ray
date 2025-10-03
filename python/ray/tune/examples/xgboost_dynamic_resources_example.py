@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 CHECKPOINT_FILENAME = "booster-checkpoint.json"
 
 
-def get_best_model_checkpoint(best_result: "ray.train.Result"):
+def get_best_model_checkpoint(best_result: "ray.tune.Result"):
     best_bst = TuneReportCheckpointCallback.get_model(
         best_result.checkpoint, filename=CHECKPOINT_FILENAME
     )

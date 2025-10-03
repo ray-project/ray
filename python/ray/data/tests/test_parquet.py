@@ -601,7 +601,45 @@ def test_parquet_read_partitioned_explicit(
     ]
 
 
-def test_proper_projection_for_partitioned_datasets(temp_dir):
+def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir):
+    path = "example://iris.parquet"
+
+    # Test projection from read_parquet
+    ds = ray.data.read_parquet(path, columns=["variety"])
+
+    schema = ds.schema()
+
+    assert ["variety"] == schema.base_schema.names
+    assert ds.count() == 150
+
+    # Test projection pushed down into read op
+    ds = ray.data.read_parquet(path).select_columns("variety")
+
+    assert ds._plan.explain().strip() == (
+        "-------- Logical Plan --------\n"
+        "Project\n"
+        "+- ReadParquet\n"
+        "-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]"
+    )
+
+    # Assert schema being appropriately projected
+    schema = ds.schema()
+    assert ["variety"] == schema.base_schema.names
+
+    assert ds.count() == 150
+
+    # Assert empty projection is reading no data
+    ds = ray.data.read_parquet(path).select_columns([])
+
+    summary = ds.materialize()._plan.stats().to_summary()
+
+    assert "ReadParquet" in summary.base_name
+    assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
+
+
+def test_projection_pushdown_partitioned(ray_start_regular_shared, temp_dir):
     ds = ray.data.read_parquet("example://iris.parquet").materialize()
 
     partitioned_ds_path = f"{temp_dir}/partitioned_iris"
@@ -625,6 +663,18 @@ def test_proper_projection_for_partitioned_datasets(temp_dir):
     assert ["variety"] == partitioned_ds.take_batch(batch_format="pyarrow").column_names
 
     assert ds.count() == partitioned_ds.count()
+
+
+def test_projection_pushdown_on_count(ray_start_regular_shared, temp_dir):
+    path = "example://iris.parquet"
+
+    # Test reading full dataset
+    # ds = ray.data.read_parquet(path).materialize()
+
+    # Test projection from read_parquet
+    num_rows = ray.data.read_parquet(path).count()
+
+    assert num_rows == 150
 
 
 def test_parquet_read_with_udf(

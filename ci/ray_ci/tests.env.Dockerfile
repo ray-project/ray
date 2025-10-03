@@ -9,8 +9,9 @@ ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
 ENV CXX=clang++-12
-# Disabling C++ API build to speed up CI
-# Only needed for java tests where we override this.
+
+# Disable C++ API/worker building by default on CI.
+# To use C++ API/worker, set BUILD_TYPE to "multi-lang".
 ENV RAY_DISABLE_EXTRA_CPP=1
 
 RUN mkdir /rayci
@@ -22,7 +23,7 @@ RUN <<EOF
 
 set -euo pipefail
 
-if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
+if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   # Disables uploading cache when it is read-only.
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
@@ -68,10 +69,11 @@ if [[ "$BUILD_TYPE" == "debug" ]]; then
 elif [[ "$BUILD_TYPE" == "asan" ]]; then
   pip install -v -e python/
   bazel run $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:gen_ray_pkg
+elif [[ "$BUILD_TYPE" == "multi-lang" ]]; then
+  RAY_DISABLE_EXTRA_CPP=0 RAY_INSTALL_JAVA=1 pip install -v -e python/
 elif [[ "$BUILD_TYPE" == "java" ]]; then
   bash java/build-jar-multiplatform.sh linux
-  # Java tests need the C++ API for multi-langauge worker tests.
-  RAY_DISABLE_EXTRA_CPP=0 RAY_INSTALL_JAVA=1 pip install -v -e python/
+  RAY_INSTALL_JAVA=1 pip install -v -e python/
 else
   pip install -v -e python/
 fi

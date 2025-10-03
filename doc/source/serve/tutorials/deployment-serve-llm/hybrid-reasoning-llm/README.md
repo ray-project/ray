@@ -10,6 +10,11 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy a hybrid reasoning LLM
 
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fhybrid-reasoning-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 A hybrid reasoning model provides flexibility by allowing you to enable or disable reasoning as needed. You can use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
 
 This tutorial deploys a hybrid reasoning LLM using Ray Serve LLM.  
@@ -130,9 +135,10 @@ llm_config = LLMConfig(
         model_id="my-qwen-3-32b",
         model_source="Qwen/Qwen3-32B",
     ),
-    accelerator_type="A100-40G",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
+            # Increase number of replicas for higher throughput/concurrency.
             min_replicas=1,
             max_replicas=2,
         )
@@ -140,7 +146,8 @@ llm_config = LLMConfig(
     ### Uncomment if your model is gated and needs your Hugging Face token to access it.
     # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
-        tensor_parallel_size=8, max_model_len=32768, reasoning_parser="qwen3"
+        # 4 GPUs is enough but you can increase tensor_parallel_size to fit larger models.
+        tensor_parallel_size=4, max_model_len=32768, reasoning_parser="qwen3"
     ),
 )
 app = build_openai_app({"llm_configs": [llm_config]})
@@ -213,7 +220,7 @@ from openai import OpenAI
 API_KEY = "FAKE_KEY"
 BASE_URL = "http://localhost:8000"
 
-client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example: Complex query with thinking process
 response = client.chat.completions.create(
@@ -259,7 +266,7 @@ from openai import OpenAI
 API_KEY = "FAKE_KEY"
 BASE_URL = "http://localhost:8000"
 
-client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example: Complex query with thinking process
 response = client.chat.completions.create(
@@ -310,7 +317,7 @@ from openai import OpenAI
 API_KEY = "FAKE_KEY"
 BASE_URL = "http://localhost:8000"
 
-client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example: Complex query with thinking process
 response = client.chat.completions.create(

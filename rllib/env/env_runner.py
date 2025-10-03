@@ -228,7 +228,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 raise e
 
     def _try_env_step(self, actions):
-        """Tries stepping the env and - if an error orrurs - handles it gracefully."""
+        """Tries stepping the env and - if an error occurs - handles it gracefully."""
         try:
             with self.metrics.log_time(ENV_STEP_TIMER):
                 results = self.env.step(actions)
@@ -236,9 +236,13 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         except Exception as e:
             self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
 
+            # @OldAPIStack (config.restart_failed_sub_environments)
             if self.config.restart_failed_sub_environments:
                 if not isinstance(e, StepFailedRecreateEnvError):
-                    logger.exception("Stepping the env resulted in an error!")
+                    logger.exception(
+                        "Stepping the env resulted in an error! The original error "
+                        f"is: {e}"
+                    )
                 # Recreate the env.
                 self.make_env()
                 # And return that the stepping failed. The caller will then handle

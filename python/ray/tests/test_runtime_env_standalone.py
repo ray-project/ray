@@ -308,7 +308,7 @@ class TestNoUserInfoInLogs:
             "pip": [USER_SECRET],
             "env_vars": {USER_SECRET: USER_SECRET},
         }
-        ray.init(runtime_env=runtime_env)
+        ray.init(runtime_env=runtime_env, include_dashboard=True)
 
         # Run a function to ensure the runtime env is set up.
         @ray.remote

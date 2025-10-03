@@ -67,7 +67,6 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
-        "resources": None,
     }
 
 

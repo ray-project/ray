@@ -79,7 +79,33 @@ ray_cc_library(
     }),
 )
 
-# Private Targets.
+# Private targets
+#
+# TODO(#54703): This target builds the noop implementations.
+# There's a corressponding test that runs on Linux and Non-Linux
+# CI so breakages are caught in premerge before these targets are
+# cleaned up at the end of the resource isolation milestone 1
+# project.
+ray_cc_library(
+    name = "noop_cgroup_targets",
+    srcs = [
+        "noop_cgroup_manager.cc",
+        "noop_sysfs_cgroup_driver.cc",
+    ],
+    hdrs = [
+        "cgroup_manager.h",
+        "scoped_cgroup_operation.h",
+        "sysfs_cgroup_driver.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":cgroup_driver_interface",
+        ":cgroup_manager_interface",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
 ray_cc_library(
     name = "fake_cgroup_driver",
     hdrs = [

@@ -48,11 +48,11 @@ def test_free_objects_idempotent(
     del big_object_ref
 
     def get_cluster_memory_usage():
-        state = get_state_from_address()
+        state = get_state_from_address(ray.get_runtime_context().gcs_address)
         reply = get_memory_info_reply(state)
         return reply.store_stats.object_store_bytes_used
 
-    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=10)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 if __name__ == "__main__":

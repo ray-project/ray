@@ -1,10 +1,12 @@
 import logging
+import os
 import signal
 import sys
 import threading
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.usage import usage_lib
 from ray._private.ray_constants import env_bool
 from ray.actor import ActorHandle
@@ -38,6 +40,7 @@ from ray.train.v2._internal.callbacks.metrics import (
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
+    DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
     METRICS_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
 )
@@ -46,7 +49,7 @@ from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
-from ray.train.v2._internal.execution.local_mode_utils import LocalController
+from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
@@ -104,8 +107,15 @@ class DataParallelTrainer:
         if metadata is not None:
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
+        self._set_default_env_vars()
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+
+    def _set_default_env_vars(self):
+        if RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR not in os.environ:
+            os.environ[
+                RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
+            ] = DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE
 
     def _get_train_func(self) -> Callable[[], None]:
         return construct_train_func(

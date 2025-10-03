@@ -1,4 +1,5 @@
 import tree  # pip install dm_tree
+from typing_extensions import Self
 
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -40,9 +41,7 @@ class VPGConfig(AlgorithmConfig):
         self.num_env_runners = 1
 
     @override(AlgorithmConfig)
-    def training(
-        self, *, num_episodes_per_train_batch=NotProvided, **kwargs
-    ) -> "VPGConfig":
+    def training(self, *, num_episodes_per_train_batch=NotProvided, **kwargs) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -95,7 +94,7 @@ class VPGConfig(AlgorithmConfig):
 class VPG(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> VPGConfig:
         return VPGConfig()
 
     @override(Algorithm)

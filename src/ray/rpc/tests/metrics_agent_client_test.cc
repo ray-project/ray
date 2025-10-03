@@ -60,7 +60,8 @@ class TestableMetricsAgentClientImpl : public MetricsAgentClientImpl {
 class MetricsAgentClientTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    client_call_manager_ = std::make_unique<ClientCallManager>(io_service_, true);
+    client_call_manager_ = std::make_unique<ClientCallManager>(
+        io_service_, /*record_stats=*/true, /*local_address=*/"");
     client_ = std::make_unique<TestableMetricsAgentClientImpl>(
         "127.0.0.1", 8000, io_service_, *client_call_manager_, kCountToReturnOk);
   }
