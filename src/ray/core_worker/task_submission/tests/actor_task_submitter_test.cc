@@ -19,11 +19,11 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_count.h"
+#include "mock/ray/core_worker/reference_counter.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 
 namespace ray::core {
 
@@ -53,7 +53,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   return task;
 }
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
