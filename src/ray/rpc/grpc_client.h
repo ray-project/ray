@@ -16,7 +16,6 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <atomic>
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
@@ -142,18 +141,14 @@ class GrpcClient {
     testing::RpcFailure failure = skip_testing_intra_node_rpc_failure_
                                       ? testing::RpcFailure::None
                                       : testing::GetRpcFailure(call_name);
-    num_inflight_requests_++;
-    call_method_invoked_.store(true);
-
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.
       RAY_LOG(INFO) << "Inject RPC request failure for " << call_name;
       client_call_manager_.GetMainService().post(
-          [this, callback]() {
+          [callback]() {
             callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
                      Reply());
-            this->num_inflight_requests_--;
           },
           "RpcChaos");
     } else if (failure == testing::RpcFailure::Response) {
@@ -164,10 +159,9 @@ class GrpcClient {
           *stub_,
           prepare_async_function,
           request,
-          [this, callback](const Status &status, const Reply &) {
+          [callback](const Status &status, const Reply &) {
             callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
                      Reply());
-            this->num_inflight_requests_--;
           },
           std::move(call_name),
           method_timeout_ms);
@@ -176,14 +170,13 @@ class GrpcClient {
           *stub_,
           prepare_async_function,
           request,
-          [this, callback](const Status &status, Reply &&reply) {
-            callback(status, std::move(reply));
-            this->num_inflight_requests_--;
-          },
+          callback,
           std::move(call_name),
           method_timeout_ms);
       RAY_CHECK(call != nullptr);
     }
+
+    call_method_invoked_.store(true);
   }
 
   std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
@@ -195,7 +188,7 @@ class GrpcClient {
   /// for channel connectivity state machine.
   bool IsChannelIdleAfterRPCs() const {
     return (channel_->GetState(false) == GRPC_CHANNEL_IDLE) &&
-           call_method_invoked_.load() && num_inflight_requests_ == 0;
+           call_method_invoked_.load();
   }
 
  private:
@@ -207,8 +200,6 @@ class GrpcClient {
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
   bool skip_testing_intra_node_rpc_failure_ = false;
-  // Total number of inflight requests for this client
-  std::atomic<size_t> num_inflight_requests_ = 0;
 };
 
 }  // namespace rpc
