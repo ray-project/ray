@@ -1830,6 +1830,22 @@
   alert: default
 
 
+- name: torch_local_mode
+  group: Train tests
+  working_dir: train_tests/local_mode
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_gpu_2x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python torch_local_mode_launcher.py
+
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
