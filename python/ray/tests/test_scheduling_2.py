@@ -450,7 +450,9 @@ def test_node_affinity_label_selector_fail_on_unavailable(ray_start_cluster):
     target_node_id = ray.get(a1.get_node_id.remote())
 
     a2 = Actor.options(
-        label_selector={"ray.io/node-id": target_node_id},
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            target_node_id, soft=False, _fail_on_unavailable=True
+        )
     ).remote()
 
     with pytest.raises(ray.exceptions.ActorUnschedulableError):

@@ -39,8 +39,8 @@ class Actor(object):
 for _ in range(5):
     for node in nodes:
         assert ray.get(
-            f.options(label_selector={{"ray.io/node-id": node}}).remote() == 1
-        actor = Actor.options(label_selector={{"ray.io/node-id": node}}).remote()
+            f.options(label_selector={"ray.io/node-id": node}).remote()) == 1
+        actor = Actor.options(label_selector={"ray.io/node-id": node}).remote()
         assert ray.get(actor.method.remote()) == 1
 
 print("success")
