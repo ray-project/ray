@@ -8,6 +8,7 @@ import pytest
 from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.nixl_connector import (
     NixlConnectorBackend,
 )
+from ray.serve.llm import LLMConfig
 
 
 @pytest.fixture
@@ -21,11 +22,18 @@ class TestNixlConnectorBackend:
     def nixl_backend(self, engine_id: str):
         """Fixture for the NixlConnectorBackend."""
         return NixlConnectorBackend(
-            dict(
-                kv_connector="NixlConnector",
-                kv_role="kv_both",
-                engine_id=engine_id,
-            )
+            llm_config=LLMConfig(
+                model_loading_config=dict(
+                    model_id="Qwen/Qwen3-0.6B",
+                ),
+                engine_kwargs=dict(
+                    kv_transfer_config=dict(
+                        kv_connector="NixlConnector",
+                        kv_role="kv_both",
+                        engine_id=engine_id,
+                    )
+                )
+            ),
         )
 
     @pytest.mark.parametrize(
