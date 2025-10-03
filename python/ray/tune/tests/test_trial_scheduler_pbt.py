@@ -705,7 +705,7 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
                 resample_probability=resample_probability,
             )
             new_config, operations = scheduler._get_new_config(
-                None, DummyTrial(old_config)
+                None, DummyTrial("parent_id", config=old_config)
             )
 
             old_params = _filter_mutated_params_from_config(
