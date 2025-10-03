@@ -18,13 +18,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-    try:
-        from mcap.reader import Channel, Message, Schema
-    except ImportError:
-        # Fallback to Any if mcap is not available during type checking
-        Schema = Any
-        Channel = Any
-        Message = Any
+    from mcap.reader import Channel, Message, Schema
 
 logger = logging.getLogger(__name__)
 
