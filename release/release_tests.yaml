@@ -1770,6 +1770,21 @@
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
+- name: disk-pressure-minimal-repro
+  group: Train tests
+  working_dir: dummy_tests
+
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod: {}
+    cluster_compute: dummy_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python disk_pressure_minimal_repro.py
+
 - name: train_multinode_persistence
   group: Train tests
   working_dir: train_tests/multinode_persistence
