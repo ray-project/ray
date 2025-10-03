@@ -14,7 +14,6 @@ import ray
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.util.annotations import PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import psutil
 
