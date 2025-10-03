@@ -41,8 +41,7 @@ def create_llm_config(stream_batching_interval_ms: Optional[int] = None):
 @pytest.fixture(name="client")
 def create_oai_client(llm_config: LLMConfig):
     ServerDeployment = serve.deployment(LLMServer)
-    ingress_options = OpenAiIngress.get_deployment_options(
-        llm_configs=[llm_config])
+    ingress_options = OpenAiIngress.get_deployment_options(llm_configs=[llm_config])
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
     RouterDeployment = serve.deployment(ingress_cls).options(**ingress_options)
     server = ServerDeployment.bind(llm_config, engine_cls=MockVLLMEngine)
@@ -177,9 +176,8 @@ class TestOpenAiIngress:
                 ),
             )
         ]
-        
-        ingress_options = OpenAiIngress.get_deployment_options(
-            llm_configs=llm_configs)
+
+        ingress_options = OpenAiIngress.get_deployment_options(llm_configs=llm_configs)
         ingress_deployment = serve.deployment(OpenAiIngress).options(**ingress_options)
         autoscaling_config = ingress_deployment._deployment_config.autoscaling_config
         assert autoscaling_config.min_replicas == 2
@@ -205,8 +203,7 @@ class TestOpenAiIngress:
                 },
             ),
         ]
-        ingress_options = OpenAiIngress.get_deployment_options(
-            llm_configs=llm_configs)
+        ingress_options = OpenAiIngress.get_deployment_options(llm_configs=llm_configs)
         ingress_deployment = serve.deployment(OpenAiIngress).options(**ingress_options)
         autoscaling_config = ingress_deployment._deployment_config.autoscaling_config
         assert autoscaling_config.min_replicas == 5

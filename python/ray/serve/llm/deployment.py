@@ -26,7 +26,7 @@ class LLMServer(InternalLLMServer):
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm import LLMConfig 
+            from ray.serve.llm import LLMConfig
             from ray.serve.llm.deployment import LLMServer
 
             # Configure the model

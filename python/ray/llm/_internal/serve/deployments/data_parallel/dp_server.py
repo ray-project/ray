@@ -4,6 +4,9 @@ from typing import Optional
 
 from ray import serve
 from ray.experimental.collective.util import get_address_and_port
+from ray.llm._internal.serve.configs.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+)
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
@@ -12,10 +15,6 @@ from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.runtime_context import get_runtime_context
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
-
-from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_MAX_ONGOING_REQUESTS,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +73,13 @@ class DPServer(LLMServer):
     # @classmethod
     # def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
     #     return serve.deployment(cls).options(**deployment_options)
-    
+
     @classmethod
-    def get_deployment_options(cls, llm_config: "LLMConfig", name_prefix: Optional[str] = None):
+    def get_deployment_options(
+        cls, llm_config: "LLMConfig", name_prefix: Optional[str] = None
+    ):
         deployment_options = super().get_deployment_options(llm_config, name_prefix)
-        
+
         dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
         if not (isinstance(dp_size, int) and dp_size > 0):
             raise ValueError(
@@ -106,7 +107,6 @@ class DPServer(LLMServer):
                 deployment_options["placement_group_strategy"] = "STRICT_PACK"
 
         return deployment_options
-        
 
 
 def build_dp_deployment(
@@ -131,10 +131,13 @@ def build_dp_deployment(
         dp_size=dp_size, dp_size_per_node=dp_size_per_node
     )
     deployment_options = DPServer.get_deployment_options(
-        llm_config, name_prefix=name_prefix)
+        llm_config, name_prefix=name_prefix
+    )
     if options_override:
         deployment_options.update(options_override)
 
-    return serve.deployment(DPServer).options(**deployment_options).bind(
-        llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
+    return (
+        serve.deployment(DPServer)
+        .options(**deployment_options)
+        .bind(llm_config=llm_config, dp_rank_assigner=dp_rank_assigner)
     )

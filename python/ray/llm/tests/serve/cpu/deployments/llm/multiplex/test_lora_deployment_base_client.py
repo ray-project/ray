@@ -63,12 +63,14 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
         )
     return llm_deployments
 
+
 def make_ingress_app(llm_deployments, **kwargs):
     ingress_options = OpenAiIngress.get_deployment_options()
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
-    return serve.deployment(ingress_cls).options(**ingress_options).bind(
-        llm_deployments=llm_deployments,
-        **kwargs
+    return (
+        serve.deployment(ingress_cls)
+        .options(**ingress_options)
+        .bind(llm_deployments=llm_deployments, **kwargs)
     )
 
 
@@ -124,9 +126,9 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
             "max_request_context_length": 4096,
         }
 
-
     app = make_ingress_app(
-        llm_deployments, _get_lora_model_metadata_func=fake_get_lora_model_metadata)
+        llm_deployments, _get_lora_model_metadata_func=fake_get_lora_model_metadata
+    )
     router_handle = serve.run(app)
 
     lora_model_config = await router_handle.model.remote(lora_model)

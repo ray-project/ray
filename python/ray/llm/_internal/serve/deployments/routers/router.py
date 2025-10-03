@@ -11,9 +11,9 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Type,
     TypeVar,
     Union,
-    Type,
 )
 
 from fastapi import FastAPI, HTTPException, status
@@ -117,12 +117,15 @@ BatchedStreamResponseType = List[StreamResponseType]
 
 DEFAULT_ENDPOINTS = {
     "models": lambda app: app.get("/v1/models", response_model=ModelList),
-    "model_data": lambda app: app.get("/v1/models/{model:path}", response_model=ModelCard),
+    "model_data": lambda app: app.get(
+        "/v1/models/{model:path}", response_model=ModelCard
+    ),
     "completions": lambda app: app.post("/v1/completions"),
     "chat": lambda app: app.post("/v1/chat/completions"),
     "embeddings": lambda app: app.post("/v1/embeddings"),
     "score": lambda app: app.post("/v1/score"),
 }
+
 
 def init() -> FastAPI:
     _fastapi_router_app = FastAPI(lifespan=metrics_lifespan)
@@ -159,52 +162,57 @@ def init() -> FastAPI:
     return _fastapi_router_app
 
 
-def make_fastapi_ingress(cls: Type, *, endpoint_map: Optional[Dict[str, Callable[[FastAPI], Callable]]] = None, app: Optional[FastAPI] = None):
+def make_fastapi_ingress(
+    cls: Type,
+    *,
+    endpoint_map: Optional[Dict[str, Callable[[FastAPI], Callable]]] = None,
+    app: Optional[FastAPI] = None,
+):
     """
     Create a Ray Serve ingress deployment from a class and endpoint mapping.
-    
+
     Args:
         cls: The class to convert into an ingress deployment
         endpoint_map: Dictionary mapping method names to FastAPI route decorators.
             Each value is a lambda that takes a FastAPI app and returns a route decorator.
-    
+
     Returns:
         A class decorated with @serve.ingress
-    
+
     Example:
         endpoint_map = {
             "increment": lambda app: app.post("/increment"),
             "get_counter": lambda app: app.get("/counter"),
         }
-        
+
         # With additional FastAPI parameters:
         endpoint_map = {
             "increment": lambda app: app.post("/increment", status_code=201, tags=["counter"]),
             "get_counter": lambda app: app.get("/counter", response_model=CounterResponse),
         }
     """
-    
+
     if app is None:
         app = init()
-        
+
     if endpoint_map is None:
         endpoint_map = DEFAULT_ENDPOINTS
-    
-    
+
     # Apply route decorators to the class methods
     for method_name, route_factory in endpoint_map.items():
         # Get the route decorator from the lambda
         route_decorator = route_factory(app)
-        
+
         # Get the method from the class and apply the decorator
         method = getattr(cls, method_name)
         decorated_method = route_decorator(method)
-        
+
         # Set the decorated method back on the class
         setattr(cls, method_name, decorated_method)
-    
+
     # Apply the serve.ingress decorator
     return serve.ingress(app)(cls)
+
 
 def _apply_openai_json_format(
     response: Union[StreamResponseType, BatchedStreamResponseType]
@@ -646,8 +654,8 @@ class OpenAiIngress(DeploymentProtocol):
 
     #     return deployment_cls
 
-    # TODO: simplify this logic. 
-    # 1. Do we need name_prefix? 
+    # TODO: simplify this logic.
+    # 1. Do we need name_prefix?
     # 2. Do we need to automatically infer, the min, initial, and max replicas?
     # 3. Do we need the llm_configs? Or should we simply document the ingress config best practices?
     # 4. Maybe these defaults should go to the specific builder example.
@@ -658,9 +666,12 @@ class OpenAiIngress(DeploymentProtocol):
     #                     'target_ongoing_requests': 1000000000},
     # 'max_ongoing_requests': 1000000000}
     @classmethod
-    def get_deployment_options(cls, llm_configs: Optional[List[LLMConfig]] = None, name_prefix: Optional[str] = None) -> Dict[str, Any]:
-        
-        
+    def get_deployment_options(
+        cls,
+        llm_configs: Optional[List[LLMConfig]] = None,
+        name_prefix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+
         min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
         initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
         max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
@@ -705,7 +716,7 @@ class OpenAiIngress(DeploymentProtocol):
             max_replicas = num_ingress_replicas or int(
                 model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
-        
+
         default_deployment_options = {
             "autoscaling_config": {
                 "min_replicas": min_replicas,
@@ -715,5 +726,5 @@ class OpenAiIngress(DeploymentProtocol):
             },
             "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
         }
-        
+
         return default_deployment_options

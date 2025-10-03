@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, AsyncGenerator, Union, List, TYPE_CHECKING, Dict, Any
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (
@@ -11,14 +11,14 @@ if TYPE_CHECKING:
     )
     from ray.llm._internal.serve.configs.server_models import LLMConfig
 
+
 class DeploymentProtocol(ABC):
-    
     @classmethod
     @abstractmethod
     def get_deployment_options(cls, **kwargs) -> Dict[str, Any]:
         """Get the default deployment options for the this deployment."""
         pass
-    
+
 
 class LLMServerProtocol(DeploymentProtocol):
     """

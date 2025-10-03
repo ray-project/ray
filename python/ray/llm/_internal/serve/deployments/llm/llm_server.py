@@ -1,12 +1,10 @@
 import asyncio
 import copy
 import os
-from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
-    Dict,
     List,
     Optional,
     Type,
@@ -23,10 +21,10 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MAX_REPLICAS,
     DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
-    ENABLE_WORKER_PROCESS_SETUP_HOOK,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -34,6 +32,7 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
 from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
@@ -45,7 +44,6 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
 )
-from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (
@@ -62,7 +60,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
-
 
 
 class LLMServer(LLMServerProtocol):
@@ -423,10 +420,12 @@ class LLMServer(LLMServerProtocol):
     #     """
     #     deployment_options = deployment_options or {}
     #     return LLMDeployment.options(**deployment_options)
-    
-    # TODO: minimize the logic here. 
+
+    # TODO: minimize the logic here.
     @classmethod
-    def get_deployment_options(cls, llm_config: "LLMConfig", name_prefix: Optional[str] = None):
+    def get_deployment_options(
+        cls, llm_config: "LLMConfig", name_prefix: Optional[str] = None
+    ):
         engine_config = llm_config.get_engine_config()
         default_deployment_options = {
             "autoscaling_config": {
@@ -439,13 +438,13 @@ class LLMServer(LLMServerProtocol):
             "health_check_period_s": DEFAULT_HEALTH_CHECK_PERIOD_S,
             "health_check_timeout_s": DEFAULT_HEALTH_CHECK_TIMEOUT_S,
         }
-        
+
         deployment_options = copy.deepcopy(default_deployment_options)
-        
+
         # TODO (Kourosh): This might need to be hierarchically merged.
         deployment_options.update(llm_config.deployment_config)
-        
-        # Handle the ray_actor_options that could be passed in to 
+
+        # Handle the ray_actor_options that could be passed in to
         # deployment_options
         ray_actor_options = deployment_options.get("ray_actor_options", {})
         deployment_options["ray_actor_options"] = ray_actor_options
@@ -458,12 +457,15 @@ class LLMServer(LLMServerProtocol):
         if "memory" in ray_actor_options:
             replica_actor_resources["memory"] = ray_actor_options["memory"]
 
-        if "placement_group_bundles" in llm_config.deployment_config or "placement_group_strategy" in llm_config.deployment_config:
+        if (
+            "placement_group_bundles" in llm_config.deployment_config
+            or "placement_group_strategy" in llm_config.deployment_config
+        ):
             raise ValueError(
                 "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can overide the default values by setting the `placement_group_config` in the LLMConfig."
             )
-            
-        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a 
+
+        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
         # more generic place.
         pg_bundles = llm_config._merge_replica_actor_and_child_actor_bundles(
             engine_config.placement_bundles, replica_actor_resources
@@ -475,7 +477,7 @@ class LLMServer(LLMServerProtocol):
                 "placement_group_strategy": engine_config.placement_strategy,
             }
         )
-        
+
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env
         if ENABLE_WORKER_PROCESS_SETUP_HOOK:
@@ -492,14 +494,13 @@ class LLMServer(LLMServerProtocol):
         }
         deployment_options["ray_actor_options"] = ray_actor_options
 
-        
         # Set the name of the deployment config to map to the model ID.
         if "name" not in deployment_options:
             # TODO: Should this API be public? Does it belong to LLMConfig?
             deployment_options["name"] = llm_config._get_deployment_name()
         if name_prefix:
             deployment_options["name"] = name_prefix + deployment_options["name"]
-        
+
         return deployment_options
 
 

@@ -20,14 +20,17 @@ from ray.llm._internal.serve.configs.openai_api_models import (
 from ray.llm._internal.serve.configs.server_models import (
     parse_args as parse_llm_configs,
 )
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.deployments.routers.router import (
+    OpenAiIngress,
+    make_fastapi_ingress,
+)
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import (
     LLMConfig,
     build_llm_deployment,
 )
-from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress, make_fastapi_ingress
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 
 logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
@@ -207,9 +210,11 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             decode_server=decode_deployment,
         )
     )
-    
+
     ingress_options = OpenAiIngress.get_deployment_options()
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
-    return serve.deployment(ingress_cls).options(**ingress_options).bind(
-        llm_deployments=[proxy_server_deployment]
+    return (
+        serve.deployment(ingress_cls)
+        .options(**ingress_options)
+        .bind(llm_deployments=[proxy_server_deployment])
     )
