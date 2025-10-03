@@ -58,17 +58,6 @@ class TuneReportCheckpointCallback(RayReportCallback):
             ],
         )
 
-    Loading a model from a checkpoint reported by this callback.
-
-    .. testcode::
-        :skipif: True
-
-        from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
-
-        # Get a `Checkpoint` object that is saved by the callback during training.
-        result = trainer.fit()
-        booster = TuneReportCheckpointCallback.get_model(result.checkpoint)
-
     """
 
     @contextmanager
