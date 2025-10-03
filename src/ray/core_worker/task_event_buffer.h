@@ -559,6 +559,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Client to the GCS used to push profile events to it.
   std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
+  /// Client call manager used to make gRPC calls.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
   /// Client to the event aggregator used to push ray events to it.
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
 

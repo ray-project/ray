@@ -430,10 +430,10 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       session_name_(session_name) {
-  auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
       io_service_, /*record_stats=*/false, node_ip_address);
   event_aggregator_client_ = std::make_unique<rpc::EventAggregatorClientImpl>(
-      metrics_agent_port, *client_call_manager);
+      metrics_agent_port, *client_call_manager_);
 }
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
