@@ -199,7 +199,10 @@ def test_split_small(ray_start_regular_shared_2_cpus):
     assert not fail, fail
 
 
-def test_split_at_indices_simple(ray_start_regular_shared_2_cpus):
+def test_split_at_indices_simple(ray_start_regular_shared_2_cpus, restore_data_context):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
@@ -263,6 +266,7 @@ def test_split_at_indices_coverage(
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
 
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
     DataContext.get_current().execution_options.preserve_order = True
 
     ds = ray.data.range(20, override_num_blocks=num_blocks)
@@ -291,8 +295,11 @@ def test_split_at_indices_coverage(
     ],  # Selected three-split cases
 )
 def test_split_at_indices_coverage_complete(
-    ray_start_regular_shared_2_cpus, num_blocks, indices
+    ray_start_regular_shared_2_cpus, num_blocks, indices, restore_data_context
 ):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
     ds = ray.data.range(10, override_num_blocks=num_blocks)

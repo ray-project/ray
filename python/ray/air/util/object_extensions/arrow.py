@@ -7,14 +7,19 @@ from packaging.version import parse as parse_version
 
 import ray.air.util.object_extensions.pandas
 from ray._common.serialization import pickle_dumps
-from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray.util.annotations import PublicAPI
+
+# First, assert Arrow version is w/in expected bounds
+_check_pyarrow_version()
+
 
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 
 PYARROW_VERSION = get_pyarrow_version()
 
 
+# TODO delete, since min supported pyarrow >= 9.0
 def _object_extension_type_allowed() -> bool:
     return (
         PYARROW_VERSION is not None
@@ -108,7 +113,7 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
             )
             all_dumped_bytes.append(dumped_bytes)
         arr = pa.array(all_dumped_bytes, type=type_.storage_type)
-        return ArrowPythonObjectArray.from_storage(type_, arr)
+        return type_.wrap_array(arr)
 
     def to_numpy(
         self, zero_copy_only: bool = False, writable: bool = False

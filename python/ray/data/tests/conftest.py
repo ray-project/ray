@@ -405,26 +405,6 @@ def ds_numpy_list_of_ndarray_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
 
 
-@pytest.fixture(params=["5.0.0"])
-def unsupported_pyarrow_version(request):
-    orig_version = pa.__version__
-    pa.__version__ = request.param
-    # Unset pyarrow version cache.
-    import ray._private.arrow_utils
-
-    ray._private.arrow_utils._PYARROW_INSTALLED = None
-    ray._private.arrow_utils._PYARROW_VERSION = None
-    yield request.param
-    pa.__version__ = orig_version
-
-
-@pytest.fixture
-def disable_pyarrow_version_check():
-    os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
-    yield
-    del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
-
-
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
 def op_two_block():

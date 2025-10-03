@@ -668,8 +668,17 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
-  Process child(
-      argv.data(), io_service_, ec, /*decouple=*/false, env, false, add_to_cgroup_hook_);
+  // Workers should be placed into their own process groups (if enabled) to enable
+  // per-worker cleanup via killpg on worker death.
+  const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
+  Process child(argv.data(),
+                io_service_,
+                ec,
+                /*decouple=*/false,
+                env,
+                /*pipe_to_stdin=*/false,
+                add_to_cgroup_hook_,
+                new_process_group);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
@@ -794,6 +803,20 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
+#if !defined(_WIN32)
+  // Save the worker's actual PGID at registration for safe cleanup later.
+  // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
+  // parent's PGID. We save whatever the OS reports and will validate again at cleanup.
+  pid_t pgid = -1;
+  errno = 0;
+  pgid = getpgid(pid);
+  if (pgid != -1) {
+    worker->SetSavedProcessGroupId(pgid);
+  } else {
+    RAY_LOG(WARNING) << "getpgid(" << pid
+                     << ") failed at registration: " << strerror(errno);
+  }
+#endif
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
   // should bind on a random port.

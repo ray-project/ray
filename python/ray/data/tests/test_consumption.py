@@ -1571,48 +1571,22 @@ def test_pandas_block_select():
 @pytest.mark.skipif(
     sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
 )
-def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
+def test_unsupported_pyarrow_versions_check(shutdown_only):
     ray.shutdown()
 
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
+    ray.init(runtime_env={"pip": ["pyarrow==8.0.0"]})
 
     @ray.remote
     def should_error():
         _check_pyarrow_version()
 
-    with pytest.raises(ImportError):
+    with pytest.raises(
+        Exception,
+        match=r".*Dataset requires pyarrow >= 9.0.0, but 8.0.0 is installed.*",
+    ):
         ray.get(should_error.remote())
-
-
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
-)
-def test_unsupported_pyarrow_versions_check_disabled(
-    shutdown_only,
-    unsupported_pyarrow_version,
-    disable_pyarrow_version_check,
-):
-    ray.shutdown()
-
-    # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
-    # initial pyarrow use when the version check is disabled.
-    ray.init(
-        runtime_env={
-            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
-            "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
-        },
-    )
-
-    @ray.remote
-    def should_pass():
-        _check_pyarrow_version()
-
-    try:
-        ray.get(should_pass.remote())
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
 
 def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
@@ -1938,8 +1912,11 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
         mock_logger.assert_not_called()
 
 
-def test_per_task_row_limit_basic(ray_start_regular_shared):
+def test_per_task_row_limit_basic(ray_start_regular_shared, restore_data_context):
     """Test basic per-block limiting functionality."""
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     # Simple test that should work with the existing range datasource
     ds = ray.data.range(1000, override_num_blocks=10).limit(50)
     result = ds.take_all()
@@ -2009,8 +1986,13 @@ def test_per_task_row_limit_multiple_blocks_per_task(ray_start_regular_shared):
     assert all_ids == list(range(70))
 
 
-def test_per_task_row_limit_larger_than_data(ray_start_regular_shared):
+def test_per_task_row_limit_larger_than_data(
+    ray_start_regular_shared, restore_data_context
+):
     """Test per-block limiting when limit is larger than available data."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     total_rows = 50
     ds = ray.data.range(total_rows, override_num_blocks=5)
@@ -2021,8 +2003,13 @@ def test_per_task_row_limit_larger_than_data(ray_start_regular_shared):
     assert [row["id"] for row in result] == list(range(total_rows))
 
 
-def test_per_task_row_limit_exact_block_boundary(ray_start_regular_shared):
+def test_per_task_row_limit_exact_block_boundary(
+    ray_start_regular_shared, restore_data_context
+):
     """Test per-block limiting when limit exactly matches block boundaries."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     rows_per_block = 20
     num_blocks = 5
@@ -2037,8 +2024,13 @@ def test_per_task_row_limit_exact_block_boundary(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("limit", [1, 5, 10, 25, 50, 99])
-def test_per_task_row_limit_various_sizes(ray_start_regular_shared, limit):
+def test_per_task_row_limit_various_sizes(
+    ray_start_regular_shared, limit, restore_data_context
+):
     """Test per-block limiting with various limit sizes."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     total_rows = 100
     num_blocks = 10
@@ -2052,8 +2044,13 @@ def test_per_task_row_limit_various_sizes(ray_start_regular_shared, limit):
     assert [row["id"] for row in result] == list(range(expected_len))
 
 
-def test_per_task_row_limit_with_transformations(ray_start_regular_shared):
+def test_per_task_row_limit_with_transformations(
+    ray_start_regular_shared, restore_data_context
+):
     """Test that per-block limiting works correctly with transformations."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     # Test with map operation after limit
     ds = ray.data.range(100, override_num_blocks=10)
@@ -2072,8 +2069,11 @@ def test_per_task_row_limit_with_transformations(ray_start_regular_shared):
     assert [row["doubled"] for row in result] == [i * 2 for i in range(20)]
 
 
-def test_per_task_row_limit_with_filter(ray_start_regular_shared):
+def test_per_task_row_limit_with_filter(ray_start_regular_shared, restore_data_context):
     """Test per-block limiting with filter operations."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     # Filter before limit - per-block limiting should still work at read level
     ds = ray.data.range(200, override_num_blocks=10)
@@ -2111,8 +2111,11 @@ def test_per_task_row_limit_readtask_properties(ray_start_regular_shared):
     assert task_with_limit.per_task_row_limit == 10
 
 
-def test_per_task_row_limit_edge_cases(ray_start_regular_shared):
+def test_per_task_row_limit_edge_cases(ray_start_regular_shared, restore_data_context):
     """Test per-block limiting edge cases."""
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
 
     # Test with single row
     ds = ray.data.range(1, override_num_blocks=1).limit(1)

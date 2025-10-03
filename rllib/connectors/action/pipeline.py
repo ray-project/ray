@@ -1,6 +1,6 @@
 import logging
-from typing import Any, List
 from collections import defaultdict
+from typing import Any, List
 
 from ray.rllib.connectors.connector import (
     ActionConnector,
@@ -12,7 +12,6 @@ from ray.rllib.connectors.registry import get_connector, register_connector
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.timer import _Timer
-
 
 logger = logging.getLogger(__name__)
 

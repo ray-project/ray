@@ -33,9 +33,6 @@
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/gcs/pubsub_handler.h"
 #include "ray/gcs/runtime_env_handler.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/store_client/observable_store_client.h"
-#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
@@ -83,6 +80,7 @@ class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 class GcsTaskManager;
 class GcsAutoscalerStateManager;
+struct RedisClientOptions;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -202,10 +200,7 @@ class GcsServer {
   StorageType GetStorageType() const;
 
   /// Print debug info periodically.
-  std::string GetDebugState() const;
-
-  /// Dump the debug info to debug_state_gcs.txt.
-  void DumpDebugStateToFile() const;
+  void PrintDebugState() const;
 
   /// Collect stats from each module.
   void RecordMetrics() const;
@@ -215,9 +210,6 @@ class GcsServer {
   /// Expected to be idempotent while server is up.
   /// Makes several InternalKV calls, all in continuation.io_context().
   void GetOrGenerateClusterId(Postable<void(ClusterID cluster_id)> continuation);
-
-  /// Print the asio event loop stats for debugging.
-  void PrintAsioStats();
 
   RedisClientOptions GetRedisClientOptions();
 

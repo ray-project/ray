@@ -22,7 +22,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"

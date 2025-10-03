@@ -20,7 +20,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_count.h"
+#include "mock/ray/core_worker/reference_counter.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"

@@ -29,7 +29,7 @@ ray_cc_library(
         ":object_recovery_manager",
         ":plasma_store_provider",
         ":profile_event",
-        ":reference_count",
+        ":reference_counter",
         ":shutdown_coordinator",
         ":task_event_buffer",
         "//src/ray/common:protobuf_utils",
@@ -180,7 +180,7 @@ ray_cc_library(
         ":actor_handle",
         ":common",
         ":core_worker_context",
-        ":reference_count",
+        ":reference_counter",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:task_common",
@@ -193,9 +193,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "reference_count",
-    srcs = ["reference_count.cc"],
-    hdrs = ["reference_count.h"],
+    name = "reference_counter",
+    srcs = ["reference_counter.cc"],
+    hdrs = ["reference_counter.h"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/core_worker:lease_policy",
@@ -257,7 +257,7 @@ ray_cc_library(
     hdrs = ["store_provider/memory_store/memory_store.h"],
     deps = [
         ":core_worker_context",
-        ":reference_count",
+        ":reference_counter",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -366,7 +366,7 @@ ray_cc_library(
     hdrs = ["object_recovery_manager.h"],
     deps = [
         ":memory_store",
-        ":reference_count",
+        ":reference_counter",
         ":task_manager",
         "//src/ray/common:id",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
@@ -393,7 +393,7 @@ ray_cc_library(
     deps = [
         ":common",
         ":core_worker_context",
-        ":reference_count",
+        ":reference_counter",
         "//src/ray/common:buffer",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
