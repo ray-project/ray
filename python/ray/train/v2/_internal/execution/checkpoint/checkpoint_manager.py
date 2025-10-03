@@ -2,12 +2,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from ray._common.pydantic_compat import (
-    BaseModel,
-    from_json,
-    model_dump_json,
-    obj_to_model,
-)
+from ray._common.pydantic_compat import BaseModel, model_dump_json, model_validate_json
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
@@ -236,8 +231,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     def _load_state(self, json_state: str):
         """Load the checkpoint manager state from a JSON str."""
         try:
-            json_dict = from_json(json_state)
-            manager_snapshot = obj_to_model(_CheckpointManagerState, json_dict)
+            manager_snapshot = model_validate_json(_CheckpointManagerState, json_state)
         except Exception as e:
             raise CheckpointManagerInitializationError(repr(e)) from e
         self._assert_checkpoints_exist()
