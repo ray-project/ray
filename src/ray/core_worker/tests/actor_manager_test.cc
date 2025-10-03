@@ -17,12 +17,13 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/reference_count.h"
 #include "ray/common/test_utils.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 
 namespace ray {
@@ -30,23 +31,67 @@ namespace core {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
+class MockActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
  public:
-  explicit MockActorInfoAccessor(gcs::GcsClient *client)
-      : gcs::ActorInfoAccessor(client) {}
+  MockActorInfoAccessor() = default;
 
   ~MockActorInfoAccessor() {}
+
+  // Stub implementations for interface methods not used by this test
+  void AsyncGet(const ActorID &,
+                const gcs::OptionalItemCallback<rpc::ActorTableData> &) override {}
+  void AsyncGetAllByFilter(const std::optional<ActorID> &,
+                           const std::optional<JobID> &,
+                           const std::optional<std::string> &,
+                           const gcs::MultiItemCallback<rpc::ActorTableData> &,
+                           int64_t = -1) override {}
+  void AsyncGetByName(const std::string &,
+                      const std::string &,
+                      const gcs::OptionalItemCallback<rpc::ActorTableData> &,
+                      int64_t = -1) override {}
+  Status SyncGetByName(const std::string &,
+                       const std::string &,
+                       rpc::ActorTableData &,
+                       rpc::TaskSpec &) override {
+    return Status::OK();
+  }
+  Status SyncListNamedActors(
+      bool,
+      const std::string &,
+      std::vector<std::pair<std::string, std::string>> &) override {
+    return Status::OK();
+  }
+  void AsyncReportActorOutOfScope(const ActorID &,
+                                  uint64_t,
+                                  const gcs::StatusCallback &,
+                                  int64_t = -1) override {}
+  void AsyncRegisterActor(const TaskSpecification &,
+                          const gcs::StatusCallback &,
+                          int64_t = -1) override {}
+  void AsyncRestartActorForLineageReconstruction(const ActorID &,
+                                                 uint64_t,
+                                                 const gcs::StatusCallback &,
+                                                 int64_t = -1) override {}
+  Status SyncRegisterActor(const TaskSpecification &) override { return Status::OK(); }
+  void AsyncKillActor(
+      const ActorID &, bool, bool, const gcs::StatusCallback &, int64_t = -1) override {}
+  void AsyncCreateActor(const TaskSpecification &,
+                        const rpc::ClientCallback<rpc::CreateActorReply> &) override {}
 
   Status AsyncSubscribe(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
+      const gcs::StatusCallback &done) override {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
     subscribe_finished_callback_map_[actor_id] = done;
     actor_subscribed_times_[actor_id]++;
     return Status::OK();
   }
+
+  Status AsyncUnsubscribe(const ActorID &) override { return Status::OK(); }
+  void AsyncResubscribe() override {}
+  bool IsActorUnsubscribed(const ActorID &) override { return false; }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,
                                        const rpc::ActorTableData &actor_data) {
@@ -133,7 +178,7 @@ class ActorManagerTest : public ::testing::Test {
                  /*allow_cluster_id_nil=*/true,
                  /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(new MockGcsClient(options_)),
-        actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
+        actor_info_accessor_(new MockActorInfoAccessor()),
         actor_task_submitter_(new MockActorTaskSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
     gcs_client_mock_->Init(actor_info_accessor_);

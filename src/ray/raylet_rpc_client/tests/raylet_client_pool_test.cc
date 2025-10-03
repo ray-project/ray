@@ -51,11 +51,10 @@ Address CreateRandomAddress(const std::string &addr) {
 
 }  // namespace
 
-class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
+class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessorInterface {
  public:
   explicit MockGcsClientNodeAccessor(bool is_subscribed_to_node_change)
-      : gcs::NodeInfoAccessor(nullptr),
-        is_subscribed_to_node_change_(is_subscribed_to_node_change) {}
+      : is_subscribed_to_node_change_(is_subscribed_to_node_change) {}
 
   bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
@@ -67,6 +66,48 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
                int64_t,
                const std::vector<NodeID> &),
               (override));
+
+  // Stub implementations for interface methods not used by this test
+  Status RegisterSelf(const rpc::GcsNodeInfo &, const gcs::StatusCallback &) override {
+    return Status::OK();
+  }
+  void UnregisterSelf(const rpc::NodeDeathInfo &, std::function<void()>) override {}
+  const NodeID &GetSelfId() const override {
+    static NodeID id;
+    return id;
+  }
+  const rpc::GcsNodeInfo &GetSelfInfo() const override {
+    static rpc::GcsNodeInfo info;
+    return info;
+  }
+  void AsyncRegister(const rpc::GcsNodeInfo &, const gcs::StatusCallback &) override {}
+  void AsyncCheckSelfAlive(const std::function<void(Status, bool)> &, int64_t) override {}
+  void AsyncCheckAlive(const std::vector<NodeID> &,
+                       int64_t,
+                       const gcs::MultiItemCallback<bool> &) override {}
+  void AsyncSubscribeToNodeChange(std::function<void(NodeID, const rpc::GcsNodeInfo &)>,
+                                  gcs::StatusCallback) override {}
+  const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
+    static absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> map;
+    return map;
+  }
+  StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCache(
+      int64_t,
+      std::optional<rpc::GcsNodeInfo::GcsNodeState> = std::nullopt,
+      std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> = std::nullopt) override {
+    return std::vector<rpc::GcsNodeInfo>{};
+  }
+  Status CheckAlive(const std::vector<NodeID> &, int64_t, std::vector<bool> &) override {
+    return Status::OK();
+  }
+  Status DrainNodes(const std::vector<NodeID> &,
+                    int64_t,
+                    std::vector<std::string> &) override {
+    return Status::OK();
+  }
+  bool IsNodeDead(const NodeID &) const override { return false; }
+  void AsyncResubscribe() override {}
+  void HandleNotification(rpc::GcsNodeInfo &&) override {}
 
  private:
   bool is_subscribed_to_node_change_;

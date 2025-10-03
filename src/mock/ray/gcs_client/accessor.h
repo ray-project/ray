@@ -13,7 +13,18 @@
 // limitations under the License.
 #pragma once
 #include "gmock/gmock.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/autoscaler_state_accessor.h"
+#include "ray/gcs_rpc_client/accessors/error_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor.h"
+#include "ray/gcs_rpc_client/accessors/job_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/node_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/node_resource_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/placement_group_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/publisher_accessor.h"
+#include "ray/gcs_rpc_client/accessors/runtime_env_accessor.h"
+#include "ray/gcs_rpc_client/accessors/task_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/worker_info_accessor.h"
 
 namespace ray {
 namespace gcs {
@@ -331,6 +342,82 @@ class MockInternalKVAccessor : public InternalKVAccessor {
   MOCK_METHOD(void,
               AsyncGetInternalConfig,
               (const OptionalItemCallback<std::string> &callback),
+              (override));
+};
+
+}  // namespace gcs
+}  // namespace ray
+
+namespace ray {
+namespace gcs {
+
+class MockRuntimeEnvAccessor : public RuntimeEnvAccessor {
+ public:
+  MOCK_METHOD(Status,
+              PinRuntimeEnvUri,
+              (const std::string &uri, int expiration_s, int64_t timeout_ms),
+              (override));
+};
+
+}  // namespace gcs
+}  // namespace ray
+
+namespace ray {
+namespace gcs {
+
+class MockAutoscalerStateAccessor : public AutoscalerStateAccessor {
+ public:
+  MOCK_METHOD(Status,
+              RequestClusterResourceConstraint,
+              (int64_t timeout_ms,
+               (const std::vector<std::unordered_map<std::string, double>> &bundles),
+               (const std::vector<int64_t> &count_array)),
+              (override));
+  MOCK_METHOD(Status,
+              GetClusterResourceState,
+              (int64_t timeout_ms, std::string &serialized_reply),
+              (override));
+  MOCK_METHOD(Status,
+              GetClusterStatus,
+              (int64_t timeout_ms, std::string &serialized_reply),
+              (override));
+  MOCK_METHOD(Status,
+              ReportAutoscalingState,
+              (int64_t timeout_ms, const std::string &serialized_state),
+              (override));
+  MOCK_METHOD(Status,
+              DrainNode,
+              (const std::string &node_id,
+               int32_t reason,
+               const std::string &reason_message,
+               int64_t deadline_timestamp_ms,
+               int64_t timeout_ms,
+               bool &is_accepted,
+               std::string &rejection_reason_message),
+              (override));
+};
+
+}  // namespace gcs
+}  // namespace ray
+
+namespace ray {
+namespace gcs {
+
+class MockPublisherAccessor : public PublisherAccessor {
+ public:
+  MOCK_METHOD(Status,
+              PublishError,
+              (std::string key_id, rpc::ErrorTableData data, int64_t timeout_ms),
+              (override));
+  MOCK_METHOD(Status,
+              PublishLogs,
+              (std::string key_id, rpc::LogBatch data, int64_t timeout_ms),
+              (override));
+  MOCK_METHOD(void,
+              AsyncPublishNodeResourceUsage,
+              (std::string key_id,
+               std::string node_resource_usage_json,
+               const StatusCallback &done),
               (override));
 };
 

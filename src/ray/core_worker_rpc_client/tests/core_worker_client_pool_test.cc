@@ -23,6 +23,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/accessors/node_info_accessor.h"
 
 namespace ray {
 namespace rpc {

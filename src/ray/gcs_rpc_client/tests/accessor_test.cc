@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs_rpc_client/accessor.h"
-
 #include "gtest/gtest.h"
+#include "ray/gcs_rpc_client/accessors/node_info_accessor.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

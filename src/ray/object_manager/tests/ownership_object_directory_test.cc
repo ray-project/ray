@@ -26,7 +26,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/node_info_accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/pubsub/fake_subscriber.h"
 
@@ -105,7 +105,7 @@ class MockGcsClient : public gcs::GcsClient {
     node_accessor_ = std::move(node_info_accessor);
   }
 
-  gcs::NodeInfoAccessor &Nodes() {
+  gcs::NodeInfoAccessorInterface &Nodes() {
     RAY_CHECK(node_accessor_ != nullptr);
     return *node_accessor_;
   }
