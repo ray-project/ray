@@ -352,6 +352,9 @@ class ProcessorBuilder:
         Args:
             config: The processor config.
             override_stage_config_fn: Custom stages configurations.
+            **kwargs: Additional keyword arguments to pass through to the
+                registered builder function. The builder function must accept
+                these kwargs in its signature, otherwise a TypeError will be raised.
 
         Returns:
             The built processor.

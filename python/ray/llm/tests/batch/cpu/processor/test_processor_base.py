@@ -188,6 +188,110 @@ def test_builder():
     )
 
 
+def test_builder_kwargs_passthrough():
+    """Test that builder_kwargs are passed through correctly via build_llm_processor."""
+    from ray.data.llm import build_llm_processor
+
+    class DummyStatefulStageUDF(StatefulStageUDF):
+        async def udf(
+            self, batch: List[Dict[str, Any]]
+        ) -> AsyncIterator[Dict[str, Any]]:
+            for row in batch:
+                yield row
+
+    class DummyStage(StatefulStage):
+        fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
+        fn_constructor_kwargs: Dict[str, Any] = {}
+        map_batches_kwargs: Dict[str, Any] = {}
+
+    class TestBuilderKwargsProcessorConfig(ProcessorConfig):
+        pass
+
+    # Builder that accepts extra kwargs
+    def build_processor_with_kwargs(
+        config: ProcessorConfig,
+        preprocess=None,
+        postprocess=None,
+        custom_kwarg=None,
+        another_kwarg=None,
+    ) -> Processor:
+        stages = [
+            DummyStage(
+                fn_constructor_kwargs=dict(
+                    custom_kwarg=custom_kwarg,
+                    another_kwarg=another_kwarg,
+                ),
+                map_batches_kwargs=dict(concurrency=1),
+            )
+        ]
+        processor = Processor(
+            config, stages, preprocess=preprocess, postprocess=postprocess
+        )
+        return processor
+
+    ProcessorBuilder.register(
+        TestBuilderKwargsProcessorConfig, build_processor_with_kwargs
+    )
+
+    # Test passing builder_kwargs through build_llm_processor
+    config = TestBuilderKwargsProcessorConfig(batch_size=64)
+    processor = build_llm_processor(
+        config,
+        preprocess=lambda row: {"val": row["id"]},
+        postprocess=lambda row: {"result": row["val"]},
+        builder_kwargs=dict(
+            custom_kwarg="test_value",
+            another_kwarg=42,
+        ),
+    )
+    assert processor.list_stage_names() == ["DummyStage"]
+    stage = processor.get_stage_by_name("DummyStage")
+    assert stage.fn_constructor_kwargs["custom_kwarg"] == "test_value"
+    assert stage.fn_constructor_kwargs["another_kwarg"] == 42
+
+    # Test that unsupported kwargs raise TypeError
+    class TestBuilderNoKwargsProcessorConfig(ProcessorConfig):
+        pass
+
+    def build_processor_no_kwargs(
+        config: ProcessorConfig,
+        preprocess=None,
+        postprocess=None,
+    ) -> Processor:
+        stages = []
+        processor = Processor(
+            config, stages, preprocess=preprocess, postprocess=postprocess
+        )
+        return processor
+
+    ProcessorBuilder.register(
+        TestBuilderNoKwargsProcessorConfig, build_processor_no_kwargs
+    )
+
+    config_no_kwargs = TestBuilderNoKwargsProcessorConfig(batch_size=64)
+    with pytest.raises(TypeError, match="unsupported_kwarg"):
+        build_llm_processor(
+            config_no_kwargs,
+            builder_kwargs=dict(unsupported_kwarg="value"),
+        )
+
+    # Test that passing preprocess/postprocess in builder_kwargs raises ValueError
+    config_conflict = TestBuilderKwargsProcessorConfig(batch_size=64)
+    with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
+        build_llm_processor(
+            config_conflict,
+            preprocess=lambda row: {"val": row["id"]},
+            builder_kwargs=dict(preprocess=lambda row: {"other": row["id"]}),
+        )
+
+    with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
+        build_llm_processor(
+            config_conflict,
+            postprocess=lambda row: {"result": row["val"]},
+            builder_kwargs=dict(postprocess=lambda row: {"other": row["val"]}),
+        )
+
+
 class TestProcessorConfig:
     def test_valid_concurrency(self):
         config = vLLMEngineProcessorConfig(
