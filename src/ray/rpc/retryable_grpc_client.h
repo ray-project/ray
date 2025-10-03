@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -270,13 +269,13 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
         request,
         [weak_retryable_grpc_client, retryable_grpc_request, callback](
             const ray::Status &status, Reply &&reply) {
-          auto current_retryable_grpc_client = weak_retryable_grpc_client.lock();
-          if (status.ok() || !IsGrpcRetryableStatus(status) ||
-              !current_retryable_grpc_client) {
+          auto retryable_grpc_client = weak_retryable_grpc_client.lock();
+          if (status.ok() || !IsGrpcRetryableStatus(status) || !retryable_grpc_client) {
             callback(status, std::move(reply));
             return;
           }
-          current_retryable_grpc_client->Retry(retryable_grpc_request);
+
+          retryable_grpc_client->Retry(retryable_grpc_request);
         },
         call_name,
         retryable_grpc_request->GetTimeoutMs());
