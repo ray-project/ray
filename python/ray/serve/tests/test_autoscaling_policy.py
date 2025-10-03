@@ -307,9 +307,9 @@ class TestAutoscalingMetrics:
         handle = serve.run(app)
         [handle.remote() for _ in range(20)]
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
-        # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        # Wait for deployment A to scale up
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
         print("Confirmed deployment scaled to 5 replicas.")
 
         router_info = [
@@ -384,8 +384,8 @@ class TestAutoscalingMetrics:
         [caller.call.remote() for _ in range(20)]
 
         # Wait for deployment A to scale up
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Kill CallerActor
