@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import os
+import threading
 from typing import List, Optional
 
 import yaml
@@ -69,6 +70,10 @@ RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG"
 
 _DATASET_LOGGER_HANDLER = {}
 _ACTIVE_DATASET = None
+
+# Idempotency flag and lock for thread-safe lazy initialization
+_logging_configured = False
+_logging_lock = threading.Lock()
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -180,29 +185,52 @@ def _get_logger_names() -> List[str]:
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
-    This function loads the configration YAML specified by "RAY_DATA_LOGGING_CONFIG"
-    environment variable. If the variable isn't set, this function loads the default
-    "logging.yaml" file that is adjacent to this module.
+    This function is idempotent and safe to call multiple times. It should NOT be
+    called at import time to avoid interfering with other Ray components' logging
+    configurations.
+
+    This function is called lazily when Ray Data operations actually execute, not at module import time.
+
+    This function loads the configuration YAML specified by "RAY_DATA_LOGGING_CONFIG"
+    environment variable. If the variable isn't set, this function uses the default
+    configuration.
 
     If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
     """
+    global _logging_configured
 
-    # Dynamically load env vars
-    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
-    log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
-    config = _get_logging_config()
+    # Double-checked locking pattern for thread safety and performance
+    if _logging_configured:
+        return
 
-    logging.config.dictConfig(config)
+    with _logging_lock:
+        # Check again inside the lock to handle race conditions
+        if _logging_configured:
+            return
 
-    # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
-    # RAY_DATA_LOG_ENCODING, because they are not both supported together.
-    if config_path is not None and log_encoding is not None:
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            "Using `RAY_DATA_LOG_ENCODING` is not supported with "
-            + "`RAY_DATA_LOGGING_CONFIG`"
+        config = _get_logging_config()
+
+        # Verify that disable_existing_loggers is False to avoid interfering
+        # with other logging configurations (e.g., Ray Serve)
+        assert config.get("disable_existing_loggers", False) is False, (
+            "Ray Data logging configuration must have 'disable_existing_loggers' "
+            "set to False to avoid conflicts with other Ray components."
         )
+
+        logging.config.dictConfig(config)
+        _logging_configured = True
+
+        # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
+        # RAY_DATA_LOG_ENCODING, because they are not both supported together.
+        config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
+        log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
+        if config_path is not None and log_encoding is not None:
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Using `RAY_DATA_LOG_ENCODING` is not supported with "
+                + "`RAY_DATA_LOGGING_CONFIG`"
+            )
 
 
 def reset_logging() -> None:
@@ -212,12 +240,15 @@ def reset_logging() -> None:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
+    global _logging_configured
+
     logger = logging.getLogger("ray.data")
     logger.handlers.clear()
     logger.setLevel(logging.NOTSET)
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
+    _logging_configured = False  # Reset the flag to allow reconfiguration
 
 
 def get_log_directory() -> Optional[str]:
@@ -283,6 +314,9 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
+
+    configure_logging()
+
     loggers = [logging.getLogger(name) for name in _get_logger_names()]
     log_handler = _create_dataset_log_handler(dataset_id)
 
