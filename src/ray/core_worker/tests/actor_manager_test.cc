@@ -139,10 +139,12 @@ class ActorManagerTest : public ::testing::Test {
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
         actor_task_submitter_(new MockActorTaskSubmitter()),
+        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         reference_counter_(std::make_unique<ReferenceCounter>(
             rpc::Address(),
-            (std::make_shared<pubsub::MockPublisher>()).get(),
-            (std::make_shared<pubsub::FakeSubscriber>()).get(),
+            publisher_.get(),
+            subscriber_.get(),
             [](const NodeID &node_id) { return true; },
             /*lineage_pinning_enabled=*/true)) {
     gcs_client_mock_->Init(actor_info_accessor_);
@@ -193,6 +195,8 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
+  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::unique_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
 };
