@@ -22,9 +22,9 @@ py_test(
 )
 
 py_test(
-    name = "test_async_checkpointing",
+    name = "test_async_checkpointing_validation",
     size = "medium",
-    srcs = ["tests/test_async_checkpointing.py"],
+    srcs = ["tests/test_async_checkpointing_validation.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -57,6 +57,22 @@ py_test(
     name = "test_circular_imports",
     size = "small",
     srcs = ["tests/test_circular_imports.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_validation_manager",
+    size = "small",
+    srcs = ["tests/test_validation_manager.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -428,6 +444,23 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_torch_gpu",
+    size = "small",
+    srcs = ["tests/test_torch_gpu.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "gpu_only",
         "team:ml",
         "train_v2",
     ],

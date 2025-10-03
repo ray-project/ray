@@ -466,7 +466,7 @@ py_test(
 
 py_test(
     name = "test_consumption",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_consumption.py"],
     tags = [
         "exclusive",
@@ -536,6 +536,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_ecosystem_dask.py"],
     tags = [
+        "custom_setup",
         "dask",
         "exclusive",
         "team:data",
@@ -578,6 +579,20 @@ py_test(
     name = "test_filename_provider",
     size = "small",
     srcs = ["tests/test_filename_provider.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -674,8 +689,22 @@ py_test(
 
 py_test(
     name = "test_map",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_map.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_filter",
+    size = "medium",
+    srcs = ["tests/test_filter.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -732,6 +761,20 @@ py_test(
     name = "test_parquet",
     size = "medium",
     srcs = ["tests/test_parquet.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_projection_fusion",
+    size = "small",
+    srcs = ["tests/test_projection_fusion.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1154,7 +1197,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_stats.py"],
     tags = [
         "exclusive",
@@ -1576,6 +1619,34 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_custom_agg",
+    size = "small",
+    srcs = ["tests/test_custom_agg.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_stats",
+    size = "small",
+    srcs = ["tests/test_dataset_stats.py"],
     tags = [
         "exclusive",
         "team:data",

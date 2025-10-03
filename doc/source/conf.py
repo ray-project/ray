@@ -329,6 +329,7 @@ html_theme_options = {
         "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
+        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
@@ -671,6 +672,8 @@ autodoc_mock_imports = [
     "ray._raylet",
     "ray.core.generated",
     "ray.serve.generated",
+    "ray.air.util.tensor_extensions",
+    "ray.data._internal.arrow_ops",
 ]
 
 for mock_target in autodoc_mock_imports:

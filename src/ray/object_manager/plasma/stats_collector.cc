@@ -17,7 +17,10 @@
 
 #include "ray/object_manager/plasma/stats_collector.h"
 
+#include <string>
+
 #include "ray/stats/metric_defs.h"
+#include "ray/stats/tag_defs.h"
 
 namespace plasma {
 
@@ -197,29 +200,34 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 }
 
 void ObjectStatsCollector::RecordMetrics() const {
+  static std::string kObjectSealed = "SEALED";
+  static std::string kObjectUnsealed = "UNSEALED";
+  static std::string kObjectLocMmapShm = "MMAP_SHM";
+  static std::string kObjectLocMmapDisk = "MMAP_DISK";
+
   // Shared memory sealed
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ true}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapShm},
+       {ray::stats::ObjectStateKey, kObjectSealed}});
 
   // Shared memory unsealed
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ false}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapShm},
+       {ray::stats::ObjectStateKey, kObjectUnsealed}});
 
   // Fallback memory sealed
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ true}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapDisk},
+       {ray::stats::ObjectStateKey, kObjectSealed}});
 
   // Fallback memory unsealed
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ false}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapDisk},
+       {ray::stats::ObjectStateKey, kObjectUnsealed}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
