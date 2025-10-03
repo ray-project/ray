@@ -13,7 +13,9 @@ class TestLMCacheConnectorV1Backend:
     @pytest.fixture(autouse=True)
     def mock_lmcache_check(self):
         """Mock the lmcache installation check for all tests."""
-        with patch("ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.lmcache_connector_v1._check_lmcache_installed"):
+        with patch(
+            "ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.lmcache_connector_v1._check_lmcache_installed"
+        ):
             yield
 
     @pytest.fixture
@@ -29,7 +31,7 @@ class TestLMCacheConnectorV1Backend:
                         kv_connector="LMCacheConnectorV1",
                         kv_role="kv_both",
                     )
-                )
+                ),
             ),
         )
 
@@ -47,7 +49,7 @@ class TestLMCacheConnectorV1Backend:
                         kv_role="kv_both",
                         kv_connector_extra_config={},
                     )
-                )
+                ),
             ),
         )
 
@@ -67,7 +69,7 @@ class TestLMCacheConnectorV1Backend:
                             "lmcache_rpc_port": LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME,
                         },
                     )
-                )
+                ),
             ),
         )
 

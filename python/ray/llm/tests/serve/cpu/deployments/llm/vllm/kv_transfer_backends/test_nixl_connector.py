@@ -32,7 +32,7 @@ class TestNixlConnectorBackend:
                         kv_role="kv_both",
                         engine_id=engine_id,
                     )
-                )
+                ),
             ),
         )
 
