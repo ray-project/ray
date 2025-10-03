@@ -1,16 +1,9 @@
-"""Video Preparation Stage
+"""Video processing utilities for Ray Data examples.
 
-A production-grade video preprocessing stage for Ray LLM batch pipelines.
-
-Responsibilities:
-- Parse video sources in OpenAI-style chat messages ("video", "video_url").
-- Resolve sources (HTTP, data URI, local path) with stream-first I/O and optional caching.
-- Decode via PyAV (FFmpeg) and sample frames by fps or by a fixed number.
-- Return frames (PIL or NumPy) and per-video metadata.
-
-Design notes:
-- Optional dependencies (PyAV, Pillow, NumPy) are imported optionally at module load.
-- CPU-bound decode runs in a thread; async orchestration preserves order and concurrency limits.
+`VideoProcessor` downloads, decodes, and samples frames from video sources. It is
+intended to be composed via Ray Data primitives such as ``map_batches`` and is
+kept lightweight so it can serve as a reference implementation for custom
+pipelines.
 """
 
 from __future__ import annotations
@@ -22,17 +15,14 @@ import importlib
 import io
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
-from python.ray.data.examples.data.video_processing.envs import (
-    RAY_LLM_BATCH_MAX_DECODE_FRAMES,
-    RAY_LLM_BATCH_MAX_TARGETS,
-)
-from python.ray.data.examples.data.video_processing._util import HTTPConnection
-from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+from pydantic import BaseModel
+
+from ray.data.examples.data.video_processing import envs as video_envs
+from ray.data.examples.data.video_processing.http_utils import HTTPConnection
 
 try:  # pragma: no cover - availability depends on environment
     import av as _av_mod  # type: ignore
@@ -63,36 +53,14 @@ def _sha256_16(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
 
-@dataclass
-class Sampling:
+class Sampling(BaseModel):
+    """Lightweight sampling configuration for ``VideoProcessor``."""
+
     fps: Optional[float] = None
-    """The frames-per-second sampling rate.
-
-    If provided, frames are sampled on a timeline at this FPS.
-    """
     num_frames: Optional[int] = None
-    """The number of frames to take deterministically from the start."""
 
-    @classmethod
-    def from_user(cls, cfg: Optional[Dict[str, Any]] = None) -> "Sampling":
-        """Create Sampling from user config.
-
-        Args:
-            cfg: Either {"fps": float} or {"num_frames": int}. If None, defaults to fps=3.0.
-        """
-        if not cfg:
-            return cls(fps=3.0)
-        if "fps" in cfg:
-            fps = float(cfg["fps"])
-            if fps <= 0:
-                raise ValueError("sampling.fps must be > 0")
-            return cls(fps=fps)
-        if "num_frames" in cfg:
-            n = int(cfg["num_frames"])
-            if n <= 0:
-                raise ValueError("sampling.num_frames must be >= 1")
-            return cls(num_frames=n)
-        return cls(fps=3.0)
+    class Config:
+        extra = "forbid"
 
 
 class VideoProcessor:
@@ -137,7 +105,10 @@ class VideoProcessor:
         preprocess: Optional[Dict[str, Any]] = None,
         max_sampled_frames: Optional[int] = None,
     ) -> None:
-        self._sampling = Sampling.from_user(sampling)
+        sampling_cfg = Sampling(**(sampling or {}))
+        if sampling_cfg.fps is None and sampling_cfg.num_frames is None:
+            sampling_cfg.fps = 3.0
+        self._sampling = sampling_cfg
         self._cache_dir = Path(cache_dir) if cache_dir else None
         self._cache_mode = cache_mode
         self._output_format = output_format
@@ -195,11 +166,11 @@ class VideoProcessor:
     def _process_one_sync(self, source: str) -> Dict[str, Any]:
         if _av_mod is None:
             raise ImportError(
-                "PyAV is required for PrepareVideoStage. Install with `pip install av`."
+                "PyAV is required for VideoProcessor. Install with `pip install av`."
             )
         if _PIL_Image is None:
             raise ImportError(
-                "Pillow is required for PrepareVideoStage. Install with `pip install pillow`."
+                "Pillow is required for VideoProcessor. Install with `pip install pillow`."
             )
 
         resolved, is_memory, cleanup_path = self._resolve_source_for_decode(source)
@@ -234,33 +205,31 @@ class VideoProcessor:
                     and self._max_sampled_frames >= 0
                 ):
                     n = min(n, self._max_sampled_frames)
-                if n == 0:
-                    allow_zero_samples = True
-                else:
-                    decoded = 0
-                    for frame in container.decode(video=vstream.index):
-                        decoded += 1
-                        if getattr(frame, "pts", None) is None:
-                            fps_guess = None
-                            try:
-                                fps_guess = (
-                                    float(getattr(vstream, "average_rate", 0)) or None
-                                )
-                            except Exception:
-                                fps_guess = None
-                            current_ts = (
-                                len(timestamps) / fps_guess
-                                if fps_guess
-                                else float(len(timestamps))
+
+                decoded = 0
+                for frame in container.decode(video=vstream.index):
+                    decoded += 1
+                    if getattr(frame, "pts", None) is None:
+                        fps_guess = None
+                        try:
+                            fps_guess = (
+                                float(getattr(vstream, "average_rate", 0)) or None
                             )
-                        else:
-                            current_ts = float(frame.pts * vstream.time_base)
-                        frames.append(self._format_frame(frame))
-                        timestamps.append(current_ts)
-                        if len(frames) >= n:
-                            break
-                        if decoded >= RAY_LLM_BATCH_MAX_DECODE_FRAMES():
-                            break
+                        except Exception:
+                            fps_guess = None
+                        current_ts = (
+                            len(timestamps) / fps_guess
+                            if fps_guess
+                            else float(len(timestamps))
+                        )
+                    else:
+                        current_ts = float(frame.pts * vstream.time_base)
+                    frames.append(self._format_frame(frame))
+                    timestamps.append(current_ts)
+                    if len(frames) >= n:
+                        break
+                    if decoded >= video_envs.RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES:
+                        break
             else:
                 targets = self._build_targets(container, vstream)
                 if (
@@ -291,7 +260,7 @@ class VideoProcessor:
                                 break
                             next_target = targets[target_idx]
 
-                        if decoded >= RAY_LLM_BATCH_MAX_DECODE_FRAMES():
+                        if decoded >= video_envs.RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES:
                             break
         finally:
             exc_type, _, _ = sys.exc_info()
@@ -413,11 +382,11 @@ class VideoProcessor:
         if s.fps is not None:
             if duration_s is None:
                 limit = max(int(s.fps * 2), 1)
-                limit = min(limit, RAY_LLM_BATCH_MAX_TARGETS())
+                limit = min(limit, video_envs.RAY_VIDEO_EXAMPLE_MAX_TARGETS)
                 targets = [i / s.fps for i in range(limit)]
             else:
                 n = int(max(duration_s, 0.0) * s.fps) + 1
-                n = max(1, min(n, RAY_LLM_BATCH_MAX_TARGETS()))
+                n = max(1, min(n, video_envs.RAY_VIDEO_EXAMPLE_MAX_TARGETS))
                 targets = [i / s.fps for i in range(n)]
         return targets
 
@@ -534,106 +503,3 @@ class VideoProcessor:
             return source, False, None
 
         return source, False, None
-
-
-class PrepareVideoUDF(StatefulStageUDF):
-    """UDF for PrepareVideoStage.
-
-    Extract video sources from messages, process via VideoProcessor,
-    and emit frames and metadata aligned with PrepareImageStage conventions.
-    """
-
-    def __init__(
-        self,
-        data_column: str,
-        expected_input_keys: List[str],
-        *,
-        sampling: Optional[Dict[str, Any]] = None,
-        cache_dir: Optional[str] = None,
-        cache_mode: str = "auto",
-        output_format: str = "pil",
-        channels_first: bool = False,
-        timeout_s: float = 30.0,
-        max_concurrency: int = 8,
-        retries: int = 2,
-        retry_backoff_base: float = 0.5,
-        bypass_if_frames_present: bool = False,
-        pack_for_model: bool = False,
-        max_sampled_frames: Optional[int] = None,
-    ) -> None:
-        super().__init__(data_column, expected_input_keys)
-        self._video = VideoProcessor(
-            sampling=sampling,
-            cache_dir=cache_dir,
-            cache_mode=cache_mode,
-            output_format=output_format,
-            channels_first=channels_first,
-            timeout_s=timeout_s,
-            max_concurrency=max_concurrency,
-            retries=retries,
-            retry_backoff_base=retry_backoff_base,
-            bypass_if_frames_present=bypass_if_frames_present,
-            pack_for_model=pack_for_model,
-            max_sampled_frames=max_sampled_frames,
-        )
-
-    def extract_video_sources(self, messages: List[Dict]) -> List[str]:
-        sources: List[str] = []
-        content = None
-        for message in messages:
-            content = message.get("content")
-            if hasattr(content, "tolist"):
-                content = content.tolist()
-            if not isinstance(content, list):
-                continue
-            for item in content:
-                media_type = item.get("type")
-                if media_type not in ("video", "video_url"):
-                    continue
-                url = (
-                    item.get("video")
-                    if media_type == "video"
-                    else item.get("video_url")
-                )
-                if isinstance(url, dict):
-                    url = url.get("url")
-                if not isinstance(url, str):
-                    raise ValueError(f"Cannot handle video url of type {type(url)}")
-                sources.append(url)
-        return sources
-
-    async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        async def process_row(
-            idx: int, row: Dict[str, Any]
-        ) -> Tuple[int, Dict[str, Any]]:
-            sources = self.extract_video_sources(row.get("messages", []))
-            if not sources:
-                return idx, {self.IDX_IN_BATCH_COLUMN: idx}
-            results = await self._video.process(sources)
-            return idx, {
-                self.IDX_IN_BATCH_COLUMN: idx,
-                "video": [r["frames"] for r in results],
-                "video_meta": [r["meta"] for r in results],
-            }
-
-        tasks = [process_row(i, row) for i, row in enumerate(batch)]
-        for coro in asyncio.as_completed(tasks):
-            idx, ret = await coro
-            yield ret
-
-
-class PrepareVideoStage(StatefulStage):
-    """A stage to prepare videos from OpenAI chat template messages.
-
-    Required input key: messages (OpenAI chat format).
-    Outputs per row:
-      - video: List[List[FrameType]] frames per video in the request order.
-      - video_meta: List[Dict] per video with size/num_frames/timestamps/source/failed.
-    """
-
-    fn: StatefulStageUDF = PrepareVideoUDF
-
-    def get_required_input_keys(self) -> Dict[str, str]:
-        return {
-            "messages": "A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create",
-        }

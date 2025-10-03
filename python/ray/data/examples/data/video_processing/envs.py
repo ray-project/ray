@@ -1,32 +1,52 @@
-"""Environment-driven tunables for Ray LLM batch stages.
-
-Values are read lazily at runtime (per-process) so they can be controlled
-via runtime_env or environment variables.
-"""
+"""Lazy environment variable accessors for the video processing example."""
 
 from __future__ import annotations
 
 import os
-from functools import partial
-from typing import Callable
+from typing import Any, Callable, Dict, Iterable
 
 
-def _get_int_env(name: str, default: int) -> int:
-    val = os.getenv(name)
-    if val is None:
+def _maybe_int(value: str | None, default: int) -> int:
+    if value is None:
         return default
     try:
-        return int(val)
-    except Exception:
+        return int(value)
+    except (TypeError, ValueError):
         return default
 
 
-# Max number of sampling targets generated for fps mode.
-RAY_LLM_BATCH_MAX_TARGETS: Callable[[], int] = partial(
-    _get_int_env, "RAY_LLM_BATCH_MAX_TARGETS", 10_000
-)
+def _int_env_getter(name: str, default: int) -> Callable[[], int]:
+    def _getter() -> int:
+        return _maybe_int(os.getenv(name), default)
 
-# Max decoded frames per source to avoid unbounded decoding.
-RAY_LLM_BATCH_MAX_DECODE_FRAMES: Callable[[], int] = partial(
-    _get_int_env, "RAY_LLM_BATCH_MAX_DECODE_FRAMES", 100_000
-)
+    return _getter
+
+
+_ENVIRONMENT_VARIABLES: Dict[str, Callable[[], Any]] = {
+    # Video example knobs.
+    "RAY_VIDEO_EXAMPLE_MAX_TARGETS": _int_env_getter(
+        "RAY_VIDEO_EXAMPLE_MAX_TARGETS", 10_000
+    ),
+    "RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES": _int_env_getter(
+        "RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES", 100_000
+    ),
+    # Backwards compatibility with previous LLM-oriented naming.
+    "RAY_LLM_BATCH_MAX_TARGETS": _int_env_getter("RAY_LLM_BATCH_MAX_TARGETS", 10_000),
+    "RAY_LLM_BATCH_MAX_DECODE_FRAMES": _int_env_getter(
+        "RAY_LLM_BATCH_MAX_DECODE_FRAMES", 100_000
+    ),
+}
+
+
+def __getattr__(name: str) -> Any:  # pragma: no cover - trivial forwarding
+    getter = _ENVIRONMENT_VARIABLES.get(name)
+    if getter is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getter()
+
+
+def __dir__() -> Iterable[str]:  # pragma: no cover - introspection helper
+    return sorted(_ENVIRONMENT_VARIABLES.keys())
+
+
+__all__ = list(__dir__())
