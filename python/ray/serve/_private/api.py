@@ -203,6 +203,14 @@ def serve_start(
 
     usage_lib.record_library_usage("serve")
 
+    logger.info(
+        f"Starting serve with config: "
+        f"http_options: `{http_options}` "
+        f"grpc_options: `{grpc_options}` "
+        f"global_logging_config: `{global_logging_config}` "
+        f"kwargs: `{kwargs}` "
+    )
+
     try:
         client = _get_global_client(_health_check_controller=True)
         logger.info(
