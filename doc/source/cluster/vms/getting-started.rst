@@ -121,6 +121,8 @@ Next, if you're not set up to use your cloud provider from the command line, you
          .. tab-item:: vSphere
             :sync: vSphere
 
+            Make sure Ray supervisor service is up and running as per `the Ray-on-VCF docs <https://github-vcf.devops.broadcom.net/vcf/vmray>`
+
 
 Create a (basic) Python application
 -----------------------------------
