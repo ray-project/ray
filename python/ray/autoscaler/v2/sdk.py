@@ -54,7 +54,7 @@ def request_cluster_resources(
             raise TypeError("Each element must be a dict")
     to_request = normalized
 
-    # Aggregate bundle by shape.defaultdict
+    # Aggregate bundle by shape
     def keyfunc(r):
         return (
             frozenset(r.resources.items()),
