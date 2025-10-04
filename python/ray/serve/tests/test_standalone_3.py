@@ -352,17 +352,8 @@ def test_controller_shutdown_gracefully(
     # On Windows, wait for resources to be available before adding second node
     # to avoid timeout errors when cluster has zero CPU resources
     if sys.platform == "win32":
-
-        def check_resources_available():
-            try:
-                resources = ray.cluster_resources()
-                cpu_available = resources.get("CPU", 0) > 0
-                return cpu_available
-            except Exception:
-                return False
-
         wait_for_condition(
-            check_resources_available,
+            lambda: ray.cluster_resources().get("CPU", 0) > 0,
             timeout=30,
             retry_interval_ms=1000,
         )
