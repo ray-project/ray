@@ -647,11 +647,10 @@
     script: python tpch_q1.py --sf 100
 
 #################################################
-# Cross-az fault tolerance test
+# Cross-AZ RPC fault tolerance test
 #################################################
 
-- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
-  working_dir: nightly_tests
+- name: "map_batches_cross_az_rpc_failt_tolerance"
 
   cluster:
     byod:
@@ -659,7 +658,7 @@
       runtime_env:
         - RAY_testing_rpc_failure="*=-1:10:10"
         - RAY_testing_rpc_failure_avoid_intra_node_failures=1
-    cluster_compute: dataset/cross_az_250_350_compute.yaml
+    cluster_compute: cross_az_250_350_compute.yaml
 
   run:
     timeout: 10800

@@ -1,5 +1,6 @@
 
-cloud: anyscale_v2_default_cloud
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
 head_node:
   instance_type: m5.2xlarge
   resources:
@@ -14,7 +15,6 @@ worker_nodes:
     market_type: ON_DEMAND
 enable_cross_zone_scaling: true
 auto_select_worker_config: false
-idle_termination_minutes: 120
 flags:
   enable_multi_az_serve: true
   allow-cross-zone-autoscaling: true
