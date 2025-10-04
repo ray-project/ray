@@ -49,7 +49,7 @@ def get_tokenizer(model_name: str, trust_remote_code: bool = True) -> Any:
             tokenizer.pad_token = tokenizer.eos_token
         else:
             # Fallback for models without eos_token
-            tokenizer.pad_token = tokenizer.convert_ids_to_tokens(2)
+            tokenizer.pad_token = tokenizer.unk_token
 
     return tokenizer
 
