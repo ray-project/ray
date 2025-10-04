@@ -1,0 +1,20 @@
+
+cloud: anyscale_v2_default_cloud
+head_node:
+  instance_type: m5.2xlarge
+  resources:
+    CPU: 0
+    GPU: 0
+  flags: {}
+worker_nodes:
+  - instance_type: m5.2xlarge
+    flags: {}
+    min_nodes: 250
+    max_nodes: 350
+    market_type: ON_DEMAND
+enable_cross_zone_scaling: true
+auto_select_worker_config: false
+idle_termination_minutes: 120
+flags:
+  enable_multi_az_serve: true
+  allow-cross-zone-autoscaling: true
