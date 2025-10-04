@@ -12,7 +12,7 @@ from ray.llm._internal.serve.configs.server_models import (
 from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer as _LLMServer,
 )
-from ray.llm._internal.serve.deployments.routers.build_ingress import (
+from ray.llm._internal.serve.deployments.routers.builder_ingress import (
     LLMServingArgs as _LLMServingArgs,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
@@ -269,7 +269,7 @@ def build_openai_app(
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.deployments.routers.build_ingress import (
+    from ray.llm._internal.serve.deployments.routers.builder_ingress import (
         build_openai_app,
     )
 

@@ -156,7 +156,7 @@ def _get_llm_deployments(
     return llm_deployments
 
 
-def _infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -> dict:
+def infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -> dict:
     """Infer the number of ingress replicas based on the LLM configs.
 
     Based on our internal benchmark, we are currently bottleneck
@@ -217,6 +217,8 @@ def _infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -
         }
     }
 
+def infer_default_ingress_options(llm_configs: Optional[List[LLMConfig]] = None) -> dict:
+    return deep_merge_dicts(DEFAULT_INGRESS_OPTIONS, infer_num_ingress_replicas(llm_configs))
 
 @overload
 def build_openai_app(
@@ -252,12 +254,11 @@ def build_openai_app(
 
     llm_deployments = _get_llm_deployments(llm_configs)
 
-    ingress_options = _infer_num_ingress_replicas(llm_configs)
+    ingress_options = infer_default_ingress_options(llm_configs)
 
     if override_serve_options:
         ingress_options = ingress_options.update(override_serve_options)
 
-    ingress_options = deep_merge_dicts(DEFAULT_INGRESS_OPTIONS, ingress_options)
     ingress_cls = make_fastapi_ingress(ingress_cls)
 
     logger.info("============== Ingress Options ==============")
