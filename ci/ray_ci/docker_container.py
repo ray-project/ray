@@ -3,8 +3,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List
 
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE
-from ci.ray_ci.linux_container import DEFAULT_PYTHON_VERSION, LinuxContainer
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
     "cpu",
