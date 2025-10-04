@@ -547,9 +547,10 @@ class GPUObjectManager:
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
             )
-        except Exception:
-            # This could fail if this is a retry and it's already been freed.
-            pass
+        except Exception as e:
+            logger.error(
+                "Something went wrong while freeing the RDT object!", exc_info=e
+            )
 
     def actor_has_tensor_transport(
         self, actor: "ray.actor.ActorHandle", tensor_transport: TensorTransportEnum
