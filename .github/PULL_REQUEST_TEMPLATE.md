@@ -18,19 +18,6 @@
 - [ ] Code refactoring 🔧
 - [ ] Documentation update 📖
 
-## Affected Ray components
-
-<!-- Select all that apply -->
-- [ ] Ray Core
-- [ ] Ray Data
-- [ ] Ray Serve
-- [ ] Ray Train
-- [ ] Ray Tune
-- [ ] RLlib
-- [ ] Documentation
-- [ ] CI/Build
-- [ ] Other: _(please specify)_
-
 ## Breaking changes
 
 - [ ] This PR introduces breaking changes ⚠️
