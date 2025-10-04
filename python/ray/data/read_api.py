@@ -101,7 +101,6 @@ from ray.data.datasource.file_meta_provider import (
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import daft
@@ -400,10 +399,9 @@ def read_datasource(
         ray_remote_args = {}
 
     if not datasource.supports_distributed_reads:
-        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
+        ray_remote_args["label_selector"] = {
+            "ray.io/node-id": ray.get_runtime_context().get_node_id()
+        }
 
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
@@ -3756,10 +3754,9 @@ def from_torch(
     ray_remote_args = {}
     if local_read:
         ray_remote_args = {
-            "scheduling_strategy": NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            ),
+            "label_selector": {
+                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+            },
             # The user might have initialized Ray to have num_cpus = 0 for the head
             # node. For a local read we expect the read task to be executed on the
             # head node, so we should set num_cpus = 0 for the task to allow it to

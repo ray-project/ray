@@ -32,7 +32,6 @@ from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -670,23 +669,25 @@ _stats_actor_lock: threading.RLock = threading.RLock()
 
 
 def _get_or_create_stats_actor():
-    ctx = DataContext.get_current()
-    scheduling_strategy = ctx.scheduling_strategy
+    actor_options = {
+        "name": STATS_ACTOR_NAME,
+        "namespace": STATS_ACTOR_NAMESPACE,
+        "get_if_exists": True,
+        "lifetime": "detached",
+    }
+
     if not ray.util.client.ray.is_connected():
         # Pin the stats actor to the local node
         # so it fate-shares with the driver.
-        scheduling_strategy = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
+        actor_options["label_selector"] = {
+            "ray.io/node-id": ray.get_runtime_context().get_node_id()
+        }
+    else:
+        ctx = DataContext.get_current()
+        actor_options["scheduling_strategy"] = ctx.scheduling_strategy
+
     with _stats_actor_lock:
-        return _StatsActor.options(
-            name=STATS_ACTOR_NAME,
-            namespace=STATS_ACTOR_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-            scheduling_strategy=scheduling_strategy,
-        ).remote()
+        return _StatsActor.options(**actor_options).remote()
 
 
 class _StatsManager:

@@ -13,7 +13,6 @@ from ray._private.ray_microbenchmark_helpers import asyncio_timeit, timeit
 from ray._private.test_utils import get_actor_node_id
 from ray.dag import InputNode, MultiOutputNode
 from ray.dag.compiled_dag_node import CompiledDAG
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +42,7 @@ def check_optimized_build():
 
 def create_driver_actor():
     return CompiledDAG.DAGDriverProxyActor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(), soft=False
-        )
+        label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()}
     ).remote()
 
 

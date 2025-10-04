@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     init_error_pubsub,
 )
 from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -740,14 +739,10 @@ def test_update_object_location_batch_failure(
             return sys.getsizeof(obj)
 
         obj_ref = create_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=worker_node_id, soft=False
-            )
+            label_selector={"ray.io/node-id": worker_node_id}
         ).remote()
         consume_ref = consume_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
+            label_selector={"ray.io/node-id": head_node_id}
         ).remote(obj_ref)
         assert ray.get(consume_ref, timeout=10) > 0
 
