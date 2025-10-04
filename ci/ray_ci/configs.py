@@ -4,6 +4,7 @@ from typing import TypedDict
 class PythonVersionInfo(TypedDict):
     bin_path: str
 
+
 BUILD_TYPES = [
     "optimized",
     "debug",
