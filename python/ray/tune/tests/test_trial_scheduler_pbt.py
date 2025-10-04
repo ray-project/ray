@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 from functools import partial
-from typing import List
+from typing import List, Optional
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -52,7 +52,7 @@ class MockParam(object):
 
 
 class DummyTrial:
-    def __init__(self, trial_id, finished=False, config: dict = None):
+    def __init__(self, trial_id, finished=False, config: Optional[dict] = None):
         self.trial_id = trial_id
         self._finished = finished
         self.config = config if config is not None else {}
