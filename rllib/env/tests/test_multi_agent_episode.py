@@ -1,8 +1,8 @@
+import unittest
+from typing import Optional, Tuple
+
 import gymnasium as gym
 import numpy as np
-import unittest
-
-from typing import Optional, Tuple
 
 import ray
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -3573,7 +3573,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
