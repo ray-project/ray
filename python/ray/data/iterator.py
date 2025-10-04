@@ -167,12 +167,14 @@ class DataIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 1,
-        batch_size: int = 256,
+        batch_size: Optional[int] = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
+        _collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+        ] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
     ) -> Iterable[DataBatch]:
         batch_format = _apply_batch_format(batch_format)
