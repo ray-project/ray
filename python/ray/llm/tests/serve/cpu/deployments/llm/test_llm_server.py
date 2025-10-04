@@ -450,9 +450,6 @@ class TestLLMServer:
 
 
 class TestGetDeploymentOptions:
-
-
-
     def test_resources_per_bundle(self):
         """Test that resources_per_bundle is correctly parsed."""
 
@@ -477,8 +474,6 @@ class TestGetDeploymentOptions:
         assert serve_options["placement_group_bundles"] == [
             {"CPU": 1, "GPU": 0, "XPU": 1}
         ] + [{"XPU": 1} for _ in range(5)]
-
-
 
     def test_get_serve_options_with_accelerator_type(self):
         """Test that get_serve_options returns the correct options when accelerator_type is set."""
@@ -517,7 +512,6 @@ class TestGetDeploymentOptions:
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
         )
-
 
     def test_get_serve_options_without_accelerator_type(self):
         """Test that get_serve_options returns the correct options when accelerator_type is not set."""

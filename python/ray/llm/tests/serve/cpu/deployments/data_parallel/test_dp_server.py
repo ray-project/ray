@@ -8,7 +8,6 @@ from ray.llm._internal.serve.deployments.data_parallel.dp_server import DPServer
 
 
 class TestGetDeploymentOptions:
-
     @pytest.mark.parametrize(
         "data_parallel_size,num_replica,allowed",
         [
@@ -61,6 +60,7 @@ class TestGetDeploymentOptions:
                 match="use engine_kwargs.data_parallel_size",
             ):
                 get_serve_options_with_num_replica()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

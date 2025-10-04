@@ -207,10 +207,10 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
     )
 
-    ingress_options = infer_default_ingress_options([
-        pd_config.prefill_config, pd_config.decode_config])
+    ingress_options = infer_default_ingress_options(
+        [pd_config.prefill_config, pd_config.decode_config]
+    )
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
-    return (
-        serve.deployment(ingress_cls, **ingress_options)
-        .bind(llm_deployments=[proxy_server_deployment])
+    return serve.deployment(ingress_cls, **ingress_options).bind(
+        llm_deployments=[proxy_server_deployment]
     )

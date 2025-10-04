@@ -217,8 +217,14 @@ def infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) ->
         }
     }
 
-def infer_default_ingress_options(llm_configs: Optional[List[LLMConfig]] = None) -> dict:
-    return deep_merge_dicts(DEFAULT_INGRESS_OPTIONS, infer_num_ingress_replicas(llm_configs))
+
+def infer_default_ingress_options(
+    llm_configs: Optional[List[LLMConfig]] = None,
+) -> dict:
+    return deep_merge_dicts(
+        DEFAULT_INGRESS_OPTIONS, infer_num_ingress_replicas(llm_configs)
+    )
+
 
 @overload
 def build_openai_app(
