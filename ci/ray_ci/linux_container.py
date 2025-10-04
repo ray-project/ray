@@ -3,6 +3,7 @@ import subprocess
 import sys
 from typing import List, Optional, Tuple
 
+from ci.ray_ci.configs import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import Container, get_docker_image
 
 _DOCKER_CAP_ADD = [
@@ -10,8 +11,6 @@ _DOCKER_CAP_ADD = [
     "SYS_ADMIN",
     "NET_ADMIN",
 ]
-
-DEFAULT_PYTHON_VERSION = "3.9"
 
 
 class LinuxContainer(Container):
@@ -51,9 +50,9 @@ class LinuxContainer(Container):
             "--build-arg",
             f"BASE_IMAGE={self._get_docker_image()}",
             "--build-arg",
-            f"BUILDKITE_CACHE_READONLY={cache_readonly}",
-            "--build-arg",
             f"BUILD_TYPE={build_type or ''}",
+            "--build-arg",
+            f"BUILDKITE_CACHE_READONLY={cache_readonly}",
         ]
 
         if not build_type or build_type == "optimized":
