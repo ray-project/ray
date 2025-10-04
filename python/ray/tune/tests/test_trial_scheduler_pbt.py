@@ -818,9 +818,9 @@ class DummyState:
 class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
     def test_pbt_with_nan_scores(self):
         # Create three trials: one with nan, two with valid scores
-        t1 = DummyTrial("t1")
-        t2 = DummyTrial("t2")
-        t3 = DummyTrial("t3")
+        t1 = DummyTrial("t1", config={"lr": 1e-3})
+        t2 = DummyTrial("t2", config={"lr": 1e-4})
+        t3 = DummyTrial("t3", config={"lr": 1e-5})
         # Patch _trial_state with dummy states
         # Note: list.sort does not change the order if nan is present
         max_states = {
