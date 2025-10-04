@@ -45,6 +45,7 @@ _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
 
 
 def get_docker_image(docker_tag: str) -> str:
+    """Get rayci image for a particular tag."""
     if not _RAYCI_BUILD_ID:
         return f"{_DOCKER_ECR_REPO}:{docker_tag}"
     return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{docker_tag}"
