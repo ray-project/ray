@@ -447,10 +447,10 @@ class ApplicationState:
         )
 
     def should_update_deployment_scaling(self) -> bool:
-        deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
-        for name, _ in deployments.items():
+        deployments: List[DeploymentStatusInfo] = self.get_deployments_statuses()
+        for deployment in deployments:
             if self._autoscaling_state_manager.should_autoscale_deployment(
-                DeploymentID(name=name, app_name=self._name)
+                DeploymentID(name=deployment.name, app_name=self._name)
             ):
                 return True
 
