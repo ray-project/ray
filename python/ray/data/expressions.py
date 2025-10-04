@@ -367,7 +367,7 @@ class UnaryExpr(Expr):
     op: Operation
     operand: Expr
 
-    data_type: DataType = field(init=False)
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
