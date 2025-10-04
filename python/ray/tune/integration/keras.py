@@ -1,3 +1,10 @@
+from typing import Dict
+
+import ray.tune
+from ray.air.integrations.keras import RayReportCallback
+from ray.train.tensorflow import TensorflowCheckpoint
+from ray.util.annotations import PublicAPI
+
 _DEPRECATION_MESSAGE = (
     "The `ray.tune.integration.keras` module is deprecated in favor of "
     "`ray.train.tensorflow.keras.ReportCheckpointCallback`."
@@ -20,9 +27,45 @@ class _TuneCheckpointCallback:
         raise DeprecationWarning(_DEPRECATION_MESSAGE)
 
 
-class TuneReportCheckpointCallback:
-    """Deprecated.
-    Use :class:`ray.train.tensorflow.keras.ReportCheckpointCallback` instead."""
+@PublicAPI(stability="beta")
+class TuneReportCheckpointCallback(RayReportCallback):
+    """Keras callback for Ray Tune reporting and checkpointing.
 
-    def __new__(cls, *args, **kwargs):
-        raise DeprecationWarning(_DEPRECATION_MESSAGE)
+    .. note::
+        Metrics are always reported with checkpoints, even if the event isn't specified
+        in ``report_metrics_on``.
+
+    Example:
+        .. code-block:: python
+
+            ############# Using it in TrainSession ###############
+            from ray.tune.integrations.keras import TuneReportCheckpointCallback
+            def train_loop_per_worker():
+                strategy = tf.distribute.MultiWorkerMirroredStrategy()
+                with strategy.scope():
+                    model = build_model()
+
+                model.fit(dataset_shard, callbacks=[TuneReportCheckpointCallback()])
+
+    Args:
+        metrics: Metrics to report. If this is a list, each item describes
+            the metric key reported to Keras, and it's reported under the
+            same name. If this is a dict, each key is the name reported
+            and the respective value is the metric key reported to Keras.
+            If this is None, all Keras logs are reported.
+        report_metrics_on: When to report metrics. Must be one of
+            the Keras event hooks (less the ``on_``), e.g.
+            "train_start" or "predict_end". Defaults to "epoch_end".
+        checkpoint_on: When to save checkpoints. Must be one of the Keras event hooks
+            (less the ``on_``), e.g. "train_start" or "predict_end". Defaults to
+            "epoch_end".
+
+    """
+
+    def _save_and_report_checkpoint(
+        self, report_dict: Dict, model: TensorflowCheckpoint
+    ):
+        ray.tune.report(report_dict, checkpoint=model)
+
+    def _report_metrics(self, report_dict: Dict):
+        ray.tune.report(report_dict)
