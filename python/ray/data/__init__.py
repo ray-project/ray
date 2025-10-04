@@ -12,7 +12,6 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     NodeIdStr,
 )
-from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
 from ray.data.datasource import (
@@ -75,8 +74,6 @@ from ray.data.read_api import (  # noqa: F401
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
 _map_actor_context = None
-
-configure_logging()
 
 try:
     import pyarrow as pa
