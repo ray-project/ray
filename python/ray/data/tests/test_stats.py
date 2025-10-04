@@ -2075,8 +2075,6 @@ def test_op_metrics_logging():
             canonicalize(call.args[0], canonicalize_histogram_values=True)
             for call in mock_logger.call_args_list
         ]
-        for log in logs:
-            print(log)
         input_str = (
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
             + gen_expected_metrics(is_map=False, canonicalize_histogram_values=True)
