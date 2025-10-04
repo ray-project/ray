@@ -41,8 +41,8 @@ from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
 from ray.core.generated.events_task_definition_event_pb2 import (
     TaskDefinitionEvent,
 )
-from ray.core.generated.events_task_execution_event_pb2 import (
-    TaskExecutionEvent,
+from ray.core.generated.events_task_lifecycle_event_pb2 import (
+    TaskLifecycleEvent,
 )
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
 from ray.core.generated.profile_events_pb2 import ProfileEventEntry, ProfileEvents
@@ -551,20 +551,23 @@ def _verify_task_definition_event_json(req_json, expected_timestamp):
     }
 
 
-def _create_task_execution_event_proto(timestamp):
+def _create_task_lifecycle_event_proto(timestamp):
     return RayEvent(
         event_id=b"1",
         source_type=RayEvent.SourceType.CORE_WORKER,
-        event_type=RayEvent.EventType.TASK_EXECUTION_EVENT,
+        event_type=RayEvent.EventType.TASK_LIFECYCLE_EVENT,
         timestamp=timestamp,
         severity=RayEvent.Severity.INFO,
         session_name="test_session",
-        task_execution_event=TaskExecutionEvent(
+        task_lifecycle_event=TaskLifecycleEvent(
             task_id=b"1",
             task_attempt=1,
-            task_state={
-                TaskStatus.RUNNING: timestamp,
-            },
+            state_transitions=[
+                TaskLifecycleEvent.StateTransition(
+                    state=TaskStatus.RUNNING,
+                    timestamp=timestamp,
+                ),
+            ],
             ray_error_info=RayErrorInfo(
                 error_type=ErrorType.TASK_EXECUTION_EXCEPTION,
             ),
@@ -575,13 +578,13 @@ def _create_task_execution_event_proto(timestamp):
     )
 
 
-def _verify_task_execution_event_json(req_json, expected_timestamp):
+def _verify_task_lifecycle_event_json(req_json, expected_timestamp):
     assert len(req_json) == 1
 
     # Verify the base event fields
     assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
     assert req_json[0]["sourceType"] == "CORE_WORKER"
-    assert req_json[0]["eventType"] == "TASK_EXECUTION_EVENT"
+    assert req_json[0]["eventType"] == "TASK_LIFECYCLE_EVENT"
     assert req_json[0]["timestamp"] == expected_timestamp
     assert req_json[0]["severity"] == "INFO"
     assert (
@@ -591,23 +594,26 @@ def _verify_task_execution_event_json(req_json, expected_timestamp):
 
     # Verify the task execution event specific fields
     assert (
-        req_json[0]["taskExecutionEvent"]["taskId"] == base64.b64encode(b"1").decode()
+        req_json[0]["taskLifecycleEvent"]["taskId"] == base64.b64encode(b"1").decode()
     )
-    assert req_json[0]["taskExecutionEvent"]["taskAttempt"] == 1
-    assert req_json[0]["taskExecutionEvent"]["taskState"] == {
-        "8": expected_timestamp,
-    }
+    assert req_json[0]["taskLifecycleEvent"]["taskAttempt"] == 1
+    assert req_json[0]["taskLifecycleEvent"]["stateTransitions"] == [
+        {
+            "state": "RUNNING",
+            "timestamp": expected_timestamp,
+        }
+    ]
     assert (
-        req_json[0]["taskExecutionEvent"]["rayErrorInfo"]["errorType"]
+        req_json[0]["taskLifecycleEvent"]["rayErrorInfo"]["errorType"]
         == "TASK_EXECUTION_EXCEPTION"
     )
     assert (
-        req_json[0]["taskExecutionEvent"]["nodeId"] == base64.b64encode(b"1").decode()
+        req_json[0]["taskLifecycleEvent"]["nodeId"] == base64.b64encode(b"1").decode()
     )
     assert (
-        req_json[0]["taskExecutionEvent"]["workerId"] == base64.b64encode(b"1").decode()
+        req_json[0]["taskLifecycleEvent"]["workerId"] == base64.b64encode(b"1").decode()
     )
-    assert req_json[0]["taskExecutionEvent"]["workerPid"] == 1
+    assert req_json[0]["taskLifecycleEvent"]["workerPid"] == 1
 
 
 def _create_profile_event_request(timestamp):
@@ -680,9 +686,9 @@ EVENT_TYPES_TO_TEST = [
         id="task_definition_event",
     ),
     pytest.param(
-        _create_task_execution_event_proto,
-        _verify_task_execution_event_json,
-        id="task_execution_event",
+        _create_task_lifecycle_event_proto,
+        _verify_task_lifecycle_event_json,
+        id="task_lifecycle_event",
     ),
     pytest.param(
         _create_profile_event_request, _verify_profile_event_json, id="profile_event"
@@ -697,7 +703,7 @@ EVENT_TYPES_TO_TEST = [
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT",
             },
         },
     ],
