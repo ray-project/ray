@@ -517,7 +517,7 @@ class LLMRouter:
         """Create transcription for the provided audio input.
 
         Returns:
-            A response object with transcriptins.
+            A response object with transcriptions.
         """
 
         return await self._process_llm_request(body, call_method="transcriptions")
