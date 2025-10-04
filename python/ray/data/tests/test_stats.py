@@ -90,7 +90,12 @@ def gen_expected_metrics(
     task_backpressure: bool = False,
     task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
+    canonicalize_histogram_values: bool = False,
 ):
+    # If canonicalize_histogram_values is True, we replace the histogram entire histogram bucket values list with HV.
+    # Otherwise, we generate a list of values that we expect to see in the metrics.
+    gen_histogram_values = gen_histogram_metrics_value_str if not canonicalize_histogram_values else lambda *args: "HB"
+
     if is_map:
         metrics = [
             "'average_num_outputs_per_task': N",
@@ -140,11 +145,11 @@ def gen_expected_metrics(
             ),
             (
                 "'task_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
             (
                 "'block_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
             (
                 "'task_completion_time_without_backpressure': "
@@ -152,11 +157,11 @@ def gen_expected_metrics(
             ),
             (
                 "'block_size_bytes': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')}"
+                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
             ),
             (
                 "'block_size_rows': "
-                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')}"
+                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -218,11 +223,11 @@ def gen_expected_metrics(
             ),
             (
                 "'task_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
             (
                 "'block_completion_time': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_s, 'N')}"
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
             (
                 "'task_completion_time_without_backpressure': "
@@ -230,11 +235,11 @@ def gen_expected_metrics(
             ),
             (
                 "'block_size_bytes': "
-                f"{gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')}"
+                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
             ),
             (
                 "'block_size_rows': "
-                f"{gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')}"
+                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -277,6 +282,16 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     is_map=True,
     spilled=False,
     task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    task_backpressure=True,
+    canonicalize_histogram_values=True,
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
@@ -332,9 +347,15 @@ Dataset memory:
 EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 
 
-def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
+def canonicalize(stats: str, filter_global_stats: bool = True, canonicalize_histogram_values: bool = False) -> str:
     # Dataset UUID expression.
     canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+
+    if canonicalize_histogram_values:
+        # Replace the histogram entire histogram bucket values list with HB since it's
+        # hard to predict which buckets will have values vs which will have zeroes.
+        canonicalized_stats = re.sub(r": \[.*?\]", ": HB", canonicalized_stats)
+
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
@@ -2040,17 +2061,24 @@ def test_op_metrics_logging():
     logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
     with patch.object(logger, "debug") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+        logs = [canonicalize(call.args[0], canonicalize_histogram_values=True) for call in mock_logger.call_args_list]
+        for log in logs:
+            print(log)
         input_str = (
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False)
+            + gen_expected_metrics(is_map=False, canonicalize_histogram_values=True)
         )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         # InputDataBuffer has no inqueue, manually set to 0
         map_str = (
             "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES
 
+        # Check these logs are correct. Although we don't necessarily care exactly which line they are logged,
+        # we add this assert to make these tests much easier to debug in the future.
+        # pytest will print out the difference between the expected and actual logs,
+        assert input_str == logs[5]
+        assert map_str == logs[6]
         # Check that these strings are logged exactly once.
         assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
         assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
