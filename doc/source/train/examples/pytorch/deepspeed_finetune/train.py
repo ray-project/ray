@@ -190,7 +190,7 @@ def main():
     args = get_args()
     print(args)
 
-    scaling_config = ScalingConfig(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    scaling_config = ScalingConfig(num_workers=args.num_workers, use_gpu=not args.cpu_only)
 
     ds_config = {
         "train_micro_batch_size_per_gpu": args.batch_size,
@@ -243,7 +243,7 @@ def get_args():
     parser.add_argument("--learning_rate", type=float, default=1e-6)
     parser.add_argument("--zero_stage", type=int, default=3)
     parser.add_argument("--num_workers", type=int, default=2)
-    parser.add_argument("--use_gpu", type=bool, default=True)
+    parser.add_argument("--cpu_only", action="store_true", help="Disable GPU usage")
     parser.add_argument("--storage_path", type=str, default="/mnt/cluster_storage")
     parser.add_argument("--resume_experiment", type=str, default=None, help="Path to the experiment to resume from")
     parser.add_argument("--debug_steps", type=int, default=0)
