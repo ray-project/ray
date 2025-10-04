@@ -55,7 +55,7 @@ def get_tokenizer(model_name: str, trust_remote_code: bool = True) -> Any:
 
 
 def setup_dataloader(model_name: str, dataset_name: str, seq_length: int, batch_size: int) -> DataLoader:
-    tokenizer = get_tokenizer(model_name, trust_remote_code=True)
+    tokenizer = get_tokenizer(model_name)
 
     dataset = load_dataset(dataset_name, split=f"train[:1%]", download_config=DownloadConfig(disable_tqdm=True))
 
@@ -74,7 +74,7 @@ def setup_dataloader(model_name: str, dataset_name: str, seq_length: int, batch_
 
 
 def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: Dict[str, Any]) -> deepspeed.runtime.engine.DeepSpeedEngine:
-    model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
     log_rank0(f"Model loaded: {model_name} (#parameters: {sum(p.numel() for p in model.parameters())})")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
@@ -130,7 +130,7 @@ def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: r
                 last_epoch = int(f.read().strip())
             next_epoch = last_epoch + 1
 
-        torch.distributed.barrier()
+            torch.distributed.barrier()
         log_rank0("Successfully loaded distributed checkpoint")
     except Exception as e:
         logger.error(f"Failed to load checkpoint: {e}")
