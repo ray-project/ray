@@ -1,0 +1,20 @@
+
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+head_node:
+  instance_type: m5.2xlarge
+  resources:
+    CPU: 0
+    GPU: 0
+  flags: {}
+worker_nodes:
+  - instance_type: m5.2xlarge
+    flags: {}
+    min_nodes: 250
+    max_nodes: 350
+    market_type: ON_DEMAND
+enable_cross_zone_scaling: true
+auto_select_worker_config: false
+flags:
+  enable_multi_az_serve: true
+  allow-cross-zone-autoscaling: true
