@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.datasource import Datasink
 from ray.data.datasource.datasink import DummyOutputDatasink, WriteResult
 
