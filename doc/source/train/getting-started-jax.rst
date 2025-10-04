@@ -54,7 +54,6 @@ Together, these configurations provide a declarative API for defining your entir
 training environment, allowing Ray Train to handle the complex task of launching and coordinating
 workers across a TPU slice.
 
-
 Quickstart
 ----------
 
@@ -126,7 +125,13 @@ Compare a JAX training script with and without Ray Train.
                     report({"loss": float(loss), "epoch": epoch})
 
             # Define the hardware configuration for your distributed job.
-            scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
+            scaling_config = ScalingConfig(
+                num_workers=4,
+                use_tpu=True,
+                topology="4x4",
+                accelerator_type="TPU-V6E",
+                placement_strategy="SPREAD"
+            )
 
             # Define and run the JaxTrainer.
             trainer = JaxTrainer(
@@ -190,7 +195,6 @@ Compare a JAX training script with and without Ray Train.
             print("Training finished.")
             print(f"Learned parameters: w={params['w'].item():.4f}, b={params['b'].item():.4f}")
 
-
 Set up a training function
 --------------------------
 
@@ -201,8 +205,9 @@ that can be passed to the `JaxTrainer`.
 This function is the entry point that Ray will execute on each remote worker.
 
 .. code-block:: diff
-    +from ray.train.jax import JaxTrainer
-    +from ray.train import ScalingConfig, report
+
+    +from ray.train.v2 import JaxTrainer
+    +from ray.train.v2 import ScalingConfig, report
 
     -def main_logic()
     +def train_func():
@@ -219,7 +224,13 @@ This function is the entry point that Ray will execute on each remote worker.
     -if __name__ == "__main__":
     -    main_logic()
     +# Define the hardware configuration for your distributed job.
-    +scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
+    +scaling_config = ScalingConfig(
+    +            num_workers=4,
+    +            use_tpu=True,
+    +            topology="4x4",
+    +            accelerator_type="TPU-V6E",
+    +            placement_strategy="SPREAD"
+    +        )
     +
     +# Define and run the JaxTrainer, which executes `train_func`.
     +trainer = JaxTrainer(
