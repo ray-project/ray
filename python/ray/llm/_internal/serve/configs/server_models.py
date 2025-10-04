@@ -166,16 +166,19 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    resources_per_bundle: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="This will override the default resource bundles for placement groups. "
-        "You can specify a custom device label e.g. {'NPU': 1}. "
-        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
-    )
-
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
+    )
+
+    placement_group_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Ray placement group configuration for scheduling vLLM engine workers. "
+            "Defines resource bundles and placement strategy for multi-node deployments. "
+            "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
+            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+        ),
     )
 
     lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
@@ -463,6 +466,8 @@ class LLMConfig(BaseModelExtended):
         ray_actor_options = deployment_config.get("ray_actor_options", {})
         deployment_config["ray_actor_options"] = ray_actor_options
 
+        # Replica actor resources: default 1 CPU for coordination/routing
+        # Will be merged into first PG bundle for co-location
         replica_actor_resources = {
             "CPU": ray_actor_options.get("num_cpus", 1),
             "GPU": ray_actor_options.get("num_gpus", 0),
@@ -480,15 +485,20 @@ class LLMConfig(BaseModelExtended):
                 "Use scaling_config to configure replica placement group."
             )
 
+        # Get placement bundles and strategy from engine_config
+        # This handles both custom placement_group_config and default behavior
         try:
-            child_actor_bundles = engine_config.placement_bundles
+            pg_bundles = engine_config.placement_bundles
         except ValueError:
-            # May happen if all bundles are empty.
-            child_actor_bundles = []
+            # May happen if all bundles are empty
+            pg_bundles = []
 
-        pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
-            child_actor_bundles, replica_actor_resources
-        )
+        # Merge replica actor resources with the first bundle
+        if pg_bundles:
+            pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
+                pg_bundles, replica_actor_resources
+            )
+
         deployment_config.update(
             {
                 "placement_group_bundles": pg_bundles,
