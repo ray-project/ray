@@ -651,6 +651,7 @@
 #################################################
 
 - name: "map_batches_cross_az_rpc_failt_tolerance"
+  frequency: nightly
 
   cluster:
     byod:
