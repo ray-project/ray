@@ -5,6 +5,7 @@ from ray import serve
 from ray._common.network_utils import build_address
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_urls
+from ray.serve.context import _get_global_client
 
 
 def test_get_application_urls(serve_instance):
@@ -59,6 +60,45 @@ def test_get_application_urls_with_route_prefix(serve_instance):
     assert get_application_urls("gRPC", app_name="app1", use_localhost=False) == [
         f"{node_ip}:9000"
     ]
+
+
+class TestStart:
+    def verify_deployment_mode(self, expected: str):
+        client = _get_global_client()
+        deployment_mode = client.http_config.location
+        assert deployment_mode == expected
+
+    @pytest.mark.parametrize(
+        "proxy_location,expected_location",
+        [
+            (None, "EveryNode"),  # default DeploymentMode
+            ("EveryNode", "EveryNode"),
+            ("HeadOnly", "HeadOnly"),
+            ("Disabled", "NoServer"),
+        ],
+    )
+    def test_deployment_mode_with_http_options(
+        self, ray_shutdown, proxy_location, expected_location
+    ):
+        # http_config.location (DeploymentMode) should be determined by proxy_location
+        serve.start(proxy_location=proxy_location, http_options={"host": "0.0.0.0"})
+        self.verify_deployment_mode(expected_location)
+
+    @pytest.mark.parametrize(
+        "proxy_location,expected_location",
+        [
+            (None, "EveryNode"),  # default DeploymentMode
+            ("EveryNode", "EveryNode"),
+            ("HeadOnly", "HeadOnly"),
+            ("Disabled", "NoServer"),
+        ],
+    )
+    def test_deployment_mode_without_http_options(
+        self, ray_shutdown, proxy_location, expected_location
+    ):
+        # http_config.location (DeploymentMode) should be determined by proxy_location
+        serve.start(proxy_location=proxy_location)
+        self.verify_deployment_mode(expected_location)
 
 
 if __name__ == "__main__":
