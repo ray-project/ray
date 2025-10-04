@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
+from ray._common.network_utils import is_ipv6
 from ray.rllib.core import (
     COMPONENT_RL_MODULE,
     DEFAULT_AGENT_ID,

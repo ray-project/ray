@@ -20,6 +20,7 @@
 #include "./object/object_store.h"
 #include "./task/native_task_submitter.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace internal {
@@ -31,7 +32,7 @@ NativeRayRuntime::NativeRayRuntime() {
 
   auto bootstrap_address = ConfigInternal::Instance().bootstrap_ip;
   if (bootstrap_address.empty()) {
-    bootstrap_address = GetNodeIpAddress();
+    bootstrap_address = ray::GetNodeIpAddressFromPerspective();
   }
   global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
       bootstrap_address, ConfigInternal::Instance().bootstrap_port);
