@@ -152,7 +152,7 @@ def train_loop(config: Dict[str, Any]) -> None:
         log_rank0(f"Resuming training from epoch {start_epoch}")
 
     train_loader = setup_dataloader(config["model_name"], config["dataset_name"], config["seq_length"], config["batch_size"])
-    total_steps = len(train_loader) * config["epochs"]
+    steps_per_epoch = len(train_loader)
     device = ray.train.torch.get_device()
 
     for epoch in range(start_epoch, config["epochs"]):
@@ -168,7 +168,7 @@ def train_loop(config: Dict[str, Any]) -> None:
             attention_mask = batch['attention_mask'].to(device)
             outputs = ds_engine(input_ids=input_ids, attention_mask=attention_mask, labels=input_ids, use_cache=False)
             loss = outputs.loss
-            log_rank0(f"Epoch: {epoch} Step: {step + 1}/{total_steps} Loss: {loss.item()}")
+            log_rank0(f"Epoch: {epoch} Step: {step + 1}/{steps_per_epoch} Loss: {loss.item()}")
 
             ds_engine.backward(loss)
             ds_engine.step()
