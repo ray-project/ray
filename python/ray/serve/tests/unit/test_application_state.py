@@ -179,6 +179,8 @@ def deployment_params(name: str, route_prefix: str = None):
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "ingress": False,
+        "serialized_autoscaling_policy_def": None,
+        "serialized_request_router_cls": None,
     }
 
 

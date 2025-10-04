@@ -8,7 +8,11 @@ import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
@@ -22,6 +26,8 @@ def get_deploy_args(
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
+    serialized_autoscaling_policy_def: Optional[bytes] = None,
+    serialized_request_router_cls: Optional[bytes] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -44,6 +50,8 @@ def get_deploy_args(
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
+        "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
+        "serialized_request_router_cls": serialized_request_router_cls,
     }
 
     return controller_deploy_args
@@ -98,11 +106,27 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Returns: a hash of the import path and (application level) runtime env representing
             the code version of the application.
     """
+    autoscaling_policy_names = [
+        deployment.autoscaling_config.get("policy", {}).get(
+            "name", DEFAULT_AUTOSCALING_POLICY_NAME
+        )
+        for deployment in app_config.deployments
+        if isinstance(deployment.autoscaling_config, dict)
+    ]
+    request_router_cls_names = [
+        deployment.request_router_config.get(
+            "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
+        )
+        for deployment in app_config.deployments
+        if isinstance(deployment.request_router_config, dict)
+    ]
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
+            "autoscaling_policy_names": autoscaling_policy_names,
+            "request_router_cls_names": request_router_cls_names,
         },
         sort_keys=True,
     ).encode("utf-8")

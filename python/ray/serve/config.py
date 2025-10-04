@@ -132,8 +132,14 @@ class RequestRouterConfig(BaseModel):
         Args:
             **kwargs: Keyword arguments to pass to BaseModel.
         """
+        serialized_request_router_cls = kwargs.get(
+            "_serialized_request_router_cls", None
+        )
         super().__init__(**kwargs)
-        self._serialize_request_router_cls()
+        if serialized_request_router_cls:
+            self._serialized_request_router_cls = serialized_request_router_cls
+        else:
+            self._serialize_request_router_cls()
 
     def _serialize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
@@ -281,8 +287,12 @@ class AutoscalingConfig(BaseModel):
         return v
 
     def __init__(self, **kwargs):
+        serialized_policy_def = kwargs.get("_serialized_policy_def", None)
         super().__init__(**kwargs)
-        self.serialize_policy()
+        if serialized_policy_def:
+            self._serialized_policy_def = serialized_policy_def
+        else:
+            self.serialize_policy()
 
     def serialize_policy(self) -> None:
         """Serialize policy with cloudpickle.
