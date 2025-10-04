@@ -188,7 +188,7 @@ def main():
     args = get_args()
     print(args)
 
-    scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+    scaling_config = ScalingConfig(num_workers=args.num_workers, use_gpu=args.use_gpu)
 
     ds_config = {
         "train_micro_batch_size_per_gpu": args.batch_size,
@@ -216,7 +216,7 @@ def main():
     name = f"deepspeed_sample_{uuid.uuid4().hex[:8]}" if args.resume_experiment is None else args.resume_experiment
     print(f"Experiment name: {name}")
     run_config = RunConfig(
-        storage_path="/mnt/cluster_storage/",
+        storage_path=args.storage_path,
         name=name,
     )
 
@@ -240,6 +240,9 @@ def get_args():
     parser.add_argument("--seq_length", type=int, default=512)
     parser.add_argument("--learning_rate", type=float, default=1e-6)
     parser.add_argument("--zero_stage", type=int, default=3)
+    parser.add_argument("--num_workers", type=int, default=2)
+    parser.add_argument("--use_gpu", type=bool, default=True)
+    parser.add_argument("--storage_path", type=str, default="/mnt/cluster_storage")
     parser.add_argument("--resume_experiment", type=str, default=None, help="Path to the experiment to resume from")
     parser.add_argument("--debug_steps", type=int, default=0)
 
