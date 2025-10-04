@@ -40,7 +40,7 @@ examples:
       - large language models
       - generative ai
     link: ../llm/examples/batch/vllm-with-structural-output
-  - title: ETL Beginner's Guide
+  - title: ETL beginner's guide
     skill_level: beginner
     frameworks:
       - pandas
