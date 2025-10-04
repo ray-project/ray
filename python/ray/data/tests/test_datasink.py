@@ -67,10 +67,6 @@ def test_write_datasink_ray_remote_args(ray_start_cluster):
 
     ray.init(cluster.address)
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
     output = NodeLoggerOutputDatasink(bar_node_id)
     ds = ray.data.range(100, override_num_blocks=10)
     # Pin write tasks to node with "bar" resource.
