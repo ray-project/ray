@@ -109,7 +109,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name);
 
-  ~GcsActorManager() override = default;
+  ~GcsActorManager() override;
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
@@ -310,10 +310,13 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
   /// \param[in] done_callback Called when destroy finishes.
+  /// \param[in] graceful_shutdown_timeout_ms Timeout in ms for graceful shutdown.
+  ///            If graceful shutdown doesn't complete, falls back to force kill.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
                     bool force_kill = true,
-                    std::function<void()> done_callback = nullptr);
+                    std::function<void()> done_callback = nullptr,
+                    int64_t graceful_shutdown_timeout_ms = -1);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -508,6 +511,11 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   // Make sure our unprotected maps are accessed from the same thread.
   // Currently protects actor_to_register_callbacks_.
   ThreadChecker thread_checker_;
+
+  /// Fallback timers for graceful actor shutdowns, keyed by WorkerID.
+  /// Cancelled when actors exit or restart to prevent force-killing wrong instances.
+  absl::flat_hash_map<WorkerID, std::shared_ptr<boost::asio::deadline_timer>>
+      graceful_shutdown_timers_;
 
   // Debug info.
   enum CountType {

@@ -257,6 +257,14 @@ GcsActorManager::GcsActorManager(
       });
 }
 
+GcsActorManager::~GcsActorManager() {
+  // Cancel all pending graceful shutdown timers to prevent use-after-free.
+  for (auto &entry : graceful_shutdown_timers_) {
+    entry.second->cancel();
+  }
+  graceful_shutdown_timers_.clear();
+}
+
 void GcsActorManager::HandleReportActorOutOfScope(
     rpc::ReportActorOutOfScopeRequest request,
     rpc::ReportActorOutOfScopeReply *reply,
@@ -274,12 +282,15 @@ void GcsActorManager::HandleReportActorOutOfScope(
       return;
     }
 
-    DestroyActor(actor_id,
-                 GenActorOutOfScopeCause(actor),
-                 /*force_kill=*/true,
-                 [reply, send_reply_callback]() {
-                   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-                 });
+    int64_t timeout_ms = RayConfig::instance().actor_graceful_shutdown_timeout_ms();
+    DestroyActor(
+        actor_id,
+        GenActorOutOfScopeCause(actor),
+        /*force_kill=*/false,
+        [reply, send_reply_callback]() {
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        },
+        timeout_ms);
   } else {
     RAY_LOG(INFO).WithField(actor_id) << "The out of scope actor is already dead";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -962,7 +973,8 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
 void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    const rpc::ActorDeathCause &death_cause,
                                    bool force_kill,
-                                   std::function<void()> done_callback) {
+                                   std::function<void()> done_callback,
+                                   int64_t graceful_shutdown_timeout_ms) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Destroying actor";
   actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
@@ -980,6 +992,15 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   const auto actor = it->second;
 
+  // Cancel any existing graceful shutdown timer since we're destroying this actor
+  // instance. This handles idempotent DestroyActor calls and prevents force-killing
+  // restarted actors.
+  auto timer_it = graceful_shutdown_timers_.find(actor->GetWorkerID());
+  if (timer_it != graceful_shutdown_timers_.end()) {
+    timer_it->second->cancel();
+    graceful_shutdown_timers_.erase(timer_it);
+  }
+
   RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
                  << rpc::ActorTableData::ActorState_Name(actor->GetState()) << ", name "
                  << actor->GetName();
@@ -994,12 +1015,55 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     const auto &worker_id = actor->GetWorkerID();
     auto node_it = created_actors_.find(node_id);
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
-      // The actor has already been created. Destroy the process by force-killing
-      // it.
       NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
-      RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
-      if (node_it->second.empty()) {
-        created_actors_.erase(node_it);
+
+      if (force_kill) {
+        RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
+        if (node_it->second.empty()) {
+          created_actors_.erase(node_it);
+        }
+      } else if (graceful_shutdown_timeout_ms > 0) {
+        auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
+        timer->expires_from_now(
+            boost::posix_time::milliseconds(graceful_shutdown_timeout_ms));
+        graceful_shutdown_timers_[worker_id] = timer;
+
+        timer->async_wait(
+            [this,
+             actor_id,
+             worker_id,
+             node_id,
+             death_cause,
+             timer,
+             graceful_shutdown_timeout_ms](const boost::system::error_code &error) {
+              if (error == boost::asio::error::operation_aborted) {
+                return;
+              }
+
+              // Verify this is still the same actor instance before force-killing.
+              auto node_iter = created_actors_.find(node_id);
+              if (node_iter != created_actors_.end()) {
+                auto worker_iter = node_iter->second.find(worker_id);
+                if (worker_iter != node_iter->second.end() &&
+                    worker_iter->second == actor_id) {
+                  RAY_LOG(WARNING).WithField(actor_id).WithField(worker_id)
+                      << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
+                      << "ms) exceeded. Worker still alive. Falling back to force kill.";
+
+                  auto actor_iter = registered_actors_.find(actor_id);
+                  if (actor_iter != registered_actors_.end()) {
+                    NotifyCoreWorkerToKillActor(
+                        actor_iter->second, death_cause, /*force_kill=*/true);
+                  }
+
+                  node_iter->second.erase(worker_id);
+                  if (node_iter->second.empty()) {
+                    created_actors_.erase(node_iter);
+                  }
+                }
+              }
+              graceful_shutdown_timers_.erase(worker_id);
+            });
       }
     } else {
       if (!worker_id.IsNil()) {
@@ -1011,10 +1075,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     }
   }
 
-  // Update the actor to DEAD in case any callers are still alive. This can
-  // happen if the owner of the actor dies while there are still callers.
-  // TODO(swang): We can skip this step and delete the actor table entry
-  // entirely if the callers check directly whether the owner is still alive.
+  // Mark actor as DEAD to notify callers. For graceful shutdowns, created_actors_
+  // cleanup is deferred to allow timeout fallback, but we still update state for callers.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
   if (actor->GetState() != rpc::ActorTableData::DEAD) {
@@ -1029,7 +1091,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                      .reason() == rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
              death_cause.actor_died_error_context().reason() ==
                  rpc::ActorDiedErrorContext::REF_DELETED) {
-    // Update death cause from restartable OUT_OF_SCOPE to non-restartable REF_DELETED
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
   }
   mutable_actor_table_data->set_timestamp(time);
@@ -1040,7 +1101,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     registered_actors_.erase(it);
     function_manager_.RemoveJobReference(actor_id.JobId());
     RemoveActorNameFromRegistry(actor);
-    // Clean up the client to the actor's owner, if necessary.
     if (!actor->IsDetached()) {
       RemoveActorFromOwner(actor);
     } else {
@@ -1389,6 +1449,14 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   auto &actor = iter->second;
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
+
+  // Cancel timer to prevent force-killing the new instance when old timer fires.
+  auto timer_it = graceful_shutdown_timers_.find(worker_id);
+  if (timer_it != graceful_shutdown_timers_.end()) {
+    timer_it->second->cancel();
+    graceful_shutdown_timers_.erase(timer_it);
+  }
+
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
