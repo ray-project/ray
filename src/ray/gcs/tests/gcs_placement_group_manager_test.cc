@@ -25,6 +25,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -94,7 +95,11 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         mock_placement_group_scheduler_.get(),
         gcs_table_storage_.get(),
         *gcs_resource_manager_,
-        [this](const JobID &job_id) { return job_namespace_table_[job_id]; }));
+        [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
+        fake_placement_group_gauge_,
+        fake_placement_group_creation_latency_in_ms_histogram_,
+        fake_placement_group_scheduling_latency_in_ms_histogram_,
+        fake_placement_group_count_gauge_));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -215,6 +220,12 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   instrumented_io_context io_service_;
+  ray::observability::FakeGauge fake_placement_group_gauge_;
+  ray::observability::FakeHistogram
+      fake_placement_group_creation_latency_in_ms_histogram_;
+  ray::observability::FakeHistogram
+      fake_placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::FakeGauge fake_placement_group_count_gauge_;
 
  private:
   ClusterResourceManager cluster_resource_manager_;
@@ -260,6 +271,27 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
   ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
   ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 1);
+
+  gcs_placement_group_manager_->SetUsageStatsClient(nullptr);
+  gcs_placement_group_manager_->RecordMetrics();
+  auto counter_tag_to_value = fake_placement_group_count_gauge_.GetTagToValue();
+  // 3 states: PENDING, REGISTERED, INFEASIBLE
+  ASSERT_EQ(counter_tag_to_value.size(), 3);
+  for (auto &[key, value] : counter_tag_to_value) {
+    if (key.at("State") == "Registered") {
+      ASSERT_EQ(value, 1);
+    } else if (key.at("State") == "Infeasible") {
+      ASSERT_EQ(value, 0);
+    } else if (key.at("State") == "Pending") {
+      ASSERT_EQ(value, 0);
+    }
+  }
+  auto creation_latency_tag_to_value =
+      fake_placement_group_creation_latency_in_ms_histogram_.GetTagToValue();
+  ASSERT_EQ(creation_latency_tag_to_value.size(), 1);
+  auto scheduling_latency_tag_to_value =
+      fake_placement_group_scheduling_latency_in_ms_histogram_.GetTagToValue();
+  ASSERT_EQ(scheduling_latency_tag_to_value.size(), 1);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {

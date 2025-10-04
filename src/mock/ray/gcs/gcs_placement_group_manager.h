@@ -17,14 +17,27 @@
 #include <gmock/gmock.h>
 
 #include "ray/gcs/gcs_placement_group_manager.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 namespace gcs {
 
 class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
  public:
-  explicit MockGcsPlacementGroupManager(GcsResourceManager &gcs_resource_manager)
-      : GcsPlacementGroupManager(context_, gcs_resource_manager) {}
+  explicit MockGcsPlacementGroupManager(
+      GcsResourceManager &gcs_resource_manager,
+      ray::observability::MetricInterface &placement_group_gauge,
+      ray::observability::MetricInterface
+          &placement_group_creation_latency_in_ms_histogram,
+      ray::observability::MetricInterface
+          &placement_group_scheduling_latency_in_ms_histogram,
+      ray::observability::MetricInterface &placement_group_count_gauge)
+      : GcsPlacementGroupManager(context_,
+                                 gcs_resource_manager,
+                                 placement_group_gauge,
+                                 placement_group_creation_latency_in_ms_histogram,
+                                 placement_group_scheduling_latency_in_ms_histogram,
+                                 placement_group_count_gauge) {}
   MOCK_METHOD(void,
               HandleCreatePlacementGroup,
               (rpc::CreatePlacementGroupRequest request,
