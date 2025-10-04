@@ -1,6 +1,6 @@
 group: build
 steps:
-  - name: wanda_ray_core
+  - name: ray-core-build
     label: "wanda: core binary parts py{{matrix}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
@@ -12,11 +12,24 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
+    tags: release_wheels
     depends_on: manylinux
 
-  - name: wanda_ray_dashboard
+  - name: ray-dashboard-build
     label: "wanda: dashboard"
     wanda: ci/docker/ray-dashboard.wanda.yaml
+    tags: release_wheels
+    depends_on: manylinux
+
+  - name: ray-java-build
+    label: "wanda: java build (x86_64)"
+    wanda: ci/docker/ray-java.wanda.yaml
+    tags:
+      - release_wheels
+      - java
+      - oss
+    env:
+      ARCH_SUFFIX: ""
     depends_on: manylinux
 
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
@@ -145,46 +158,6 @@ steps:
       - forge
       - ray-llmbaseextra
     matrix:
-      - "3.11"
-
-  - label: ":tapioca: build: ray-ml py{{matrix}} docker (x86_64)"
-    tags:
-      - python_dependencies
-      - docker
-      - oss
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu12.1.1-cudnn8 --platform cpu --image-type ray-ml
-        --upload
-    depends_on:
-      - manylinux
-      - forge
-      - ray-mlcpubase
-      - ray-mlcudabase
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-
-  - label: ":tapioca: build: ray-ml-extra py{{matrix}} docker (x86_64)"
-    tags:
-      - python_dependencies
-      - docker
-      - oss
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu12.1.1-cudnn8 --platform cpu --image-type ray-ml-extra
-        --upload
-    depends_on:
-      - manylinux
-      - forge
-      - ray-mlcpubaseextra
-      - ray-mlcudabaseextra
-    matrix:
-      - "3.9"
-      - "3.10"
       - "3.11"
 
   - label: ":tapioca: smoke test build-docker.sh"
