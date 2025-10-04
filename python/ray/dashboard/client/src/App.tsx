@@ -4,6 +4,10 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  ThemeProvider as CustomThemeProvider,
+  useTheme,
+} from "./contexts/ThemeContext";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
@@ -56,7 +60,7 @@ import {
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
-import { lightTheme } from "./theme";
+import { darkTheme, lightTheme } from "./theme";
 
 dayjs.extend(duration);
 
@@ -129,7 +133,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   currentTimeZone: undefined,
 });
 
-const App = () => {
+const AppContent = () => {
   const [currentTimeZone, setCurrentTimeZone] = useState<string>();
   const [context, setContext] = useState<
     Omit<GlobalContextType, "currentTimeZone">
@@ -147,6 +151,10 @@ const App = () => {
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
   });
+
+  const { mode } = useTheme();
+  const currentTheme = mode === "dark" ? darkTheme : lightTheme;
+
   useEffect(() => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
@@ -220,7 +228,7 @@ const App = () => {
 
   return (
     <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={lightTheme}>
+      <ThemeProvider theme={currentTheme}>
         <Suspense fallback={Loading}>
           <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
             <CssBaseline />
@@ -367,6 +375,14 @@ const App = () => {
         </Suspense>
       </ThemeProvider>
     </StyledEngineProvider>
+  );
+};
+
+const App = () => {
+  return (
+    <CustomThemeProvider>
+      <AppContent />
+    </CustomThemeProvider>
   );
 };
 
