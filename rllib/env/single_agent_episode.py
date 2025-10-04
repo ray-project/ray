@@ -1683,7 +1683,9 @@ class SingleAgentEpisode:
             "rewards": self.rewards.get_state(),
             "infos": self.infos.get_state(),
             "extra_model_outputs": {
-                k: v.get_state() if v else v
+                # only check for None, bool(v) will return False if len(v) == 0,
+                # even though v is an InfiniteLookbackBuffer which is not msgpackable
+                k: v.get_state() if v is not None else v
                 for k, v in self.extra_model_outputs.items()
             }
             if len(self.extra_model_outputs) > 0
