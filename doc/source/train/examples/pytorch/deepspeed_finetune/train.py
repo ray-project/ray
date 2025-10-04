@@ -130,7 +130,9 @@ def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: r
                     last_epoch = int(f.read().strip())
                 next_epoch = last_epoch + 1
 
-            torch.distributed.barrier()
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                torch.distributed.barrier()
+                
         log_rank0("Successfully loaded distributed checkpoint")
     except Exception as e:
         logger.error(f"Failed to load checkpoint: {e}")
