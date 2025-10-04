@@ -185,7 +185,8 @@ class CoreWorkerTest : public ::testing::Test {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
         mock_gcs_client,
-        fake_task_by_state_counter_);
+        fake_task_by_state_counter_,
+        /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
