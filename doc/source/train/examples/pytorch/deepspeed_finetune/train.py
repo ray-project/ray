@@ -156,9 +156,11 @@ def train_loop(config: Dict[str, Any]) -> None:
     device = ray.train.torch.get_device()
 
     for epoch in range(start_epoch, config["epochs"]):
-        if ray.train.get_context().get_world_size() > 1:
-            train_loader.sampler.set_epoch(epoch)
-
+        if ray.train.get_context().get_world_size() > 1 and hasattr(train_loader, "sampler"):
+            sampler = getattr(train_loader, "sampler", None)
+            if sampler and hasattr(sampler, "set_epoch"):
+                sampler.set_epoch(epoch)
+                
         running_loss = 0.0
         num_batches = 0
         for step, batch in enumerate(train_loader):
