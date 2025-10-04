@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_counter.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
@@ -91,7 +90,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
         io_work(io_context.get_executor()),
-        reference_counter_(std::make_shared<MockReferenceCounter>()),
+        reference_counter_(std::make_shared<ReferenceCounter>()),
         submitter_(
             *client_pool_,
             *store_,
@@ -114,7 +113,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<MockTaskManagerInterface> task_manager_;
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
-  std::shared_ptr<MockReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   ActorTaskSubmitter submitter_;
 };
 

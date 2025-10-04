@@ -181,7 +181,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockRayletClient> raylet_client_;
   std::shared_ptr<MockTaskManager> task_manager_;
-  std::shared_ptr<ReferenceCounter> ref_counter_;
+  std::shared_ptr<ReferenceCounterInterface> ref_counter_;
   ObjectRecoveryManager manager_;
 };
 

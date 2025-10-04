@@ -41,7 +41,7 @@ static const ReferenceCounter::ReferenceTableProto empty_refs;
 
 class ReferenceCountTest : public ::testing::Test {
  protected:
-  std::unique_ptr<ReferenceCounter> rc;
+  std::unique_ptr<ReferenceCounterInterface> rc;
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
@@ -67,7 +67,7 @@ class ReferenceCountTest : public ::testing::Test {
 
 class ReferenceCountLineageEnabledTest : public ::testing::Test {
  protected:
-  std::unique_ptr<ReferenceCounter> rc;
+  std::unique_ptr<ReferenceCounterInterface> rc;
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
@@ -301,12 +301,12 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             &subscription_failure_callback_map,
             WorkerID::FromBinary(address_.worker_id()),
             client_factory)),
-        rc_(
+        rc_(std::make_unique<ReferenceCounter>(
             address_,
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
-            /*lineage_pinning_enabled=*/false) {}
+            /*lineage_pinning_enabled=*/false)) {}
 
   ~MockWorkerClient() override {
     if (!failed_) {
@@ -320,7 +320,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     auto r = num_requests_;
 
     auto borrower_callback = [=]() {
-      rc_.SubscribeRefRemoved(object_id, contained_in_id, owner_address);
+      rc_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
     };
     borrower_callbacks_[r] = borrower_callback;
 
@@ -362,29 +362,29 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
   // a ray.put().
   void Put(const ObjectID &object_id) {
-    rc_.AddOwnedObject(object_id, {}, address_, "", 0, false, /*add_local_ref=*/true);
+    rc_->AddOwnedObject(object_id, {}, address_, "", 0, false, /*add_local_ref=*/true);
   }
 
   void PutWithForeignOwner(const ObjectID &object_id, const rpc::Address &owner_address) {
-    rc_.AddLocalReference(object_id, "");
-    rc_.AddBorrowedObject(object_id, {}, owner_address, /*foreign=*/true);
+    rc_->AddLocalReference(object_id, "");
+    rc_->AddBorrowedObject(object_id, {}, owner_address, /*foreign=*/true);
   }
 
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
-    rc_.AddOwnedObject(outer_id,
-                       {inner_id},
-                       address_,
-                       "",
-                       0,
-                       false,
-                       /*add_local_ref=*/true);
+    rc_->AddOwnedObject(outer_id,
+                        {inner_id},
+                        address_,
+                        "",
+                        0,
+                        false,
+                        /*add_local_ref=*/true);
   }
 
   void GetSerializedObjectId(const ObjectID outer_id,
                              const ObjectID &inner_id,
                              const rpc::Address &owner_address) {
-    rc_.AddLocalReference(inner_id, "");
-    rc_.AddBorrowedObject(inner_id, outer_id, owner_address);
+    rc_->AddLocalReference(inner_id, "");
+    rc_->AddBorrowedObject(inner_id, outer_id, owner_address);
   }
 
   void ExecuteTaskWithArg(const ObjectID &arg_id,
@@ -392,16 +392,16 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
                           const rpc::Address &owner_address) {
     // Add a sentinel reference to keep the argument ID in scope even though
     // the frontend won't have a reference.
-    rc_.AddLocalReference(arg_id, "");
+    rc_->AddLocalReference(arg_id, "");
     GetSerializedObjectId(arg_id, inner_id, owner_address);
   }
 
   ObjectID SubmitTaskWithArg(const ObjectID &arg_id) {
     ObjectID return_id = ObjectID::FromRandom();
     if (!arg_id.IsNil()) {
-      rc_.UpdateSubmittedTaskReferences({return_id}, {arg_id});
+      rc_->UpdateSubmittedTaskReferences({return_id}, {arg_id});
     }
-    rc_.AddOwnedObject(return_id, {}, address_, "", 0, false, /*add_local_ref=*/true);
+    rc_->AddOwnedObject(return_id, {}, address_, "", 0, false, /*add_local_ref=*/true);
     return_ids_.push_back(return_id);
     return return_id;
   }
@@ -412,12 +412,12 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       const ObjectID *return_wrapped_id = nullptr,
       const rpc::Address *owner_address = nullptr) {
     if (return_wrapped_id) {
-      rc_.AddNestedObjectIds(return_id, {*return_wrapped_id}, *owner_address);
+      rc_->AddNestedObjectIds(return_id, {*return_wrapped_id}, *owner_address);
     }
 
     ReferenceCounter::ReferenceTableProto refs;
     if (!arg_id.IsNil()) {
-      rc_.PopAndClearLocalBorrowers({arg_id}, &refs, nullptr);
+      rc_->PopAndClearLocalBorrowers({arg_id}, &refs, nullptr);
     }
     return refs;
   }
@@ -431,12 +431,12 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     std::vector<ObjectID> arguments;
     for (const auto &pair : nested_return_ids) {
       // NOTE(swang): https://github.com/ray-project/ray/issues/17553.
-      rc_.AddNestedObjectIds(pair.first, pair.second, address_);
+      rc_->AddNestedObjectIds(pair.first, pair.second, address_);
     }
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
     }
-    rc_.UpdateFinishedTaskReferences(
+    rc_->UpdateFinishedTaskReferences(
         {return_id}, arguments, false, borrower_address, borrower_refs, nullptr);
   }
 
@@ -444,14 +444,14 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
   void AssertNoLeaks() {
     for (const auto &return_id : return_ids_) {
-      if (rc_.HasReference(return_id)) {
-        rc_.RemoveLocalReference(return_id, nullptr);
+      if (rc_->HasReference(return_id)) {
+        rc_->RemoveLocalReference(return_id, nullptr);
       }
     }
-    for (const auto &id : rc_.GetAllInScopeObjectIDs()) {
+    for (const auto &id : rc_->GetAllInScopeObjectIDs()) {
       RAY_LOG(INFO) << id;
     }
-    ASSERT_EQ(rc_.NumObjectIDsInScope(), 0);
+    ASSERT_EQ(rc_->NumObjectIDsInScope(), 0);
   }
 
   // Global map from Worker ID -> MockWorkerClient.
@@ -462,7 +462,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   std::shared_ptr<MockDistributedPublisher> publisher_;
   std::shared_ptr<MockDistributedSubscriber> subscriber_;
   // The ReferenceCounter at the "client".
-  ReferenceCounter rc_;
+  std::unique_ptr<ReferenceCounterInterface> rc_;
   absl::flat_hash_map<int, std::function<void()>> borrower_callbacks_;
   int num_requests_ = 0;
   std::vector<ObjectID> return_ids_;
@@ -871,25 +871,25 @@ TEST(DistributedReferenceCountTest, TestNoBorrow) {
   // be given a reference to inner_id.
   auto return_id1 = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   // The owner's ref count > 0 for both objects.
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is given a reference to the inner object.
   borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
   // The borrower submits a task that depends on the inner object.
   auto return_id2 = borrower->SubmitTaskWithArg(inner_id);
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The borrower waits for the task to finish before returning to the owner.
   borrower->HandleSubmittedTaskFinished(return_id2, inner_id);
   auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
   // Check that the borrower's ref count is now 0 for all objects.
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
@@ -897,8 +897,8 @@ TEST(DistributedReferenceCountTest, TestNoBorrow) {
       return_id1, outer_id, {}, borrower->address_, borrower_refs);
   borrower->FlushBorrowerCallbacks();
   // Check that owner's ref count is now 0 for all objects.
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 }
 
 // A borrower is given a reference to an object ID, submits a task, does not
@@ -927,26 +927,26 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
   // be given a reference to inner_id.
   auto return_id1 =
       owner->SubmitTaskWithArg(outer_id);  // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   // The owner's ref count > 0 for both objects.
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is given a reference to the inner object.
   borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
   // The borrower submits a task that depends on the inner object.
   auto return_id2 = borrower->SubmitTaskWithArg(inner_id);
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The borrower task returns to the owner without waiting for its submitted
   // task to finish.
   auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
-  // ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
+  // ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
   // Check that the borrower's ref count for inner_id > 0 because of the
   // pending task.
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
@@ -954,18 +954,18 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
       return_id1, outer_id, {}, borrower->address_, borrower_refs);
   borrower->FlushBorrowerCallbacks();
   // Check that owner now has borrower in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Check that owner's ref count for outer == 0 since the borrower task
   // returned and there were no local references to outer_id.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 
   // The task submitted by the borrower returns. Everyone's ref count should go
   // to 0.
   borrower->HandleSubmittedTaskFinished(return_id2, inner_id);
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 }
 
 // A borrower is given a reference to an object ID, submits a task, does not
@@ -998,26 +998,26 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
   // be given a reference to inner_id.
   auto return_id1 = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   // The owner's ref count > 0 for both objects.
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is given a reference to the inner object.
   borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
   // The borrower submits a task that depends on the inner object.
   borrower->SubmitTaskWithArg(inner_id);
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The borrower task returns to the owner without waiting for its submitted
   // task to finish.
   auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
-  // ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
+  // ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
   // Check that the borrower's ref count for inner_id > 0 because of the
   // pending task.
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
@@ -1025,15 +1025,15 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
       return_id1, outer_id, {}, borrower->address_, borrower_refs);
   borrower->FlushBorrowerCallbacks();
   // Check that owner now has borrower in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Check that owner's ref count for outer == 0 since the borrower task
   // returned and there were no local references to outer_id.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 
   // The borrower fails. The owner's ref count should go to 0.
   borrower->FailAllWaitForRefRemovedRequests();
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 }
 
 // A borrower is given a reference to an object ID, keeps the reference past
@@ -1063,42 +1063,42 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
   // be given a reference to inner_id.
   auto return_id = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   // The owner's ref count > 0 for both objects.
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is given a reference to the inner object.
   borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The borrower task returns to the owner while still using inner_id.
   auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
   owner->HandleSubmittedTaskFinished(
       return_id, outer_id, {}, borrower->address_, borrower_refs);
   // Check that owner now has borrower in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Check that owner's ref count for outer == 0 since the borrower task
   // returned and there were no local references to outer_id.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 
   // The borrower is no longer using inner_id, but it hasn't received the
   // message from the owner yet.
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower receives the owner's wait message. It should return a reply
   // to the owner immediately saying that it is no longer using inner_id.
   borrower->FlushBorrowerCallbacks();
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // A borrower is given a reference to an object ID, passes the reference to
@@ -1136,11 +1136,11 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   // be given a reference to inner_id.
   auto return_id1 = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   // The owner's ref count > 0 for both objects.
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Borrower 1 is given a reference to the inner object.
   borrower1->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
@@ -1148,17 +1148,17 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   auto outer_id2 = ObjectID::FromRandom();
   borrower1->PutWrappedId(outer_id2, inner_id);
   auto return_id2 = borrower1->SubmitTaskWithArg(outer_id2);
-  borrower1->rc_.RemoveLocalReference(inner_id, nullptr);
-  borrower1->rc_.RemoveLocalReference(outer_id2, nullptr);
-  ASSERT_TRUE(borrower1->rc_.HasReference(inner_id));
-  ASSERT_TRUE(borrower1->rc_.HasReference(outer_id2));
+  borrower1->rc_->RemoveLocalReference(inner_id, nullptr);
+  borrower1->rc_->RemoveLocalReference(outer_id2, nullptr);
+  ASSERT_TRUE(borrower1->rc_->HasReference(inner_id));
+  ASSERT_TRUE(borrower1->rc_->HasReference(outer_id2));
 
   // The borrower task returns to the owner without waiting for its submitted
   // task to finish.
   auto borrower_refs = borrower1->FinishExecutingTask(outer_id, ObjectID::Nil());
-  ASSERT_TRUE(borrower1->rc_.HasReference(inner_id));
-  ASSERT_TRUE(borrower1->rc_.HasReference(outer_id2));
-  ASSERT_FALSE(borrower1->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower1->rc_->HasReference(inner_id));
+  ASSERT_TRUE(borrower1->rc_->HasReference(outer_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(outer_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
@@ -1166,32 +1166,32 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
       return_id1, outer_id, {}, borrower1->address_, borrower_refs);
   borrower1->FlushBorrowerCallbacks();
   // Check that owner now has borrower in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Check that owner's ref count for outer == 0 since the borrower task
   // returned and there were no local references to outer_id.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 
   // Borrower 2 starts executing. It is given a reference to the inner object
   // when it gets outer_id2 as an argument.
   borrower2->ExecuteTaskWithArg(outer_id2, inner_id, owner->address_);
-  ASSERT_TRUE(borrower2->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower2->rc_->HasReference(inner_id));
   // Borrower 2 finishes but it is still using inner_id.
   borrower_refs = borrower2->FinishExecutingTask(outer_id2, ObjectID::Nil());
-  ASSERT_TRUE(borrower2->rc_.HasReference(inner_id));
-  ASSERT_FALSE(borrower2->rc_.HasReference(outer_id2));
-  ASSERT_FALSE(borrower2->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower2->rc_->HasReference(inner_id));
+  ASSERT_FALSE(borrower2->rc_->HasReference(outer_id2));
+  ASSERT_FALSE(borrower2->rc_->HasReference(outer_id));
 
   borrower1->HandleSubmittedTaskFinished(
       return_id2, outer_id2, {}, borrower2->address_, borrower_refs);
   borrower2->FlushBorrowerCallbacks();
   // Borrower 1 no longer has a reference to any objects.
-  ASSERT_FALSE(borrower1->rc_.HasReference(inner_id));
-  ASSERT_FALSE(borrower1->rc_.HasReference(outer_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(inner_id));
+  ASSERT_FALSE(borrower1->rc_->HasReference(outer_id2));
   // The owner should now have borrower 2 in its count.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  borrower2->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(borrower2->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
+  borrower2->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower2->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // A task is given a reference to an object ID, whose value contains another
@@ -1224,40 +1224,40 @@ TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
   // be given a reference to mid_id.
   auto return_id = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(mid_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(mid_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   // The owner's ref count > 0 for all objects.
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(mid_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(mid_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is given a reference to the middle object.
   borrower->ExecuteTaskWithArg(outer_id, mid_id, owner->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(mid_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(mid_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
 
   // The borrower unwraps the inner object with ray.get.
   borrower->GetSerializedObjectId(mid_id, inner_id, owner->address_);
-  borrower->rc_.RemoveLocalReference(mid_id, nullptr);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(mid_id, nullptr);
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
   // The borrower's reference to inner_id goes out of scope.
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
 
   // The borrower task returns to the owner.
   auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(mid_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(mid_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
   owner->HandleSubmittedTaskFinished(
       return_id, outer_id, {}, borrower->address_, borrower_refs);
   // Check that owner now has nothing in scope.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
-  ASSERT_FALSE(owner->rc_.HasReference(mid_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(mid_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // A task is given a reference to an object ID, whose value contains another
@@ -1290,52 +1290,52 @@ TEST(DistributedReferenceCountTest, TestNestedObject) {
   // be given a reference to mid_id.
   auto return_id = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(mid_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(mid_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   // The owner's ref count > 0 for all objects.
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(mid_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(mid_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is given a reference to the middle object.
   borrower->ExecuteTaskWithArg(outer_id, mid_id, owner->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(mid_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(mid_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
 
   // The borrower unwraps the inner object with ray.get.
   borrower->GetSerializedObjectId(mid_id, inner_id, owner->address_);
-  borrower->rc_.RemoveLocalReference(mid_id, nullptr);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(mid_id, nullptr);
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The borrower task returns to the owner while still using inner_id.
   auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(mid_id));
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(mid_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
   owner->HandleSubmittedTaskFinished(
       return_id, outer_id, {}, borrower->address_, borrower_refs);
   // Check that owner now has borrower in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Check that owner's ref count for outer and mid are 0 since the borrower
   // task returned and there were no local references to outer_id.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
-  ASSERT_FALSE(owner->rc_.HasReference(mid_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(mid_id));
 
   // The borrower receives the owner's wait message. It should return a reply
   // to the owner immediately saying that it is no longer using inner_id.
   borrower->FlushBorrowerCallbacks();
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is no longer using inner_id, but it hasn't received the
   // message from the owner yet.
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // A borrower is given a reference to an object ID, whose value contains
@@ -1379,62 +1379,62 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners) {
   // be given a reference to owner_id2.
   auto return_id2 = owner->SubmitTaskWithArg(owner_id3);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(owner_id1, nullptr);
-  owner->rc_.RemoveLocalReference(owner_id2, nullptr);
-  owner->rc_.RemoveLocalReference(owner_id3, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id1, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id2, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id3, nullptr);
 
   // The borrower is given a reference to the middle object.
   borrower1->ExecuteTaskWithArg(owner_id3, owner_id2, owner->address_);
-  ASSERT_TRUE(borrower1->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id1));
+  ASSERT_TRUE(borrower1->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id1));
 
   // The borrower wraps the object ID again.
   auto borrower_id = ObjectID::FromRandom();
   borrower1->PutWrappedId(borrower_id, owner_id2);
-  borrower1->rc_.RemoveLocalReference(owner_id2, nullptr);
+  borrower1->rc_->RemoveLocalReference(owner_id2, nullptr);
 
   // Borrower 1 submits a task that depends on the wrapped object. The task
   // will be given a reference to owner_id2.
   auto return_id1 = borrower1->SubmitTaskWithArg(borrower_id);
-  borrower1->rc_.RemoveLocalReference(borrower_id, nullptr);
+  borrower1->rc_->RemoveLocalReference(borrower_id, nullptr);
   borrower2->ExecuteTaskWithArg(borrower_id, owner_id2, owner->address_);
 
   // The nested task returns while still using owner_id1.
   borrower2->GetSerializedObjectId(owner_id2, owner_id1, owner->address_);
-  borrower2->rc_.RemoveLocalReference(owner_id2, nullptr);
+  borrower2->rc_->RemoveLocalReference(owner_id2, nullptr);
   auto borrower_refs = borrower2->FinishExecutingTask(borrower_id, ObjectID::Nil());
-  ASSERT_TRUE(borrower2->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(borrower2->rc_.HasReference(owner_id2));
+  ASSERT_TRUE(borrower2->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(borrower2->rc_->HasReference(owner_id2));
 
   // Borrower 1 should now know that borrower 2 is borrowing the inner object
   // ID.
   borrower1->HandleSubmittedTaskFinished(
       return_id1, borrower_id, {}, borrower2->address_, borrower_refs);
-  ASSERT_TRUE(borrower1->rc_.HasReference(owner_id1));
+  ASSERT_TRUE(borrower1->rc_->HasReference(owner_id1));
 
   // Borrower 1 finishes. It should not have any references now because all
   // state has been merged into the owner.
   borrower_refs = borrower1->FinishExecutingTask(owner_id3, ObjectID::Nil());
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id3));
-  ASSERT_FALSE(borrower1->rc_.HasReference(borrower_id));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id3));
+  ASSERT_FALSE(borrower1->rc_->HasReference(borrower_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
   owner->HandleSubmittedTaskFinished(
       return_id2, owner_id3, {}, borrower1->address_, borrower_refs);
   // Check that owner now has borrower2 in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(owner->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(owner->rc_.HasReference(owner_id3));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(owner->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(owner->rc_->HasReference(owner_id3));
 
   // The borrower receives the owner's wait message.
   borrower2->FlushBorrowerCallbacks();
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id1));
-  borrower2->rc_.RemoveLocalReference(owner_id1, nullptr);
-  ASSERT_FALSE(borrower2->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(owner->rc_.HasReference(owner_id1));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id1));
+  borrower2->rc_->RemoveLocalReference(owner_id1, nullptr);
+  ASSERT_FALSE(borrower2->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(owner->rc_->HasReference(owner_id1));
 }
 
 // A borrower is given a reference to an object ID, whose value contains
@@ -1478,19 +1478,19 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
   // be given a reference to owner_id2.
   auto return_id2 = owner->SubmitTaskWithArg(owner_id3);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(owner_id1, nullptr);
-  owner->rc_.RemoveLocalReference(owner_id2, nullptr);
-  owner->rc_.RemoveLocalReference(owner_id3, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id1, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id2, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id3, nullptr);
 
   // The borrower is given a reference to the middle object.
   borrower1->ExecuteTaskWithArg(owner_id3, owner_id2, owner->address_);
-  ASSERT_TRUE(borrower1->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id1));
+  ASSERT_TRUE(borrower1->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id1));
 
   // The borrower wraps the object ID again.
   auto borrower_id = ObjectID::FromRandom();
   borrower1->PutWrappedId(borrower_id, owner_id2);
-  borrower1->rc_.RemoveLocalReference(owner_id2, nullptr);
+  borrower1->rc_->RemoveLocalReference(owner_id2, nullptr);
 
   // Borrower 1 submits a task that depends on the wrapped object. The task
   // will be given a reference to owner_id2.
@@ -1499,46 +1499,46 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
 
   // The nested task returns while still using owner_id1.
   borrower2->GetSerializedObjectId(owner_id2, owner_id1, owner->address_);
-  borrower2->rc_.RemoveLocalReference(owner_id2, nullptr);
+  borrower2->rc_->RemoveLocalReference(owner_id2, nullptr);
   auto borrower_refs = borrower2->FinishExecutingTask(borrower_id, ObjectID::Nil());
-  ASSERT_TRUE(borrower2->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(borrower2->rc_.HasReference(owner_id2));
+  ASSERT_TRUE(borrower2->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(borrower2->rc_->HasReference(owner_id2));
 
   // Borrower 1 should now know that borrower 2 is borrowing the inner object
   // ID.
   borrower1->HandleSubmittedTaskFinished(
       return_id1, borrower_id, {}, borrower2->address_, borrower_refs);
-  ASSERT_TRUE(borrower1->rc_.HasReference(owner_id1));
-  ASSERT_TRUE(borrower1->rc_.HasReference(owner_id2));
+  ASSERT_TRUE(borrower1->rc_->HasReference(owner_id1));
+  ASSERT_TRUE(borrower1->rc_->HasReference(owner_id2));
 
   // Borrower 1 finishes. It should only have its reference to owner_id2 now.
   borrower_refs = borrower1->FinishExecutingTask(owner_id3, ObjectID::Nil());
-  ASSERT_TRUE(borrower1->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id3));
+  ASSERT_TRUE(borrower1->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id3));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
   owner->HandleSubmittedTaskFinished(
       return_id2, owner_id3, {}, borrower1->address_, borrower_refs);
   // Check that owner now has borrower2 in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id1));
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(owner->rc_.HasReference(owner_id3));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id1));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(owner->rc_->HasReference(owner_id3));
 
   // The borrower receives the owner's wait message.
   borrower2->FlushBorrowerCallbacks();
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id1));
-  borrower2->rc_.RemoveLocalReference(owner_id1, nullptr);
-  ASSERT_FALSE(borrower2->rc_.HasReference(owner_id1));
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id1));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id1));
+  borrower2->rc_->RemoveLocalReference(owner_id1, nullptr);
+  ASSERT_FALSE(borrower2->rc_->HasReference(owner_id1));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id1));
 
   // The borrower receives the owner's wait message.
   borrower1->FlushBorrowerCallbacks();
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id2));
-  borrower1->rc_.RemoveLocalReference(borrower_id, nullptr);
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(owner->rc_.HasReference(owner_id2));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id2));
+  borrower1->rc_->RemoveLocalReference(borrower_id, nullptr);
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(owner->rc_->HasReference(owner_id2));
 }
 
 // A borrower is given a reference to an object ID and passes the reference to
@@ -1573,8 +1573,8 @@ TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
   // be given a reference to inner_id.
   auto return_id1 = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
 
   // Borrower 1 is given a reference to the inner object.
   borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
@@ -1582,17 +1582,17 @@ TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
   auto outer_id2 = ObjectID::FromRandom();
   borrower->PutWrappedId(outer_id2, inner_id);
   auto return_id2 = borrower->SubmitTaskWithArg(outer_id2);
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  borrower->rc_.RemoveLocalReference(outer_id2, nullptr);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
-  ASSERT_TRUE(borrower->rc_.HasReference(outer_id2));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  borrower->rc_->RemoveLocalReference(outer_id2, nullptr);
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(outer_id2));
 
   // The borrower task returns to the owner without waiting for its submitted
   // task to finish.
   auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
-  ASSERT_TRUE(borrower->rc_.HasReference(outer_id2));
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(outer_id2));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
 
   // The owner receives the borrower's reply and merges the borrower's ref
   // count into its own.
@@ -1600,29 +1600,29 @@ TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
       return_id1, outer_id, {}, borrower->address_, borrower_refs);
   borrower->FlushBorrowerCallbacks();
   // Check that owner now has a borrower for inner.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Check that owner's ref count for outer == 0 since the borrower task
   // returned and there were no local references to outer_id.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 
   // Owner starts executing the submitted task. It is given a second reference
   // to the inner object when it gets outer_id2 as an argument.
   owner->ExecuteTaskWithArg(outer_id2, inner_id, owner->address_);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Owner finishes but it is still using inner_id.
   borrower_refs = owner->FinishExecutingTask(outer_id2, ObjectID::Nil());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   borrower->HandleSubmittedTaskFinished(
       return_id2, outer_id2, {}, owner->address_, borrower_refs);
   borrower->FlushBorrowerCallbacks();
   // Borrower no longer has a reference to any objects.
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id2));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id2));
   // The owner should now have borrower 2 in its count.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // A borrower is given two references to the same object ID. `task` and `Actor`
@@ -1656,26 +1656,26 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   // be given a reference to inner_id.
   auto return_id1 = owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower is given a reference to the inner object.
   borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
   // The borrower submits a task that depends on the inner object.
   auto return_id2 = borrower->SubmitTaskWithArg(inner_id);
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The borrower task returns to the owner without waiting for its submitted
   // task to finish.
   auto borrower_refs1 = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
   // Check that the borrower's ref count for inner_id > 0 because of the
   // pending task.
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // The borrower is given a 2nd reference to the inner object.
   auto return_id3 = owner->SubmitTaskWithArg(outer_id);
-  owner->rc_.RemoveLocalReference(outer_id, nullptr);
+  owner->rc_->RemoveLocalReference(outer_id, nullptr);
   borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
   auto borrower_refs2 = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
 
@@ -1687,20 +1687,20 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
       return_id3, outer_id, {}, borrower->address_, borrower_refs2);
   borrower->FlushBorrowerCallbacks();
   // Check that owner now has borrower in inner's borrowers list.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   // Check that owner's ref count for outer == 0 since the borrower task
   // returned and there were no local references to outer_id.
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 
   // The task submitted by the borrower returns and its second reference goes
   // out of scope. Everyone's ref count should go to 0.
   borrower->HandleSubmittedTaskFinished(return_id2, inner_id);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
 }
 
 // Two tasks execute on the same worker. After the inner object id returned is
@@ -1742,66 +1742,66 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   // Task returns inner_id as its return value.
   auto inner_id = ObjectID::FromRandom();
   owner->PutWithForeignOwner(inner_id, foreign_owner->address_);
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
   auto refs = owner->FinishExecutingTask(
       ObjectID::Nil(), return_id, &inner_id, &caller->address_);
   ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
   caller->HandleSubmittedTaskFinished(
       return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
-  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
+  ASSERT_TRUE(caller->rc_->HasReference(inner_id));
 
   //
   // Phase 2 -- submit and execute owner_task2(x)
   //
   auto return_id2 = caller->SubmitTaskWithArg(return_id);
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
-  caller->rc_.RemoveLocalReference(return_id2, nullptr);
+  caller->rc_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
+  ASSERT_TRUE(caller->rc_->HasReference(inner_id));
+  caller->rc_->RemoveLocalReference(return_id2, nullptr);
   // Owner receives a reference to inner_id. It still has a reference when
   // the task returns.
   owner->ExecuteTaskWithArg(return_id, inner_id, caller->address_);
   auto refs2 = owner->FinishExecutingTask(return_id, return_id2);
   // owner merges ref count into the caller.
   caller->HandleSubmittedTaskFinished(return_id2, return_id, {}, owner->address_, refs2);
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_FALSE(owner->rc_.HasReference(return_id2));
-  ASSERT_FALSE(caller->rc_.HasReference(return_id2));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(return_id));
+  ASSERT_FALSE(caller->rc_->HasReference(return_id));
+  ASSERT_FALSE(owner->rc_->HasReference(return_id2));
+  ASSERT_FALSE(caller->rc_->HasReference(return_id2));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   //
   // Phase 3 -- foreign owner gets ref removed information.
   //
   // Emulate ref removed callback.
-  foreign_owner->rc_.AddOwnedObject(inner_id,
-                                    {},
-                                    foreign_owner->address_,
-                                    "",
-                                    0,
-                                    false,
-                                    /*add_local_ref=*/false);
-  foreign_owner->rc_.AddBorrowerAddress(inner_id, owner->address_);
+  foreign_owner->rc_->AddOwnedObject(inner_id,
+                                     {},
+                                     foreign_owner->address_,
+                                     "",
+                                     0,
+                                     false,
+                                     /*add_local_ref=*/false);
+  foreign_owner->rc_->AddBorrowerAddress(inner_id, owner->address_);
 
   // Foreign owner waits on owner.
   ASSERT_TRUE(owner->FlushBorrowerCallbacks());
-  ASSERT_TRUE(foreign_owner->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(foreign_owner->rc_->HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   ASSERT_FALSE(caller->FlushBorrowerCallbacks());
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  caller->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
+  caller->rc_->RemoveLocalReference(inner_id, nullptr);
 
   // Foreign owner waits on caller next.
   ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(foreign_owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
+  ASSERT_FALSE(foreign_owner->rc_->HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
 }
 
 // A borrower is given references to 2 different objects, which each contain a
@@ -1828,13 +1828,13 @@ TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
 
   auto return_id1 = owner->SubmitTaskWithArg(owner_id3);
   auto return_id2 = owner->SubmitTaskWithArg(owner_id2);
-  owner->rc_.RemoveLocalReference(owner_id1, nullptr);
-  owner->rc_.RemoveLocalReference(owner_id2, nullptr);
-  owner->rc_.RemoveLocalReference(owner_id3, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id1, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id2, nullptr);
+  owner->rc_->RemoveLocalReference(owner_id3, nullptr);
 
   borrower2->ExecuteTaskWithArg(owner_id3, owner_id2, owner->address_);
   borrower2->GetSerializedObjectId(owner_id2, owner_id1, owner->address_);
-  borrower2->rc_.RemoveLocalReference(owner_id2, nullptr);
+  borrower2->rc_->RemoveLocalReference(owner_id2, nullptr);
   // The nested task returns while still using owner_id1.
   auto borrower_refs = borrower2->FinishExecutingTask(owner_id3, ObjectID::Nil());
   owner->HandleSubmittedTaskFinished(
@@ -1846,11 +1846,11 @@ TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
   // The borrower wraps the object ID again.
   auto borrower_id = ObjectID::FromRandom();
   borrower1->PutWrappedId(borrower_id, owner_id1);
-  borrower1->rc_.RemoveLocalReference(owner_id1, nullptr);
+  borrower1->rc_->RemoveLocalReference(owner_id1, nullptr);
   // Borrower 1 submits a task that depends on the wrapped object. The task
   // will be given a reference to owner_id1.
   auto return_id3 = borrower1->SubmitTaskWithArg(borrower_id);
-  borrower1->rc_.RemoveLocalReference(borrower_id, nullptr);
+  borrower1->rc_->RemoveLocalReference(borrower_id, nullptr);
   borrower2->ExecuteTaskWithArg(borrower_id, owner_id1, owner->address_);
   // The nested task returns while still using owner_id1.
   // It should now have 2 local references to owner_id1, one from the owner and
@@ -1862,10 +1862,10 @@ TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
   // Borrower 1 finishes. It should not have any references now because all
   // state has been merged into the owner.
   borrower_refs = borrower1->FinishExecutingTask(owner_id2, ObjectID::Nil());
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id2));
-  ASSERT_FALSE(borrower1->rc_.HasReference(owner_id3));
-  ASSERT_FALSE(borrower1->rc_.HasReference(borrower_id));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id2));
+  ASSERT_FALSE(borrower1->rc_->HasReference(owner_id3));
+  ASSERT_FALSE(borrower1->rc_->HasReference(borrower_id));
   // Borrower 1 should not have merge any refs into the owner because borrower 2's ref was
   // already merged into the owner.
   owner->HandleSubmittedTaskFinished(
@@ -1873,12 +1873,12 @@ TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
 
   // The borrower receives the owner's wait message.
   borrower2->FlushBorrowerCallbacks();
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id1));
-  borrower2->rc_.RemoveLocalReference(owner_id1, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(owner_id1));
-  borrower2->rc_.RemoveLocalReference(owner_id1, nullptr);
-  ASSERT_FALSE(borrower2->rc_.HasReference(owner_id1));
-  ASSERT_FALSE(owner->rc_.HasReference(owner_id1));
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id1));
+  borrower2->rc_->RemoveLocalReference(owner_id1, nullptr);
+  ASSERT_TRUE(owner->rc_->HasReference(owner_id1));
+  borrower2->rc_->RemoveLocalReference(owner_id1, nullptr);
+  ASSERT_FALSE(borrower2->rc_->HasReference(owner_id1));
+  ASSERT_FALSE(owner->rc_->HasReference(owner_id1));
 }
 
 // We submit a task and immediately delete the reference to the return ID. The
@@ -1905,21 +1905,21 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdNoBorrow) {
   owner->Put(inner_id);
   auto refs = owner->FinishExecutingTask(
       ObjectID::Nil(), return_id, &inner_id, &caller->address_);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Caller's ref to the task's return ID goes out of scope before it hears
   // from the owner of inner_id.
   caller->HandleSubmittedTaskFinished(
       return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  caller->rc_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(caller->rc_->HasReference(return_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
 
   // Caller should respond to the owner's message immediately.
   ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // We submit a task and keep the reference to the return ID. The submitted task
@@ -1946,23 +1946,23 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrow) {
   owner->Put(inner_id);
   auto refs = owner->FinishExecutingTask(
       ObjectID::Nil(), return_id, &inner_id, &caller->address_);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
   caller->HandleSubmittedTaskFinished(
       return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
   ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Caller's reference to return_id goes out of scope. The caller should
   // respond to the owner of inner_id so that inner_id can be deleted.
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  caller->rc_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(caller->rc_->HasReference(return_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // We submit a task and submit another task that depends on the return ID. The
@@ -1995,42 +1995,42 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
   owner->Put(inner_id);
   auto refs = owner->FinishExecutingTask(
       ObjectID::Nil(), return_id, &inner_id, &caller->address_);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
   caller->HandleSubmittedTaskFinished(
       return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
   auto return_id2 = caller->SubmitTaskWithArg(return_id);
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
+  caller->rc_->RemoveLocalReference(return_id, nullptr);
   ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Borrower receives a reference to inner_id. It still has a reference when
   // the task returns.
   borrower->ExecuteTaskWithArg(return_id, inner_id, owner->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
   auto borrower_refs = borrower->FinishExecutingTask(return_id, return_id);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // Borrower merges ref count into the caller.
   caller->HandleSubmittedTaskFinished(
       return_id2, return_id, {}, borrower->address_, borrower_refs);
   // The caller should not have a ref count anymore because it was merged into
   // the owner.
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_->HasReference(return_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower's receives the owner's message and its reference goes out of
   // scope.
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(borrower->rc_.HasReference(return_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_->HasReference(return_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // We submit a task and submit another task that depends on the return ID. The
@@ -2067,26 +2067,26 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
   owner->Put(inner_id);
   auto refs = owner->FinishExecutingTask(
       ObjectID::Nil(), return_id, &inner_id, &caller->address_);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
   caller->HandleSubmittedTaskFinished(
       return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
   auto borrower_return_id = caller->SubmitTaskWithArg(return_id);
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
+  caller->rc_->RemoveLocalReference(return_id, nullptr);
   ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Borrower receives a reference to inner_id. It returns the inner_id as its
   // return value.
   borrower->ExecuteTaskWithArg(return_id, inner_id, owner->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
   auto borrower_refs = borrower->FinishExecutingTask(
       return_id, borrower_return_id, &inner_id, &caller->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // Borrower merges ref count into the caller.
   caller->HandleSubmittedTaskFinished(borrower_return_id,
@@ -2096,28 +2096,28 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
                                       borrower_refs);
   // The caller should still have a ref count because it has a reference to
   // borrower_return_id.
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_TRUE(caller->rc_.HasReference(borrower_return_id));
-  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_->HasReference(return_id));
+  ASSERT_TRUE(caller->rc_->HasReference(borrower_return_id));
+  ASSERT_TRUE(caller->rc_->HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower's receives the owner's message and its reference goes out of
   // scope.
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(borrower->rc_.HasReference(borrower_return_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(return_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_->HasReference(borrower_return_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(return_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
 
   // The caller's reference to the borrower's return value goes out of scope.
-  caller->rc_.RemoveLocalReference(borrower_return_id, nullptr);
-  ASSERT_FALSE(caller->rc_.HasReference(borrower_return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  caller->rc_->RemoveLocalReference(borrower_return_id, nullptr);
+  ASSERT_FALSE(caller->rc_->HasReference(borrower_return_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
   // The owner should still have the object ID in scope because it hasn't heard
   // from borrower yet.
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // We submit a task and submit another task that depends on the return ID. The
@@ -2155,25 +2155,25 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdDeserialize) {
   owner->Put(inner_id);
   auto refs = owner->FinishExecutingTask(
       ObjectID::Nil(), return_id, &inner_id, &caller->address_);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
   caller->HandleSubmittedTaskFinished(
       return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
   auto borrower_return_id = caller->SubmitTaskWithArg(return_id);
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  caller->rc_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Borrower receives a reference to inner_id. It returns the inner_id as its
   // return value.
   borrower->ExecuteTaskWithArg(return_id, inner_id, owner->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
   auto borrower_refs = borrower->FinishExecutingTask(
       return_id, borrower_return_id, &inner_id, &caller->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // Borrower merges ref count into the caller.
   caller->HandleSubmittedTaskFinished(borrower_return_id,
@@ -2183,27 +2183,27 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdDeserialize) {
                                       borrower_refs);
   // The caller should still have a ref count because it has a reference to
   // borrower_return_id.
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_TRUE(caller->rc_.HasReference(borrower_return_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_->HasReference(return_id));
+  ASSERT_TRUE(caller->rc_->HasReference(borrower_return_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   caller->GetSerializedObjectId(borrower_return_id, inner_id, owner->address_);
-  caller->rc_.RemoveLocalReference(borrower_return_id, nullptr);
+  caller->rc_->RemoveLocalReference(borrower_return_id, nullptr);
   ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  caller->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(borrower_return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  caller->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(caller->rc_->HasReference(return_id));
+  ASSERT_FALSE(caller->rc_->HasReference(borrower_return_id));
+  ASSERT_FALSE(caller->rc_->HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // The borrower's receives the owner's message and its reference goes out of
   // scope.
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_FALSE(borrower->rc_.HasReference(borrower_return_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(return_id));
-  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_->HasReference(borrower_return_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(return_id));
+  ASSERT_FALSE(borrower->rc_->HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // Recursively returning IDs. We submit a task, which submits another task and
@@ -2247,8 +2247,8 @@ TEST(DistributedReferenceCountTest, TestReturnIdChain) {
   nested_worker->Put(inner_id);
   auto nested_refs = nested_worker->FinishExecutingTask(
       ObjectID::Nil(), nested_return_id, &inner_id, &worker->address_);
-  nested_worker->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
+  nested_worker->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
 
   // All task execution replies are received.
   root->HandleSubmittedTaskFinished(
@@ -2260,11 +2260,11 @@ TEST(DistributedReferenceCountTest, TestReturnIdChain) {
 
   // The reference only goes out of scope once the other workers' references to
   // their submitted tasks' return ID go out of scope.
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
-  worker->rc_.RemoveLocalReference(nested_return_id, nullptr);
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
-  root->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_FALSE(nested_worker->rc_.HasReference(inner_id));
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
+  worker->rc_->RemoveLocalReference(nested_return_id, nullptr);
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
+  root->rc_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(nested_worker->rc_->HasReference(inner_id));
 }
 
 // Recursively returning a borrowed object ID. We submit a task, which submits
@@ -2308,8 +2308,8 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
   nested_worker->Put(inner_id);
   auto nested_refs = nested_worker->FinishExecutingTask(
       ObjectID::Nil(), nested_return_id, &inner_id, &worker->address_);
-  nested_worker->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
+  nested_worker->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
 
   // Worker receives the reply from the nested task.
   worker->HandleSubmittedTaskFinished(
@@ -2321,11 +2321,11 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
       worker->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &root->address_);
 
   // Worker no longer borrowers the inner ID.
-  worker->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(worker->rc_.HasReference(inner_id));
-  worker->rc_.RemoveLocalReference(nested_return_id, nullptr);
-  ASSERT_FALSE(worker->rc_.HasReference(inner_id));
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
+  worker->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(worker->rc_->HasReference(inner_id));
+  worker->rc_->RemoveLocalReference(nested_return_id, nullptr);
+  ASSERT_FALSE(worker->rc_->HasReference(inner_id));
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
 
   // Root receives worker's reply, then the WaitForRefRemovedRequest from
   // nested_worker.
@@ -2334,12 +2334,12 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
   root->FlushBorrowerCallbacks();
   // Object is still in scope because root now knows that return_id contains
   // inner_id.
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
 
-  root->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_FALSE(root->rc_.HasReference(return_id));
-  ASSERT_FALSE(root->rc_.HasReference(inner_id));
-  ASSERT_FALSE(nested_worker->rc_.HasReference(inner_id));
+  root->rc_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(root->rc_->HasReference(return_id));
+  ASSERT_FALSE(root->rc_->HasReference(inner_id));
+  ASSERT_FALSE(nested_worker->rc_->HasReference(inner_id));
 }
 
 // Recursively returning a borrowed object ID. We submit a task, which submits
@@ -2387,8 +2387,8 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
   nested_worker->Put(inner_id);
   auto nested_refs = nested_worker->FinishExecutingTask(
       ObjectID::Nil(), nested_return_id, &inner_id, &worker->address_);
-  nested_worker->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
+  nested_worker->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
 
   // Worker receives the reply from the nested task.
   worker->HandleSubmittedTaskFinished(
@@ -2400,23 +2400,23 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
       worker->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &root->address_);
 
   // Worker no longer borrowers the inner ID.
-  worker->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(worker->rc_.HasReference(inner_id));
-  worker->rc_.RemoveLocalReference(nested_return_id, nullptr);
-  ASSERT_FALSE(worker->rc_.HasReference(inner_id));
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
+  worker->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(worker->rc_->HasReference(inner_id));
+  worker->rc_->RemoveLocalReference(nested_return_id, nullptr);
+  ASSERT_FALSE(worker->rc_->HasReference(inner_id));
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
 
   // Root receives the WaitForRefRemovedRequest from nested_worker BEFORE the
   // reply from worker.
   root->FlushBorrowerCallbacks();
-  ASSERT_TRUE(nested_worker->rc_.HasReference(inner_id));
+  ASSERT_TRUE(nested_worker->rc_->HasReference(inner_id));
 
   root->HandleSubmittedTaskFinished(
       return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
-  root->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_FALSE(root->rc_.HasReference(return_id));
-  ASSERT_FALSE(root->rc_.HasReference(inner_id));
-  ASSERT_FALSE(nested_worker->rc_.HasReference(inner_id));
+  root->rc_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(root->rc_->HasReference(return_id));
+  ASSERT_FALSE(root->rc_->HasReference(inner_id));
+  ASSERT_FALSE(nested_worker->rc_->HasReference(inner_id));
 }
 
 // TODO(swang): Test Pop and Merge individually.
@@ -2768,48 +2768,48 @@ TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
   // Owner owns a nested object ref, borrower is using the outer ObjectRef.
   ObjectID outer_id = ObjectID::FromRandom();
   ObjectID inner_id = ObjectID::FromRandom();
-  owner->rc_.AddOwnedObject(outer_id,
-                            {},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/false);
-  owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
-  owner->rc_.AddOwnedObject(inner_id,
-                            {},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/true);
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  owner->rc_->AddOwnedObject(outer_id,
+                             {},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/false);
+  owner->rc_->AddBorrowerAddress(outer_id, borrower->address_);
+  owner->rc_->AddOwnedObject(inner_id,
+                             {},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/true);
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
-  borrower->rc_.AddLocalReference(outer_id, "");
-  borrower->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  borrower->rc_->AddLocalReference(outer_id, "");
+  borrower->rc_->AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
   // Borrower deserializes the inner ObjectRef.
-  borrower->rc_.AddLocalReference(inner_id, "");
-  borrower->rc_.AddBorrowedObject(inner_id, outer_id, owner->address_);
-  ASSERT_TRUE(borrower->rc_.HasReference(outer_id));
-  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  borrower->rc_->AddLocalReference(inner_id, "");
+  borrower->rc_->AddBorrowedObject(inner_id, outer_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_->HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_->HasReference(inner_id));
 
   // Borrower deletes the outer ObjectRef. Inner ObjectRef is still in scope.
-  borrower->rc_.RemoveLocalReference(outer_id, nullptr);
+  borrower->rc_->RemoveLocalReference(outer_id, nullptr);
   // WaitForRefRemoved RPC from owner arrives after outer object ref has been deleted.
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Inner ObjectRef is still in scope because the borrower is still using it.
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  owner->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Delete all refs to the inner ObjectRef.
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
@@ -2821,57 +2821,57 @@ TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
   ObjectID outer_id = ObjectID::FromRandom();
   ObjectID middle_id = ObjectID::FromRandom();
   ObjectID inner_id = ObjectID::FromRandom();
-  owner->rc_.AddOwnedObject(inner_id,
-                            {},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(middle_id,
-                            {inner_id},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(outer_id,
-                            {middle_id},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/false);
-  owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(middle_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  owner->rc_->AddOwnedObject(inner_id,
+                             {},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/false);
+  owner->rc_->AddOwnedObject(middle_id,
+                             {inner_id},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/false);
+  owner->rc_->AddOwnedObject(outer_id,
+                             {middle_id},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/false);
+  owner->rc_->AddBorrowerAddress(outer_id, borrower->address_);
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
-  borrower->rc_.AddLocalReference(outer_id, "");
-  borrower->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
-  borrower->rc_.AddLocalReference(middle_id, "");
-  borrower->rc_.AddBorrowedObject(middle_id, outer_id, owner->address_);
+  borrower->rc_->AddLocalReference(outer_id, "");
+  borrower->rc_->AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  borrower->rc_->AddLocalReference(middle_id, "");
+  borrower->rc_->AddBorrowedObject(middle_id, outer_id, owner->address_);
   // Borrower receives the inlined inner ObjectRef.
   // This also simulates the case where the borrower deserializes the inner
   // ObjectRef, then deletes it.
-  borrower->rc_.AddBorrowedObject(inner_id, middle_id, owner->address_);
+  borrower->rc_->AddBorrowedObject(inner_id, middle_id, owner->address_);
 
-  borrower->rc_.RemoveLocalReference(outer_id, nullptr);
+  borrower->rc_->RemoveLocalReference(outer_id, nullptr);
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(middle_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Borrower deserializes the inner ObjectRef.
-  borrower->rc_.AddLocalReference(inner_id, "");
-  borrower->rc_.RemoveLocalReference(middle_id, nullptr);
+  borrower->rc_->AddLocalReference(inner_id, "");
+  borrower->rc_->RemoveLocalReference(middle_id, nullptr);
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(middle_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
-  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  borrower->rc_->RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(inner_id));
 }
 
 // Matches test_reference_counting_2.py::test_forward_nested_ref.
@@ -2887,55 +2887,55 @@ TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
   ObjectID outer_id = ObjectID::FromRandom();
   ObjectID middle_id = ObjectID::FromRandom();
   ObjectID inner_id = ObjectID::FromRandom();
-  owner->rc_.AddOwnedObject(inner_id,
-                            {},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(middle_id,
-                            {inner_id},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(outer_id,
-                            {middle_id},
-                            owner->address_,
-                            "",
-                            0,
-                            false,
-                            /*add_local_ref=*/false);
-  owner->rc_.AddBorrowerAddress(outer_id, borrower1->address_);
-  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
-  ASSERT_TRUE(owner->rc_.HasReference(middle_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  owner->rc_->AddOwnedObject(inner_id,
+                             {},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/false);
+  owner->rc_->AddOwnedObject(middle_id,
+                             {inner_id},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/false);
+  owner->rc_->AddOwnedObject(outer_id,
+                             {middle_id},
+                             owner->address_,
+                             "",
+                             0,
+                             false,
+                             /*add_local_ref=*/false);
+  owner->rc_->AddBorrowerAddress(outer_id, borrower1->address_);
+  ASSERT_TRUE(owner->rc_->HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_->HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   // Borrower 1 forwards the ObjectRef to borrower 2 via task submission.
-  borrower1->rc_.AddLocalReference(outer_id, "");
-  borrower1->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  borrower1->rc_->AddLocalReference(outer_id, "");
+  borrower1->rc_->AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
   auto return_id = borrower1->SubmitTaskWithArg(outer_id);
 
   // Borrower 2 executes the task, keeps ref to inner ref.
   borrower2->ExecuteTaskWithArg(outer_id, middle_id, owner->address_);
   borrower2->GetSerializedObjectId(middle_id, inner_id, owner->address_);
-  borrower2->rc_.RemoveLocalReference(middle_id, nullptr);
+  borrower2->rc_->RemoveLocalReference(middle_id, nullptr);
   auto borrower_refs = borrower2->FinishExecutingTask(outer_id, ObjectID::Nil());
   borrower1->HandleSubmittedTaskFinished(
       return_id, outer_id, {}, borrower2->address_, borrower_refs);
-  borrower1->rc_.RemoveLocalReference(outer_id, nullptr);
+  borrower1->rc_->RemoveLocalReference(outer_id, nullptr);
 
   // Now the owner should contact borrower 2.
   first_borrower = false;
   ASSERT_TRUE(borrower1->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
-  ASSERT_FALSE(owner->rc_.HasReference(middle_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_->HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_->HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_->HasReference(inner_id));
 
   ASSERT_TRUE(borrower2->FlushBorrowerCallbacks());
-  borrower2->rc_.RemoveLocalReference(inner_id, nullptr);
+  borrower2->rc_->RemoveLocalReference(inner_id, nullptr);
 }
 
 TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {

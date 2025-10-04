@@ -33,7 +33,7 @@ using ReportLocalityDataCallback =
 class FutureResolver {
  public:
   FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 std::shared_ptr<ReferenceCounter> ref_counter,
+                 std::shared_ptr<ReferenceCounterInterface> ref_counter,
                  ReportLocalityDataCallback report_locality_data_callback,
                  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
                  rpc::Address rpc_address)
@@ -69,7 +69,7 @@ class FutureResolver {
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   /// Used to record nested ObjectRefs of resolved futures.
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
   /// Used to report locality data received during future resolution.
   ReportLocalityDataCallback report_locality_data_callback_;
