@@ -94,7 +94,11 @@ def gen_expected_metrics(
 ):
     # If canonicalize_histogram_values is True, we replace the histogram entire histogram bucket values list with HV.
     # Otherwise, we generate a list of values that we expect to see in the metrics.
-    gen_histogram_values = gen_histogram_metrics_value_str if not canonicalize_histogram_values else lambda *args: "HB"
+    gen_histogram_values = (
+        gen_histogram_metrics_value_str
+        if not canonicalize_histogram_values
+        else lambda *args: "HB"
+    )
 
     if is_map:
         metrics = [
@@ -287,14 +291,16 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     ],
 )
 
-STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES = gen_expected_metrics(
-    is_map=True,
-    spilled=False,
-    task_backpressure=True,
-    canonicalize_histogram_values=True,
-    extra_metrics=[
-        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
-    ],
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES = (
+    gen_expected_metrics(
+        is_map=True,
+        spilled=False,
+        task_backpressure=True,
+        canonicalize_histogram_values=True,
+        extra_metrics=[
+            "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+        ],
+    )
 )
 
 LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
@@ -347,7 +353,11 @@ Dataset memory:
 EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 
 
-def canonicalize(stats: str, filter_global_stats: bool = True, canonicalize_histogram_values: bool = False) -> str:
+def canonicalize(
+    stats: str,
+    filter_global_stats: bool = True,
+    canonicalize_histogram_values: bool = False,
+) -> str:
     # Dataset UUID expression.
     canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
 
@@ -2061,7 +2071,10 @@ def test_op_metrics_logging():
     logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
     with patch.object(logger, "debug") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0], canonicalize_histogram_values=True) for call in mock_logger.call_args_list]
+        logs = [
+            canonicalize(call.args[0], canonicalize_histogram_values=True)
+            for call in mock_logger.call_args_list
+        ]
         for log in logs:
             print(log)
         input_str = (
