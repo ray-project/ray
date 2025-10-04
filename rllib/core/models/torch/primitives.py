@@ -192,7 +192,7 @@ class TorchCNN(nn.Module):
     def __init__(
         self,
         *,
-        input_dims: Union[List[int], Tuple[int]],
+        input_dims: Union[List[int], Tuple[int, ...]],
         cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
@@ -329,7 +329,7 @@ class TorchCNNTranspose(nn.Module):
     def __init__(
         self,
         *,
-        input_dims: Union[List[int], Tuple[int]],
+        input_dims: Union[List[int], Tuple[int, ...]],
         cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: str = "relu",
