@@ -178,7 +178,7 @@ class TaskManager : public TaskManagerInterface {
  public:
   TaskManager(
       CoreWorkerMemoryStore &in_memory_store,
-      ReferenceCounter &reference_counter,
+      ReferenceCounterInterface &reference_counter,
       PutInLocalPlasmaCallback put_in_local_plasma_callback,
       AsyncRetryTaskCallback async_retry_task_callback,
       std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
@@ -733,7 +733,7 @@ class TaskManager : public TaskManagerInterface {
   /// Used for reference counting objects.
   /// The task manager is responsible for managing all references related to
   /// submitted tasks (dependencies and return objects).
-  ReferenceCounter &reference_counter_;
+  ReferenceCounterInterface &reference_counter_;
 
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
