@@ -5,8 +5,8 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray._common.network_utils import build_address
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
-from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class LightGBMConfig(BackendConfig):
 
 class _LightGBMBackend(Backend):
     def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: LightGBMConfig
+        self, worker_group: BaseWorkerGroup, backend_config: LightGBMConfig
     ):
         node_ips_and_ports = worker_group.execute(get_address_and_port)
         ports = [port for _, port in node_ips_and_ports]

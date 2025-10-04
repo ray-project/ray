@@ -27,6 +27,9 @@ def _check_pyarrow_version():
     """Checks that Pyarrow's version is within the supported bounds."""
     global _PYARROW_VERSION_VALIDATED
 
+    if os.environ.get("RAY_DOC_BUILD", "0") == "1":
+        return
+
     if not _PYARROW_VERSION_VALIDATED:
         if os.environ.get(_RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
             _PYARROW_VERSION_VALIDATED = True

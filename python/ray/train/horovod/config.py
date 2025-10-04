@@ -72,6 +72,10 @@ class _HorovodBackend(Backend):
     share_cuda_visible_devices: bool = True
 
     def on_start(self, worker_group: WorkerGroup, backend_config: HorovodConfig):
+        # NOTE: Horovod backend uses V1 WorkerGroup directly instead of BaseWorkerGroup
+        # because it requires direct access to worker metadata (node_id, hostname) that is
+        # specific to the V1 implementation. Horovod does not support V2 WorkerGroup.
+
         # TODO(matt): Implement placement group strategies in BackendExecutor.
 
         # Initialize workers with Horovod environment variables

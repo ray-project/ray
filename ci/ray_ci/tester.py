@@ -256,6 +256,9 @@ def main(
     )
     if build_only:
         sys.exit(0)
+
+    print("--- Listing test targets")
+
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
     else:
@@ -274,6 +277,11 @@ def main(
             get_high_impact_tests=get_high_impact_tests,
             lookup_test_database=lookup_test_database,
         )
+    if not test_targets:
+        print("--- No tests to run")
+        sys.exit(0)
+
+    print(f"+++ Running {len(test_targets)} tests")
     success = container.run_tests(
         team,
         test_targets,

@@ -859,6 +859,10 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
+jax==0.4.25
+    # via -r python/requirements/ml/train-test-requirements.txt
+jaxlib==0.4.25
+    # via -r python/requirements/ml/train-test-requirements.txt
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
@@ -1081,7 +1085,10 @@ mistune==0.8.4
 ml-collections==0.1.1
     # via open-spiel
 ml-dtypes==0.3.2
-    # via tensorflow
+    # via
+    #   jax
+    #   jaxlib
+    #   tensorflow
 mlagents-envs==0.28.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.22.0
@@ -1253,6 +1260,8 @@ numpy==1.26.4
     #   hpbandster
     #   hyperopt
     #   imageio
+    #   jax
+    #   jaxlib
     #   labmaze
     #   lightgbm
     #   matplotlib
@@ -1379,6 +1388,7 @@ opentelemetry-util-http==0.55b1
     #   opentelemetry-instrumentation-fastapi
 opt-einsum==3.3.0
     # via
+    #   jax
     #   pyro-ppl
     #   tensorflow
 optuna==4.1.0
@@ -2024,6 +2034,8 @@ scipy==1.11.4
     #   gpy
     #   hpbandster
     #   hyperopt
+    #   jax
+    #   jaxlib
     #   lightgbm
     #   linear-operator
     #   mlflow

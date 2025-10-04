@@ -814,6 +814,8 @@ def _split_blocks(blocks: Iterable[Block], split_factor: float) -> Iterable[Bloc
         offset = 0
         split_sizes = _splitrange(block.num_rows(), split_factor)
         for size in split_sizes:
+            if size <= 0:
+                continue
             yield block.slice(offset, offset + size, copy=False)
             offset += size
 
