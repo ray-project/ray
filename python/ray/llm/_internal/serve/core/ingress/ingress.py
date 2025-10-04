@@ -40,10 +40,14 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionStreamResponse,
     EmbeddingRequest,
     EmbeddingResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
+    TranscriptionStreamResponse,
     ErrorResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
+    LLMTranscriptionResponse,
     LLMScoreResponse,
     ModelCard,
     ModelList,
@@ -110,6 +114,7 @@ def _sanitize_chat_completion_request(
 StreamResponseType = Union[
     ChatCompletionStreamResponse,
     CompletionStreamResponse,
+    TranscriptionStreamResponse
 ]
 BatchedStreamResponseType = List[StreamResponseType]
 
@@ -403,7 +408,7 @@ class OpenAiIngress(DeploymentProtocol):
         self,
         *,
         body: Union[
-            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, TranscriptionRequest, ScoreRequest
         ],
         call_method: str,
     ) -> AsyncGenerator[
@@ -411,6 +416,7 @@ class OpenAiIngress(DeploymentProtocol):
             LLMChatResponse,
             LLMCompletionsResponse,
             LLMEmbeddingsResponse,
+            LLMTranscriptionResponse,
             LLMScoreResponse,
         ],
         None,
@@ -497,12 +503,15 @@ class OpenAiIngress(DeploymentProtocol):
         return model_data
 
     async def _process_llm_request(
-        self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool
+        self, body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest], call_method: str
     ) -> Response:
-        NoneStreamingResponseType = (
-            ChatCompletionResponse if is_chat else CompletionResponse
-        )
-        call_method = "chat" if is_chat else "completions"
+        
+        if call_method == "chat":
+            NoneStreamingResponseType = ChatCompletionResponse
+        elif call_method == "completions":
+            NoneStreamingResponseType = CompletionResponse
+        elif call_method == "transcriptions":
+            NoneStreamingResponseType = TranscriptionResponse
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
@@ -544,7 +553,7 @@ class OpenAiIngress(DeploymentProtocol):
         Returns:
             A response object with completions.
         """
-        return await self._process_llm_request(body, is_chat=False)
+        return await self._process_llm_request(body, call_method="completions")
 
     async def chat(self, body: ChatCompletionRequest) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
@@ -557,7 +566,7 @@ class OpenAiIngress(DeploymentProtocol):
             A response object with completions.
         """
 
-        return await self._process_llm_request(body, is_chat=True)
+        return await self._process_llm_request(body, call_method="chat")
 
     async def embeddings(self, body: EmbeddingRequest) -> Response:
         """Create embeddings for the provided input.
@@ -580,6 +589,16 @@ class OpenAiIngress(DeploymentProtocol):
 
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
+    
+    @fastapi_router_app.post("/v1/audio/transcriptions")
+    async def transcriptions(self, body: TranscriptionRequest) -> Response:
+        """Create transcription for the provided audio input.
+
+        Returns:
+            A response object with transcriptins.
+        """
+
+        return await self._process_llm_request(body, call_method="transcriptions")
 
     async def score(self, body: ScoreRequest) -> Response:
         """Create scores for the provided text pairs.

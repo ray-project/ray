@@ -21,6 +21,9 @@ from vllm.entrypoints.openai.protocol import (
     EmbeddingChatRequest as vLLMEmbeddingChatRequest,
     EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
     EmbeddingResponse as vLLMEmbeddingResponse,
+    TranscriptionRequest as vLLMTranscriptionRequest,
+    TranscriptionResponse as vLLMTranscriptionResponse,
+    TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
     ScoreRequest as vLLMScoreRequest,
@@ -96,6 +99,18 @@ class EmbeddingResponse(vLLMEmbeddingResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class TranscriptionRequest(vLLMTranscriptionRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TranscriptionResponse(vLLMTranscriptionResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TranscriptionStreamResponse(vLLMTranscriptionStreamResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
 class ScoreRequest(vLLMScoreRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -115,12 +130,18 @@ LLMScoreResponse = Union[
 ]
 
 LLMChatResponse = Union[
-    AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None],
+    AsyncGenerator[Union[str, ChatCompletionStreamResponse, ChatCompletionResponse, ErrorResponse], None],
 ]
 
 LLMCompletionsResponse = Union[
     AsyncGenerator[
         Union[CompletionStreamResponse, CompletionResponse, ErrorResponse], None
+    ],
+]
+
+LLMTranscriptionResponse = Union[
+    AsyncGenerator[
+        Union[TranscriptionStreamResponse, TranscriptionResponse, ErrorResponse], None
     ],
 ]
 
