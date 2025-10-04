@@ -125,10 +125,10 @@ def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: r
             ds_engine.load_checkpoint(epoch_dir)
 
             epoch_file = os.path.join(epoch_dir, "epoch.txt")
-            assert os.path.isfile(epoch_file), f"Epoch file not found in checkpoint: {epoch_file}"
-            with open(epoch_file, "r", encoding="utf-8") as f:
-                last_epoch = int(f.read().strip())
-            next_epoch = last_epoch + 1
+            if os.path.isfile(epoch_file):
+                with open(epoch_file, "r", encoding="utf-8") as f:
+                    last_epoch = int(f.read().strip())
+                next_epoch = last_epoch + 1
 
             torch.distributed.barrier()
         log_rank0("Successfully loaded distributed checkpoint")
