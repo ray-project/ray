@@ -51,7 +51,7 @@
 - [ ] All tests pass locally
 
 **Documentation:**
-- [ ] Updated documentation (if applicable)
+- [ ] Updated documentation (if applicable) ([contribution guide](https://docs.ray.io/en/latest/ray-contribute/docs.html))
 - [ ] Added new APIs to `doc/source/` (if applicable)
 
 ## Additional context
