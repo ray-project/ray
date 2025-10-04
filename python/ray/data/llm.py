@@ -444,7 +444,7 @@ def build_llm_processor(
             from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
             config = vLLMEngineProcessorConfig(
-                model_source="Qwen/Qwen3-32B",
+                model_source="Qwen/Qwen3-0.6B",
                 apply_chat_template=True,
                 concurrency=1,
                 batch_size=64,
@@ -456,6 +456,10 @@ def build_llm_processor(
                     messages=[
                         {"role": "user", "content": row["prompt"]},
                     ],
+                    sampling_params=dict(
+                        temperature=0.6,
+                        max_tokens=100,
+                    ),
                 ),
                 builder_kwargs=dict(
                     chat_template_kwargs={"enable_thinking": True},
