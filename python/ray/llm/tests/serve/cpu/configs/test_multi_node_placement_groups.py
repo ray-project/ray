@@ -114,7 +114,7 @@ def test_llm_serve_placement_group_validation():
 
 def test_llm_serve_multi_gpu_per_bundle_passes_through():
     """Test multiple GPUs per bundle pass through Serve validation.
-    
+
     Serve allows GPU>1 per bundle in placement_group_config. vLLM will enforce
     its own GPU<=1 restriction during engine creation (not tested here).
     This confirms Serve doesn't block it, allowing vLLM to manage its constraints.
@@ -125,14 +125,14 @@ def test_llm_serve_multi_gpu_per_bundle_passes_through():
         placement_group_config={
             "bundles": [{"GPU": 2, "CPU": 4}],
             "strategy": "PACK",
-        }
+        },
     )
-    
+
     # Serve should accept and pass through GPU=2 to placement group
     serve_options = llm_config.get_serve_options()
     assert serve_options["placement_group_bundles"][0]["GPU"] == 2
     assert serve_options["placement_group_bundles"][0]["CPU"] >= 4
-    
+
     # vLLM will reject this during actual engine creation with a validation error
     # (not tested here since this is a config-only CPU test)
 

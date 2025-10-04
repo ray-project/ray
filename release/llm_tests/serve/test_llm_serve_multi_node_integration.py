@@ -23,7 +23,7 @@ def cleanup_ray_resources():
 )
 def test_llm_serve_multi_node(tp_size, pp_size):
     """Test multi-node Ray Serve LLM deployment with custom placement groups.
-    
+
     Cluster: 2 nodes × 4 GPUs = 8 total GPUs
     TP×PP=8 exceeds per-node capacity, forcing cross-node deployment.
     """
@@ -65,7 +65,7 @@ def test_llm_serve_multi_node(tp_size, pp_size):
 
 def test_llm_serve_data_parallelism():
     """Test Data Parallelism with STRICT_PACK override.
-    
+
     When data_parallel_size > 1, the system should override user-provided
     strategy with STRICT_PACK to ensure each replica is co-located on one node.
     """

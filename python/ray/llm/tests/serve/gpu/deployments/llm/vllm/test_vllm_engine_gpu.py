@@ -20,9 +20,7 @@ async def test_vllm_engine_start_with_custom_resource_bundle(
             use_tqdm_on_load=False,
             enforce_eager=True,
         ),
-        placement_group_config={
-            "bundles": [{"GPU": 0.49}]
-        },
+        placement_group_config={"bundles": [{"GPU": 0.49}]},
         runtime_env=dict(
             env_vars={
                 "VLLM_RAY_PER_WORKER_GPUS": "0.49",
