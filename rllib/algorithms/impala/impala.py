@@ -6,6 +6,7 @@ from typing_extensions import Self
 
 import ray
 from ray import ObjectRef
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -22,7 +23,6 @@ from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
@@ -31,8 +31,8 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     MEAN_NUM_EPISODE_LISTS_RECEIVED,
-    MEAN_NUM_LEARNER_RESULTS_RECEIVED,
     MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
+    MEAN_NUM_LEARNER_RESULTS_RECEIVED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
@@ -41,8 +41,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-    SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
@@ -55,7 +55,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
     SampleBatchType,
 )
-
 
 logger = logging.getLogger(__name__)
 
