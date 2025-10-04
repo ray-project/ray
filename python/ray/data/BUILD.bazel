@@ -1658,7 +1658,7 @@ py_test(
 )
 
 py_test(
-    name = "test_video_processor_example",
+    name = "test_video_processor",
     size = "medium",
     srcs = ["examples/data/video_processing/tests/test_video_processor.py"],
     tags = [
