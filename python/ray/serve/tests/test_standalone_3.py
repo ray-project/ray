@@ -21,22 +21,6 @@ from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
-# Skip tests on Windows due to Ray infrastructure failures.
-# See: "Ray cluster mode is currently experimental and untested on Windows"
-skip_on_windows_node_timeout = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Ray node fails to register with GCS within 30s timeout on Windows. "
-    "Cluster has zero CPU resources available: {} after test operations. "
-    "Cause: Worker crashes (error 10054, SIGSEGV) leave resources allocated.",
-)
-
-skip_on_windows_cluster_reinit = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Ray.init() fails when cluster from previous test persists on Windows. "
-    "ValueError: _system_config cannot be provided when connecting to existing cluster. "
-    "Cause: Ray cluster cleanup/isolation issues on Windows between tests.",
-)
-
 
 # Some tests are not possible to run if proxy is not available on every node.
 # We skip them if proxy is not available.
@@ -71,7 +55,6 @@ def start_and_shutdown_ray_cli_function():
         yield
 
 
-@skip_on_windows_cluster_reinit
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -350,7 +333,6 @@ def test_autoscaler_shutdown_node_http_everynode(
     ray.shutdown()
 
 
-@skip_on_windows_node_timeout
 @pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
 def test_controller_shutdown_gracefully(
     shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
@@ -364,9 +346,29 @@ def test_controller_shutdown_gracefully(
     # Setup a cluster with 2 nodes
     cluster = Cluster()
     cluster.add_node()
-    cluster.add_node()
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
+
+    # On Windows, wait for resources to be available before adding second node
+    # to avoid timeout errors when cluster has zero CPU resources
+    if sys.platform == "win32":
+
+        def check_resources_available():
+            try:
+                resources = ray.cluster_resources()
+                cpu_available = resources.get("CPU", 0) > 0
+                return cpu_available
+            except Exception:
+                return False
+
+        wait_for_condition(
+            check_resources_available,
+            timeout=30,
+            retry_interval_ms=1000,
+        )
+
+    cluster.add_node()
+    cluster.wait_for_nodes()
 
     # Deploy 2 replicas
     @serve.deployment(num_replicas=2)
