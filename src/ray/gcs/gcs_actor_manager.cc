@@ -1214,7 +1214,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 }
 
 void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
-                                 const std::string node_ip_address) {
+                                 const std::string &node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(DEBUG).WithField(node_id) << "Node is dead, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
