@@ -36,5 +36,33 @@ def test_get_object_status_rpc_retry_and_idempotency(
     assert final_result == [0, 2, 4, 6, 8]
 
 
+@pytest.mark.parametrize("deterministic_failure", ["request"])
+def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
+    monkeypatch, shutdown_only, deterministic_failure
+):
+    """Test that WaitForActorRefDeleted RPC retries work correctly.
+    Verify that the RPC is idempotent when network failures occur.
+    The GCS actor manager will trigger this RPC during actor initialization
+    to monitor when the actor handles have gone out of scope and the actor should be destroyed.
+    """
+
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "CoreWorkerService.grpc_client.WaitForActorRefDeleted=1:100:0",
+    )
+
+    ray.init()
+
+    @ray.remote
+    class SimpleActor:
+        def ping(self):
+            return "pong"
+
+    actor = SimpleActor.options(name="test_actor").remote()
+
+    result = ray.get(actor.ping.remote())
+    assert result == "pong"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
