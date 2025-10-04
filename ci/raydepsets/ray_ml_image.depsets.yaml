@@ -1,0 +1,86 @@
+.py39: &py39
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+py310: &py310
+  PYTHON_VERSION: "3.10"
+  PYTHON_SHORT: "310"
+py311: &py311
+  PYTHON_VERSION: "3.11"
+  PYTHON_SHORT: "311"
+
+build_arg_sets:
+  cpu_py39:
+    <<: *py39
+    CUDA_CODE: cpu
+  cpu_py310:
+    <<: *py310
+    CUDA_CODE: cpu
+  cpu_py311:
+    <<: *py311
+    CUDA_CODE: cpu
+  cu121_py39:
+    <<: *py39
+    CUDA_CODE: cu121
+  cu121_py310:
+    <<: *py310
+    CUDA_CODE: cu121
+  cu121_py311:
+    <<: *py311
+    CUDA_CODE: cu121
+
+depsets:
+  - name: ray_ml_image_${PYTHON_SHORT}_${CUDA_CODE}_depset
+    operation: compile
+    requirements:
+      - python/requirements.txt
+      - python/requirements/ml/dl-cpu-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/rllib-requirements.txt
+      - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/train-requirements.txt
+      - python/requirements/ml/train-test-requirements.txt
+      - python/requirements/ml/tune-requirements.txt
+      - python/requirements/ml/tune-test-requirements.txt
+      - python/requirements/docker/ray-docker-requirements.txt
+    constraints:
+      - python/requirements.txt
+      - python/requirements_compiled.txt
+    output: python/deplocks/ray_ml/ray_ml_image_py${PYTHON_VERSION}_${CUDA_CODE}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    build_arg_sets:
+      - cpu_py39
+      - cpu_py310
+      - cpu_py311
+
+  - name: ray_ml_gpu_image_${PYTHON_SHORT}_${CUDA_CODE}_depset
+    operation: compile
+    requirements:
+      - python/requirements.txt
+      - python/requirements/ml/dl-gpu-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/rllib-requirements.txt
+      - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/train-requirements.txt
+      - python/requirements/ml/train-test-requirements.txt
+      - python/requirements/ml/tune-requirements.txt
+      - python/requirements/ml/tune-test-requirements.txt
+      - python/requirements/docker/ray-docker-requirements.txt
+    constraints:
+      - python/requirements.txt
+      - /tmp/ray-deps/requirements_compiled.txt
+    output: python/deplocks/ray_ml/ray_ml_gpu_image_py${PYTHON_VERSION}_${CUDA_CODE}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    build_arg_sets:
+      - cu121_py39
+      - cu121_py310
+      - cu121_py311
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
