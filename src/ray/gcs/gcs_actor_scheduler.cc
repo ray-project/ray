@@ -204,8 +204,6 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
     }
   }
 
-  raylet_client_pool_.Disconnect(node_id);
-
   return actor_ids;
 }
 
