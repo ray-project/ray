@@ -454,7 +454,7 @@ class VLLMEngine(LLMEngine):
         else:
             yield EmbeddingResponse(**embedding_response.model_dump())
 
-    async def transcription(
+    async def transcriptions(
         self, request: TranscriptionRequest
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
         self._validate_openai_serving_transcription()
