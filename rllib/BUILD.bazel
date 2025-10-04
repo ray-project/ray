@@ -54,7 +54,7 @@
 # Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
 # these tests in n different jobs.
 
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 filegroup(
@@ -164,6 +164,16 @@ py_test(
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
+# This adds conftest for test configurations which add artifact logging of failed tests
+py_library(
+    name = "tuned_examples_conftest",
+    srcs = ["tuned_examples/conftest.py"],
+    visibility = [
+        "//rllib:__subpackages__",
+    ],
+    deps = ["//python/ray/tests:conftest"],
+)
+
 # APPO
 # CartPole
 py_test(
@@ -174,6 +184,7 @@ py_test(
         "--as-test",
         "--num-cpus=7",
         "--num-env-runners=5",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = [
@@ -183,6 +194,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # TODO (sven): For some weird reason, this test runs extremely slow on the CI (not on cluster, not locally) -> taking this out for now ...
@@ -203,6 +215,7 @@ py_test(
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = [
@@ -213,6 +226,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -225,6 +239,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = [
@@ -236,6 +251,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentCartPole
@@ -248,6 +264,7 @@ py_test(
         "--num-agents=2",
         "--num-cpus=8",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -257,6 +274,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -269,6 +287,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=5",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -280,6 +299,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -292,6 +312,7 @@ py_test(
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -304,6 +325,7 @@ py_test(
         # Test is failing: https://github.com/ray-project/ray/issues/52270
         "manual",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -317,6 +339,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -328,6 +351,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # StatelessCartPole
@@ -339,6 +363,7 @@ py_test(
         "--as-test",
         "--num-cpus=8",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -349,6 +374,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -361,6 +387,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=5",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -372,6 +399,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -383,6 +411,7 @@ py_test(
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -393,6 +422,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -405,6 +435,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -416,6 +447,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentStatelessCartPole
@@ -460,6 +492,7 @@ py_test(
         "--as-test",
         "--num-cpus=6",
         "--num-env-runners=4",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/pendulum_appo.py",
     tags = [
@@ -469,6 +502,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentPong (multi-GPU smoke test)
@@ -482,6 +516,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
         "--num-aggregator-actors-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/appo/multi_agent_pong_appo.py",
     tags = [
@@ -489,16 +524,20 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "multi_gpu",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 #@OldAPIStack
 py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
+    srcs = [
+        "tests/run_regression_tests.py",
+    ],
     args = ["--dir=tuned_examples/appo"],
     data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     main = "tests/run_regression_tests.py",
@@ -519,6 +558,7 @@ py_test(
     srcs = ["tuned_examples/bc/cartpole_bc.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -533,6 +573,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -542,6 +583,7 @@ py_test(
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -559,6 +601,7 @@ py_test(
         # Disabled: https://github.com/ray-project/ray/issues/50532
         "manual",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -569,6 +612,7 @@ py_test(
         "--as-test",
         "--offline-evaluation-interval=1",
         "--num-offline-eval-runners=2",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -583,6 +627,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -595,6 +640,7 @@ py_test(
         "--offline-evaluation-interval=1",
         "--num-offline-eval-runners=2",
         "--num-gpus-per-offline-eval-runner=0.5",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -610,6 +656,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # CQL
@@ -620,6 +667,7 @@ py_test(
     srcs = ["tuned_examples/cql/pendulum_cql.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     # Include the zipped json data file as well.
     data = [
@@ -637,6 +685,7 @@ py_test(
         # Disabled: https://github.com/ray-project/ray/issues/43808
         "manual",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # GPU training.
@@ -647,6 +696,7 @@ py_test(
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     # Include the zipped json data file as well.
     data = [
@@ -665,6 +715,7 @@ py_test(
         # Disabled: https://github.com/ray-project/ray/issues/50538
         "manual",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # DQN
@@ -675,6 +726,7 @@ py_test(
     srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -685,6 +737,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -695,6 +748,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -706,6 +760,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -715,6 +770,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -725,6 +781,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -735,6 +792,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -748,6 +806,7 @@ py_test(
         # Disabled: https://github.com/ray-project/ray/issues/47216
         "manual",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentCartPole
@@ -759,6 +818,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-cpus=4",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -766,9 +826,11 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -781,6 +843,7 @@ py_test(
         "--num-cpus=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -789,9 +852,11 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -803,6 +868,7 @@ py_test(
         "--num-agents=2",
         "--num-cpus=5",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -810,9 +876,11 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -825,6 +893,7 @@ py_test(
         "--num-cpus=4",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -833,9 +902,11 @@ py_test(
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
         "multi_gpu",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # DreamerV3
@@ -870,6 +941,7 @@ py_test(
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -879,6 +951,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -888,6 +961,7 @@ py_test(
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -899,6 +973,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -908,6 +983,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -918,6 +994,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -928,6 +1005,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -939,6 +1017,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentCartPole
@@ -950,6 +1029,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-cpus=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -960,6 +1040,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -971,6 +1052,7 @@ py_test(
         "--num-agents=2",
         "--num-gpus-per-learner=1",
         "--num-cpus=6",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -982,6 +1064,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -993,6 +1076,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-cpus=7",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -1003,6 +1087,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1015,6 +1100,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -1026,6 +1112,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # StatelessCartPole
@@ -1035,6 +1122,7 @@ py_test(
     srcs = ["tuned_examples/impala/stateless_cartpole_impala.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/stateless_cartpole_impala.py",
     tags = [
@@ -1045,6 +1133,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1055,6 +1144,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/stateless_cartpole_impala.py",
     tags = [
@@ -1066,6 +1156,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentStatelessCartPole
@@ -1075,6 +1166,7 @@ py_test(
     srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
     tags = [
@@ -1085,6 +1177,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 # py_test(
 #    name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
@@ -1104,6 +1197,7 @@ py_test(
     args = [
         "--as-test",
         "--num-cpus=32",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -1118,6 +1212,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # GPU training.
@@ -1129,6 +1224,7 @@ py_test(
         "--as-test",
         "--num-cpus=32",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -1144,6 +1240,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MARWIL
@@ -1154,6 +1251,7 @@ py_test(
     srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -1168,6 +1266,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # GPU-training.
@@ -1178,6 +1277,7 @@ py_test(
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     # Include the offline data files.
     data = [
@@ -1193,6 +1293,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # PPO
@@ -1203,6 +1304,7 @@ py_test(
     srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1212,6 +1314,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1222,6 +1325,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1233,6 +1337,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1242,6 +1347,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1252,6 +1358,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1262,6 +1369,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1273,6 +1381,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentCartPole
@@ -1283,15 +1392,18 @@ py_test(
     args = [
         "--as-test",
         "--num-agents=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
         "learning_tests_discrete",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1303,6 +1415,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
@@ -1311,9 +1424,11 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1324,6 +1439,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
@@ -1331,9 +1447,11 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1345,6 +1463,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
@@ -1353,9 +1472,11 @@ py_test(
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
         "multi_gpu",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # CartPole (truncated)
@@ -1365,6 +1486,7 @@ py_test(
     srcs = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/cartpole_truncated_ppo.py",
     tags = [
@@ -1374,6 +1496,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # StatelessCartPole
@@ -1383,6 +1506,7 @@ py_test(
     srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1392,6 +1516,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1402,6 +1527,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1413,6 +1539,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1422,6 +1549,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1432,6 +1560,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1442,6 +1571,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1453,6 +1583,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentStatelessCartPole
@@ -1463,15 +1594,18 @@ py_test(
     args = [
         "--as-test",
         "--num-agents=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
         "learning_tests_discrete",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1483,6 +1617,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
@@ -1491,9 +1626,11 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1504,6 +1641,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
@@ -1511,9 +1649,11 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1525,6 +1665,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
@@ -1533,9 +1674,11 @@ py_test(
         "learning_tests_discrete",
         "learning_tests_pytorch_use_all_core",
         "multi_gpu",
+        "no_main",
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # Footsies
@@ -1547,14 +1690,17 @@ py_test(
         "--as-test",
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
         "learning_tests_discrete",
+        "no_main",
         "team:rllib",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1567,6 +1713,7 @@ py_test(
         "--evaluation-num-env-runners=3",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
@@ -1574,8 +1721,10 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "multi_gpu",
+        "no_main",
         "team:rllib",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1587,14 +1736,17 @@ py_test(
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
         "learning_tests_discrete",
+        "no_main",
         "team:rllib",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1607,6 +1759,7 @@ py_test(
         "--evaluation-num-env-runners=3",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
@@ -1614,8 +1767,10 @@ py_test(
         "learning_tests",
         "learning_tests_discrete",
         "multi_gpu",
+        "no_main",
         "team:rllib",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # Pendulum
@@ -1625,6 +1780,7 @@ py_test(
     srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1634,6 +1790,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1644,6 +1801,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1655,6 +1813,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1664,6 +1823,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1674,6 +1834,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1684,6 +1845,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1695,6 +1857,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentPendulum
@@ -1705,6 +1868,7 @@ py_test(
     args = [
         "--as-test",
         "--num-agents=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1714,6 +1878,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1725,6 +1890,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1736,6 +1902,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1746,6 +1913,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1756,6 +1924,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1767,6 +1936,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1778,6 +1948,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # SAC
@@ -1788,6 +1959,7 @@ py_test(
     srcs = ["tuned_examples/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1797,6 +1969,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1807,6 +1980,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1817,6 +1991,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1826,6 +2001,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1835,6 +2011,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1845,6 +2022,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1855,6 +2033,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # Pendulum
@@ -1864,6 +2043,7 @@ py_test(
     srcs = ["tuned_examples/sac/pendulum_sac.py"],
     args = [
         "--as-test",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1873,6 +2053,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1883,6 +2064,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1893,6 +2075,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1902,6 +2085,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1911,6 +2095,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1921,6 +2106,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1931,6 +2117,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # MultiAgentPendulum
@@ -1942,6 +2129,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-cpus=4",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
@@ -1951,6 +2139,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1963,6 +2152,7 @@ py_test(
         "--num-cpus=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
@@ -1973,6 +2163,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -1982,6 +2173,7 @@ py_test(
     args = [
         "--num-agents=2",
         "--num-learners=2",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
@@ -1991,6 +2183,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -2001,6 +2194,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--log-frequency=60",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
@@ -2011,6 +2205,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":tuned_examples_conftest"],
 )
 
 # --------------------------------------------------------------------
