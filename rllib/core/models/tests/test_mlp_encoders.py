@@ -1,8 +1,8 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.configs import MLPEncoderConfig
 from ray.rllib.core.models.base import ENCODER_OUT
+from ray.rllib.core.models.configs import MLPEncoderConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import ModelChecker
 
@@ -80,7 +80,8 @@ class TestMLPEncoders(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

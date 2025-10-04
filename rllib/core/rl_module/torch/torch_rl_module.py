@@ -1,22 +1,22 @@
-from typing import Any, Collection, Dict, Optional, Union, Type
+from typing import Any, Collection, Dict, Optional, Type, Union
 
 import gymnasium as gym
 from packaging import version
 
-from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchDistribution,
 )
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
+from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
-    convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
+    convert_to_torch_tensor,
 )
 from ray.rllib.utils.typing import StateDict
 
