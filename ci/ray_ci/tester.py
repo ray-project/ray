@@ -6,12 +6,12 @@ import click
 import yaml
 from ray_release.test import Test, TestState
 
-from ci.ray_ci.builder_container import (
+from ci.ray_ci.builder_container import BuilderContainer
+from ci.ray_ci.configs import (
     DEFAULT_ARCHITECTURE,
     DEFAULT_BUILD_TYPE,
     DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
-    BuilderContainer,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
