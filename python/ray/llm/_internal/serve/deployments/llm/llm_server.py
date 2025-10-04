@@ -284,7 +284,7 @@ class LLMServer(LLMServerProtocol):
             "ChatCompletionRequest",
             "CompletionRequest",
             "EmbeddingRequest",
-            "TranscriptionRequest"
+            "TranscriptionRequest",
             "ScoreRequest",
         ],
         *,
@@ -386,7 +386,6 @@ class LLMServer(LLMServerProtocol):
         Returns:
             An AsyncGenerator over the TranscriptionResponse object.
         """
-        # NOTE: Embeddings does not need batching.
         return await self._run_request(
             request,
             engine_method="transcriptions",
