@@ -487,7 +487,6 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
   UniqueID callback_id = UniqueID::FromRandom();
   ObjectID obj_id = ObjectID::FromRandom();
   int num_callbacks = 0;
-
   obod_->SubscribeObjectLocations(callback_id,
                                   obj_id,
                                   rpc::Address(),
