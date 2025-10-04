@@ -1,43 +1,76 @@
+import sys
+from unittest.mock import patch
+
 import pytest
 
 from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.lmcache_connector_v1 import (
     LMCacheConnectorV1Backend,
 )
+from ray.serve.llm import LLMConfig
 
 
 class TestLMCacheConnectorV1Backend:
+    @pytest.fixture(autouse=True)
+    def mock_lmcache_check(self):
+        """Mock the lmcache installation check for all tests."""
+        with patch(
+            "ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.lmcache_connector_v1._check_lmcache_installed"
+        ):
+            yield
+
     @pytest.fixture
     def lmcache_backend_basic(self):
         """Fixture for basic LMCacheConnectorV1Backend."""
         return LMCacheConnectorV1Backend(
-            {
-                "kv_connector": "LMCacheConnectorV1",
-                "kv_role": "kv_both",
-            }
+            llm_config=LLMConfig(
+                model_loading_config=dict(
+                    model_id="Qwen/Qwen3-0.6B",
+                ),
+                engine_kwargs=dict(
+                    kv_transfer_config=dict(
+                        kv_connector="LMCacheConnectorV1",
+                        kv_role="kv_both",
+                    )
+                ),
+            ),
         )
 
     @pytest.fixture
     def lmcache_backend_with_extra(self):
         """Fixture for LMCacheConnectorV1Backend with extra config."""
         return LMCacheConnectorV1Backend(
-            {
-                "kv_connector": "LMCacheConnectorV1",
-                "kv_role": "kv_both",
-                "kv_connector_extra_config": {},
-            }
+            llm_config=LLMConfig(
+                model_loading_config=dict(
+                    model_id="Qwen/Qwen3-0.6B",
+                ),
+                engine_kwargs=dict(
+                    kv_transfer_config=dict(
+                        kv_connector="LMCacheConnectorV1",
+                        kv_role="kv_both",
+                        kv_connector_extra_config={},
+                    )
+                ),
+            ),
         )
 
     @pytest.fixture
     def lmcache_backend_with_port(self):
         """Fixture for LMCacheConnectorV1Backend with port config."""
         return LMCacheConnectorV1Backend(
-            {
-                "kv_connector": "LMCacheConnectorV1",
-                "kv_role": "kv_both",
-                "kv_connector_extra_config": {
-                    "lmcache_rpc_port": LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME,
-                },
-            }
+            llm_config=LLMConfig(
+                model_loading_config=dict(
+                    model_id="Qwen/Qwen3-0.6B",
+                ),
+                engine_kwargs=dict(
+                    kv_transfer_config=dict(
+                        kv_connector="LMCacheConnectorV1",
+                        kv_role="kv_both",
+                        kv_connector_extra_config={
+                            "lmcache_rpc_port": LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME,
+                        },
+                    )
+                ),
+            ),
         )
 
     def test_setup_basic_config(self, lmcache_backend_basic):
@@ -84,3 +117,7 @@ class TestLMCacheConnectorV1Backend:
         ]["lmcache_rpc_port"]
         assert new_port.startswith(original_port)
         assert len(new_port) > len(original_port)  # Should have random string appended
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
