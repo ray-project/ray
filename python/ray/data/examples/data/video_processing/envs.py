@@ -29,10 +29,6 @@ _ENVIRONMENT_VARIABLES: Dict[str, Callable[[], Any]] = {
     "RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES": _int_env_getter(
         "RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES", 100_000
     ),
-    "RAY_LLM_BATCH_MAX_TARGETS": _int_env_getter("RAY_LLM_BATCH_MAX_TARGETS", 10_000),
-    "RAY_LLM_BATCH_MAX_DECODE_FRAMES": _int_env_getter(
-        "RAY_LLM_BATCH_MAX_DECODE_FRAMES", 100_000
-    ),
 }
 
 

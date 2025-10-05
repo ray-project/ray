@@ -191,8 +191,6 @@ Two environment variables bound safety limits used during sampling and decoding:
 - `RAY_VIDEO_EXAMPLE_MAX_DECODE_FRAMES` (default: `100000`):
   maximum number of frames decoded per video to prevent excessive work.
 
-The module also accepts legacy aliases `RAY_LLM_BATCH_MAX_TARGETS` and
-`RAY_LLM_BATCH_MAX_DECODE_FRAMES` for backward compatibility.
 
 ## Integration patterns
 
