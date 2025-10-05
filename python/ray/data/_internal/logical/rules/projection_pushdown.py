@@ -18,195 +18,348 @@ from ray.data.expressions import (
 )
 
 
-def _collect_input_columns_from_exprs(exprs: List[Expr]) -> Set[str]:
-    cols: Set[str] = set()
+def _collect_referenced_columns(exprs: List[Expr]) -> Set[str]:
+    """
+    Extract all column names referenced by the given expressions.
 
-    def visit(e: Expr) -> None:
-        if isinstance(e, ColumnExpr):
-            cols.add(e.name)
-        elif isinstance(e, AliasExpr):
-            visit(e.expr)
-        elif isinstance(e, BinaryExpr):
-            visit(e.left)
-            visit(e.right)
-        elif isinstance(e, UnaryExpr):
-            visit(e.operand)
-        elif isinstance(e, UDFExpr):
-            for a in e.args:
-                visit(a)
-            for v in e.kwargs.values():
-                visit(v)
-        elif isinstance(e, LiteralExpr):
+    Recursively traverses expression trees to find all ColumnExpr nodes
+    and collects their names.
+
+    Example: For expression "col1 + col2", returns {"col1", "col2"}
+    """
+    referenced_columns: Set[str] = set()
+
+    def visit_expr(expr: Expr) -> None:
+        """Recursively visit expression nodes to collect column references."""
+        if isinstance(expr, ColumnExpr):
+            # Base case: found a column reference
+            referenced_columns.add(expr.name)
+        elif isinstance(expr, AliasExpr):
+            visit_expr(expr.expr)
+        elif isinstance(expr, BinaryExpr):
+            visit_expr(expr.left)
+            visit_expr(expr.right)
+        elif isinstance(expr, UnaryExpr):
+            visit_expr(expr.operand)
+        elif isinstance(expr, UDFExpr):
+            for arg in expr.args:
+                visit_expr(arg)
+            for value in expr.kwargs.values():
+                visit_expr(value)
+        elif isinstance(expr, LiteralExpr):
+            # Literals don't reference any columns
             pass
 
-    for ex in exprs or []:
-        visit(ex)
-    return cols
+    for expr in exprs or []:
+        visit_expr(expr)
+    return referenced_columns
 
 
-def _substitute_columns(expr: Expr, col_mapping: dict[str, Expr]) -> Expr:
+def _rewrite_column_references(
+    expr: Expr, column_substitutions: dict[str, Expr]
+) -> Expr:
+    """
+    Rewrite an expression by substituting column references.
+
+    Recursively replaces ColumnExpr nodes according to the substitution map.
+    Preserves the structure of the expression tree.
+
+    Example: If column_substitutions = {"col1": col2_expr}, then
+             "col1 + 10" becomes "col2 + 10"
+    """
     if isinstance(expr, ColumnExpr):
-        mapped = col_mapping.get(expr.name)
-        if mapped is not None:
-            return mapped.expr if isinstance(mapped, AliasExpr) else mapped
+        # Check if this column should be substituted
+        substitution = column_substitutions.get(expr.name)
+        if substitution is not None:
+            # Unwrap aliases to get the actual expression
+            return (
+                substitution.expr
+                if isinstance(substitution, AliasExpr)
+                else substitution
+            )
         return expr
+
     if isinstance(expr, AliasExpr):
-        return _substitute_columns(expr.expr, col_mapping).alias(expr.name)
+        # Rewrite the inner expression but preserve the alias name
+        return _rewrite_column_references(expr.expr, column_substitutions).alias(
+            expr.name
+        )
+
     if isinstance(expr, BinaryExpr):
         return type(expr)(
             expr.op,
-            _substitute_columns(expr.left, col_mapping),
-            _substitute_columns(expr.right, col_mapping),
+            _rewrite_column_references(expr.left, column_substitutions),
+            _rewrite_column_references(expr.right, column_substitutions),
         )
+
     if isinstance(expr, UnaryExpr):
-        return type(expr)(expr.op, _substitute_columns(expr.operand, col_mapping))
+        return type(expr)(
+            expr.op, _rewrite_column_references(expr.operand, column_substitutions)
+        )
+
     if isinstance(expr, UDFExpr):
-        new_args = [_substitute_columns(a, col_mapping) for a in expr.args]
+        new_args = [
+            _rewrite_column_references(arg, column_substitutions) for arg in expr.args
+        ]
         new_kwargs = {
-            k: _substitute_columns(v, col_mapping) for k, v in expr.kwargs.items()
+            key: _rewrite_column_references(value, column_substitutions)
+            for key, value in expr.kwargs.items()
         }
         return type(expr)(
             fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
         )
+
+    # For other expression types (e.g., LiteralExpr), return as-is
     return expr
 
 
-def _get_aliased_expr(expr: Expr, name: str) -> Expr:
-    if expr.name == name:
+def _ensure_expression_has_alias(expr: Expr, target_name: str) -> Expr:
+    """
+    Ensure an expression outputs with the specified name.
+
+    If the expression already has the target name, returns it unchanged.
+    Otherwise, wraps it with an alias to produce the target name.
+    """
+    if expr.name == target_name:
         return expr
     if isinstance(expr, AliasExpr):
-        return expr.expr.alias(name)
-    return expr.alias(name)
+        # Re-alias the unwrapped expression
+        return expr.expr.alias(target_name)
+    return expr.alias(target_name)
 
 
-def _get_expr_renames(expr: Expr) -> Optional[Tuple[str, str]]:
+def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
+    """
+    Check if an expression is a simple column rename.
+
+    Returns (source_name, dest_name) if the expression is of form:
+        col("source").alias("dest")
+    where source != dest.
+
+    Returns None for other expression types.
+    """
     if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
-        dest = expr.name
-        src = expr.expr.name
-        if src != dest:
-            return src, dest
+        dest_name = expr.name
+        source_name = expr.expr.name
+        if source_name != dest_name:
+            return source_name, dest_name
     return None
 
 
-def _pairwise_fuse_projects(
-    upstream: Project, downstream: Project
+def _try_fuse_consecutive_projects(
+    upstream_project: Project, downstream_project: Project
 ) -> Optional[Project]:
-    """Try to fuse two consecutive Projects (upstream -> downstream). Return fused Project or None if invalid."""
-    cols_produced_by_upstream = {e.name for e in upstream.exprs}
-    produced_map = {e.name: _get_aliased_expr(e, e.name) for e in upstream.exprs}
+    """
+    Attempt to merge two consecutive Project operations into one.
 
-    # Compute base names explicitly removed by 'rename' in up (when source isn't kept).
-    columns_consumed_by_renames: Set[str] = set()
-    for expr in upstream.exprs:
-        renamed_expr = _get_expr_renames(expr)
-        if renamed_expr is not None:
-            src, _ = renamed_expr
-            if src not in cols_produced_by_upstream:
-                columns_consumed_by_renames.add(src)
+    This optimization eliminates intermediate projections when possible:
+        upstream_project -> downstream_project
+    becomes:
+        fused_project
 
-    # Validate and substitute downstream expressions
-    substituted_downstream_exprs: List[Expr] = []
-    for expr in downstream.exprs:
-        input_columns_from_expr = _collect_input_columns_from_exprs([expr])
-        downstream_input_only_columns = input_columns_from_expr - (
-            input_columns_from_expr & cols_produced_by_upstream
+    Returns the fused Project if valid, or None if fusion is not possible.
+
+    Fusion rules:
+    - If upstream is a selection (preserve_existing=False), downstream can only
+      reference columns produced by upstream.
+    - If upstream preserves existing columns, downstream can reference both
+      upstream outputs and pass-through columns (except those removed by renames).
+    - Column references in downstream are rewritten to use upstream's definitions.
+    """
+    # Step 1: Analyze what the upstream project produces
+    upstream_output_columns = {expr.name for expr in upstream_project.exprs}
+    upstream_column_definitions = {
+        expr.name: _ensure_expression_has_alias(expr, expr.name)
+        for expr in upstream_project.exprs
+    }
+
+    # Step 2: Identify columns removed by upstream renames
+    # When "col1" is renamed to "col2" and "col1" is not in the output,
+    # then "col1" is effectively removed and cannot be accessed downstream.
+    columns_removed_by_renames: Set[str] = set()
+    for expr in upstream_project.exprs:
+        rename_pair = _extract_simple_rename(expr)
+        if rename_pair is not None:
+            source_name, _ = rename_pair
+            if source_name not in upstream_output_columns:
+                columns_removed_by_renames.add(source_name)
+
+    # Step 3: Validate and rewrite downstream expressions
+    rewritten_downstream_exprs: List[Expr] = []
+    for expr in downstream_project.exprs:
+        # Find which columns this expression references
+        referenced_columns = _collect_referenced_columns([expr])
+
+        # Separate columns into: produced by upstream vs. pass-through from original input
+        columns_from_original_input = referenced_columns - (
+            referenced_columns & upstream_output_columns
         )
 
-        if not upstream.preserve_existing:
-            # After a selection, only the produced names are visible.
-            if downstream_input_only_columns:
+        # Validate that downstream can access the columns it needs
+        if not upstream_project.preserve_existing:
+            # Upstream is a selection: only upstream outputs are visible
+            if columns_from_original_input:
+                # Fusion not possible: downstream needs columns not in upstream output
                 return None
         else:
-            # Preserve-existing: downstream_input_only_columns are allowed except ones explicitly removed by rename.
+            # Upstream preserves existing: pass-through columns are allowed,
+            # except those explicitly removed by renames
             if any(
-                base_col in columns_consumed_by_renames
-                for base_col in downstream_input_only_columns
+                col in columns_removed_by_renames for col in columns_from_original_input
             ):
+                # Fusion not possible: downstream needs a removed column
                 return None
 
-        substituted = _substitute_columns(expr, produced_map)
-        substituted_downstream_exprs.append(_get_aliased_expr(substituted, expr.name))
-
-    # If downstream is a selection, it resets outputs.
-    if not downstream.preserve_existing:
-        return Project(
-            upstream.input_dependency,
-            exprs=substituted_downstream_exprs,
-            preserve_existing=False,
-            ray_remote_args=downstream._ray_remote_args,
+        # Rewrite the expression to use upstream's definitions
+        rewritten_expr = _rewrite_column_references(expr, upstream_column_definitions)
+        rewritten_downstream_exprs.append(
+            _ensure_expression_has_alias(rewritten_expr, expr.name)
         )
 
-    # Preserve-existing downstream: merge into upstream outputs, honoring renames.
-    current_output_names = {e.name for e in downstream.exprs}
-    defs = {e.name: _get_aliased_expr(e, e.name) for e in upstream.exprs}
-    order = [e.name for e in upstream.exprs]
+    # Step 4: Build the fused project based on downstream's behavior
+    if not downstream_project.preserve_existing:
+        # Downstream is a selection: output only what downstream specifies
+        return Project(
+            upstream_project.input_dependency,
+            exprs=rewritten_downstream_exprs,
+            preserve_existing=False,
+            ray_remote_args=downstream_project._ray_remote_args,
+        )
 
-    for expr in downstream.exprs:
-        name = expr.name
-        rename = _get_expr_renames(expr)
+    # Step 5: Downstream preserves existing columns: merge both projections
+    # We need to merge upstream and downstream outputs, handling renames carefully.
+    downstream_output_columns = {expr.name for expr in downstream_project.exprs}
 
-        if rename is not None:
-            src, dest = rename
-            resolved = produced_map.get(src, expr)
-            defs[dest] = _get_aliased_expr(resolved, dest)
+    # Start with upstream's column definitions and ordering
+    column_definitions = {
+        expr.name: _ensure_expression_has_alias(expr, expr.name)
+        for expr in upstream_project.exprs
+    }
+    column_order = [expr.name for expr in upstream_project.exprs]
 
-            # If source is not kept by downstream, remove/replace it.
-            if src not in current_output_names and src in defs:
-                del defs[src]
-            if src in order and src not in current_output_names:
-                idx = order.index(src)
-                order[idx] = dest
-            elif dest not in order:
-                order.append(dest)
+    # Apply downstream's transformations
+    #
+    # Example scenario:
+    #   Upstream outputs: {a: col("x"), b: col("y") + 1, c: col("z")}
+    #   Downstream exprs: [col("a").alias("d"), col("b") + 2]
+    #
+    # After this loop:
+    #   - "a" is renamed to "d" (source "a" removed if not in downstream output)
+    #   - "b" is overwritten with a new definition: (col("y") + 1) + 2
+    #   - "c" passes through unchanged from upstream
+    for expr in downstream_project.exprs:
+        column_name = expr.name
+        rename_pair = _extract_simple_rename(expr)
+
+        if rename_pair is not None:
+            # Handle rename: source -> dest
+            # Example: col("a").alias("d") means rename "a" to "d"
+            source_name, dest_name = rename_pair
+            resolved_expr = upstream_column_definitions.get(source_name, expr)
+            column_definitions[dest_name] = _ensure_expression_has_alias(
+                resolved_expr, dest_name
+            )
+
+            # If source is not kept by downstream, remove it from the output
+            # Example: After renaming "a" to "d", if "a" is not in downstream outputs,
+            # we remove "a" from the final output (only "d" remains)
+            if (
+                source_name not in downstream_output_columns
+                and source_name in column_definitions
+            ):
+                del column_definitions[source_name]
+
+            # Update column ordering: replace source with dest or append dest
+            # Example: If order was ["a", "b", "c"] and "a" renamed to "d",
+            # order becomes ["d", "b", "c"] (maintaining position)
+            if (
+                source_name in column_order
+                and source_name not in downstream_output_columns
+            ):
+                idx = column_order.index(source_name)
+                column_order[idx] = dest_name
+            elif dest_name not in column_order:
+                column_order.append(dest_name)
             continue
 
-        # Non-rename: add/overwrite, keeping order stable.
-        substituted = _substitute_columns(expr, produced_map)
-        defs[name] = _get_aliased_expr(substituted, name)
-        if name not in order:
-            order.append(name)
+        # Handle non-rename: add or overwrite column definition
+        # Example: If downstream has col("b") + 2, and upstream had b: col("y") + 1,
+        # we rewrite to: (col("y") + 1) + 2, collapsing both transformations
+        rewritten_expr = _rewrite_column_references(expr, upstream_column_definitions)
+        column_definitions[column_name] = _ensure_expression_has_alias(
+            rewritten_expr, column_name
+        )
+        if column_name not in column_order:
+            # New column added by downstream, append to end
+            column_order.append(column_name)
 
-    fused_exprs = [defs[n] for n in order]
-    fused_preserve = upstream.preserve_existing and downstream.preserve_existing
+    # Build final fused project
+    fused_exprs = [column_definitions[name] for name in column_order]
+    fused_preserve_existing = (
+        upstream_project.preserve_existing and downstream_project.preserve_existing
+    )
 
     return Project(
-        upstream.input_dependency,
+        upstream_project.input_dependency,
         exprs=fused_exprs,
-        preserve_existing=fused_preserve,
-        ray_remote_args=downstream._ray_remote_args,
+        preserve_existing=fused_preserve_existing,
+        ray_remote_args=downstream_project._ray_remote_args,
     )
 
 
 class ProjectionPushdown(Rule):
+    """
+    Optimization rule that pushes projections (column selections) down the query plan.
+
+    This rule performs two optimizations:
+    1. Fuses consecutive Project operations to eliminate redundant projections
+    2. Pushes projections into data sources (e.g., Read operations) to enable
+       column pruning at the storage layer
+    """
+
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
+        """Apply projection pushdown optimization to the entire plan."""
         dag = plan.dag
-        new_dag = dag._apply_transform(self._pushdown_project)
+        new_dag = dag._apply_transform(self._optimize_project)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
-    def _pushdown_project(cls, op: LogicalOperator) -> LogicalOperator:
+    def _optimize_project(cls, op: LogicalOperator) -> LogicalOperator:
+        """
+        Optimize a single Project operator.
+
+        Steps:
+        1. Fuse with upstream Project operations iteratively
+        2. Push the resulting projection into the data source if possible
+        """
         if not isinstance(op, Project):
             return op
 
-        # Iteratively fuse pairwise with upstream Projects.
-        current: Project = op
-        while isinstance(current.input_dependency, Project):
-            parent: Project = current.input_dependency  # type: ignore[assignment]
-            fused = _pairwise_fuse_projects(parent, current)
-            if fused is None:
+        # Step 1: Iteratively fuse with upstream Project operations
+        current_project: Project = op
+        while isinstance(current_project.input_dependency, Project):
+            upstream_project: Project = current_project.input_dependency  # type: ignore[assignment]
+            fused_project = _try_fuse_consecutive_projects(
+                upstream_project, current_project
+            )
+            if fused_project is None:
+                # Fusion not possible, stop iterating
                 break
-            current = fused
+            current_project = fused_project
 
-        # Projection pushdown into operators that support projection pushdown. (ex: Read)
-        ancestor = current.input_dependency
+        # Step 2: Push projection into the data source if supported
+        # For example, when reading Parquet files, we can pass column names
+        # to only read the required columns.
+        input_op = current_project.input_dependency
         if (
-            not current.preserve_existing
-            and isinstance(ancestor, LogicalOperatorSupportsProjectionPushdown)
-            and ancestor.supports_projection_pushdown()
+            not current_project.preserve_existing  # Must be a selection, not additive
+            and isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
+            and input_op.supports_projection_pushdown()
         ):
-            input_columns = _collect_input_columns_from_exprs(list(current.exprs))
-            if input_columns:
-                ancestor = ancestor.apply_projection(sorted(input_columns))
-                return ancestor
+            required_columns = _collect_referenced_columns(list(current_project.exprs))
+            if required_columns:
+                # Push the column list into the source operator
+                optimized_source = input_op.apply_projection(sorted(required_columns))
+                return optimized_source
 
-        return current
+        return current_project
