@@ -1,6 +1,6 @@
 import random
 import sys
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import pytest
 
@@ -393,6 +393,61 @@ def test_rank_stability_on_replica_death(serve_instance):
     for replica_id in initial_replica_ids:
         if replica_id != killed_replica_id:
             assert final_ranks[replica_id] == initial_ranks[replica_id]
+
+
+def test_user_reconfigure_rank(serve_instance):
+    """Test that user can reconfigure the rank of a deployment."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment(
+        num_replicas=4, user_config={"name": "Bob"}, max_ongoing_requests=1
+    )
+    class ReconfigureRankTracker:
+        def __init__(self):
+            self.my_rank = "Bob"
+
+        async def __call__(self):
+            await signal_actor.wait.remote()
+            return self.my_rank
+
+        async def reconfigure(self, user_config: Any, rank: int):
+            self.my_rank = rank
+
+    handle = serve.run(ReconfigureRankTracker.bind())
+    wait_for_condition(
+        lambda: check_rank_assignment_complete("ReconfigureRankTracker", 4),
+    )
+
+    f = [handle.remote() for _ in range(4)]
+
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 4,
+    )
+
+    signal_actor.send.remote(clear=True)
+
+    def _check():
+        assert {f.result() for f in f} == {0, 1, 2, 3}
+        return True
+
+    wait_for_condition(_check)
+
+    serve.run(ReconfigureRankTracker.options(user_config={"name": "Alice"}).bind())
+    wait_for_condition(
+        lambda: check_rank_assignment_complete("ReconfigureRankTracker", 4),
+    )
+
+    f = [handle.remote() for _ in range(4)]
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 4,
+    )
+    signal_actor.send.remote()
+
+    def _check():
+        assert {f.result() for f in f} == {0, 1, 2, 3}
+        return True
+
+    wait_for_condition(_check)
 
 
 if __name__ == "__main__":
