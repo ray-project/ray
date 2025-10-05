@@ -431,7 +431,6 @@ class LLMServer(LLMServerProtocol):
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
-    # TODO: minimize the logic here.
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
         engine_config = llm_config.get_engine_config()

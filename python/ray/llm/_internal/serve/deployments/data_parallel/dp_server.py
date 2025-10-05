@@ -70,10 +70,6 @@ class DPServer(LLMServer):
 
         await super().__init__(llm_config)
 
-    # @classmethod
-    # def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
-    #     return serve.deployment(cls).options(**deployment_options)
-
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
         deployment_options = super().get_deployment_options(llm_config)

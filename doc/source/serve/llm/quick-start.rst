@@ -793,7 +793,7 @@ How do I use gated Huggingface models?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can use `runtime_env` to specify the env variables that are required to access the model.
-To set the deployment options, you can use the :meth:`get_serve_options <ray.serve.llm.LLMConfig.get_serve_options>` method on the :class:`LLMConfig <ray.serve.llm.LLMConfig>` object.
+To get the deployment options, you can use the :classmethod:`get_deployment_options <ray.serve.llm.deployments.LLMServer.get_deployment_options>` method on the :class:`LLMServer <ray.serve.llm.deployments.LLMServer>` class. Each deployment class has its own `get_deployment_options` method.
 
 .. code-block:: python
 
