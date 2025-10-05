@@ -229,6 +229,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
             suffix=req.query.get("suffix", "out"),
             attempt_number=req.query.get("attempt_number", 0),
         )
+        filtering_ansi_esc_code = req.query.get("filter_ansi_code", False)
 
         logger.info(f"Streaming logs with options: {options}")
 
@@ -254,9 +255,10 @@ class StateHead(SubprocessModule, RateLimitedModule):
         try:
             first_chunk = await logs_gen.__anext__()
             # Filter ANSI escape codes
-            filtered_first_chunk = ANSI_ESC_PATTERN.sub(b"", first_chunk)
+            if filtering_ansi_esc_code:
+                first_chunk = ANSI_ESC_PATTERN.sub(b"", first_chunk)
             await response.prepare(req)
-            await response.write(filtered_first_chunk)
+            await response.write(first_chunk)
         except StopAsyncIteration:
             pass
         except asyncio.CancelledError:
@@ -271,8 +273,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
         try:
             async for logs in logs_gen:
                 # Filter ANSI escape codes
-                filtered_logs = ANSI_ESC_PATTERN.sub(b"", logs)
-                await response.write(filtered_logs)
+                if filtering_ansi_esc_code:
+                    logs = ANSI_ESC_PATTERN.sub(b"", logs)
+                await response.write(logs)
         except Exception:
             logger.exception("Error while streaming logs")
             response.force_close()

@@ -1306,10 +1306,17 @@ def test_log_get(ray_start_cluster):
     actor_id = actor._actor_id.hex()
 
     def verify():
-        lines = get_log(actor_id=actor_id, suffix="out")
-        joined_lines = "".join(lines)
-        assert NO_COLOR_MESSAGE in joined_lines
-        assert UNCOLORED_MESSAGE in joined_lines
+        lines_wo_ansi = get_log(actor_id=actor_id, suffix="out", filter_ansi_code=True)
+        joined_lines_wo_ansi = "".join(lines_wo_ansi)
+        assert NO_COLOR_MESSAGE in joined_lines_wo_ansi
+        assert UNCOLORED_MESSAGE in joined_lines_wo_ansi
+        assert COLORED_MESSAGE not in joined_lines_wo_ansi
+
+        lines_w_ansi = get_log(actor_id=actor_id, suffix="out")
+        joined_lines_w_ansi = "".join(lines_w_ansi)
+        assert NO_COLOR_MESSAGE in joined_lines_w_ansi
+        assert UNCOLORED_MESSAGE not in joined_lines_w_ansi
+        assert COLORED_MESSAGE in joined_lines_w_ansi
 
         return True
 
