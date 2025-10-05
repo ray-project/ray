@@ -105,6 +105,7 @@ from ray.data.aggregate import Max
 class CustomPreprocessor(Preprocessor):
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = dataset.aggregate(Max("id"))
+        return self
 
     def _transform_pandas(self, df: DataFrame) -> DataFrame:
         return df * self.stats_["max(id)"]
