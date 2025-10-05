@@ -587,12 +587,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
                     const gcs::StatusCallback &done) {
         publish_node_change_callback = subscribe;
       });
-
-  // Invoke RegisterGcs and wait until publish_node_change_callback is set.
   node_manager_->RegisterGcs();
-  // while (!publish_node_change_callback) {
-  //   io_service_.run_one();
-  // }
 
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
   const auto owner_node_id = NodeID::FromRandom();
