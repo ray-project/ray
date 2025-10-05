@@ -54,12 +54,12 @@ class OpenAiIngress(_OpenAiIngress):
             )
 
             # deployment #1
-            server_options1 = LLMServer.get_deployment_options(llm_config1, name_prefix="vLLM:")
+            server_options1 = LLMServer.get_deployment_options(llm_config1)
             server_deployment1 = serve.deployment(LLMServer).options(
                 **server_options1).bind(llm_config1)
 
             # deployment #2
-            server_options2 = LLMServer.get_deployment_options(llm_config2, name_prefix="vLLM:")
+            server_options2 = LLMServer.get_deployment_options(llm_config2)
             server_deployment2 = serve.deployment(LLMServer).options(
                 **server_options2).bind(llm_config2)
 
