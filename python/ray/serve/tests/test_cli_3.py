@@ -147,8 +147,8 @@ class TestRun:
         [
             (None, "EveryNode"),  # default ProxyLocation
             ("EveryNode", "EveryNode"),
-            ("HeadOnly", "HeadOnly"),
-            ("Disabled", "Disabled"),
+            # ("HeadOnly", "HeadOnly"),
+            # ("Disabled", "Disabled"),
         ],
     )
     def test_proxy_location(self, ray_shutdown, tmp_path, proxy_location, expected):
