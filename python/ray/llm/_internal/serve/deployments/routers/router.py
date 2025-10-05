@@ -169,6 +169,8 @@ def make_fastapi_ingress(
         endpoint_map: Dictionary mapping method names to FastAPI route
             decorators. Each value is a lambda that takes a FastAPI app and
             returns a route decorator.
+        app: Optional FastAPI app to use for the ingress deployment. If not
+            provided, a new FastAPI app will be created.
 
     Returns:
         A class decorated with @serve.ingress
@@ -520,6 +522,9 @@ class OpenAiIngress(DeploymentProtocol):
         """Given a prompt, the model will return one or more predicted completions,
         and can also return the probabilities of alternative tokens at each position.
 
+        Args:
+            body: The CompletionRequest object.
+
         Returns:
             A response object with completions.
         """
@@ -529,6 +534,9 @@ class OpenAiIngress(DeploymentProtocol):
         """Given a prompt, the model will return one or more predicted completions,
         and can also return the probabilities of alternative tokens at each position.
 
+        Args:
+            body: The ChatCompletionRequest object.
+
         Returns:
             A response object with completions.
         """
@@ -537,6 +545,9 @@ class OpenAiIngress(DeploymentProtocol):
 
     async def embeddings(self, body: EmbeddingRequest) -> Response:
         """Create embeddings for the provided input.
+
+        Args:
+            body: The EmbeddingRequest object.
 
         Returns:
             A response object with embeddings.

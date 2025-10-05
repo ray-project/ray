@@ -1,3 +1,4 @@
+import pprint
 from typing import Optional, Type
 
 from ray import serve
@@ -17,7 +18,6 @@ from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
 
-import pprint
 
 DEFAULT_DEPLOYMENT_OPTIONS = {
     "autoscaling_config": {

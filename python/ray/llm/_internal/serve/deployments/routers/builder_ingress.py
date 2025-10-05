@@ -1,4 +1,5 @@
 import os
+import pprint
 from typing import Any, Dict, List, Optional, Sequence, Type, Union, overload
 
 import pydantic
@@ -30,7 +31,6 @@ from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
-import pprint
 
 DEFAULT_INGRESS_OPTIONS = {
     "autoscaling_config": {

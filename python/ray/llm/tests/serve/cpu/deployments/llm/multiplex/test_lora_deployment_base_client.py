@@ -8,12 +8,13 @@ from fastapi import HTTPException
 from ray import serve
 from ray.llm._internal.serve.configs.openai_api_models import ModelCard
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    infer_default_ingress_options,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig, LoraConfig
 from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
-from ray.llm._internal.serve.deployments.routers.builder_ingress import infer_default_ingress_options
-
 
 VLLM_APP_DEF = """
 model_loading_config:
@@ -128,7 +129,9 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
         }
 
     app = make_ingress_app(
-        llm_deployments, llm_configs=[llm_config], _get_lora_model_metadata_func=fake_get_lora_model_metadata
+        llm_deployments,
+        llm_configs=[llm_config],
+        _get_lora_model_metadata_func=fake_get_lora_model_metadata,
     )
     router_handle = serve.run(app)
 
