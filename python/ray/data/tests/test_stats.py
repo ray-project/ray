@@ -1028,41 +1028,9 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     stats = canonicalize(ds.materialize().stats())
     assert (
         stats
-        == """Operator N ReadRange->RandomShuffle: executed in T
+        == """Operator N ReadRange->Repartition: executed in T
 
-    Suboperator Z ReadRange->RandomShuffleMap: N tasks executed, N blocks produced
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): H min, H max, H mean
-    * Output num rows per block: N min, N max, N mean, N total
-    * Output size bytes per block: N min, N max, N mean, N total
-    * Output rows per task: N min, N max, N mean, N tasks used
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Operator throughput:
-        * Total input num rows: N rows
-        * Total output num rows: N rows
-        * Ray Data throughput: N rows/s
-        * Estimated single node throughput: N rows/s
-
-    Suboperator N RandomShuffleReduce: N tasks executed, N blocks produced
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): H min, H max, H mean
-    * Output num rows per block: N min, N max, N mean, N total
-    * Output size bytes per block: N min, N max, N mean, N total
-    * Output rows per task: N min, N max, N mean, N tasks used
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Operator throughput:
-        * Total input num rows: N rows
-        * Total output num rows: N rows
-        * Ray Data throughput: N rows/s
-        * Estimated single node throughput: N rows/s
-
-Operator N Repartition: executed in T
-
-    Suboperator Z RepartitionMap: N tasks executed, N blocks produced
+    Suboperator Z ReadRange->RepartitionMap: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
