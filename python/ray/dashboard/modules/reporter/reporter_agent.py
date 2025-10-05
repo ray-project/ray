@@ -42,10 +42,7 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
 )
 from ray._private.utils import get_system_memory
 from ray._raylet import GCS_PID_KEY, RayletClient, WorkerID
-from ray.core.generated import (
-    reporter_pb2,
-    reporter_pb2_grpc,
-)
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
@@ -54,7 +51,6 @@ from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
     NODE_TAG_KEYS,
-    RAYLET_RPC_TIMEOUT_SECONDS,
     TPU_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
@@ -889,17 +885,23 @@ class ReporterAgent(
                 stats.write_count,
             )
 
-    def _get_worker_pids_from_raylet(self) -> Optional[List[int]]:
-        # Get worker pids from raylet via gRPC.
-        timeout = RAYLET_RPC_TIMEOUT_SECONDS * 1000  # in milliseconds
-        raylet_client = RayletClient(
-            ip_address=self._ip, port=self._dashboard_agent.node_manager_port
-        )
+    def _get_raylet_client(self):
+        if self._raylet_client is None:
+            self._raylet_client = RayletClient(
+                ip_address=self._ip, port=self._dashboard_agent.node_manager_port
+            )
+        return self._raylet_client
+
+    def _get_worker_pids_from_raylet(self) -> List[int]:
         try:
-            return raylet_client.get_worker_pids(timeout=timeout)
+            # Get worker pids from raylet via gRPC.
+            return self._get_raylet_client().get_worker_pids()
+        except TimeoutError as e:
+            logger.debug(f"Failed to get worker pids from raylet: {e}")
+            return []
         except Exception as e:
-            logger.debug(f"Failed to get worker pids from raylet via gRPC: {e}")
-            return None
+            logger.error(f"Unexpectedly failed to get worker pids from raylet: {e}")
+            raise
 
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
@@ -911,7 +913,8 @@ class ReporterAgent(
 
     def _get_worker_processes(self):
         pids = self._get_worker_pids_from_raylet()
-        if pids is not None:
+        logger.debug(f"Worker PIDs from raylet: {pids}")
+        if pids:
             workers = {}
             for pid in pids:
                 try:

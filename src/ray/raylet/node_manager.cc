@@ -2735,7 +2735,7 @@ void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
   for (const auto &worker : all_workers) {
     reply->add_pids(worker->GetProcess().GetId());
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
 
 void NodeManager::Stop() {

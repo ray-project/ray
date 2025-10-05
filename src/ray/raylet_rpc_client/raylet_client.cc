@@ -47,32 +47,6 @@ RayletClient::RayletClient(const rpc::Address &address,
           std::move(raylet_unavailable_timeout_callback),
           /*server_name=*/std::string("Raylet ") + address.ip_address())) {}
 
-RayletClient::RayletClient(const std::string &ip_address, int port) {
-  io_service_ = std::make_unique<instrumented_io_context>();
-  client_call_manager_ =
-      std::make_unique<rpc::ClientCallManager>(*io_service_, /*record_stats=*/false);
-  grpc_client_ = std::make_unique<rpc::GrpcClient<rpc::NodeManagerService>>(
-      ip_address, port, *client_call_manager_);
-  auto raylet_unavailable_timeout_callback = []() {
-    RAY_LOG(WARNING) << "Raylet is unavailable for "
-                     << ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s()
-                     << "s";
-  };
-  retryable_grpc_client_ = rpc::RetryableGrpcClient::Create(
-      grpc_client_->Channel(),
-      client_call_manager_->GetMainService(),
-      /*max_pending_requests_bytes=*/
-      std::numeric_limits<uint64_t>::max(),
-      /*check_channel_status_interval_milliseconds=*/
-      ::RayConfig::instance().grpc_client_check_connection_status_interval_milliseconds(),
-      /*server_unavailable_timeout_seconds=*/
-      ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s(),
-      /*server_unavailable_timeout_callback=*/
-      raylet_unavailable_timeout_callback,
-      /*server_name=*/
-      std::string("Raylet ") + ip_address);
-}
-
 void RayletClient::RequestWorkerLease(
     const rpc::LeaseSpec &lease_spec,
     bool grant_or_reject,
@@ -490,31 +464,5 @@ void RayletClient::GetNodeStats(
                   grpc_client_,
                   /*method_timeout_ms*/ -1);
 }
-
-Status RayletClient::GetWorkerPIDs(std::vector<int32_t> &worker_pids,
-                                   int64_t timeout_ms) {
-  rpc::GetWorkerPIDsRequest request;
-  std::promise<Status> promise;
-  auto future = promise.get_future();
-  auto callback = [&promise, &worker_pids](const Status &status,
-                                           rpc::GetWorkerPIDsReply &&reply) {
-    if (status.ok()) {
-      worker_pids = std::vector<int32_t>(reply.pids().begin(), reply.pids().end());
-    }
-    promise.set_value(status);
-  };
-  INVOKE_RPC_CALL(NodeManagerService,
-                  GetWorkerPIDs,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ timeout_ms);
-  if (future.wait_for(std::chrono::milliseconds(timeout_ms)) ==
-      std::future_status::timeout) {
-    return Status::TimedOut("Timed out getting worker PIDs from raylet");
-  }
-  return future.get();
-}
-
 }  // namespace rpc
 }  // namespace ray

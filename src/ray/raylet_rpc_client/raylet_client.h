@@ -50,12 +50,7 @@ class RayletClient : public RayletClientInterface {
                         rpc::ClientCallManager &client_call_manager,
                         std::function<void()> raylet_unavailable_timeout_callback);
 
-  /// Connect to the raylet. only used for cython wrapper `CRayletClient`
-  /// `client_call_manager` will be created inside.
-  ///
-  /// \param ip_address The IP address of the worker.
-  /// \param port The port of the worker.
-  explicit RayletClient(const std::string &ip_address, int port);
+  RayletClient() = default;
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
@@ -170,9 +165,7 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
-  Status GetWorkerPIDs(std::vector<int32_t> &worker_pids, int64_t timeout_ms);
-
- private:
+ protected:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;
 
@@ -185,13 +178,7 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
 
   /// The number of object ID pin RPCs currently in flight.
-  std::atomic<int64_t> pins_in_flight_ = 0;
-
- private:
-  /// if io context and client call manager are created inside the raylet client, they
-  /// should be kept active during the whole lifetime of client.
-  std::unique_ptr<instrumented_io_context> io_service_;
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::atomic<int64_t> pins_in_flight_{0};
 };
 
 }  // namespace rpc
