@@ -1673,14 +1673,15 @@ class Algorithm(Checkpointable, Trainable):
 
             _round += 1
 
-            results = (
-                self.offline_eval_runner_group.foreach_env_runner_async_fetch_ready(
-                    func=_offline_eval_runner_remote,
-                    kwargs={"iter": algo_iteration},
-                    tag="_offline_eval_runner_remote",
-                )
+            self.offline_eval_runner_group.foreach_runner_async(
+                func=functools.partial(
+                    _offline_eval_runner_remote,
+                    iter=algo_iteration,
+                ),
             )
-
+            results = self.offline_eval_runner_group.fetch_ready_async_reqs(
+                return_obj_refs=False, timeout_seconds=0.01
+            )
             # Make sure we properly time out if we have not received any results
             # for more than `time_out` seconds.
             time_now = time.time()
@@ -1688,7 +1689,7 @@ class Algorithm(Checkpointable, Trainable):
                 break
             elif results:
                 t_last_result = time_now
-            for met, iter in results:
+            for wid, (met, iter) in results:
                 if iter != self.iteration:
                     continue
                 all_metrics.append(met)
