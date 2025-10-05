@@ -71,6 +71,7 @@
 
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve
+/java/serve/ @ray-project/ray-serve
 /src/ray/protobuf/serve.proto @ray-project/ray-serve
 /doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
 
