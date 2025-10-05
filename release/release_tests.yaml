@@ -3750,7 +3750,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
+    script: HF_HUB_OFFLINE=1 python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
 
 - name: llm_serve_correctness
   frequency: nightly

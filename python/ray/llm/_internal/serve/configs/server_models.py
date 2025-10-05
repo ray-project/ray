@@ -493,8 +493,11 @@ class LLMConfig(BaseModelExtended):
             # May happen if all bundles are empty
             pg_bundles = []
 
-        # Merge replica actor resources with the first bundle
-        if pg_bundles:
+        # If bundles are empty (e.g., mocked tests), create a minimal bundle
+        if not pg_bundles:
+            pg_bundles = [replica_actor_resources]
+        else:
+            # Merge replica actor resources with the first bundle
             pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
                 pg_bundles, replica_actor_resources
             )

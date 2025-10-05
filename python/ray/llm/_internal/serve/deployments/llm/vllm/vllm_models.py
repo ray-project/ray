@@ -239,6 +239,7 @@ class VLLMEngineConfig(BaseModelExtended):
             for bundle_dict in self.placement_group_config["bundles"]:
                 bundle = bundle_dict.copy()
                 if self.accelerator_type:
+                    # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
                     bundle.setdefault(self.ray_accelerator_type(), 0.001)
                 bundles.append(bundle)
             return bundles
@@ -255,6 +256,14 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
+        # Check placement_group_config bundles for explicit GPU specification
+        if self.placement_group_config:
+            bundles = self.placement_group_config.get("bundles", [])
+            if bundles:
+                # If any bundle has GPU > 0, we use GPU
+                return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
+
+        # Default behavior based on accelerator_type
         if not self.accelerator_type:
             # By default, GPU resources are used
             return True
