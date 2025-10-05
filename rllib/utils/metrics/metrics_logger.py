@@ -3,15 +3,37 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
-from ray.rllib.utils.metrics.stats import Stats, merge_stats
+from ray.rllib.utils.metrics.stats import (
+    StatsBase,
+    SumStats,
+    MeanStats,
+    MinStats,
+    MaxStats,
+    PercentilesStats,
+    ItemStats,
+    ItemSeriesStats,
+)
+from ray.rllib.utils.metrics.legacy_stats import Stats
 from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
-from ray.util import log_once
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 logger = logging.getLogger("ray.rllib")
+
+# This is used by default to look up classes to use for logging stats.
+# You can override it and add new classes by passing a different lookup to the MetricsLogger constructor.
+# These new classes can then be used to log stats by passing the corresponding identifier to the MetricsLogger.log method.
+DEFAULT_STATS_CLS_LOOKUP = {
+    "mean": MeanStats,
+    "min": MinStats,
+    "max": MaxStats,
+    "sum": SumStats,
+    "percentiles": PercentilesStats,
+    "item": ItemStats,
+    "item_series": ItemSeriesStats,
+}
 
 
 @PublicAPI(stability="alpha")
@@ -114,7 +136,7 @@ class MetricsLogger:
 
     """
 
-    def __init__(self, root=False):
+    def __init__(self, root=False, stats_cls_lookup=DEFAULT_STATS_CLS_LOOKUP):
         """Initializes a MetricsLogger instance.
 
         Args:
@@ -133,6 +155,7 @@ class MetricsLogger:
         self._threading_lock = _DummyRLock()
         # Is this a root logger?
         self._is_root_logger = root
+        self.stats_cls_lookup = stats_cls_lookup
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -215,7 +238,7 @@ class MetricsLogger:
                     if s._reduce_method is not None
                     else s.peek(compile=compile)[0]
                 )
-                if isinstance(s, Stats)
+                if isinstance(s, StatsBase)
                 else s,
                 stats.copy(),
             )
@@ -229,7 +252,7 @@ class MetricsLogger:
                 else:
                     stats = self._get_key(key, key_error=False)
 
-                if isinstance(stats, Stats):
+                if isinstance(stats, StatsBase):
                     # If the Stats object has a reduce method, we need to convert the list to a single value
                     return stats.peek(compile=compile)
 
@@ -251,7 +274,8 @@ class MetricsLogger:
             no Stats objects).
         """
         return tree.map_structure(
-            lambda s: s.peek(compile=compile) if isinstance(s, Stats) else s, results
+            lambda s: s.peek(compile=compile) if isinstance(s, StatsBase) else s,
+            results,
         )
 
     def log_value(
@@ -402,81 +426,59 @@ class MetricsLogger:
         with self._threading_lock:
             # `key` doesn't exist -> Automatically create it.
             if not self._key_in_stats(key):
-                self._set_key(
-                    key,
-                    (
-                        Stats(
-                            value,
-                            reduce=reduce,
-                            percentiles=percentiles,
+                if reduce == "mean":
+                    self._set_key(
+                        key,
+                        MeanStats(
+                            _is_root_stats=self._is_root_logger,
                             window=window,
                             ema_coeff=ema_coeff,
+                            throughput=with_throughput,
+                        ),
+                    )
+                elif reduce == "min":
+                    self._set_key(
+                        key,
+                        MinStats(
+                            _is_root_stats=self._is_root_logger,
+                            window=window,
+                            throughput=with_throughput,
+                        ),
+                    )
+                elif reduce == "max":
+                    self._set_key(
+                        key,
+                        MaxStats(
+                            _is_root_stats=self._is_root_logger,
+                            window=window,
+                            throughput=with_throughput,
+                        ),
+                    )
+                elif reduce == "sum":
+                    self._set_key(
+                        key,
+                        SumStats(
+                            _is_root_stats=self._is_root_logger,
+                            window=window,
                             clear_on_reduce=clear_on_reduce,
                             throughput=with_throughput,
-                            throughput_ema_coeff=throughput_ema_coeff,
-                            reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
-                        )
-                    ),
-                )
-            else:
-                stats = self._get_key(key)
-                if reduce != stats._reduce_method and log_once(f"reduce_warning_{key}"):
-                    logger.warning(
-                        f"reduce should be the same for all logged values under the same key, "
-                        f"but got argument reduce={reduce} while the existing Stats object {key} "
-                        f"has reduce={stats._reduce_method}."
+                        ),
                     )
-                if clear_on_reduce != stats._clear_on_reduce and log_once(
-                    f"clear_on_reduce_warning_{key}"
-                ):
-                    logger.warning(
-                        f"clear_on_reduce should be the same for all logged values under the same key, "
-                        f"but got argument clear_on_reduce={clear_on_reduce} while the existing Stats object {key} "
-                        f"has clear_on_reduce={stats._clear_on_reduce}."
+                elif reduce is None:
+                    self._set_key(
+                        key,
+                        PercentilesStats(
+                            _is_root_stats=self._is_root_logger,
+                            window=window,
+                            percentiles=percentiles,
+                            throughput=with_throughput,
+                        ),
                     )
-                if with_throughput != bool(stats.has_throughput) and log_once(
-                    f"with_throughput_warning_{key}"
-                ):
-                    logger.warning(
-                        f"with_throughput should be the same for all logged values under the same key, "
-                        f"but got argument with_throughput={with_throughput} while the existing Stats object {key} "
-                        f"has has_throughput={stats.has_throughput}. This warning will always be shown if you are using an older checkpoint."
-                    )
-                if throughput_ema_coeff != stats._throughput_ema_coeff and log_once(
-                    f"throughput_ema_coeff_warning_{key}"
-                ):
-                    logger.warning(
-                        f"throughput_ema_coeff should be the same for all logged values under the same key, "
-                        f"but got argument throughput_ema_coeff={throughput_ema_coeff} while the existing Stats object {key} "
-                        f"has throughput_ema_coeff={stats._throughput_ema_coeff}. This warning will always be shown if you are using an older checkpoint."
-                    )
-                if window != stats._window and log_once(f"window_warning_{key}"):
-                    logger.warning(
-                        f"window should be the same for all logged values under the same key, "
-                        f"but got argument window={window} while the existing Stats object {key} "
-                        f"has window={stats._window}."
-                    )
-                if percentiles != getattr(stats, "_percentiles", False) and log_once(
-                    f"percentiles_warning_{key}"
-                ):
-                    logger.warning(
-                        "percentiles should be the same for all logged values under the same key, "
-                        f"but got argument percentiles={percentiles} while the existing Stats object {key} "
-                        f"has percentiles={getattr(stats, '_percentiles', False)}."
-                    )
+                else:
+                    raise ValueError(f"Invalid reduce method: {reduce}")
 
-                if (
-                    reduce_per_index_on_aggregate
-                    != stats._reduce_per_index_on_aggregate
-                    and log_once(f"reduce_per_index_on_aggregate_warning_{key}")
-                ):
-                    logger.warning(
-                        f"reduce_per_index_on_aggregate should be the same for all logged values under the same key, "
-                        f"but got argument reduce_per_index_on_aggregate={reduce_per_index_on_aggregate} while the existing Stats object {key} "
-                        f"has reduce_per_index_on_aggregate={stats._reduce_per_index_on_aggregate}."
-                    )
-
-                stats.push(value)
+            stats = self._get_key(key)
+            stats.push(value)
 
     def log_dict(
         self,
@@ -604,9 +606,9 @@ class MetricsLogger:
         def _map(path, stat_or_value):
             extended_key = prefix_key + force_tuple(tree.flatten(path))
 
-            if isinstance(stat_or_value, Stats):
+            if isinstance(stat_or_value, StatsBase):
                 deprecation_warning(
-                    old="MetricsLogger.log_dict() for Stats objects",
+                    old="MetricsLogger.log_dict() for stats objects",
                     new="MetricsLogger.aggregate()",
                     error=True,
                 )
@@ -815,9 +817,13 @@ class MetricsLogger:
                 None if isinstance(structure_under_key, dict) else structure_under_key
             )
 
-            merged_stats = merge_stats(
-                base_stats=own_stats, incoming_stats=incoming_stats
-            )
+            # We need a merge method for the Stats objects.
+            if own_stats is not None:
+                merge_method = own_stats.merge
+            else:
+                merge_method = incoming_stats[0].merge
+
+            merged_stats = merge_method(own_stats, incoming_stats)
 
             self._set_key(key, merged_stats)
 
@@ -833,7 +839,7 @@ class MetricsLogger:
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
         reduce_per_index_on_aggregate: bool = False,
-    ) -> Stats:
+    ) -> StatsBase:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
         .. testcode::
@@ -919,20 +925,55 @@ class MetricsLogger:
             ema_coeff = 0.01
 
         if not self._key_in_stats(key):
-            self._set_key(
-                key,
-                Stats(
-                    init_values=None,
-                    reduce=reduce,
-                    percentiles=percentiles,
-                    window=window,
-                    ema_coeff=ema_coeff,
-                    clear_on_reduce=clear_on_reduce,
-                    throughput=with_throughput,
-                    throughput_ema_coeff=throughput_ema_coeff,
-                    reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
-                ),
-            )
+            if reduce == "mean":
+                self._set_key(
+                    key,
+                    MeanStats(
+                        window=window,
+                        ema_coeff=ema_coeff,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce == "min":
+                self._set_key(
+                    key,
+                    MinStats(
+                        window=window,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce == "max":
+                self._set_key(
+                    key,
+                    MaxStats(
+                        window=window,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce == "sum":
+                self._set_key(
+                    key,
+                    SumStats(
+                        window=window,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            elif reduce is None:
+                self._set_key(
+                    key,
+                    PercentilesStats(
+                        window=window,
+                        percentiles=percentiles,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                    ),
+                )
+            else:
+                raise ValueError(f"Invalid reduce method: {reduce}")
 
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self._get_key(key)
@@ -988,7 +1029,7 @@ class MetricsLogger:
         # throw an error).
         PATH = None
 
-        def _reduce(path, stats: Stats):
+        def _reduce(path, stats: StatsBase):
             nonlocal PATH
             PATH = path
             return stats.reduce(compile=self._is_root_logger)
@@ -1170,7 +1211,18 @@ class MetricsLogger:
             # Reset all existing stats to ensure a clean state transition
             self.stats = {}
             for flat_key, stats_state in state["stats"].items():
-                self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
+                if "stats_cls_identifier" in stats_state:
+                    cls_identifier = stats_state["stats_cls_identifier"]
+                    assert (
+                        cls_identifier in self.stats_cls_lookup
+                    ), f"Stats class identifier {cls_identifier} not found in stats_cls_lookup"
+                    _cls = self.stats_cls_lookup[cls_identifier]
+                    self._set_key(
+                        flat_key.split("--"), _cls.from_state(state=stats_state)
+                    )
+                else:
+                    # For compatibility with old checkpoints
+                    self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 
     def _key_in_stats(self, flat_key, *, stats=None):
         flat_key = force_tuple(tree.flatten(flat_key))
@@ -1257,7 +1309,11 @@ class MetricsLogger:
             """Helper function to calculate throughputs for a nested structure."""
 
             def _transform(path, value):
-                if isinstance(value, Stats) and value.has_throughput:
+                if (
+                    isinstance(value, Stats)
+                    or isinstance(value, StatsBase)
+                    and value.has_throughput
+                ):
                     # Convert path to tuple for consistent key handling
                     key = force_tuple(path)
                     # Add "_throughput" to the last key in the path
@@ -1281,7 +1337,7 @@ class MetricsLogger:
                 # Get the Stats object or nested structure for the key
                 stats = self._get_key(key, key_error=False)
 
-                if isinstance(stats, Stats):
+                if isinstance(stats, Stats) or isinstance(stats, StatsBase):
                     if not stats.has_throughput:
                         raise ValueError(
                             f"Key '{key}' does not have throughput tracking enabled"
@@ -1297,7 +1353,11 @@ class MetricsLogger:
             throughputs = {}
 
             def _map(path, stats):
-                if isinstance(stats, Stats) and stats.has_throughput:
+                if (
+                    isinstance(stats, Stats)
+                    or isinstance(stats, StatsBase)
+                    and stats.has_throughput
+                ):
                     # Convert path to tuple for consistent key handling
                     key = force_tuple(path)
                     # Add "_throughput" to the last key in the path
