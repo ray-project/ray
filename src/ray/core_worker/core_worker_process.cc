@@ -470,22 +470,28 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
       gcs_client,
-      task_by_state_counter_);
+      task_by_state_counter_,
+      /*free_actor_object_callback=*/
+      [this](const ObjectID &object_id) {
+        auto core_worker = GetCoreWorker();
+        core_worker->free_actor_object_callback_(object_id);
+      });
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id,
+                                   const std::string &actor_name,
+                                   int64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
     auto core_worker = GetCoreWorker();
-    std::ostringstream stream;
-    stream << "Warning: More than " << num_queued
-           << " tasks are pending submission to actor " << actor_id
-           << ". To reduce memory usage, wait for these tasks to finish before sending "
-              "more.";
-    RAY_CHECK_OK(core_worker->PushError(core_worker->options_.job_id,
-                                        "excess_queueing_warning",
-                                        stream.str(),
-                                        timestamp));
+    auto message = absl::StrFormat(
+        "Warning: More than %d tasks are pending submission to actor %s with actor_id "
+        "%s. To reduce memory usage, wait for these tasks to finish before sending more.",
+        num_queued,
+        actor_name,
+        actor_id.Hex());
+    RAY_CHECK_OK(core_worker->PushError(
+        core_worker->options_.job_id, "excess_queueing_warning", message, timestamp));
   };
 
   auto actor_creator = std::make_shared<ActorCreator>(gcs_client->Actors());

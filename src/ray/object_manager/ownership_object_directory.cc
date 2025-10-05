@@ -253,7 +253,6 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
               << "Failed to get object location update. This should only happen if the "
                  "worker / node is dead.";
           location_buffers_.erase(worker_id);
-          owner_client_pool_->Disconnect(worker_id);
           return;
         }
         SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
@@ -320,7 +319,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   }
 }
 
-ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
+void OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const UniqueID &callback_id,
     const ObjectID &object_id,
     const rpc::Address &owner_address,
@@ -345,12 +344,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                                                   const Status &status) {
       const auto obj_id = ObjectID::FromBinary(object_id_binary);
       if (!status.ok()) {
-        RAY_LOG(INFO).WithField(obj_id)
-            << "Failed to get the location: " << status.ToString();
+        RAY_LOG(INFO).WithField(obj_id) << "Owner of object died: " << status.ToString();
         mark_as_failed_(obj_id, rpc::ErrorType::OWNER_DIED);
       } else {
-        // Owner is still alive but published a failure because the ref was
-        // deleted.
+        // Owner is still alive but published a failure because the ref was deleted.
         RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location for object, already released by distributed "
                "reference counting protocol";
@@ -384,7 +381,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
   auto &listener_state = it->second;
 
   if (listener_state.callbacks.count(callback_id) > 0) {
-    return Status::OK();
+    return;
   }
   listener_state.callbacks.emplace(callback_id, callback);
 
@@ -421,14 +418,13 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
         },
         "ObjectDirectory.SubscribeObjectLocations");
   }
-  return Status::OK();
 }
 
-ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
+void OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
     const UniqueID &callback_id, const ObjectID &object_id) {
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
-    return Status::OK();
+    return;
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
@@ -436,11 +432,8 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
         entry->second.owner_address,
         object_id.Binary());
-    owner_client_pool_->Disconnect(
-        WorkerID::FromBinary(entry->second.owner_address.worker_id()));
     listeners_.erase(entry);
   }
-  return Status::OK();
 }
 
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
