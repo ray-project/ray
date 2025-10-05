@@ -69,25 +69,38 @@ def _prepare_http_options(
     http_options: Union[None, dict, HTTPOptions],
 ) -> HTTPOptions:
     if proxy_location is None:
-        # default value of ProxyLocation (EveryNode) will be used
-        # to set http_options.location if it wasn't set explicitly
         if http_options is None:
             http_options = HTTPOptions(location=DeploymentMode.EveryNode)
-            return http_options
-        elif isinstance(http_options, dict):
-            result_http_options = HTTPOptions(**http_options)
-            if "location" not in http_options:
-                result_http_options.location = DeploymentMode.EveryNode
-            return result_http_options
-        else:
-            return http_options
+    #     if http_options are passed - values from it will be used
     else:
         if http_options is None:
             http_options = HTTPOptions()
         elif isinstance(http_options, dict):
             http_options = HTTPOptions(**http_options)
+
         http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
-        return http_options
+    return http_options
+
+    # if proxy_location is None:
+    #     # default value of ProxyLocation (EveryNode) will be used
+    #     # to set http_options.location if it wasn't set explicitly
+    #     if http_options is None:
+    #         http_options = HTTPOptions(location=DeploymentMode.EveryNode)
+    #         return http_options
+    #     elif isinstance(http_options, dict):
+    #         result_http_options = HTTPOptions(**http_options)
+    #         if "location" not in http_options:
+    #             result_http_options.location = DeploymentMode.EveryNode
+    #         return result_http_options
+    #     else:
+    #         return http_options
+    # else:
+    #     if http_options is None:
+    #         http_options = HTTPOptions()
+    #     elif isinstance(http_options, dict):
+    #         http_options = HTTPOptions(**http_options)
+    #     http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
+    #     return http_options
 
 
 @PublicAPI(stability="stable")

@@ -71,7 +71,10 @@ class TestStart:
     @pytest.mark.parametrize(
         "proxy_location,expected_location",
         [
-            (None, "EveryNode"),  # default DeploymentMode
+            (
+                None,
+                "HeadOnly",
+            ),  # HeadOnly is the default location value in the `HTTPOptions`
             ("EveryNode", "EveryNode"),
             ("HeadOnly", "HeadOnly"),
             ("Disabled", "NoServer"),
