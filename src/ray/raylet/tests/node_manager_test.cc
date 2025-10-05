@@ -962,6 +962,51 @@ TEST_F(NodeManagerTest, AsyncGetOrWaitRegistersGetForDriver) {
       fbb.GetBufferPointer());
 }
 
+TEST_F(NodeManagerTest, HandleDirectCallTaskUnblockedAlwaysCancelsGetRequests) {
+  // Create a worker without a lease and register a GET request for it
+  // directly via the LeaseDependencyManager. Even without a lease, unblocked
+  // should cancel outstanding GETs.
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  EXPECT_TRUE(worker->GetGrantedLeaseId().IsNil());
+
+  // Start a GET for one object for this worker.
+  const uint64_t request_id = 123;
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1).WillOnce(Return(request_id));
+  rpc::ObjectReference ref;
+  const auto object_id = ObjectID::FromRandom();
+  ref.set_object_id(object_id.Binary());
+  ref.mutable_owner_address()->CopyFrom(rpc::Address());
+  lease_dependency_manager_->StartOrUpdateGetRequest(worker->WorkerId(), {ref});
+
+  // Send an NotifyDirectCallTaskUnblocked message from this worker client via
+  // ProcessClientMessage.
+  local_stream_socket fake_socket(io_service_);
+  auto client = ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      std::move(fake_socket),
+      "test-client",
+      std::vector<std::string>{});
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .Times(1)
+      .WillOnce(Return(worker));
+  // Assert: the GET request should be canceled.
+  EXPECT_CALL(*mock_object_manager_, CancelPull(request_id)).Times(1);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto msg = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  fbb.Finish(msg);
+  node_manager_->ProcessClientMessage(
+      client,
+      static_cast<int64_t>(protocol::MessageType::NotifyDirectCallTaskUnblocked),
+      fbb.GetBufferPointer());
+
+  // Assert: calling CancelGetRequest again does not trigger additional cancels.
+  EXPECT_CALL(*mock_object_manager_, CancelPull(testing::_)).Times(0);
+  lease_dependency_manager_->CancelGetRequest(worker->WorkerId());
+}
+
 class NodeManagerReturnWorkerLeaseIdempotentTest
     : public NodeManagerTest,
       public testing::WithParamInterface<std::tuple<bool, bool>> {};

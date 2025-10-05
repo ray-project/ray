@@ -2196,7 +2196,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
 
 void NodeManager::HandleDirectCallTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
-  if (!worker || worker->GetGrantedLeaseId().IsNil()) {
+  if (!worker) {
     return;  // The worker may have died or is no longer processing the task.
   }
 
@@ -2204,7 +2204,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   // if we don't need to unblock the worker below.
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
-  if (worker->IsBlocked()) {
+  if (!worker->GetGrantedLeaseId().IsNil() && worker->IsBlocked()) {
     local_lease_manager_.ReturnCpuResourcesToUnblockedWorker(worker);
     cluster_lease_manager_.ScheduleAndGrantLeases();
   }
