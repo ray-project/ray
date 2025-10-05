@@ -1815,9 +1815,9 @@ void NodeManager::HandlePrepareBundleResources(
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
   bundle_specs.reserve(request.bundle_specs_size());
-  for (int index = 0; index < request.bundle_specs_size(); index++) {
-    bundle_specs.emplace_back(
-        std::make_shared<BundleSpecification>(request.bundle_specs(index)));
+  for (auto &bundle_spec : *request.mutable_bundle_specs()) {
+    bundle_specs.push_back(
+        std::make_shared<const BundleSpecification>(std::move(bundle_spec)));
   }
   RAY_LOG(DEBUG) << "Request to prepare resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
@@ -1831,9 +1831,9 @@ void NodeManager::HandleCommitBundleResources(
     rpc::CommitBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
-  for (int index = 0; index < request.bundle_specs_size(); index++) {
-    bundle_specs.emplace_back(
-        std::make_shared<BundleSpecification>(request.bundle_specs(index)));
+  for (auto &bundle_spec : *request.mutable_bundle_specs()) {
+    bundle_specs.push_back(
+        std::make_shared<const BundleSpecification>(std::move(bundle_spec)));
   }
   RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);

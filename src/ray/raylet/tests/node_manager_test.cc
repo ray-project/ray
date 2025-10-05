@@ -418,7 +418,8 @@ class NodeManagerTest : public ::testing::Test {
         std::move(mutable_object_provider),
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
-        [](const std::string &) {});
+        [](const std::string &) {},
+        shutting_down_);
   }
 
   instrumented_io_context io_service_;
@@ -446,6 +447,8 @@ class NodeManagerTest : public ::testing::Test {
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+
+  std::atomic<bool> shutting_down_ = false;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -587,9 +590,9 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
 
   // Invoke RegisterGcs and wait until publish_node_change_callback is set.
   node_manager_->RegisterGcs();
-  while (!publish_node_change_callback) {
-    io_service_.run_one();
-  }
+  // while (!publish_node_change_callback) {
+  //   io_service_.run_one();
+  // }
 
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
   const auto owner_node_id = NodeID::FromRandom();
@@ -1218,6 +1221,27 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
 INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
                          testing::Bool());
+
+TEST_F(NodeManagerTest, TestNoCrashIfGcsPublishesSelfDeadWhenShuttingDown) {
+  // The raylet shouldn't crash if the node starts shutting down (could be from a sigterm
+  // in which case shutting_down_ is set + GCS Unregister RPC is made externally) and then
+  // the GCS publishes that the node is dead.
+
+  gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> publish_node_change_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
+      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
+                    const gcs::StatusCallback &done) {
+        publish_node_change_callback = subscribe;
+      });
+  node_manager_->RegisterGcs();
+
+  shutting_down_ = true;
+
+  auto dead_node_info = rpc::GcsNodeInfo();
+  dead_node_info.set_node_id(raylet_node_id_.Binary());
+  dead_node_info.set_state(rpc::GcsNodeInfo::DEAD);
+  publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
+}
 
 }  // namespace ray::raylet
 
