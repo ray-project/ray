@@ -3545,6 +3545,7 @@ def remote(
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
     label_selector: Dict[str, str] = Undefined,
+    fallback_strategy: List[Dict[str, str]] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3704,6 +3705,8 @@ def remote(
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+        fallback_strategy (List(Dict[str, str])): If specified, expresses soft constraints
+                through a list of label selectors to fall back on when scheduling on a node.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.

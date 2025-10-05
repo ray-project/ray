@@ -1074,7 +1074,10 @@ class _ActorClassMetadata:
         resources: The default resources required by the actor creation task.
         label_selector: The labels required for the node on which this actor
             can be scheduled on. The label selector consist of key-value pairs, where the keys
-            are label names and the value are expressions consisting of an operator with label values or just a value to indicate equality.
+            are label names and the value are expressions consisting of an operator with label
+            values or just a value to indicate equality.
+        fallback_strategy: (List[Dict[str, str]]) If specified, expresses soft constraints
+                through a list of label selectors to fall back on when scheduling on a node.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
@@ -1105,6 +1108,7 @@ class _ActorClassMetadata:
         object_store_memory,
         resources,
         label_selector,
+        fallback_strategy,
         accelerator_type,
         runtime_env,
         concurrency_groups,
@@ -1126,6 +1130,7 @@ class _ActorClassMetadata:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.label_selector = label_selector
+        self.fallback_strategy = fallback_strategy
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
@@ -1363,6 +1368,8 @@ class ActorClass(Generic[T]):
                 This is a dictionary mapping strings (resource names) to floats.
             label_selector (Dict[str, str]): If specified, requires that the actor run
                 on a node which meets the specified label conditions (equals, in, not in, etc.).
+            fallback_strategy: (List[Dict[str, str]]) If specified, expresses soft constraints
+                through a list of label selectors to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -1801,6 +1808,7 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
             enable_tensor_transport=meta.enable_tensor_transport,
         )

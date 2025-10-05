@@ -821,6 +821,26 @@ cdef int prepare_label_selector(
 
     return 0
 
+cdef int prepare_fallback_strategy(
+        list fallback_strategy,
+        c_vector[unordered_map[c_string, c_string]] *fallback_strategy_vector) except -1:
+
+    if fallback_strategy is None:
+        return 0
+
+    cdef unordered_map[c_string, c_string] c_label_selector_map
+
+    for label_selector in fallback_strategy:
+        if not isinstance(label_selector, dict):
+            raise ValueError(
+                "Fallback strategy must be a list of dicts, "
+                f"but got list containing {type(label_selector)}")
+
+        c_label_selector_map.clear()
+        prepare_label_selector(label_selector, &c_label_selector_map)
+        fallback_strategy_vector.push_back(c_label_selector_map)
+
+    return 0
 
 cdef int prepare_resources(
         dict resource_dict,
@@ -3604,11 +3624,13 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
-                    label_selector):
+                    label_selector,
+                    fallback_strategy):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
             unordered_map[c_string, c_string] c_label_selector
+            c_vector[unordered_map[c_string, c_string]] c_fallback_strategy
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3635,6 +3657,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3651,7 +3674,8 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 # For Ray tasks, we always use `OBJECT_STORE`.
-                TENSOR_TRANSPORT_OBJECT_STORE)
+                TENSOR_TRANSPORT_OBJECT_STORE,
+                c_fallback_strategy)
 
             current_c_task_id = current_task.native()
 
@@ -3702,6 +3726,7 @@ cdef class CoreWorker:
                      label_selector,
                      c_bool allow_out_of_order_execution,
                      c_bool enable_tensor_transport,
+                     fallback_strategy,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3716,6 +3741,7 @@ cdef class CoreWorker:
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
             unordered_map[c_string, c_string] c_label_selector
+            c_vector[unordered_map[c_string, c_string]] c_fallback_strategy
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3730,6 +3756,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3759,7 +3786,8 @@ cdef class CoreWorker:
                         enable_tensor_transport,
                         enable_task_events,
                         c_labels,
-                        c_label_selector),
+                        c_label_selector,
+                        c_fallback_strategy),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3877,6 +3905,7 @@ cdef class CoreWorker:
             unordered_map[c_string, c_string] c_label_selector
             c_string call_site
             CTensorTransport c_tensor_transport_val
+            c_vector[unordered_map[c_string, c_string]] c_fallback_strategy
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -3913,7 +3942,8 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val),
+                        c_tensor_transport_val,
+                        c_fallback_strategy),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
