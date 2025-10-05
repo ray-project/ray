@@ -40,6 +40,7 @@ from ray.util.state.common import (
 from ray.util.state.exception import RayStateApiException, ServerUnavailable
 
 logger = logging.getLogger(__name__)
+_MAX_HTTP_RESPONSE_EXCEPTION_TEXT = 500
 
 
 @contextmanager
@@ -222,8 +223,14 @@ class StateApiClient(SubmissionClient):
                 err_str += f"Response(url={response.url},status={response.status_code})"
                 raise RayStateApiException(err_str) from e
 
-        # Process the response.
-        response = response.json()
+        try:
+            # Process the response.
+            response = response.json()
+        except requests.exceptions.JSONDecodeError as e:
+            raise RayStateApiException(
+                f"Failed to parse Response(url={response.url}, "
+                f"status={response.status_code}, text='{response.text[:_MAX_HTTP_RESPONSE_EXCEPTION_TEXT]}')"
+            ) from e
         if response["result"] is False:
             raise RayStateApiException(
                 "API server internal error. See dashboard.log file for more details. "

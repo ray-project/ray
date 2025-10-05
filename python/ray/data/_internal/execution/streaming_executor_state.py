@@ -102,11 +102,6 @@ class OpBufferQueue:
             with self._lock:
                 return self._num_per_split[output_split_idx] > 0
 
-    def has_valid_next(self) -> bool:
-        """Whether next RefBundle is available and valid."""
-        with self._lock:
-            return self._queue.has_next()
-
     def append(self, ref: RefBundle):
         """Append a RefBundle to the queue."""
         with self._lock:
@@ -276,9 +271,8 @@ class OpState:
         operator across (external) input queues"""
         return sum(len(q) for q in self.input_queues)
 
-    def has_valid_input_bundle(self) -> bool:
-        """Check if the operator has a valid bundle in its input queue."""
-        return any(queue.has_valid_next() for queue in self.input_queues)
+    def has_pending_bundles(self) -> bool:
+        return self._pending_dispatch_input_bundles_count() > 0
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -289,6 +283,7 @@ class OpState:
             warn=not self._warned_on_schema_divergence,
             enforce_schemas=self.op.data_context.enforce_schemas,
         )
+
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
 
@@ -645,11 +640,7 @@ def get_eligible_operators(
         #   - It's not completed
         #   - It can accept at least one input
         #   - Its input queue has a valid bundle
-        if (
-            not op.completed()
-            and op.should_add_input()
-            and state.has_valid_input_bundle()
-        ):
+        if not op.completed() and op.should_add_input() and state.has_pending_bundles():
             if not in_backpressure:
                 op_runnable = True
                 eligible_ops.append(op)
