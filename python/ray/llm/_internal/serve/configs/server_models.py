@@ -357,6 +357,19 @@ class LLMConfig(BaseModelExtended):
 
         return lora_config
 
+    @field_validator("experimental_configs")
+    def validate_experimental_configs(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the experimental configs dictionary."""
+        # TODO(Kourosh): Remove this deprecation check after users have
+        # migrated.
+        if "num_router_replicas" in value:
+            raise ValueError(
+                "The 'num_router_replicas' key in experimental_configs has "
+                "been renamed to 'num_ingress_replicas'. Please update "
+                "your configuration to use 'num_ingress_replicas' instead."
+            )
+        return value
+
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
         # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
