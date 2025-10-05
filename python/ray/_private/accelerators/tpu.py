@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import requests
 
@@ -63,6 +63,41 @@ SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
 
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e")
+
+# This is only used to construct TPU 3D topologies
+def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
+    """Returns a set of larger 3D TPU topologies given the max x,y,z value. Using DEFAULT_TPU_NUM_CHIPS_PER_HOST as increment"""
+    topologies = set()
+    for x in range(
+        DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_x, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+    ):
+        for y in range(
+            DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_y, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+        ):
+            for z in range(
+                DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_z, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+            ):
+                topologies.add(f"{x}x{y}x{z}")
+
+    return topologies
+
+
+# The valid TPU topologies for each of the TPU types
+VALID_TPU_TOPOLOGY = {
+    "v2": {"4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v3": {"4x4", "4x8", "8x8", "8x16", "16x16", "16x32", "32x32"},
+    "v4": {"2x2x1", "2x2x2", "2x2x4", "2x4x4"}.add(
+        _get_larger_3d_topologies(12, 12, 16)
+    ),
+    "v5p": {
+        "2x2x1",
+        "2x2x2",
+        "2x2x4",
+        "2x4x4",
+    }.add(_get_larger_3d_topologies(16, 16, 24)),
+    "v5litepod": {"2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v6e": {"2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+}
 
 
 def _get_tpu_metadata(key: str) -> Optional[str]:
@@ -140,6 +175,35 @@ def fetch_tpu_slice_name_from_pg(pg):
     ).remote()
 
     return ray.get(tpu_name_ref)
+
+
+def get_chips_per_host(topology: str, accelerator_verison: str) -> int:
+    """Get the number of chips per host (aka VMs) based on topology and accelerator version.
+    The current rule is as follows:
+        Default chips per host is 4.
+        If accelerator_version is v5e or v6e AND topology product <= 8, the chips per host will just be the proudct. i.e. 1, 4, or 8
+        If accelerator_version is v5e or v6e AND topology product > 8, the chips per host will be 4
+        If accelerator_version is v5p or other versions, the chips per host will be 4
+
+    Args:
+        topology: The TPU topology string (e.g. "2x2x2").
+        accelerator_version: The accelerator version of the node (e.g. "V4", "v4").
+
+    Returns:
+        A int representing the number of chips per host (aka VM)
+    """
+    chips_per_host = DEFAULT_TPU_NUM_CHIPS_PER_HOST
+    total_chips = 1
+    for value in topology.strip().lower().split("x"):
+        total_chips *= int(value)
+
+    if (
+        total_chips <= 8
+        and accelerator_verison.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES
+    ):
+        return total_chips
+
+    return chips_per_host
 
 
 def reserve_tpu_slice(
@@ -262,6 +326,32 @@ class TPUAcceleratorManager(AcceleratorManager):
         """
         expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
         if not expected_pattern.match(tpu_accelerator_type):
+            return False
+        return True
+
+    @staticmethod
+    def is_valid_tpu_accelerator_topology(
+        tpu_accelerator_version: str, tpu_topology: str
+    ) -> bool:
+        """Check whether the tpu topology is valid.
+
+        The accelerator_type field follows a form of v{generation}.
+        The accelerator_topology field follows either the form {A}x{B} or {A}x{B}x{C} depending on the v{generation}
+
+        Args:
+            tpu_accelerator_version: The string representation of the accelerator version. (e.g. v6e, V5P)
+            tpu_topology: The string representation of the accelerator topology
+                to be checked for validity
+
+        Returns:
+            True if it's valid topology, false othrwise
+        """
+        tpu_version_formatted = tpu_accelerator_version.strip().lower()
+        if (
+            tpu_version_formatted.lower() not in VALID_TPU_TOPOLOGY
+            or tpu_topology.strip().lower()
+            not in VALID_TPU_TOPOLOGY[tpu_version_formatted]
+        ):
             return False
         return True
 
