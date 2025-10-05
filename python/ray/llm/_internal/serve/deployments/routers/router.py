@@ -211,22 +211,28 @@ def make_fastapi_ingress(
         endpoint_map = DEFAULT_ENDPOINTS
 
     # Create a new class that inherits from the original to avoid modifying it
-    # in-place.
-    new_cls = type(f"{cls.__name__}Ingress", (cls,), {})
+    # in-place. We populate the new class's __dict__ with decorated methods.
+    class_dict = {}
 
-    # Apply route decorators to the class methods
+    # Apply route decorators to the class methods and store them in class_dict
     for method_name, route_factory in endpoint_map.items():
         # Get the route decorator from the lambda
         route_decorator = route_factory(app)
+        # Get the original method from the class
+        original_method = getattr(cls, method_name)
+        # Apply the decorator to the original method
+        decorated_method = route_decorator(original_method)
+        # Store in the class dict so it will be properly bound to new_cls
+        class_dict[method_name] = decorated_method
 
-        # Get the method from the new class and apply the decorator
-        method = getattr(new_cls, method_name)
-        decorated_method = route_decorator(method)
+    # Create new class with the decorated methods in its __dict__.
+    # IMPORTANT: We keep the same __name__ and __qualname__ as the original
+    # class so that make_fastapi_class_based_view can properly identify the routes
+    # (it checks if cls.__qualname__ is in route.endpoint.__qualname__).
+    new_cls = type(cls.__name__, (cls,), class_dict)
+    new_cls.__qualname__ = cls.__qualname__
 
-        # Set the decorated method back on the new class
-        setattr(new_cls, method_name, decorated_method)
-
-    # Apply the serve.ingress decorator
+    # Apply the serve.ingress decorator to the new class
     return serve.ingress(app)(new_cls)
 
 
