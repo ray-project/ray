@@ -84,11 +84,10 @@ def _merge_replica_actor_and_child_actor_bundles(
         replica_actor_bundle.keys()
     )
 
-    merged_first_bundle = {}
-    for key in bundle_key_set:
-        merged_first_bundle[key] = replica_actor_bundle.get(
-            key, 0
-        ) + original_first_bundle.get(key, 0)
+    merged_first_bundle = {
+        key: original_first_bundle.get(key, 0) + replica_actor_bundle.get(key, 0)
+        for key in bundle_key_set
+    }
 
     return [merged_first_bundle] + child_actor_bundles[1:]
 

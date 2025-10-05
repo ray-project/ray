@@ -612,7 +612,7 @@ class OpenAiIngress(DeploymentProtocol):
 
     @classmethod
     def _infer_num_ingress_replicas(
-        self, llm_configs: Optional[List[LLMConfig]] = None
+        cls, llm_configs: Optional[List[LLMConfig]] = None
     ) -> Dict[str, Any]:
         """Infer the number of ingress replicas based on the LLM configs.
 

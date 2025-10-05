@@ -64,7 +64,8 @@ class OpenAiIngress(_OpenAiIngress):
                 **server_options2).bind(llm_config2)
 
             # ingress
-            ingress_options = OpenAiIngress.get_deployment_options()
+            ingress_options = OpenAiIngress.get_deployment_options(
+                llm_configs=[llm_config1, llm_config2])
             ingress_cls = make_fastapi_ingress(OpenAiIngress)
             ingress_deployment = serve.deployment(ingress_cls).options(
                 **ingress_options).bind([server_deployment1, server_deployment2])
