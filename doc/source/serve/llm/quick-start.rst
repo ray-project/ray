@@ -675,6 +675,55 @@ For multimodal models that can process both text and images:
                 if chunk.choices[0].delta.content is not None:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
+
+Serving small models on fraction of GPUs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By customizing the placement groups of the GPU workers, you can serve multiple small models on the same GPU. Here is an example of a config that serves 8x replicas of a small model on 4xL4 machines. 
+
+
+.. note::
+    This example has not been battle-tested in production yet. If you encounter any issues, please report them on github with reproducible code. 
+
+.. code-block:: python
+
+    from ray.serve.llm import LLMConfig, ModelLoadingConfig
+    from ray.serve.llm import build_openai_app
+    from ray import serve
+
+
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="HuggingFaceTB/SmolVLM-256M-Instruct",
+        ),
+        engine_kwargs=dict(
+            gpu_memory_utilization=0.4,
+            use_tqdm_on_load=False,
+            enforce_eager=True,
+            max_model_len=2048,
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(
+                min_replicas=8, max_replicas=8,
+            )
+        ),
+        accelerator_type="L4",
+        resources_per_bundle=dict(GPU=0.49),
+        runtime_env=dict(
+            env_vars={
+                "VLLM_RAY_PER_WORKER_GPUS": "0.49",
+                "VLLM_DISABLE_COMPILE_CACHE": "1",
+            },
+        ),
+    )
+
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=True)
+
+In this example, we have specified 8 replicas of the model, and we use the `resources_per_bundle` to specify the fraction of the GPU that each model will use in placement group. Also we need to set the `VLLM_RAY_PER_WORKER_GPUS` environment variable so that the vLLM GPU workers will each claim a fraction of the GPU. There is also a resource contention [issue](https://github.com/vllm-project/vllm/issues/24601) among workers when doing torch compile caching, so we need to set the `VLLM_DISABLE_COMPILE_CACHE` environment variable to get around it.
+
+We need to make sure `gpu_memory_utilization` is set to a reasonable value, because vLLM will pre-allocate the GPU memory based on GPU memory utilization, regardless of how we scheduler the Ray GPU workers. In this example, setting it to 0.4 means, that vLLM will target to use 40% of the GPU memory for the model, its kv-cache, CUDAGraph memory, etc.
+
 Using remote storage for model weights
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
