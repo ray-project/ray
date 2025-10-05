@@ -38,6 +38,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Timeout for waiting for metadata reference to become available (in seconds)
+METADATA_REF_WAIT_TIMEOUT_SECONDS = 0.1
+
+# Timeout for getting metadata from Ray object references (in seconds)
+METADATA_GET_TIMEOUT_SECONDS = 1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -114,6 +119,7 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._pending_block_pair = None
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -128,8 +134,13 @@ class DataOpTask(OpTask):
         """
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
+            block_ref, meta_ref = self._pending_block_pair or (
+                None,
+                None,
+            )
             try:
-                block_ref = self._streaming_gen._next_sync(0)
+                if block_ref is None:
+                    block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
@@ -139,9 +150,25 @@ class DataOpTask(OpTask):
                 break
 
             try:
+                if meta_ref is None:
+                    meta_ref = self._streaming_gen._next_sync(
+                        METADATA_REF_WAIT_TIMEOUT_SECONDS
+                    )
+                if meta_ref.is_nil():
+                    self._pending_block_pair = (block_ref, None)
+                    break
                 meta_with_schema: "BlockMetadataWithSchema" = ray.get(
-                    next(self._streaming_gen)
+                    meta_ref, timeout=METADATA_GET_TIMEOUT_SECONDS
                 )
+            except ray.exceptions.GetTimeoutError:
+                logger.warning(
+                    f"Metadata object not ready for block_ref={block_ref.hex()[:8]}... "
+                    f"(operator={self.__class__.__name__}). "
+                    f"Metadata may still be computing or worker may have failed and object is being reconstructed. "
+                    f"Will retry in next iteration."
+                )
+                self._pending_block_pair = (block_ref, meta_ref)
+                break
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -164,9 +191,14 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
+            self._pending_block_pair = None
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    @property
+    def pending_block_pair(self):
+        return self._pending_block_pair
 
 
 class MetadataOpTask(OpTask):
