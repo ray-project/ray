@@ -594,8 +594,8 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       << "Pushing task to actor, actor id " << actor_id << " seq no "
       << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
-    // TODO(ekl) add more debug info about the actor name, etc.
-    warn_excess_queueing_(actor_id, num_queued);
+    on_excess_queueing_(
+        actor_id, task_spec.FunctionDescriptor()->ClassName(), num_queued);
     next_queueing_warn_threshold_ *= 2;
   }
 
