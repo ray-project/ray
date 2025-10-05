@@ -19,7 +19,6 @@ from ray.llm._internal.serve.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm._internal.serve.deployments.routers.builder_ingress import (
-    infer_default_ingress_options,
     parse_args as parse_llm_configs,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
@@ -207,7 +206,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
     )
 
-    ingress_options = infer_default_ingress_options(
+    ingress_options = OpenAiIngress.get_deployment_options(
         [pd_config.prefill_config, pd_config.decode_config]
     )
     ingress_cls = make_fastapi_ingress(OpenAiIngress)

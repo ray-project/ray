@@ -50,7 +50,8 @@ Deployment through :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>`
             server_deployment = serve.deployment(LLMServer).options(
                 **server_options).bind(llm_config)
 
-            ingress_options = OpenAiIngress.get_deployment_options()
+            ingress_options = OpenAiIngress.get_deployment_options(
+                llm_configs=[llm_config])
             ingress_cls = make_fastapi_ingress(OpenAiIngress)
             ingress_deployment = serve.deployment(ingress_cls).options(
                 **ingress_options).bind([server_deployment])
@@ -186,7 +187,8 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
                 **server_options2).bind(llm_config2)
 
             # ingress
-            ingress_options = OpenAiIngress.get_deployment_options()
+            ingress_options = OpenAiIngress.get_deployment_options(
+                llm_configs=[llm_config1, llm_config2])
             ingress_cls = make_fastapi_ingress(OpenAiIngress)
             ingress_deployment = serve.deployment(ingress_cls).options(
                 **ingress_options).bind([server_deployment1, server_deployment2])

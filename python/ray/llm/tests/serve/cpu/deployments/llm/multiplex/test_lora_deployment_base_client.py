@@ -8,9 +8,6 @@ from fastapi import HTTPException
 from ray import serve
 from ray.llm._internal.serve.configs.openai_api_models import ModelCard
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
-    infer_default_ingress_options,
-)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig, LoraConfig
@@ -67,7 +64,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
 
 
 def make_ingress_app(llm_deployments, llm_configs, **kwargs):
-    ingress_options = infer_default_ingress_options(llm_configs)
+    ingress_options = OpenAiIngress.get_deployment_options(llm_configs)
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
     return (
         serve.deployment(ingress_cls)

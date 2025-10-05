@@ -7,15 +7,6 @@ from pydantic import Field
 
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.common.dict_utils import deep_merge_dicts
-from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
-    DEFAULT_LLM_ROUTER_MAX_REPLICAS,
-    DEFAULT_LLM_ROUTER_MIN_REPLICAS,
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-    DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO,
-)
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
 from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
     build_llm_deployment,
@@ -25,19 +16,10 @@ from ray.llm._internal.serve.deployments.routers.router import (
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
-
-
-DEFAULT_INGRESS_OPTIONS = {
-    "autoscaling_config": {
-        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-    },
-    "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
-}
 
 
 def _is_yaml_file(filename: str) -> bool:
@@ -156,76 +138,6 @@ def _get_llm_deployments(
     return llm_deployments
 
 
-def infer_num_ingress_replicas(llm_configs: Optional[List[LLMConfig]] = None) -> dict:
-    """Infer the number of ingress replicas based on the LLM configs.
-
-    Based on our internal benchmark, we are currently bottleneck
-    by the router replicas during high concurrency situation. We are setting the
-    router replicas to be ~2x the total model replicas and making it scale faster.
-
-    Args:
-        llm_configs: The LLM configs to infer the number of ingress replicas from.
-
-    Returns:
-        A dictionary containing the autoscaling config for the ingress deployment.
-    """
-    llm_configs = llm_configs or []
-    min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
-    initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
-    max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
-    num_ingress_replicas = 0
-
-    if llm_configs:
-        model_min_replicas = 0
-        model_initial_replicas = 0
-        model_max_replicas = 0
-        for llm_config in llm_configs:
-            num_ingress_replicas = max(
-                num_ingress_replicas,
-                llm_config.experimental_configs.get("num_ingress_replicas", 0),
-            )
-
-            if "autoscaling_config" in llm_config.deployment_config:
-                autoscaling_config = llm_config.deployment_config["autoscaling_config"]
-                if isinstance(autoscaling_config, dict):
-                    autoscaling_config = AutoscalingConfig(
-                        **llm_config.deployment_config["autoscaling_config"]
-                    )
-            else:
-                # When autoscaling config is not provided, we use the default.
-                autoscaling_config = AutoscalingConfig()
-            model_min_replicas += autoscaling_config.min_replicas
-            model_initial_replicas += (
-                autoscaling_config.initial_replicas or autoscaling_config.min_replicas
-            )
-            model_max_replicas += autoscaling_config.max_replicas
-        min_replicas = num_ingress_replicas or int(
-            model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-        )
-        initial_replicas = num_ingress_replicas or int(
-            model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-        )
-        max_replicas = num_ingress_replicas or int(
-            model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-        )
-
-    return {
-        "autoscaling_config": {
-            "min_replicas": min_replicas,
-            "initial_replicas": initial_replicas,
-            "max_replicas": max_replicas,
-        }
-    }
-
-
-def infer_default_ingress_options(
-    llm_configs: Optional[List[LLMConfig]] = None,
-) -> dict:
-    return deep_merge_dicts(
-        DEFAULT_INGRESS_OPTIONS, infer_num_ingress_replicas(llm_configs)
-    )
-
-
 @overload
 def build_openai_app(
     llm_serving_args: Dict[str, Any],
@@ -260,10 +172,10 @@ def build_openai_app(
 
     llm_deployments = _get_llm_deployments(llm_configs)
 
-    ingress_options = infer_default_ingress_options(llm_configs)
+    ingress_options = OpenAiIngress.get_deployment_options(llm_configs)
 
     if override_serve_options:
-        ingress_options = ingress_options.update(override_serve_options)
+        ingress_options.update(override_serve_options)
 
     ingress_cls = make_fastapi_ingress(ingress_cls)
 
