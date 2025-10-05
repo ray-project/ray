@@ -4,6 +4,9 @@ from typing import Optional
 
 from ray import serve
 from ray.experimental.collective.util import get_address_and_port
+from ray.llm._internal.serve.configs.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+)
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
@@ -67,9 +70,40 @@ class DPServer(LLMServer):
 
         await super().__init__(llm_config)
 
+    # @classmethod
+    # def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
+    #     return serve.deployment(cls).options(**deployment_options)
+
     @classmethod
-    def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
-        return serve.deployment(cls).options(**deployment_options)
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        deployment_options = super().get_deployment_options(llm_config)
+
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+        if not (isinstance(dp_size, int) and dp_size > 0):
+            raise ValueError(
+                f"Invalid data_parallel_size: {dp_size}, expecting " "positive integer."
+            )
+        if dp_size != 1:
+            if "num_replicas" in deployment_options:
+                raise ValueError(
+                    "num_replicas should not be specified for DP deployment, "
+                    f"use engine_kwargs.data_parallel_size={dp_size} instead."
+                )
+            if "autoscaling_config" in deployment_options:
+                raise ValueError(
+                    "autoscaling_config is not supported for DP deployment, "
+                    "remove autoscaling_config instead."
+                )
+            deployment_options["num_replicas"] = dp_size
+            deployment_options["max_ongoing_requests"] = DEFAULT_MAX_ONGOING_REQUESTS
+            if deployment_options["placement_group_strategy"] != "STRICT_PACK":
+                logger.warning(
+                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
+                    "is not supported. Using STRICT_PACK instead."
+                )
+                deployment_options["placement_group_strategy"] = "STRICT_PACK"
+
+        return deployment_options
 
 
 def build_dp_deployment(
@@ -93,10 +127,14 @@ def build_dp_deployment(
     dp_rank_assigner = DPRankAssigner.bind(
         dp_size=dp_size, dp_size_per_node=dp_size_per_node
     )
-    deployment_options = llm_config.get_serve_options(name_prefix=name_prefix)
+    deployment_options = DPServer.get_deployment_options(
+        llm_config, name_prefix=name_prefix
+    )
     if options_override:
         deployment_options.update(options_override)
 
-    return DPServer.as_deployment(deployment_options).bind(
-        llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
+    return (
+        serve.deployment(DPServer)
+        .options(**deployment_options)
+        .bind(llm_config=llm_config, dp_rank_assigner=dp_rank_assigner)
     )
