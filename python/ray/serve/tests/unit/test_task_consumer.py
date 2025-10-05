@@ -5,9 +5,13 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig, TaskResult
+from ray.serve.schema import (
+    CeleryAdapterConfig,
+    TaskProcessorAdapter,
+    TaskProcessorConfig,
+    TaskResult,
+)
 from ray.serve.task_consumer import task_consumer, task_handler
-from ray.serve.task_processor import TaskProcessorAdapter
 
 
 class MockTaskProcessorAdapter(TaskProcessorAdapter):

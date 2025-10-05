@@ -8,8 +8,11 @@ from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     SERVE_LOGGER_NAME,
 )
-from ray.serve.schema import TaskConsumerWrapper, TaskProcessorConfig
-from ray.serve.task_processor import TaskProcessorAdapter
+from ray.serve.schema import (
+    TaskConsumerWrapper,
+    TaskProcessorAdapter,
+    TaskProcessorConfig,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
