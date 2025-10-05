@@ -12,6 +12,8 @@ from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig, LoraConfig
 from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
+from ray.llm._internal.serve.deployments.routers.builder_ingress import infer_default_ingress_options
+
 
 VLLM_APP_DEF = """
 model_loading_config:
@@ -52,8 +54,7 @@ VLLM_APP = LLMConfig.parse_yaml(VLLM_APP_DEF)
 def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     llm_deployments = []
     for llm_config in llm_configs:
-        model_id = llm_config.model_id
-        deployment_args = llm_config.get_serve_options(name_prefix=f"{model_id}:")
+        deployment_args = LLMServer.get_deployment_options(llm_config)
         deployment = serve.deployment(LLMServer).options(**deployment_args)
         llm_deployments.append(
             deployment.bind(
@@ -64,8 +65,8 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     return llm_deployments
 
 
-def make_ingress_app(llm_deployments, **kwargs):
-    ingress_options = OpenAiIngress.get_deployment_options()
+def make_ingress_app(llm_deployments, llm_configs, **kwargs):
+    ingress_options = infer_default_ingress_options(llm_configs)
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
     return (
         serve.deployment(ingress_cls)
@@ -81,7 +82,7 @@ async def test_lora_unavailable_base_model(
     """Getting the handle for an unavailable model should return a 404."""
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    app = make_ingress_app(llm_deployments)
+    app = make_ingress_app(llm_deployments, llm_configs=[llm_config])
     router_handle = serve.run(app)
 
     with pytest.raises(HTTPException) as e:
@@ -99,7 +100,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    app = make_ingress_app(llm_deployments)
+    app = make_ingress_app(llm_deployments, llm_configs=[llm_config])
     router_handle = serve.run(app)
 
     # Case 1: model does not exist.
@@ -127,7 +128,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
         }
 
     app = make_ingress_app(
-        llm_deployments, _get_lora_model_metadata_func=fake_get_lora_model_metadata
+        llm_deployments, llm_configs=[llm_config], _get_lora_model_metadata_func=fake_get_lora_model_metadata
     )
     router_handle = serve.run(app)
 
@@ -148,7 +149,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve, disable_placement_bu
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    app = make_ingress_app(llm_deployments)
+    app = make_ingress_app(llm_deployments, llm_configs=[llm_config])
     router_handle = serve.run(app)
 
     models = (await router_handle.models.remote()).data
@@ -210,12 +211,12 @@ async def test_lora_include_adapters_in_list_models(
     This test is similar to test_lora_list_base_model. It checks that
     the LoRA adapters are included in the list of models.
     """
-    app = deepcopy(VLLM_APP)
-    app.model_loading_config.model_id = base_model_id
-    app.lora_config = LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path)
+    config = deepcopy(VLLM_APP)
+    config.model_loading_config.model_id = base_model_id
+    config.lora_config = LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path)
 
-    llm_deployments = get_mocked_llm_deployments([app])
-    app = make_ingress_app(llm_deployments)
+    llm_deployments = get_mocked_llm_deployments([config])
+    app = make_ingress_app(llm_deployments, llm_configs=[config])
     router_handle = serve.run(app)
 
     models = (await router_handle.models.remote()).data
