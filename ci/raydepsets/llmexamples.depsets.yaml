@@ -1,0 +1,37 @@
+build_arg_sets:
+  py311_cu128:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+    CUDA_CODE: cu128
+
+common_settings: &common_settings
+  override_flags:
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  append_flags:
+    - --python-version=${PYTHON_VERSION}
+    - --python-platform=linux
+  build_arg_sets:
+    - py311_cu128
+
+depsets:
+########## LLM EXAMPLES ##########
+# Subset (compile) from RayLLM dependencies. (to get rid of vllm constraint)
+  - name: subset_llm_example_py${PYTHON_SHORT}_${CUDA_CODE}
+    operation: compile
+    constraints:
+      - python/deplocks/llm/rayllm_py${PYTHON_SHORT}_${CUDA_CODE}.lock
+    requirements:
+      - python/requirements.txt
+    output: python/deplocks/examples/entity_recognition_with_llms/llm_subset_py${PYTHON_SHORT}_${CUDA_CODE}.lock
+    <<: *common_settings
+
+
+# Entity recognition with LLMs example depset - expanded from subset of RayLLM dependencies.
+  - name: e2e_rag_py${PYTHON_SHORT}_${CUDA_CODE}
+    depsets:
+      - subset_llm_example_py${PYTHON_SHORT}_${CUDA_CODE}
+    operation: expand
+    requirements:
+      - doc/source/ray-overview/examples/e2e-rag/requirements.in
+    output: release/ray_release/byod/e2e_rag_py${PYTHON_SHORT}_${CUDA_CODE}.lock
+    <<: *common_settings
