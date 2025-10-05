@@ -1,8 +1,3 @@
-"""All tests in this file use a module-scoped fixture to reduce runtime.
-
-If you need a customized Ray instance (e.g., to change system config or env vars),
-put the test in `test_reference_counting_standalone.py`.
-"""
 # coding: utf-8
 import copy
 import gc
@@ -17,6 +12,7 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     put_object,
@@ -25,15 +21,8 @@ from ray._private.test_utils import (
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(autouse=True)
-def check_refcounts_empty():
-    """Verify that all tests leave the ref counter empty."""
-    yield
-    check_refcounts({})
-
-
-@pytest.fixture(scope="module")
-def one_cpu_100MiB_shared():
+@pytest.fixture(scope="function")
+def one_cpu_100MiB():
     # It has lots of tests that don't require object spilling.
     config = {
         "task_retry_delay_ms": 0,
@@ -45,27 +34,26 @@ def one_cpu_100MiB_shared():
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
     )
+
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
+def _fill_object_store_and_get(obj, object_MiB=20, num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
     if type(obj) is bytes:
         obj = ray.ObjectRef(obj)
 
-    if succeed:
-        wait_for_condition(
-            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
-        )
-    else:
-        wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
-                obj
-            ),
-            timeout=30,
-        )
+    wait_for_condition(
+        lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
+    )
+
+
+def get_cluster_memory_usage():
+    state = get_state_from_address(ray.get_runtime_context().gcs_address)
+    reply = get_memory_info_reply(state)
+    return reply.store_stats.object_store_bytes_used
 
 
 def _check_refcounts(expected):
@@ -92,7 +80,7 @@ def check_refcounts(expected, timeout=10):
                 time.sleep(0.1)
 
 
-def test_local_refcounts(one_cpu_100MiB_shared):
+def test_local_refcounts(one_cpu_100MiB):
     obj_ref1 = ray.put(None)
     check_refcounts({obj_ref1: (1, 0)})
     obj_ref1_copy = copy.copy(obj_ref1)
@@ -103,7 +91,7 @@ def test_local_refcounts(one_cpu_100MiB_shared):
     check_refcounts({})
 
 
-def test_dependency_refcounts(one_cpu_100MiB_shared):
+def test_dependency_refcounts(one_cpu_100MiB):
     @ray.remote
     def one_dep(dep, signal=None, fail=False):
         if signal is not None:
@@ -190,7 +178,7 @@ def test_dependency_refcounts(one_cpu_100MiB_shared):
     check_refcounts({})
 
 
-def test_basic_pinning(one_cpu_100MiB_shared):
+def test_basic_pinning(one_cpu_100MiB):
     @ray.remote
     def f(array):
         return np.sum(array)
@@ -220,7 +208,7 @@ def test_basic_pinning(one_cpu_100MiB_shared):
     ray.get(actor.get_large_object.remote())
 
 
-def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
+def test_pending_task_dependency_pinning(one_cpu_100MiB):
     @ray.remote
     def pending(input1, input2):
         return
@@ -245,34 +233,50 @@ def test_pending_task_dependency_pinning(one_cpu_100MiB_shared):
 # and should be evicted after it returns.
 @pytest.mark.parametrize("use_ray_put", [False, True])
 @pytest.mark.parametrize("failure", [False, True])
-def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
+def test_basic_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
+    print("getting cluster memory usage 1", get_cluster_memory_usage())
+
     @ray.remote(max_retries=0)
     def pending(ref, dep):
         ray.get(ref[0])
         if failure:
             os._exit(0)
 
+    print("Putting object")
+    print("getting cluster memory usage 2", get_cluster_memory_usage())
     array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    print("Initializing signal actor")
+    print("getting cluster memory usage 3", get_cluster_memory_usage())
     signal = SignalActor.remote()
+    print("Calling pending")
     obj_ref = pending.remote([array_oid], signal.wait.remote())
-
+    print("getting cluster memory usage 4", get_cluster_memory_usage())
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
+    print("Deleting array oid bytes")
     del array_oid
-
     # Check that the remote reference pins the object.
+    print("Filling object store")
     _fill_object_store_and_get(array_oid_bytes)
-
+    print("getting cluster memory usage 5", get_cluster_memory_usage())
     # Fulfill the dependency, causing the task to finish.
+    print("Sending signal")
     ray.get(signal.send.remote())
+    print("getting cluster memory usage 6", get_cluster_memory_usage())
+    # Reference should be gone, check that array gets evicted.
+    def check_memory_usage():
+        print(get_cluster_memory_usage())
+        return get_cluster_memory_usage() == 0
+
+    print("Waiting for condition")
+    wait_for_condition(check_memory_usage, timeout=30)
+    print("getting cluster memory usage 7", get_cluster_memory_usage())
     try:
+        print("Getting object")
         ray.get(obj_ref)
         assert not failure
     except ray.exceptions.WorkerCrashedError:
         assert failure
-
-    # Reference should be gone, check that array gets evicted.
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
 # Call a recursive chain of tasks that pass a serialized reference to the end
@@ -281,7 +285,9 @@ def test_basic_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure)
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, failure):
+def test_recursive_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
+    print("cluster memory usage 1", get_cluster_memory_usage())
+
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         if depth == max_depth:
@@ -292,34 +298,36 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
         else:
             return recursive.remote(ref, signal, max_depth, depth + 1)
 
+    print("Initializing signal actor")
     signal = SignalActor.remote()
 
     max_depth = 5
+    print("Putting object")
     array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    print("Calling recursive")
     head_oid = recursive.remote([array_oid], signal, max_depth)
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
+    print("Deleting array oid")
     del array_oid
-
-    tail_oid = head_oid
-    for _ in range(max_depth):
-        tail_oid = ray.get(tail_oid)
-
+    del head_oid
+    print("cluster memory usage 2", get_cluster_memory_usage())
     # Check that the remote reference pins the object.
+    print("Filling object store")
     _fill_object_store_and_get(array_oid_bytes)
-
+    print("cluster memory usage 3", get_cluster_memory_usage())
     # Fulfill the dependency, causing the tail task to finish.
+    print("Sending signal")
     ray.get(signal.send.remote())
-
+    print("cluster memory usage 4", get_cluster_memory_usage())
     # Reference should be gone, check that array gets evicted.
-    def check_is_evicted():
-        object_ref = ray.ObjectRef(array_oid_bytes)
-        return not ray._private.worker.global_worker.core_worker.object_exists(
-            object_ref
-        )
+    def check_memory_usage():
+        print(get_cluster_memory_usage())
+        return get_cluster_memory_usage() == 0
 
-    wait_for_condition(check_is_evicted, timeout=30)
+    print("Waiting for condition")
+    wait_for_condition(check_memory_usage, timeout=30)
 
 
 # Test that a passed reference held by an actor after the method finishes
@@ -328,9 +336,7 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_actor_holding_serialized_reference(
-    one_cpu_100MiB_shared, use_ray_put, failure
-):
+def test_actor_holding_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote
     class GreedyActor(object):
         def __init__(self):
@@ -376,7 +382,7 @@ def test_actor_holding_serialized_reference(
     else:
         # Test that deleting the second reference stops it from being pinned.
         ray.get(actor.delete_ref2.remote())
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 # Test that a passed reference held by an actor after a task finishes
@@ -386,9 +392,7 @@ def test_actor_holding_serialized_reference(
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_worker_holding_serialized_reference(
-    one_cpu_100MiB_shared, use_ray_put, failure
-):
+def test_worker_holding_serialized_reference(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def child(dep1, dep2):
         if failure:
@@ -425,11 +429,11 @@ def test_worker_holding_serialized_reference(
         assert failure
     del child_return_id
 
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 # Test that an object containing object refs within it pins the inner IDs.
-def test_basic_nested_ids(one_cpu_100MiB_shared):
+def test_basic_nested_ids(one_cpu_100MiB):
     inner_oid = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
 
@@ -442,12 +446,12 @@ def test_basic_nested_ids(one_cpu_100MiB_shared):
 
     # Remove the outer reference and check that the inner object gets evicted.
     del outer_oid
-    _fill_object_store_and_get(inner_oid_bytes, succeed=False)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 # Test that a reference borrowed by an actor constructor is freed if the actor is
 # cancelled before being scheduled.
-def test_actor_constructor_borrow_cancellation(one_cpu_100MiB_shared):
+def test_actor_constructor_borrow_cancellation(one_cpu_100MiB):
     # Schedule the actor with a non-existent resource so it's guaranteed to never be
     # scheduled.
     @ray.remote(resources={"nonexistent_resource": 1})

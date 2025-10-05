@@ -1,8 +1,3 @@
-"""All tests in this file use a module-scoped fixture to reduce runtime.
-
-If you need a customized Ray instance (e.g., to change system config or env vars),
-put the test in `test_reference_counting_standalone.py`.
-"""
 # coding: utf-8
 import copy
 import logging
@@ -20,7 +15,10 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.internal_api import memory_summary
+from ray._private.internal_api import (
+    get_memory_info_reply,
+    get_state_from_address,
+)
 from ray._private.test_utils import (
     put_object,
     wait_for_num_actors,
@@ -31,8 +29,14 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(scope="module")
-def one_cpu_100MiB_shared():
+def get_cluster_memory_usage():
+    state = get_state_from_address(ray.get_runtime_context().gcs_address)
+    reply = get_memory_info_reply(state)
+    return reply.store_stats.object_store_bytes_used
+
+
+@pytest.fixture(scope="function")
+def one_cpu_100MiB():
     config = {
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
@@ -49,7 +53,6 @@ def one_cpu_100MiB_shared():
 def _fill_object_store_and_get(
     obj: Union[ray.ObjectRef, bytes],
     *,
-    succeed: bool = True,
     object_MiB: float = 20,
     num_objects: int = 5,
     timeout_s: float = 10.0,
@@ -60,18 +63,10 @@ def _fill_object_store_and_get(
     if type(obj) is bytes:
         obj = ray.ObjectRef(obj)
 
-    if succeed:
-        wait_for_condition(
-            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj),
-            timeout=timeout_s,
-        )
-    else:
-        wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
-                obj
-            ),
-            timeout=timeout_s,
-        )
+    wait_for_condition(
+        lambda: ray._private.worker.global_worker.core_worker.object_exists(obj),
+        timeout=timeout_s,
+    )
 
 
 # Test that an object containing object refs within it pins the inner IDs
@@ -80,7 +75,7 @@ def _fill_object_store_and_get(
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursively_nest_ids(one_cpu_100MiB_shared, use_ray_put, failure):
+def test_recursively_nest_ids(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
@@ -125,7 +120,7 @@ def test_recursively_nest_ids(one_cpu_100MiB_shared, use_ray_put, failure):
             ray.get(tail_oid)
 
     # Reference should be gone, check that array gets evicted.
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 # Test that serialized ObjectRefs returned from remote tasks are pinned until
@@ -134,7 +129,7 @@ def test_recursively_nest_ids(one_cpu_100MiB_shared, use_ray_put, failure):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_return_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
+def test_return_object_ref(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)]
@@ -161,7 +156,7 @@ def test_return_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
     else:
         # Check that removing the inner ID unpins the object.
         del inner_oid
-    _fill_object_store_and_get(inner_oid_binary, succeed=False)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 # Test that serialized ObjectRefs returned from remote tasks are pinned if
@@ -169,7 +164,7 @@ def test_return_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_pass_returned_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
+def test_pass_returned_object_ref(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)]
@@ -216,9 +211,7 @@ def test_pass_returned_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursively_pass_returned_object_ref(
-    one_cpu_100MiB_shared, use_ray_put, failure
-):
+def test_recursively_pass_returned_object_ref(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
@@ -245,11 +238,11 @@ def test_recursively_pass_returned_object_ref(
     for i in range(max_depth):
         inner_oid, outer_oid = ray.get(outer_oid)
 
-    # Check that the remote reference pins the object.
-    _fill_object_store_and_get(outer_oid, succeed=False)
-
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
+
+    # Check that the remote reference pins the object.
+    _fill_object_store_and_get(outer_oid)
 
     try:
         # Check that the remote reference pins the object.
@@ -263,13 +256,12 @@ def test_recursively_pass_returned_object_ref(
         # have died.
         assert failure
 
-    inner_oid_bytes = inner_oid.binary()
     del inner_oid
     del head_oid
     del outer_oid
 
     # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(inner_oid_bytes, succeed=False, timeout_s=20)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 # Call a recursive chain of tasks. The final task in the chain returns an
@@ -281,9 +273,7 @@ def test_recursively_pass_returned_object_ref(
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursively_return_borrowed_object_ref(
-    one_cpu_100MiB_shared, use_ray_put, failure
-):
+def test_recursively_return_borrowed_object_ref(one_cpu_100MiB, use_ray_put, failure):
     @ray.remote
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
@@ -313,7 +303,7 @@ def test_recursively_return_borrowed_object_ref(
         del final_oid
 
     # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(final_oid_bytes, succeed=False)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
     if failure:
         with pytest.raises(ray.exceptions.OwnerDiedError):
@@ -321,7 +311,7 @@ def test_recursively_return_borrowed_object_ref(
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_borrowed_id_failure(one_cpu_100MiB_shared, failure):
+def test_borrowed_id_failure(one_cpu_100MiB, failure):
     @ray.remote
     class Parent:
         def __init__(self):
@@ -368,13 +358,16 @@ def test_borrowed_id_failure(one_cpu_100MiB_shared, failure):
     obj_bytes = obj.binary()
     del obj
 
-    _fill_object_store_and_get(obj_bytes, succeed=not failure)
+    if failure:
+        wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
+    else:
+        _fill_object_store_and_get(obj_bytes)
     # The borrower should not hang when trying to get the object's value.
     ray.get(borrower.resolve_ref.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_actor_constructor_borrowed_refs(one_cpu_100MiB_shared):
+def test_actor_constructor_borrowed_refs(one_cpu_100MiB):
     @ray.remote
     class Borrower:
         def __init__(self, borrowed_refs):
@@ -394,7 +387,7 @@ def test_actor_constructor_borrowed_refs(one_cpu_100MiB_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_deep_nested_refs(one_cpu_100MiB_shared):
+def test_deep_nested_refs(one_cpu_100MiB):
     @ray.remote
     def f(x):
         print(f"=> step {x}")
@@ -411,7 +404,7 @@ def test_deep_nested_refs(one_cpu_100MiB_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_forward_nested_ref(one_cpu_100MiB_shared):
+def test_forward_nested_ref(one_cpu_100MiB):
     @ray.remote
     def nested_ref():
         return ray.put(1)
@@ -446,7 +439,7 @@ def test_forward_nested_ref(one_cpu_100MiB_shared):
         time.sleep(1)
 
 
-def test_out_of_band_actor_handle_deserialization(one_cpu_100MiB_shared):
+def test_out_of_band_actor_handle_deserialization(one_cpu_100MiB):
     @ray.remote
     class Actor:
         def ping(self):
@@ -463,7 +456,7 @@ def test_out_of_band_actor_handle_deserialization(one_cpu_100MiB_shared):
     assert ray.get(func.remote({"actor": actor})) == 1
 
 
-def test_out_of_band_actor_handle_bypass_reference_counting(one_cpu_100MiB_shared):
+def test_out_of_band_actor_handle_bypass_reference_counting(one_cpu_100MiB):
     @ray.remote
     class Actor:
         def ping(self):
@@ -480,7 +473,7 @@ def test_out_of_band_actor_handle_bypass_reference_counting(one_cpu_100MiB_share
         ray.get(config["actor"].ping.remote())
 
 
-def test_generators(one_cpu_100MiB_shared):
+def test_generators(one_cpu_100MiB):
     @ray.remote(num_returns="dynamic")
     def remote_generator():
         for _ in range(3):
@@ -498,15 +491,12 @@ def test_generators(one_cpu_100MiB_shared):
         _fill_object_store_and_get(r)
 
     # Inner IDs out of scope.
-    refs_oids = [r.binary() for r in refs]
     del r
     del refs
-
-    for r_oid in refs_oids:
-        _fill_object_store_and_get(r_oid, succeed=False)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
-def test_lineage_leak(one_cpu_100MiB_shared):
+def test_lineage_leak(one_cpu_100MiB):
     @ray.remote
     def process(data):
         return b"\0" * 100_000_000
@@ -517,10 +507,7 @@ def test_lineage_leak(one_cpu_100MiB_shared):
     del data
     del ref
 
-    def check_usage():
-        return "Plasma memory usage 0 MiB" in memory_summary(stats_only=True)
-
-    wait_for_condition(check_usage)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 if __name__ == "__main__":
