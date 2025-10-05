@@ -92,7 +92,8 @@ class DPServer(LLMServer):
             if "autoscaling_config" in deployment_options:
                 raise ValueError(
                     "autoscaling_config is not supported for DP deployment, "
-                    "remove autoscaling_config instead."
+                    "remove autoscaling_config instead. The `num_replicas` "
+                    "will be set to `data_parallel_size`."
                 )
             deployment_options["num_replicas"] = dp_size
             if deployment_options["placement_group_strategy"] != "STRICT_PACK":
