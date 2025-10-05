@@ -144,7 +144,8 @@ NodeManager::NodeManager(
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    AddProcessToCgroupHook add_process_to_system_cgroup_hook)
+    AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+    std::atomic<bool> &shutting_down)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -196,7 +197,8 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())),
-      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)) {
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
+      shutting_down_(shutting_down) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -812,7 +814,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
 
   if (node_id == self_node_id_) {
-    if (!is_shutting_down_) {
+    if (!shutting_down_) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked "
@@ -2079,9 +2081,9 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   if (!request.graceful()) {
     std::_Exit(EXIT_SUCCESS);
   }
-  if (is_shutting_down_) {
-    RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
-                     "request RPC is ignored.";
+  if (shutting_down_.exchange(true)) {
+    RAY_LOG(INFO)
+        << "Node is already shutting down. Ignoring the ShutdownRaylet request.";
     return;
   }
   auto shutdown_after_reply = [&]() {
@@ -2094,7 +2096,6 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     node_death_info.set_reason_message("Terminated by autoscaler.");
     shutdown_raylet_gracefully_(node_death_info);
   };
-  is_shutting_down_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
@@ -3146,7 +3147,6 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       [this](const rpc::NodeDeathInfo &death_info) {
-        this->is_shutting_down_ = true;
         this->shutdown_raylet_gracefully_(death_info);
       },
       true,
@@ -3183,7 +3183,6 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       [this](const rpc::NodeDeathInfo &death_info) {
-        this->is_shutting_down_ = true;
         this->shutdown_raylet_gracefully_(death_info);
       },
       true,

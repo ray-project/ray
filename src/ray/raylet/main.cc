@@ -448,34 +448,22 @@ int main(int argc, char *argv[]) {
 #endif
   };
 
-  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
-
-  auto shutdown_raylet_after_unregistration = [&main_service,
-                                               &raylet_socket_name,
-                                               &raylet,
-                                               &gcs_client,
-                                               &object_manager_rpc_threads]() {
-    // We should stop the service and remove the local socket file.
-    raylet->Stop();
-    gcs_client->Disconnect();
-    ray::stats::Shutdown();
-    main_service.stop();
-    for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
-      if (object_manager_rpc_threads[i].joinable()) {
-        object_manager_rpc_threads[i].join();
-      }
-    }
-    remove(raylet_socket_name.c_str());
-  };
+  std::atomic<bool> shutting_down = false;
 
   // Shut down raylet gracefully, in a synchronous fashion.
-  // This is an internal method and should only be run on the main_service.
+  // This can be run using the signal handler should only be run on the main_service.
   auto shutdown_raylet_gracefully_internal =
-      [&raylet, shutted_down, shutdown_raylet_after_unregistration](
-          const ray::rpc::NodeDeathInfo &node_death_info) {
+      [&raylet,
+       &main_service,
+       &raylet_socket_name,
+       &gcs_client,
+       &object_manager_rpc_threads,
+       &shutting_down](const ray::rpc::NodeDeathInfo &node_death_info) {
         // Make the shutdown method idempotent since graceful shutdown can be triggered
         // by many places.
-        if (*shutted_down) {
+        shutting_down = true;
+        static std::atomic<bool> shutting_down_internal = false;
+        if (shutting_down_internal.exchange(true)) {
           RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring this request.";
           return;
         }
@@ -483,9 +471,27 @@ int main(int argc, char *argv[]) {
                       << NodeDeathInfo_Reason_Name(node_death_info.reason()) << ", "
                       << "reason message = " << node_death_info.reason_message();
         RAY_LOG(INFO) << "Shutting down...";
-        *shutted_down = true;
 
-        raylet->UnregisterSelf(node_death_info, shutdown_raylet_after_unregistration);
+        auto unregister_done_callback = [&main_service,
+                                         &raylet_socket_name,
+                                         &raylet,
+                                         &gcs_client,
+                                         &object_manager_rpc_threads]() {
+          // We should stop the service and remove the local socket
+          // file.
+          raylet->Stop();
+          gcs_client->Disconnect();
+          ray::stats::Shutdown();
+          main_service.stop();
+          for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
+            if (object_manager_rpc_threads[i].joinable()) {
+              object_manager_rpc_threads[i].join();
+            }
+          }
+          remove(raylet_socket_name.c_str());
+        };
+
+        raylet->UnregisterSelf(node_death_info, unregister_done_callback);
       };
 
   auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_internal](
@@ -999,7 +1005,8 @@ int main(int argc, char *argv[]) {
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,
-        std::move(add_process_to_system_cgroup_hook));
+        std::move(add_process_to_system_cgroup_hook),
+        shutting_down);
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

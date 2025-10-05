@@ -153,7 +153,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      AddProcessToCgroupHook add_process_to_system_cgroup_hook);
+      AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+      std::atomic<bool> &shutting_down);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -869,9 +870,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
 
-  /// Whether or not if the shutdown raylet request has been initiated and in progress.
-  bool is_shutting_down_ = false;
-
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
 
@@ -883,6 +881,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
+
+  /// Whether the raylet is already shutting down.
+  std::atomic<bool> &shutting_down_;
 };
 
 }  // namespace ray::raylet
