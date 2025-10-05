@@ -134,6 +134,66 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         start2, end2 = ray.get(actor.get_start_and_end_time_for_op.remote(2))
         assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
 
+    def test_preserve_order_concurrency_multiplier_configurable(self):
+        """Test that the preserve order concurrency multiplier is configurable."""
+        data_context = DataContext.get_current()
+        default_preserve_order = data_context.execution_options.preserve_order
+        data_context.execution_options.preserve_order = True
+        default_multiplier = data_context.concurrency_cap_on_preserve_order_multiplier
+        try:
+            concurrency = 10
+            input_op = InputDataBuffer(
+                DataContext.get_current(), input_data=[MagicMock()]
+            )
+            map_op = TaskPoolMapOperator(
+                map_transformer=MagicMock(),
+                data_context=DataContext.get_current(),
+                input_op=input_op,
+                concurrency=concurrency,
+            )
+            topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+            # Test with custom multiplier
+            data_context.concurrency_cap_on_preserve_order_multiplier = (
+                0.5  # 50% reduction
+            )
+            policy = ConcurrencyCapBackpressurePolicy(
+                data_context, topology, MagicMock()
+            )
+
+            # Concurrency should be reduced by 50% (custom multiplier)
+            expected_concurrency = max(1.0, concurrency * 0.5)
+            self.assertEqual(policy._concurrency_caps[map_op], expected_concurrency)
+            self.assertTrue(policy._preserve_order)
+
+            # Test with different custom multiplier
+            data_context.concurrency_cap_on_preserve_order_multiplier = (
+                0.8  # 20% reduction
+            )
+            policy2 = ConcurrencyCapBackpressurePolicy(
+                data_context, topology, MagicMock()
+            )
+
+            # Concurrency should be reduced by 20% (custom multiplier)
+            expected_concurrency2 = max(1.0, concurrency * 0.8)
+            self.assertEqual(policy2._concurrency_caps[map_op], expected_concurrency2)
+
+            # Test edge case: multiplier that would result in < 1 should be clamped to 1
+            data_context.concurrency_cap_on_preserve_order_multiplier = (
+                0.05  # 95% reduction
+            )
+            policy3 = ConcurrencyCapBackpressurePolicy(
+                data_context, topology, MagicMock()
+            )
+            expected_concurrency3 = max(1.0, concurrency * 0.05)
+            self.assertEqual(policy3._concurrency_caps[map_op], expected_concurrency3)
+            self.assertTrue(policy3._preserve_order)
+        finally:
+            data_context.concurrency_cap_on_preserve_order_multiplier = (
+                default_multiplier
+            )
+            data_context.execution_options.preserve_order = default_preserve_order
+
 
 if __name__ == "__main__":
     import sys
