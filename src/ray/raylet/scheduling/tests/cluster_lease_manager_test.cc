@@ -363,7 +363,7 @@ class FeatureFlagEnvironment : public ::testing::Environment {
   ~FeatureFlagEnvironment() override {}
 
   // Override this to define how to set up the environment.
-  void SetUp() override { RayConfig::instance().worker_cap_enabled() = true; }
+  void SetUp() override {}
 
   // Override this to define how to tear down the environment.
   void TearDown() override {}
@@ -407,8 +407,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
               }
               return true;
             },
-            /*max_pinned_lease_args_bytes=*/1000,
-            /*get_time=*/[this]() { return current_time_ms_; })),
+            /*max_pinned_lease_args_bytes=*/1000)),
         lease_manager_(
             id_,
             *scheduler_,
@@ -422,8 +421,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
             },
             /* announce_infeasible_lease= */
             [this](const RayLease &lease) { announce_infeasible_lease_calls_++; },
-            *local_lease_manager_,
-            /*get_time=*/[this]() { return current_time_ms_; }) {
+            *local_lease_manager_) {
     RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
   }
 
@@ -513,7 +511,6 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   int node_info_calls_ = 0;
   int announce_infeasible_lease_calls_ = 0;
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
-  int64_t current_time_ms_ = 0;
 
   MockLeaseDependencyManager lease_dependency_manager_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
@@ -2608,287 +2605,6 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapSpillback) {
   lease_manager_.ScheduleAndGrantLeases();
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(replies[1]->retry_at_raylet_address().node_id(), remote_node_id.Binary());
-}
-
-/// Test that we exponentially increase the amount of time it takes to increase
-/// the dispatch cap for a scheduling class.
-TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
-  auto get_unblocked_worker = [](std::vector<std::shared_ptr<MockWorker>> &workers)
-      -> std::shared_ptr<MockWorker> {
-    for (auto &worker : workers) {
-      if (worker->GetAllocatedInstances() != nullptr && !worker->IsBlocked()) {
-        return worker;
-      }
-    }
-    return nullptr;
-  };
-
-  int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
-  std::vector<RayLease> leases;
-  for (int i = 0; i < 3; i++) {
-    RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
-                                 /*num_args=*/0,
-                                 /*args=*/{});
-    leases.emplace_back(lease);
-  }
-
-  rpc::RequestWorkerLeaseReply reply;
-  int num_callbacks = 0;
-  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
-    num_callbacks++;
-  };
-  for (const auto &lease : leases) {
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
-  }
-
-  auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
-  std::vector<std::shared_ptr<MockWorker>> workers;
-  for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-    pool_.TriggerCallbacks();
-    workers.push_back(worker);
-  }
-  lease_manager_.ScheduleAndGrantLeases();
-
-  ASSERT_EQ(num_callbacks, 1);
-
-  current_time_ms_ += UNIT;
-  ASSERT_FALSE(workers.back()->IsBlocked());
-  ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(
-      get_unblocked_worker(workers)));
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-  lease_manager_.ScheduleAndGrantLeases();
-  ASSERT_EQ(num_callbacks, 2);
-
-  // Since we're increasing exponentially, increasing by a unit show no longer be enough.
-  current_time_ms_ += UNIT;
-  ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(
-      get_unblocked_worker(workers)));
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-  lease_manager_.ScheduleAndGrantLeases();
-  ASSERT_EQ(num_callbacks, 2);
-
-  // Now it should run
-  current_time_ms_ += UNIT;
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-  lease_manager_.ScheduleAndGrantLeases();
-  ASSERT_EQ(num_callbacks, 3);
-
-  // Let just one lease finish.
-  for (auto it = workers.begin(); it != workers.end(); it++) {
-    if (!(*it)->IsBlocked()) {
-      RayLease buf;
-      local_lease_manager_->CleanupLease(*it, &buf);
-      workers.erase(it);
-      break;
-    }
-  }
-
-  current_time_ms_ += UNIT;
-
-  // Now schedule another lease of the same scheduling class.
-  RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
-                               /*num_args=*/0,
-                               /*args=*/{});
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
-
-  std::shared_ptr<MockWorker> new_worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(new_worker));
-  pool_.TriggerCallbacks();
-  workers.push_back(new_worker);
-
-  // It can't run for another 2 units (doesn't increase to 4, because one of
-  // the leases finished).
-  ASSERT_EQ(num_callbacks, 3);
-
-  current_time_ms_ += 2 * UNIT;
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-  ASSERT_EQ(num_callbacks, 4);
-
-  for (auto &worker : workers) {
-    RayLease buf;
-    local_lease_manager_->CleanupLease(worker, &buf);
-  }
-
-  AssertNoLeaks();
-}
-
-/// Ensure we reset the cap after we've granted all leases in the queue.
-TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
-  int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
-  std::vector<RayLease> leases;
-  for (int i = 0; i < 2; i++) {
-    RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
-                                 /*num_args=*/0,
-                                 /*args=*/{});
-    leases.emplace_back(lease);
-  }
-
-  rpc::RequestWorkerLeaseReply reply;
-  int num_callbacks = 0;
-  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
-    num_callbacks++;
-  };
-  for (const auto &lease : leases) {
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
-  }
-
-  auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
-
-  std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
-  pool_.TriggerCallbacks();
-  lease_manager_.ScheduleAndGrantLeases();
-
-  ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
-  current_time_ms_ += UNIT;
-
-  std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-
-  ASSERT_EQ(num_callbacks, 2);
-
-  RayLease buf;
-  local_lease_manager_->CleanupLease(worker1, &buf);
-  local_lease_manager_->CleanupLease(worker2, &buf);
-
-  AssertNoLeaks();
-
-  for (int i = 0; i < 2; i++) {
-    RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
-                                 /*num_args=*/0,
-                                 /*args=*/{});
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
-  }
-
-  std::shared_ptr<MockWorker> worker3 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
-  pool_.TriggerCallbacks();
-  lease_manager_.ScheduleAndGrantLeases();
-  ASSERT_EQ(num_callbacks, 3);
-
-  ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker3));
-  current_time_ms_ += UNIT;
-
-  std::shared_ptr<MockWorker> worker4 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker4));
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-
-  ASSERT_EQ(num_callbacks, 4);
-
-  {
-    // Ensure a class of a different scheduling class can still be scheduled.
-    RayLease lease5 = CreateLease({},
-                                  /*num_args=*/0,
-                                  /*args=*/{});
-    lease_manager_.QueueAndScheduleLease(lease5, false, false, &reply, callback);
-    std::shared_ptr<MockWorker> worker5 =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker5));
-    lease_manager_.ScheduleAndGrantLeases();
-    pool_.TriggerCallbacks();
-    ASSERT_EQ(num_callbacks, 5);
-    local_lease_manager_->CleanupLease(worker5, &buf);
-  }
-
-  local_lease_manager_->CleanupLease(worker3, &buf);
-  local_lease_manager_->CleanupLease(worker4, &buf);
-
-  AssertNoLeaks();
-}
-
-/// Test that scheduling classes which have reached their running cap start
-/// their timer after the new lease is submitted, not before.
-TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
-  int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
-  RayLease first_lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
-                                     /*num_args=*/0,
-                                     /*args=*/{});
-
-  rpc::RequestWorkerLeaseReply reply;
-  int num_callbacks = 0;
-  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
-    num_callbacks++;
-  };
-  lease_manager_.QueueAndScheduleLease(first_lease, false, false, &reply, callback);
-
-  auto runtime_env_hash = first_lease.GetLeaseSpecification().GetRuntimeEnvHash();
-  std::vector<std::shared_ptr<MockWorker>> workers;
-  for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-    pool_.TriggerCallbacks();
-    workers.push_back(worker);
-  }
-  lease_manager_.ScheduleAndGrantLeases();
-
-  ASSERT_EQ(num_callbacks, 1);
-
-  RayLease second_lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
-                                      /*num_args=*/0,
-                                      /*args=*/{});
-  lease_manager_.QueueAndScheduleLease(second_lease, false, false, &reply, callback);
-  pool_.TriggerCallbacks();
-
-  /// Can't schedule yet due to the cap.
-  ASSERT_EQ(num_callbacks, 1);
-  for (auto &worker : workers) {
-    if (worker->GetAllocatedInstances() && !worker->IsBlocked()) {
-      local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
-    }
-  }
-
-  current_time_ms_ += UNIT;
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-
-  ASSERT_EQ(num_callbacks, 2);
-  for (auto &worker : workers) {
-    if (worker->GetAllocatedInstances() && !worker->IsBlocked()) {
-      local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
-    }
-  }
-
-  /// A lot of time passes, definitely more than the timeout.
-  current_time_ms_ += 100000 * UNIT;
-
-  RayLease third_lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
-                                     /*num_args=*/0,
-                                     /*args=*/{});
-  lease_manager_.QueueAndScheduleLease(third_lease, false, false, &reply, callback);
-  pool_.TriggerCallbacks();
-
-  /// We still can't schedule the third lease since the timer doesn't start
-  /// until after the lease is queued.
-  ASSERT_EQ(num_callbacks, 2);
-
-  current_time_ms_ += 2 * UNIT;
-  lease_manager_.ScheduleAndGrantLeases();
-  pool_.TriggerCallbacks();
-
-  ASSERT_EQ(num_callbacks, 3);
-
-  for (auto &worker : workers) {
-    RayLease buf;
-    local_lease_manager_->CleanupLease(worker, &buf);
-  }
-
-  AssertNoLeaks();
 }
 
 TEST_F(ClusterLeaseManagerTest, PopWorkerBeforeDraining) {
