@@ -1,0 +1,25 @@
+name: hello_world.azure_1759293409
+image_uri: >-
+  anyscale/image/test_env_gangstreamingtest_azurecr_io_samples_ray-54fe5afb-py39-cpu_hello_world.azure:1
+compute_config: >-
+  default_y8sy__compute__hello_world.azure__73898838c837ef6780e2965d7fa3a6f6a316b7c89480d1198084cddb3524efdb:1
+working_dir: >-
+  abfss://dataplane-staging-blob@anyscalecloudstaging.dfs.core.windows.net/hello_world_2.zip
+requirements: []
+env_vars:
+  TEST_OUTPUT_JSON: /tmp/release_test_out.json
+  METRICS_OUTPUT_JSON: /tmp/metrics_test_out.json
+  USER_GENERATED_ARTIFACT: user_generated_artifact
+  BUILDKITE_BRANCH: ''
+  PYTHONUNBUFFERED: '1'
+  RAY_BACKEND_LOG_JSON: '1'
+  RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT: '1'
+  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: '1'
+  ANYSCALE_JOB_CLUSTER_ENV_NAME: >-
+    test_env_gangstreamingtest_azurecr_io_samples_ray-54fe5afb-py39-cpu_hello_world.azure
+cloud: anyscale_aks_public_default_cloud_us_west_2
+ray_version: 2.49.2
+entrypoint: >-
+  python anyscale_job_wrapper.py 'python hello_world.py' --test-workload-timeout
+  1800 --prepare-commands  --prepare-commands-timeouts
+max_retries: 0
