@@ -210,20 +210,24 @@ def make_fastapi_ingress(
     if endpoint_map is None:
         endpoint_map = DEFAULT_ENDPOINTS
 
+    # Create a new class that inherits from the original to avoid modifying it
+    # in-place.
+    new_cls = type(f"{cls.__name__}Ingress", (cls,), {})
+
     # Apply route decorators to the class methods
     for method_name, route_factory in endpoint_map.items():
         # Get the route decorator from the lambda
         route_decorator = route_factory(app)
 
-        # Get the method from the class and apply the decorator
-        method = getattr(cls, method_name)
+        # Get the method from the new class and apply the decorator
+        method = getattr(new_cls, method_name)
         decorated_method = route_decorator(method)
 
-        # Set the decorated method back on the class
-        setattr(cls, method_name, decorated_method)
+        # Set the decorated method back on the new class
+        setattr(new_cls, method_name, decorated_method)
 
     # Apply the serve.ingress decorator
-    return serve.ingress(app)(cls)
+    return serve.ingress(app)(new_cls)
 
 
 def _apply_openai_json_format(

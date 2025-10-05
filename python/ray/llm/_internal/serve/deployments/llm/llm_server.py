@@ -79,13 +79,18 @@ def _merge_replica_actor_and_child_actor_bundles(
     if not replica_actor_bundle:
         return child_actor_bundles
 
-    first_bundle = child_actor_bundles[0]
-    bundle_key_set = set(first_bundle.keys()) | set(replica_actor_bundle.keys())
+    original_first_bundle = child_actor_bundles[0]
+    bundle_key_set = set(original_first_bundle.keys()) | set(
+        replica_actor_bundle.keys()
+    )
 
+    merged_first_bundle = {}
     for key in bundle_key_set:
-        first_bundle[key] = replica_actor_bundle.get(key, 0) + first_bundle.get(key, 0)
+        merged_first_bundle[key] = replica_actor_bundle.get(
+            key, 0
+        ) + original_first_bundle.get(key, 0)
 
-    return [first_bundle] + child_actor_bundles[1:]
+    return [merged_first_bundle] + child_actor_bundles[1:]
 
 
 class LLMServer(LLMServerProtocol):
