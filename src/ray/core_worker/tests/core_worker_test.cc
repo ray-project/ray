@@ -230,7 +230,7 @@ class CoreWorkerTest : public ::testing::Test {
         *actor_creator,
         /*tensor_transport_getter=*/
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        [](const ActorID &actor_id, uint64_t num_queued) { return Status::OK(); },
+        [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
         reference_counter_);
     actor_task_submitter_ = actor_task_submitter.get();
