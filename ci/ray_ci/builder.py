@@ -3,12 +3,12 @@ from typing import List
 import click
 
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
-from ci.ray_ci.builder_container import (
+from ci.ray_ci.builder_container import BuilderContainer
+from ci.ray_ci.configs import (
     ARCHITECTURE,
     BUILD_TYPES,
     DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
-    BuilderContainer,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import PLATFORMS_RAY, RayType
