@@ -207,6 +207,51 @@ def test_transform_all_configs():
     assert [x["value"] for x in ds.take(5)] == [0, 1, 2, 3, 4]
 
 
+def test_transform_with_resources(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1, resources={"custom": 1})
+    """Tests that transform_resources parameter is properly passed through."""
+    batch_size = 2
+    memory = 1024
+    custom_resources = {"custom": 1}
+
+    class DummyPreprocessor(Preprocessor):
+        _is_fittable = False
+
+        def _get_transform_config(self):
+            return {"batch_size": batch_size}
+
+        def _transform_numpy(self, data):
+            # Verify that custom resources are available in the runtime context
+            assigned_resources = ray.get_runtime_context().get_assigned_resources()
+            assert assigned_resources["memory"] == memory, assigned_resources
+            # Check that custom resources are present
+            for resource_name, resource_value in custom_resources.items():
+                assert assigned_resources[resource_name] == resource_value
+            return data
+
+        def _transform_pandas(self, data):
+            raise RuntimeError(
+                "Pandas transform should not be called with numpy batch format."
+            )
+
+        def _determine_transform_to_use(self):
+            return "numpy"
+
+    prep = DummyPreprocessor()
+    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(10))}))
+    ds = prep.transform(
+        ds,
+        memory=memory,
+        resources=custom_resources,
+    )
+    assert [x["value"] for x in ds.take(5)] == [0, 1, 2, 3, 4]
+
+    ds = prep.fit_transform(
+        ds, transform_memory=memory, transform_resources=custom_resources
+    )
+    assert [x["value"] for x in ds.take(5)] == [0, 1, 2, 3, 4]
+
+
 @pytest.mark.parametrize("dataset_format", ["simple", "pandas", "arrow"])
 def test_transform_all_formats(create_dummy_preprocessors, dataset_format):
     (
