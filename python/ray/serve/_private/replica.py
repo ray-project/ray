@@ -20,6 +20,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
@@ -56,6 +57,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -162,6 +164,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        user_callable_wrapper: Optional["UserCallableWrapper"],
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -240,6 +243,9 @@ class ReplicaMetricsManager:
 
         self.set_autoscaling_config(autoscaling_config)
 
+        self._prometheus_metrics_enabled = False
+        self._prometheus_queries: Optional[List[str]] = None
+
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
             self._request_counter.inc(count, tags={"route": route})
@@ -307,8 +313,17 @@ class ReplicaMetricsManager:
 
         self._autoscaling_config = autoscaling_config
 
-        if self._autoscaling_config and self.should_collect_ongoing_requests():
-            self.start_metrics_pusher()
+        if self._autoscaling_config:
+
+            if self._autoscaling_config.prometheus_metrics:
+                self._prometheus_metrics_enabled = True
+                self._prometheus_queries = autoscaling_config.prometheus_metrics
+                self.start_metrics_pusher()
+                return
+
+            elif self.should_collect_ongoing_requests():
+                self.start_metrics_pusher()
+                return
 
     def enable_custom_autoscaling_metrics(
         self,
@@ -375,6 +390,54 @@ class ReplicaMetricsManager:
         self._controller_handle.record_autoscaling_metrics_from_replica.remote(
             replica_metric_report
         )
+
+    async def _fetch_prometheus_metrics(
+        self, prometheus_metrics: List[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch metrics from the prometheus exporter endpoint, given a list of str metric_names
+        """
+        from ray._common.prometheus_utils import (
+            extract_metric_values,
+            fetch_prometheus_metrics_async,
+            filter_samples_by_label,
+            parse_prometheus_metrics_text,
+        )
+
+        logger.info(
+            f"Fetching prometheus metrics {prometheus_metrics}",
+            extra={"log_to_stderr": False},
+        )
+
+        try:
+            prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
+            logger.debug(f"Fetching metrics from prometheus exporter at {prom_addr}")
+
+            metrics_text = await fetch_prometheus_metrics_async(
+                prom_addr, timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
+            )
+
+            if metrics_text is None:
+                return None
+
+            metric_samples_by_name = parse_prometheus_metrics_text(metrics_text)
+            if not metric_samples_by_name:
+                return None
+
+            def filter_by_replica_id(samples):
+                return filter_samples_by_label(
+                    samples, "replica", self._replica_id.unique_id
+                )
+
+            metrics_result = extract_metric_values(
+                metric_samples_by_name, prometheus_metrics, filter_by_replica_id
+            )
+
+            return metrics_result
+
+        except Exception as e:
+            logger.error(f"Error fetching prometheus metrics: {e}")
+            return None
 
     async def _fetch_custom_autoscaling_metrics(
         self,
@@ -443,6 +506,13 @@ class ReplicaMetricsManager:
             custom_metrics = await self._fetch_custom_autoscaling_metrics()
             if custom_metrics:
                 metrics_dict.update(custom_metrics)
+
+        if self._prometheus_metrics_enabled:
+            prom_metrics = await self._fetch_prometheus_metrics(
+                self._prometheus_queries
+            )
+            if prom_metrics:
+                metrics_dict.update(prom_metrics)
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
@@ -518,6 +588,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
+            user_callable_wrapper=self._user_callable_wrapper,
         )
 
         self._internal_grpc_port: Optional[int] = None
