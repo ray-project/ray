@@ -32,6 +32,11 @@ class HTTPConnection:
                 "requests is required for HTTPConnection. Install with `pip install requests`."
             )
         if self._sync_client is None or not self.reuse_client:
+            if self._sync_client is not None and not self.reuse_client:
+                try:
+                    self._sync_client.close()
+                except Exception:
+                    pass
             self._sync_client = requests.Session()
         return self._sync_client
 
@@ -41,6 +46,15 @@ class HTTPConnection:
                 "aiohttp is required for HTTPConnection. Install with `pip install aiohttp`."
             )
         if self._async_client is None or not self.reuse_client:
+            if (
+                self._async_client is not None
+                and not self._async_client.closed
+                and not self.reuse_client
+            ):
+                try:
+                    await self._async_client.close()
+                except Exception:
+                    pass
             self._async_client = aiohttp.ClientSession()
         return self._async_client
 
@@ -148,3 +162,19 @@ class HTTPConnection:
                 if chunk:
                     bio.write(chunk)
             return bio.getvalue()
+
+    def close(self):
+        if self._sync_client is not None:
+            try:
+                self._sync_client.close()
+            except Exception:
+                pass
+            self._sync_client = None
+
+    async def aclose(self):
+        if self._async_client is not None and not self._async_client.closed:
+            try:
+                await self._async_client.close()
+            except Exception:
+                pass
+        self._async_client = None
