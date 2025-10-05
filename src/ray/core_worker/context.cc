@@ -382,25 +382,11 @@ TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
   return main_thread_or_actor_creation_task_id_;
 }
 
-bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
-  // Check if we need to release resources when we block:
-  //  - Driver doesn't acquire resources and thus doesn't need to release.
-  //  - We only support lifetime resources for actors, which can be
-  //    acquired when the actor is created, per call resources are not supported,
-  //    thus we don't need to release resources for actor calls.
-  return worker_type_ != WorkerType::DRIVER && !CurrentActorIsDirectCall() &&
-         CurrentThreadIsMain();
-}
-
-// TODO(edoakes): simplify these checks now that we only support direct call mode.
-bool WorkerContext::CurrentActorIsDirectCall() const {
+bool WorkerContext::NotifyRayletWhenBlocked() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return current_actor_is_direct_call_;
-}
-
-bool WorkerContext::CurrentTaskIsDirectCall() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  return current_task_is_direct_call_ || current_actor_is_direct_call_;
+  return (worker_type_ != WorkerType::DRIVER && current_task_is_direct_call_ &&
+          CurrentThreadIsMain()) ||
+         current_actor_is_direct_call_;
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {
