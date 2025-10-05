@@ -91,7 +91,7 @@ def __ray_recv__(
     tensors = []
     for meta in tensor_meta:
         shape, dtype = meta
-        tensor = torch.zeros(shape, dtype=dtype, device=device)
+        tensor = torch.empty(shape, dtype=dtype, device=device)
         tensors.append(tensor)
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
@@ -102,6 +102,21 @@ def __ray_recv__(
     )
 
     gpu_object_store.add_object(obj_id, tensors)
+
+
+def __ray_free__(self, obj_id: str):
+    """
+    Called on the primary copy holder. Note that the primary copy holder should always only have one ref
+    in the gpu object store.
+    """
+    try:
+        from ray._private.worker import global_worker
+
+        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+        gpu_object_store.pop_object(obj_id)
+    except AssertionError:
+        # This could fail if this is a retry and it's already been freed.
+        pass
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):

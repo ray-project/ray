@@ -1664,3 +1664,12 @@ class TaskProcessorAdapter(ABC):
             )
 
         raise NotImplementedError("Subclass must implement health_check_async function")
+
+
+@PublicAPI(stability="alpha")
+class ScaleDeploymentRequest(BaseModel):
+    """Request schema for scaling a deployment's replicas."""
+
+    target_num_replicas: NonNegativeInt = Field(
+        description="The target number of replicas for the deployment."
+    )
