@@ -818,26 +818,26 @@ class DummyState:
 class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
     def test_pbt_with_nan_scores(self):
         # Create three trials: one with nan, two with valid scores
-        t1 = DummyTrial("t1", config={"lr": 1e-3})
-        t2 = DummyTrial("t2", config={"lr": 1e-4})
-        t3 = DummyTrial("t3", config={"lr": 1e-5})
-        # Patch _trial_state with dummy states
-        # Note: list.sort does not change the order if nan is present
-        max_states = {
-            t1: DummyState(last_score=20.0),
-            t2: DummyState(last_score=float("nan")),
-            t3: DummyState(last_score=10.0),
-        }
-        min_states = {
-            t3: DummyState(last_score=10.0),
-            t2: DummyState(last_score=float("nan")),
-            t1: DummyState(last_score=20.0),
-        }
+        t1 = DummyTrial("t1", config=MagicMock())
+        t2 = DummyTrial("t2", config=MagicMock())
+        t3 = DummyTrial("t3", config=MagicMock())
 
         for scheduler_class in (PopulationBasedTraining, PB2):
+            # Patch _trial_state with dummy states
+            # Note: list.sort does not change the order if nan is present
+            max_states = {
+                t1: DummyState(last_score=20.0),
+                t2: DummyState(last_score=float("nan")),
+                t3: DummyState(last_score=10.0),
+            }
+            min_states = {
+                t3: DummyState(last_score=10.0),
+                t2: DummyState(last_score=float("nan")),
+                t1: DummyState(last_score=20.0),
+            }
             with self.subTest(scheduler_class=scheduler_class.__name__):
                 if scheduler_class is PopulationBasedTraining:
-                    hp_kwargs = {"hyperparam_mutations": {"lr": [1e-3, 1e-4]}}
+                    hp_kwargs = {"hyperparam_mutations": {"lr": [1e-4, 1e-3]}}
                 else:
                     hp_kwargs = {"hyperparam_bounds": {"lr": [1e-4, 1e-3]}}
                 # test max mode
@@ -845,13 +845,12 @@ class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
                     metric="reward",
                     mode="max",
                     quantile_fraction=0.5,
-                    time_attr="iter",
                     **hp_kwargs,
                 )
                 max_scheduler._trial_state = max_states
                 for t, state in max_states.items():
                     max_scheduler._save_trial_state(
-                        state, 100, {"reward": state.last_score, "iter": 100}, t
+                        state, 100, {"reward": state.last_score, "time_total_s": 1}, t
                     )
 
                 # Should not raise, but nan disrupts sorting
@@ -876,13 +875,12 @@ class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
                     metric="reward",
                     mode="min",
                     quantile_fraction=0.5,
-                    time_attr="iter",
                     **hp_kwargs,
                 )
                 min_scheduler._trial_state = min_states
                 for t, state in min_states.items():
                     min_scheduler._save_trial_state(
-                        state, 100, {"reward": state.last_score, "iter": 100}, t
+                        state, 100, {"reward": state.last_score, "time_total_s": 1}, t
                     )
                 min_bottom, min_top = min_scheduler._quantiles()
                 min_other_trials = [
