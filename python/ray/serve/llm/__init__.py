@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type, Union
 
 from ray._common.deprecation import Deprecated
 from ray.llm._internal.serve.configs.server_models import (
@@ -95,7 +95,9 @@ def build_llm_deployment(
     llm_config: "LLMConfig",
     *,
     name_prefix: Optional[str] = None,
+    bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
+    deployment_cls: Optional[Type[LLMServer]] = None,
 ) -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
@@ -152,7 +154,9 @@ def build_llm_deployment(
     Args:
         llm_config: The llm config to build vllm deployment.
         name_prefix: Optional prefix to be used for the deployment name.
+        bind_kwargs: Optional kwargs to pass to the deployment.
         override_serve_options: Optional serve options to override the original serve options based on the llm_config.
+        deployment_cls: Optional deployment class to use.
 
     Returns:
         The configured Ray Serve Application for vllm deployment.
@@ -164,7 +168,9 @@ def build_llm_deployment(
     return build_llm_deployment(
         llm_config=llm_config,
         name_prefix=name_prefix,
+        bind_kwargs=bind_kwargs,
         override_serve_options=override_serve_options,
+        deployment_cls=deployment_cls,
     )
 
 

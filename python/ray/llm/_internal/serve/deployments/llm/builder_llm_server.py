@@ -7,7 +7,6 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -20,9 +19,6 @@ logger = get_logger(__name__)
 
 
 DEFAULT_DEPLOYMENT_OPTIONS = {
-    "autoscaling_config": {
-        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-    },
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
     "health_check_period_s": DEFAULT_HEALTH_CHECK_PERIOD_S,
     "health_check_timeout_s": DEFAULT_HEALTH_CHECK_TIMEOUT_S,
@@ -39,7 +35,7 @@ def build_llm_deployment(
     name_prefix: Optional[str] = None,
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
-    deployment_cls: Optional[Type[LLMServer]] = LLMServer,
+    deployment_cls: Optional[Type[LLMServer]] = None,
 ) -> Application:
     """Build an LLMServer deployment.
 
@@ -55,16 +51,17 @@ def build_llm_deployment(
     Returns:
         The Ray Serve Application for the LLMServer deployment.
     """
+    deployment_cls = deployment_cls or LLMServer
     name_prefix = name_prefix or f"{deployment_cls.__name__}:"
     bind_kwargs = bind_kwargs or {}
 
     deployment_options = deployment_cls.get_deployment_options(llm_config)
 
     # Set the name of the deployment config to map to the model ID.
-    if "name" not in deployment_options:
-        deployment_options["name"] = _get_deployment_name(llm_config)
+    deployment_name = deployment_options.get("name", _get_deployment_name(llm_config))
+
     if name_prefix:
-        deployment_options["name"] = name_prefix + deployment_options["name"]
+        deployment_options["name"] = name_prefix + deployment_name
 
     if override_serve_options:
         deployment_options.update(override_serve_options)

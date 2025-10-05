@@ -453,7 +453,7 @@ class LLMServer(LLMServerProtocol):
             or "placement_group_strategy" in llm_config.deployment_config
         ):
             raise ValueError(
-                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can overide the default values by setting the `placement_group_config` in the LLMConfig."
+                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
             )
 
         # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
@@ -486,23 +486,3 @@ class LLMServer(LLMServerProtocol):
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
-
-
-# # TODO (Kourosh): remove this as well.
-# @serve.deployment(
-#     autoscaling_config={
-#         "min_replicas": 1,
-#         "initial_replicas": 1,
-#         "max_replicas": DEFAULT_MAX_REPLICAS,
-#         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-#     },
-#     max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
-#     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
-#     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-# )
-# class LLMDeployment(LLMServer):
-#     # Note (genesu): We are separating the LLMServer and LLMDeployment just
-#     # to give developers an ability to test the implementation outside the Ray Serve.
-#     # But in practice we should always test the LLMDeployment class as a Serve
-#     # deployment to ensure all functionalities can be run remotely asynchronously.
-#     pass
