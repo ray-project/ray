@@ -541,7 +541,10 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+    concurrency: Optional[int] = None,
+    initial_op_concurrency: Optional[int] = None,
+    min_op_concurrency: Optional[int] = None,
+    max_op_concurrency: Optional[int] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -552,7 +555,10 @@ def get_compute_strategy(
         fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
         compute: Either "tasks" (default) to use Ray Tasks or an
                 :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
-        concurrency: The number of Ray workers to use concurrently.
+        concurrency: The exact number of Ray workers to use concurrently.
+        initial_op_concurrency: The initial number of Ray workers to use concurrently.
+        min_op_concurrency: The minimum number of Ray workers to use concurrently.
+        max_op_concurrency: The maximum number of Ray workers to use concurrently.
 
     Returns:
        The `ComputeStrategy` for execution.
@@ -572,7 +578,14 @@ def get_compute_strategy(
                 "``fn_constructor_args`` can only be specified if providing a "
                 f"callable class instance for ``fn``, but got: {fn}."
             )
-
+    for name, val in [
+        ("initial_op_concurrency", initial_op_concurrency),
+        ("min_op_concurrency", min_op_concurrency),
+        ("max_op_concurrency", max_op_concurrency),
+        ("concurrency", concurrency),
+    ]:
+        if val is not None and (not isinstance(val, int) or val <= 0):
+            raise ValueError(f"`{name}` must be a positive integer, but got: {val}.")
     if compute is not None:
         # Legacy code path to support `compute` argument.
         logger.warning(
@@ -598,54 +611,65 @@ def get_compute_strategy(
                 "use the default ``compute`` strategy."
             )
         return compute
-    elif concurrency is not None:
-        if isinstance(concurrency, tuple):
-            # Validate tuple length and that all elements are integers
-            if len(concurrency) not in (2, 3) or not all(
-                isinstance(c, int) for c in concurrency
+
+    # From here on, branch by whether `fn` is a callable class (actors) or function (tasks).
+    if is_callable_class:
+        # Callable class (actors)
+        if concurrency is not None:
+            if (
+                initial_op_concurrency is not None
+                or min_op_concurrency is not None
+                or max_op_concurrency is not None
             ):
                 raise ValueError(
-                    "``concurrency`` is expected to be set as a tuple of "
-                    f"integers, but got: {concurrency}."
+                    "`concurrency` cannot be used together with `initial_op_concurrency`, "
+                    "`min_op_concurrency`, or `max_op_concurrency`."
                 )
+            return ActorPoolStrategy(size=concurrency)
 
-            # Check if function is callable class (common validation)
-            if not is_callable_class:
+        if (
+            min_op_concurrency is not None
+            or max_op_concurrency is not None
+            or initial_op_concurrency is not None
+        ):
+            # Autoscaling requires both min and max; initial is optional.
+            if min_op_concurrency is None or max_op_concurrency is None:
                 raise ValueError(
-                    "``concurrency`` is set as a tuple of integers, but ``fn`` "
-                    f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                    "control maximum number of workers to use."
+                    "`min_op_concurrency` and `max_op_concurrency` must be specified together for autoscaling actor pools."
                 )
+            if initial_op_concurrency is not None:
+                return ActorPoolStrategy(
+                    min_size=min_op_concurrency,
+                    max_size=max_op_concurrency,
+                    initial_size=initial_op_concurrency,
+                )
+            return ActorPoolStrategy(
+                min_size=min_op_concurrency, max_size=max_op_concurrency
+            )
 
-            # Create ActorPoolStrategy based on tuple length
-            if len(concurrency) == 2:
-                return ActorPoolStrategy(
-                    min_size=concurrency[0], max_size=concurrency[1]
-                )
-            else:  # len(concurrency) == 3
-                return ActorPoolStrategy(
-                    min_size=concurrency[0],
-                    max_size=concurrency[1],
-                    initial_size=concurrency[2],
-                )
-        elif isinstance(concurrency, int):
-            if is_callable_class:
-                return ActorPoolStrategy(size=concurrency)
-            else:
-                return TaskPoolStrategy(size=concurrency)
-        else:
-            raise ValueError(
-                "``concurrency`` is expected to be set as an integer or a "
-                f"tuple of integers, but got: {concurrency}."
-            )
-    else:
-        if is_callable_class:
-            raise ValueError(
-                "``concurrency`` must be specified when using a callable class. "
-                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
-            )
-        else:
-            return TaskPoolStrategy()
+        # Nothing specified for callable class
+        raise ValueError(
+            "`concurrency` must be specified when using a callable class. For example, "
+            "use `concurrency=n` for a pool of `n` workers."
+        )
+
+    # Function (tasks)
+    if concurrency is not None:
+        return TaskPoolStrategy(size=concurrency)
+
+    if (
+        min_op_concurrency is not None
+        or max_op_concurrency is not None
+        or initial_op_concurrency is not None
+    ):
+        # Autoscaling params are not valid for plain functions
+        raise ValueError(
+            "`min_op_concurrency`/`max_op_concurrency`/`initial_op_concurrency` are only supported "
+            "for callable classes (actors). Use `concurrency=n` for functions."
+        )
+
+    # Default: no concurrency specified, plain function uses tasks with implicit concurrency
+    return TaskPoolStrategy()
 
 
 def capfirst(s: str):
