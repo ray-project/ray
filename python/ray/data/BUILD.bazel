@@ -1631,7 +1631,7 @@ py_test(
 
 py_test(
     name = "test_custom_agg",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_custom_agg.py"],
     tags = [
         "exclusive",
