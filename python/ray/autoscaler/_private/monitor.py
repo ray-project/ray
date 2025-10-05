@@ -243,6 +243,9 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
+        # TODO(jinbum-kim): Still needed since some fields aren't in cluster_resource_state.
+        # Remove after v1 autoscaler fully migrates to get_cluster_resource_state().
+        # ref: https://github.com/ray-project/ray/pull/57130
         response = self.gcs_client.get_all_resource_usage(timeout=60)
         resources_batch_data = response.resource_usage_data
         log_resource_batch_data_if_desired(resources_batch_data)
