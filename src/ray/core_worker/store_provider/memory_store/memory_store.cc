@@ -349,7 +349,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskBlocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerBlocked());
   }
 
   bool done = false;
@@ -380,7 +380,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
 
   {

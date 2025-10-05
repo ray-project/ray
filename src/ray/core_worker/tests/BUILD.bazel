@@ -42,9 +42,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "reference_count_test",
+    name = "reference_counter_test",
     size = "small",
-    srcs = ["reference_count_test.cc"],
+    srcs = ["reference_counter_test.cc"],
     tags = ["team:core"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
@@ -93,7 +93,7 @@ ray_cc_test(
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:memory_store",
-        "//src/ray/core_worker:reference_count",
+        "//src/ray/core_worker:reference_counter",
         "//src/ray/core_worker:task_event_buffer",
         "//src/ray/core_worker:task_manager",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -247,7 +247,7 @@ ray_cc_test(
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:grpc_service",
         "//src/ray/core_worker:memory_store",
-        "//src/ray/core_worker:reference_count",
+        "//src/ray/core_worker:reference_counter",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/object_manager/plasma:fake_plasma_client",
