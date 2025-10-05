@@ -11,6 +11,7 @@ from ray._private.label_utils import (
     parse_node_labels_from_yaml_file,
     parse_node_labels_json,
     parse_node_labels_string,
+    validate_fallback_strategy,
     validate_label_key,
     validate_label_selector,
     validate_label_selector_value,
@@ -302,6 +303,49 @@ def test_validate_node_labels():
     with pytest.raises(ValueError) as e:
         validate_node_labels(labels_dict)
     assert "This is reserved for Ray defined labels." in str(e)
+
+
+@pytest.mark.parametrize(
+    "fallback_strategy, expected_error",
+    [
+        (None, None),  # No fallback_strategy specified.
+        ([], None),  # fallback_strategy passed an empty list.
+        (
+            [{"ray.io/availability-region": "us-west4"}],
+            None,
+        ),  # fallback_strategy contains one selector.
+        (
+            [
+                {"ray.io/availability-zone": "us-central1-a"},
+                {"ray.io/accelerator-type": "A100"},
+            ],
+            None,
+        ),  # fallback_strategy contains multiple valid selectors.
+        (
+            [{"valid-key": "valid-value"}, {"-!!invalid-key": "value"}],
+            "Invalid label key name",
+        ),  # fallback_strategy contains selector with invalid key.
+        (
+            [{"valid-key": "valid-value"}, {"key": "-invalid-value!!"}],
+            "Invalid label selector value",
+        ),  # fallback_strategy contains selector with invalid value.
+    ],
+    ids=[
+        "none",
+        "empty-list",
+        "single-valid",
+        "multi-valid",
+        "invalid-key",
+        "invalid-value",
+    ],
+)
+def test_validate_fallback_strategy(fallback_strategy, expected_error):
+    """Tests the validation logic for the fallback_strategy remote option."""
+    result = validate_fallback_strategy(fallback_strategy)
+    if expected_error:
+        assert expected_error in result
+    else:
+        assert result is None
 
 
 if __name__ == "__main__":
