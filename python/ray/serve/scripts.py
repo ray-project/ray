@@ -531,7 +531,7 @@ def run(
         )
 
     proxy_location = None
-    http_options = None
+    http_options = {"location": "EveryNode"}
     grpc_options = gRPCOptions()
     # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
