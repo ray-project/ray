@@ -93,10 +93,10 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 
 #if !defined(_WIN32)
 // Send a signal to the worker's saved process group with safety guards and logging.
-static void CleanupProcessGroupSend(pid_t saved_pgid,
-                                    const WorkerID &wid,
-                                    const std::string &ctx,
-                                    int sig) {
+void CleanupProcessGroupSend(pid_t saved_pgid,
+                             const WorkerID &wid,
+                             const std::string &ctx,
+                             int sig) {
   // Guard against targeting the raylet's own process group if isolation failed.
   pid_t raylet_pgid = getpgid(0);
   if (raylet_pgid == saved_pgid) {
@@ -674,8 +674,7 @@ void NodeManager::QueryAllWorkerStates(
   }
 
   // Sort workers for the consistent ordering.
-  auto sort_func = [](std::shared_ptr<WorkerInterface> worker_a,
-                      std::shared_ptr<WorkerInterface> worker_b) {
+  auto sort_func = [](const auto &worker_a, const auto &worker_b) {
     // Prioritize drivers over workers. It is because drivers usually have data users
     // care more. Note the enum values Driver == 1, Worker == 0.
     return (worker_a->GetWorkerType() > worker_b->GetWorkerType())
@@ -704,12 +703,8 @@ void NodeManager::QueryAllWorkerStates(
     // TODO(sang): Add timeout to the RPC call.
     worker->rpc_client()->GetCoreWorkerStats(
         request,
-        [num_workers,
-         rpc_replied,
-         send_reply_callback,
-         on_replied = std::move(on_replied),
-         on_all_replied](const ray::Status &status,
-                         const rpc::GetCoreWorkerStatsReply &r) {
+        [num_workers, rpc_replied, send_reply_callback, on_replied, on_all_replied](
+            const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           *rpc_replied += 1;
           on_replied(status, r);
           if (*rpc_replied == num_workers) {
@@ -943,8 +938,9 @@ bool NodeManager::ResourceDeleted(const NodeID &node_id,
   }
 
   std::vector<scheduling::ResourceID> resource_ids;
+  resource_ids.reserve(resource_names.size());
   for (const auto &resource_label : resource_names) {
-    resource_ids.emplace_back(scheduling::ResourceID(resource_label));
+    resource_ids.emplace_back(resource_label);
   }
   cluster_resource_scheduler_.GetClusterResourceManager().DeleteResources(
       scheduling::NodeID(node_id.Binary()), resource_ids);
@@ -960,11 +956,11 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
   // race condition here.
   gcs_client_.AsyncResubscribe();
   auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
-  for (auto worker : workers) {
+  for (const auto &worker : workers) {
     worker->AsyncNotifyGCSRestart();
   }
   auto drivers = worker_pool_.GetAllRegisteredDrivers(/* filter_dead_drivers */ true);
-  for (auto driver : drivers) {
+  for (const auto &driver : drivers) {
     driver->AsyncNotifyGCSRestart();
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1288,6 +1284,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
+namespace {
+
 void SendDisconnectClientReply(const WorkerID &worker_id,
                                const std::shared_ptr<ClientConnection> &client) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -1305,6 +1303,8 @@ void SendDisconnectClientReply(const WorkerID &worker_id,
         << "Failed to send disconnect reply to worker: " << status.ToString();
   }
 }
+
+}  // namespace
 
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    bool graceful,
@@ -1332,7 +1332,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       << "Disconnecting client, graceful=" << std::boolalpha << graceful
       << ", disconnect_type=" << disconnect_type
       << ", has_creation_task_exception=" << std::boolalpha
-      << bool(creation_task_exception != nullptr);
+      << (creation_task_exception != nullptr);
 
   RAY_CHECK(worker != nullptr);
   RAY_CHECK(!(is_worker && is_driver));
@@ -1766,7 +1766,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                 absl::GetCurrentTimeNanos());
           }
         }
-        send_reply_callback(status, success, failure);
+        send_reply_callback(status, std::move(success), std::move(failure));
       };
 
   cluster_lease_manager_.QueueAndScheduleLease(std::move(lease),
@@ -1814,6 +1814,7 @@ void NodeManager::HandlePrepareBundleResources(
     rpc::PrepareBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+  bundle_specs.reserve(request.bundle_specs_size());
   for (int index = 0; index < request.bundle_specs_size(); index++) {
     bundle_specs.emplace_back(
         std::make_shared<BundleSpecification>(request.bundle_specs(index)));
@@ -2272,7 +2273,7 @@ bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
 void NodeManager::ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
                                        const RayLease &lease) {
   RAY_LOG(DEBUG) << "Converting worker to actor";
-  const LeaseSpecification lease_spec = lease.GetLeaseSpecification();
+  const LeaseSpecification &lease_spec = lease.GetLeaseSpecification();
   ActorID actor_id = lease_spec.ActorId();
 
   // This was an actor creation task. Convert the worker to an actor.
@@ -2740,13 +2741,12 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   }
 
   // Fetch from the local node.
-  HandleGetNodeStats(stats_req,
-                     local_reply.get(),
-                     [local_reply, store_reply](Status status,
-                                                std::function<void()> success,
-                                                std::function<void()> failure) mutable {
-                       store_reply(std::move(*local_reply));
-                     });
+  HandleGetNodeStats(
+      stats_req,
+      local_reply.get(),
+      [local_reply, store_reply](const auto &, const auto &, const auto &) mutable {
+        store_reply(std::move(*local_reply));
+      });
 }
 
 void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
@@ -2956,9 +2956,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           rpc::RayErrorInfo worker_failure_reason;
           worker_failure_reason.set_error_message(worker_exit_message);
           worker_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetWorkerFailureReason(worker_to_kill->GetGrantedLeaseId(),
-                                 std::move(worker_failure_reason),
-                                 should_retry);
+          SetWorkerFailureReason(
+              worker_to_kill->GetGrantedLeaseId(), worker_failure_reason, should_retry);
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2990,7 +2989,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   };
 }
 
-const std::string NodeManager::CreateOomKillMessageDetails(
+std::string NodeManager::CreateOomKillMessageDetails(
     const std::shared_ptr<WorkerInterface> &worker,
     const NodeID &node_id,
     const MemorySnapshot &system_memory,
@@ -3035,7 +3034,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
   return oom_kill_details_ss.str();
 }
 
-const std::string NodeManager::CreateOomKillMessageSuggestions(
+std::string NodeManager::CreateOomKillMessageSuggestions(
     const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
   std::stringstream not_retriable_recommendation_ss;
   if (worker && !worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
@@ -3130,7 +3129,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
   }
   // Disable metrics report if needed.
   if (!RayConfig::instance().enable_metrics_collection()) {
-    agent_command_line.push_back("--disable-metrics-collection");
+    agent_command_line.emplace_back("--disable-metrics-collection");
   }
 
   std::string agent_name = "dashboard_agent";
@@ -3144,11 +3143,10 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
+        return execute_after(
+            io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
-      [this](const rpc::NodeDeathInfo &death_info) {
-        this->shutdown_raylet_gracefully_(death_info);
-      },
+      this->shutdown_raylet_gracefully_,
       true,
       add_process_to_system_cgroup_hook_);
 }
@@ -3180,11 +3178,10 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
+        return execute_after(
+            io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
-      [this](const rpc::NodeDeathInfo &death_info) {
-        this->shutdown_raylet_gracefully_(death_info);
-      },
+      this->shutdown_raylet_gracefully_,
       true,
       add_process_to_system_cgroup_hook_);
 }

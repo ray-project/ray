@@ -694,15 +694,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
   /// Creates the detail message for the worker that is killed due to memory running low.
-  const std::string CreateOomKillMessageDetails(
-      const std::shared_ptr<WorkerInterface> &worker,
-      const NodeID &node_id,
-      const MemorySnapshot &system_memory,
-      float usage_threshold) const;
+  std::string CreateOomKillMessageDetails(const std::shared_ptr<WorkerInterface> &worker,
+                                          const NodeID &node_id,
+                                          const MemorySnapshot &system_memory,
+                                          float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
-  const std::string CreateOomKillMessageSuggestions(
+  std::string CreateOomKillMessageSuggestions(
       const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
@@ -855,7 +854,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
-  uint64_t last_metrics_recorded_at_ms_;
+  uint64_t last_metrics_recorded_at_ms_ = 0;
 
   /// The number of workers killed due to memory above threshold since last report.
   uint64_t number_workers_killed_by_oom_ = 0;

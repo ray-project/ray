@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
         std::make_unique<ray::SysFsCgroupDriver>();
 
     ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager_s =
-        ray::CgroupManager::Create(std::move(cgroup_path),
+        ray::CgroupManager::Create(cgroup_path,
                                    node_id,
                                    system_reserved_cpu_weight,
                                    system_reserved_memory_bytes,
@@ -315,7 +315,7 @@ int main(int argc, char *argv[]) {
     // string.
     std::vector<std::string> system_pids_to_move;
     if (!system_pids.empty()) {
-      system_pids_to_move = std::move(absl::StrSplit(system_pids, ","));
+      system_pids_to_move = std::move(absl::StrSplit(system_pids, ','));
     }
     system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
     for (const auto &pid : system_pids_to_move) {
@@ -494,14 +494,20 @@ int main(int argc, char *argv[]) {
         raylet->UnregisterSelf(node_death_info, unregister_done_callback);
       };
 
-  auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_internal](
-                                        const ray::rpc::NodeDeathInfo &node_death_info) {
-    main_service.post(
-        [shutdown_raylet_gracefully_internal, node_death_info]() {
-          shutdown_raylet_gracefully_internal(node_death_info);
-        },
-        "shutdown_raylet_gracefully_internal");
-  };
+  auto shutdown_raylet_gracefully =
+      [&main_service, &shutting_down, shutdown_raylet_gracefully_internal](
+          const ray::rpc::NodeDeathInfo &node_death_info) {
+        if (shutting_down.exchange(true)) {
+          RAY_LOG(INFO) << "Raylet is already shutting down. Ignoring death info: "
+                        << node_death_info.DebugString();
+          return;
+        }
+        main_service.post(
+            [shutdown_raylet_gracefully_internal, node_death_info]() {
+              shutdown_raylet_gracefully_internal(node_death_info);
+            },
+            "shutdown_raylet_gracefully_internal");
+      };
 
   ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
