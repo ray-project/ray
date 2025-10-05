@@ -44,7 +44,6 @@ class ThreadedRayletClient : public RayletClient {
   std::unique_ptr<instrumented_io_context> io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-  std::unique_ptr<RayletClient> raylet_client_;
 };
 
 }  // namespace rpc

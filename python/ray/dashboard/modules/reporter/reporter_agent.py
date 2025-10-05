@@ -483,6 +483,8 @@ class ReporterAgent(
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
 
+        self._raylet_client = None
+
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native

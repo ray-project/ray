@@ -34,13 +34,13 @@ ThreadedRayletClient::ThreadedRayletClient(const std::string &ip_address, int po
     SetThreadName("raylet.client");
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service_->get_executor());
-    promise.set_value(true);
     io_service_->run();
+    promise.set_value(true);
   });
   promise.get_future().get();
 
-  client_call_manager_ =
-      std::make_unique<rpc::ClientCallManager>(*io_service_, /*record_stats=*/false);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      *io_service_, /*record_stats=*/false, ip_address);
   grpc_client_ = std::make_unique<rpc::GrpcClient<rpc::NodeManagerService>>(
       ip_address, port, *client_call_manager_);
   auto raylet_unavailable_timeout_callback = []() {
