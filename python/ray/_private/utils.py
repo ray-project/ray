@@ -798,6 +798,82 @@ def set_sigterm_handler(sigterm_handler):
         signal.signal(signal.SIGTERM, sigterm_handler)
 
 
+_unified_signal_installed = False
+_shutdown_in_progress = False
+
+
+def install_unified_signal_handlers(
+    is_driver: bool,
+    worker_graceful_cb: Optional[callable] = None,
+    worker_force_cb: Optional[callable] = None,
+):
+    """
+    Install unified SIGTERM/SIGINT handlers:
+    - First signal: request graceful shutdown (drivers call ray.shutdown(); workers rely
+      on check_signals path).
+    - Second signal: force shutdown via _raylet.force_exit_worker.
+
+    Only installs on the main thread; logs a warning otherwise.
+    """
+
+    global _unified_signal_installed, _shutdown_in_progress
+    if _unified_signal_installed:
+        return
+
+    if threading.current_thread() is not threading.main_thread():
+        logger.warning(
+            "Unified signal handlers not installed because current thread is not the main thread."
+        )
+        return
+
+    def _graceful(signum: int):
+        global _shutdown_in_progress
+        if _shutdown_in_progress:
+            return
+        _shutdown_in_progress = True
+        if is_driver:
+            sys.exit(signum)
+        else:
+            try:
+                if worker_graceful_cb is None:
+                    raise RuntimeError("worker_graceful_cb not set")
+                worker_graceful_cb()
+            except Exception:
+                # As a last resort, fall back to SystemExit.
+                raise SystemExit(1)
+
+    def _force(detail: str):
+        try:
+            if worker_force_cb is None:
+                raise RuntimeError("worker_force_cb not set")
+            worker_force_cb(detail)
+        except Exception:
+            # As a last resort, exit process immediately.
+            os._exit(1)
+
+    def _handler(signum, frame):
+        global _shutdown_in_progress
+        if not _shutdown_in_progress:
+            _graceful(signum)
+        else:
+            _force(f"Second signal {signum}")
+
+    if is_driver:
+        signal.signal(signal.SIGINT, _handler)
+    set_sigterm_handler(_handler)
+    _unified_signal_installed = True
+
+
+def reset_unified_signal_handlers_state():
+    """
+    Reset unified-signal module flags so that a subsequent init() in the same
+    process can reinstall handlers with correct context.
+    """
+    global _unified_signal_installed, _shutdown_in_progress
+    _unified_signal_installed = False
+    _shutdown_in_progress = False
+
+
 def try_to_symlink(symlink_path, target_path):
     """Attempt to create a symlink.
 

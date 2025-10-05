@@ -84,7 +84,6 @@ from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
-    raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -1031,14 +1030,15 @@ class Worker:
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
-
-        def sigterm_handler(signum, frame):
-            raise_sys_exit_with_custom_error_message(
-                "The process receives a SIGTERM.", exit_code=1
-            )
-            # Note: shutdown() function is called from atexit handler.
-
-        ray._private.utils.set_sigterm_handler(sigterm_handler)
+        ray._private.utils.install_unified_signal_handlers(
+            is_driver=False,
+            worker_graceful_cb=lambda: self.core_worker.drain_and_exit_worker(
+                "intentional_system_exit", b"signal: first"
+            ),
+            worker_force_cb=lambda detail: self.core_worker.force_exit_worker(
+                "user", detail.encode("utf-8")
+            ),
+        )
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -1672,17 +1672,8 @@ def init(
         system_reserved_memory=system_reserved_memory,
     )
 
-    # terminate any signal before connecting driver
-    def sigterm_handler(signum, frame):
-        sys.exit(signum)
-
-    if threading.current_thread() is threading.main_thread():
-        ray._private.utils.set_sigterm_handler(sigterm_handler)
-    else:
-        logger.warning(
-            "SIGTERM handler is not set because current thread "
-            "is not the main thread."
-        )
+    # Install unified signal handlers for the driver process.
+    ray._private.utils.install_unified_signal_handlers(is_driver=True)
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -2091,6 +2082,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
+    ray._private.utils.reset_unified_signal_handlers_state()
     global_worker.shutdown_gpu_object_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
