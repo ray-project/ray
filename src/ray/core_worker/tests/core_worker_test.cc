@@ -38,7 +38,7 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
@@ -185,7 +185,8 @@ class CoreWorkerTest : public ::testing::Test {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
         mock_gcs_client,
-        fake_task_by_state_counter_);
+        fake_task_by_state_counter_,
+        /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
