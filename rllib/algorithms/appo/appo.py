@@ -8,6 +8,8 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 [1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
 Luo et al. 2020
 https://arxiv.org/pdf/1912.00167
+
+# Force trigger rllib GPU CI tests including learning_tests_cartpole_appo_multi_gpu
 """
 
 from typing import Optional, Type
