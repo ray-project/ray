@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
 # Max number of threads for the thread pool executor handling CPU intensive tasks
 THREAD_POOL_EXECUTOR_MAX_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 10
+    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
@@ -48,7 +48,7 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(
-    f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "http://127.0.0.1:8365"
+    f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "http://127.0.0.1:11111"
 )
 # Event filtering configurations
 # Comma-separated list of event types that are allowed to be exposed to external services
@@ -63,7 +63,7 @@ DEFAULT_EXPOSABLE_EVENT_TYPES = (
     "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT,"
 )
 EXPOSABLE_EVENT_TYPES = os.environ.get(
-    f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", "TASK_DEFINITION_EVENT,"
+    f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
 )
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
