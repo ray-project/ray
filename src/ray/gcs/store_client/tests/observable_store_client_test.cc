@@ -26,9 +26,45 @@ namespace gcs {
 class ObservableStoreClientTest : public StoreClientTestBase {
  public:
   void InitStoreClient() override {
-    store_client_ =
-        std::make_shared<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
+    store_client_ = std::make_shared<ObservableStoreClient>(
+        std::make_unique<InMemoryStoreClient>(),
+        fake_storage_operation_latency_in_ms_histogram_,
+        fake_storage_operation_count_counter_);
   }
+
+  void TestMetrics() override {
+    auto counter_tag_to_value = fake_storage_operation_count_counter_.GetTagToValue();
+    // 3 operations: Put, Get, Delete
+    // Get operations include both Get() and GetEmpty() calls, so they're grouped together
+    ASSERT_EQ(counter_tag_to_value.size(), 3);
+
+    // Check each operation type individually
+    for (const auto &[key, value] : counter_tag_to_value) {
+      // Find the operation type
+      std::string operation_type;
+      for (const auto &[k, v] : key) {
+        if (k == "Operation") {
+          operation_type = v;
+          break;
+        }
+      }
+
+      if (operation_type == "Put" || operation_type == "Delete") {
+        ASSERT_EQ(value, 5000) << "Expected 5000 for " << operation_type << " operation";
+      } else if (operation_type == "Get") {
+        ASSERT_EQ(value, 10000) << "Expected 10000 for Get operation (5000 from Get() + "
+                                   "5000 from GetEmpty())";
+      }
+    }
+
+    auto latency_tag_to_value =
+        fake_storage_operation_latency_in_ms_histogram_.GetTagToValue();
+    // 3 operations: Put, Get, Delete
+    ASSERT_EQ(latency_tag_to_value.size(), 3);
+  }
+
+  ray::observability::FakeHistogram fake_storage_operation_latency_in_ms_histogram_;
+  ray::observability::FakeCounter fake_storage_operation_count_counter_;
 };
 
 TEST_F(ObservableStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }

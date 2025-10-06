@@ -672,8 +672,6 @@ autodoc_mock_imports = [
     "ray._raylet",
     "ray.core.generated",
     "ray.serve.generated",
-    "ray.air.util.tensor_extensions",
-    "ray.data._internal.arrow_ops",
 ]
 
 for mock_target in autodoc_mock_imports:
@@ -739,3 +737,5 @@ assert (
 ), "If ray is already imported, we will not render documentation correctly!"
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+os.environ["RAY_DOC_BUILD"] = "1"

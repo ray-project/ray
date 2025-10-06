@@ -153,6 +153,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
         --build-name databuild-py3.12
+        --python-version 3.12
         --only-tags dask
     depends_on: databuild-multipy
 
@@ -194,6 +195,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
         --build-name databuild-py3.12
+        --python-version 3.12
         --only-tags dask
         --parallelism-per-worker 2
     depends_on: databuild-multipy
