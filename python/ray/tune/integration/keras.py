@@ -64,9 +64,9 @@ class TuneReportCheckpointCallback(RayReportCallback):
     """
 
     def _save_and_report_checkpoint(
-        self, report_dict: Dict, model: TensorflowCheckpoint
+        self, metrics: Dict, checkpoint: TensorflowCheckpoint
     ):
-        ray.tune.report(report_dict, checkpoint=model)
+        ray.tune.report(metrics, checkpoint=checkpoint)
 
-    def _report_metrics(self, report_dict: Dict):
-        ray.tune.report(report_dict)
+    def _report_metrics(self, metrics: Dict):
+        ray.tune.report(metrics)
