@@ -1855,7 +1855,7 @@ class CoreWorker {
   std::atomic<int64_t> num_executed_tasks_;
 
   // Number of in flight argument pinning requests
-  std::atomic<int64_t> num_get_pin_args_in_flight;
+  std::atomic<int64_t> num_get_pin_args_in_flight_;
 
   // Number of failed argument pinning requests
   std::atomic<int64_t> num_failed_get_pin_args;
