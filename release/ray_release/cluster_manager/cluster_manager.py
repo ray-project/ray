@@ -22,6 +22,8 @@ class ClusterManager(abc.ABC):
         self,
         test: Test,
         project_id: str,
+        project_name: Optional[str] = None,
+        cloud_name: Optional[str] = None,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
         log_streaming_limit: int = LAST_LOGS_LENGTH,
@@ -31,6 +33,8 @@ class ClusterManager(abc.ABC):
         self.test = test
         self.smoke_test = smoke_test
         self.project_id = project_id
+        self.project_name = project_name
+        self.cloud_name = cloud_name
         self.project_name = get_project_name(self.project_id, self.sdk)
         self.log_streaming_limit = log_streaming_limit
 

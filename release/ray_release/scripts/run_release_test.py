@@ -139,8 +139,10 @@ def main(
     env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
     populate_os_env(env_dict)
-    anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
-    if not test.is_kuberay() and not anyscale_project:
+    anyscale_project_id = os.environ.get("ANYSCALE_PROJECT", None)
+    anyscale_project_name = os.environ.get("ANYSCALE_PROJECT_NAME", None)
+    anyscale_cloud_name = os.environ.get("ANYSCALE_CLOUD_NAME", None)
+    if not test.is_kuberay() and not anyscale_project_id:
         raise ReleaseTestCLIError(
             "You have to set the ANYSCALE_PROJECT environment variable!"
         )
@@ -165,7 +167,9 @@ def main(
     try:
         result = run_release_test(
             test=test,
-            anyscale_project=anyscale_project,
+            anyscale_project=anyscale_project_id,
+            anyscale_project_name=anyscale_project_name,
+            anyscale_cloud_name=anyscale_cloud_name,
             result=result,
             reporters=reporters,
             smoke_test=smoke_test,

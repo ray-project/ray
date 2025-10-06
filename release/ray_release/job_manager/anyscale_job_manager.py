@@ -71,8 +71,8 @@ class AnyscaleJobManager:
         try:
             job_config = JobConfig(
                 name=self.cluster_manager.cluster_name,
-                project="prj_y8syktydl7ltabhz5axdelwnce",
-                cloud="cld_5nnv7pt2jn2312x2e5v72z53n2",
+                project=self.cluster_manager.project_name,
+                cloud=self.cluster_manager.cloud_name,
                 image_uri="rayreleasetest.azurecr.io/anyscale/ray:abfss-adlfs-rebase",
                 working_dir=working_dir,
                 entrypoint=cmd_to_run,

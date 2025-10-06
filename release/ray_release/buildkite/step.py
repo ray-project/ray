@@ -192,8 +192,8 @@ def get_step(
 
     # image = test.get_anyscale_byod_image()
     if test.require_custom_byod_image():
-        step["depends_on"] = "~"
+        step["depends_on"] = None
     else:
-        step["depends_on"] = "~"
+        step["depends_on"] = None
 
     return step
