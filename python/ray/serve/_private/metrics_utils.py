@@ -321,6 +321,16 @@ class InMemoryMetricsStore:
         """
         return self._aggregate_reduce(keys, statistics.mean)
 
+    def timeseries_count(
+        self,
+        key: Hashable,
+    ) -> int:
+        """Count the number of values across all timeseries values at the specified keys."""
+        series = self.data.get(key, [])
+        if not series:
+            return 0
+        return len(series)
+
 
 def time_weighted_average(
     step_series: List[TimeStampedValue],
