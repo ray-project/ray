@@ -42,16 +42,6 @@ class PDFFileMetadataProvider(DefaultFileMetadataProvider):
             encoding_ratio, PDF_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
         )
 
-    def _get_block_metadata(
-        self,
-        paths: List[str],
-        schema: Optional[Any],
-        **kwargs,
-    ) -> Any:
-        """Get block metadata with custom encoding ratio applied."""
-        metadata = super()._get_block_metadata(paths, schema, **kwargs)
-        return metadata
-
 
 class PDFDatasource(FileBasedDatasource):
     """Datasource for reading PDF files.
@@ -184,10 +174,10 @@ class PDFDatasource(FileBasedDatasource):
 
             if self.pages:
                 # Page-level reading: yield one block per page
-                yield from self._read_pages(reader, path)
+                yield from self._read_pages(reader, path, data)
             else:
                 # Document-level reading: yield one block for entire document
-                yield from self._read_document(reader, path)
+                yield from self._read_document(reader, path, data)
 
         except PdfReadError as e:
             raise ValueError(
@@ -200,10 +190,62 @@ class PDFDatasource(FileBasedDatasource):
                 f"Unexpected error while reading PDF file at path '{path}': {e}"
             ) from e
 
+    def _process_page_data(
+        self,
+        page: "PyPDF2.PageObject",
+        page_num: int,
+        num_pages: int,
+        reader: "PyPDF2.PdfReader",
+        pdf_bytes: bytes,
+    ) -> Dict[str, Any]:
+        """Process a single PDF page and extract its data.
+
+        This helper method contains the common logic for extracting text,
+        dimensions, images, and metadata from a single page.
+
+        Args:
+            page: PyPDF2 PageObject instance.
+            page_num: Zero-based page number.
+            num_pages: Total number of pages in the PDF.
+            reader: PyPDF2 PdfReader instance.
+            pdf_bytes: Raw PDF file bytes.
+
+        Returns:
+            Dictionary containing extracted page data.
+        """
+        # Extract text from page
+        text = self._extract_text_from_page(page, page_num, pdf_bytes)
+
+        # Build row data
+        row_data = {
+            "text": text,
+            "page_number": page_num + 1,
+            "num_pages": num_pages,
+        }
+
+        # Add page dimensions if available
+        if hasattr(page, "mediabox"):
+            mediabox = page.mediabox
+            row_data["page_width"] = float(mediabox.width)
+            row_data["page_height"] = float(mediabox.height)
+
+        # Extract and include images if requested
+        if self.include_images:
+            images = self._extract_images_from_page(page)
+            row_data["images"] = images
+            row_data["num_images"] = len(images)
+
+        # Add document metadata on first page
+        if page_num == 0:
+            row_data.update(self._extract_document_metadata(reader))
+
+        return row_data
+
     def _read_pages(
         self,
         reader: "PyPDF2.PdfReader",
         path: str,
+        pdf_bytes: bytes,
     ) -> Iterator[Block]:
         """Read PDF pages individually or in batches.
 
@@ -213,6 +255,7 @@ class PDFDatasource(FileBasedDatasource):
         Args:
             reader: PyPDF2 PdfReader instance.
             path: Path to the PDF file.
+            pdf_bytes: Raw PDF file bytes.
 
         Yields:
             Blocks containing individual page data (or batched pages if
@@ -226,31 +269,10 @@ class PDFDatasource(FileBasedDatasource):
                 try:
                     page = reader.pages[page_num]
 
-                    # Extract text from page
-                    text = self._extract_text_from_page(page)
-
-                    # Build row data
-                    row_data = {
-                        "text": text,
-                        "page_number": page_num + 1,
-                        "num_pages": num_pages,
-                    }
-
-                    # Add page dimensions if available
-                    if hasattr(page, "mediabox"):
-                        mediabox = page.mediabox
-                        row_data["page_width"] = float(mediabox.width)
-                        row_data["page_height"] = float(mediabox.height)
-
-                    # Extract and include images if requested
-                    if self.include_images:
-                        images = self._extract_images_from_page(page)
-                        row_data["images"] = images
-                        row_data["num_images"] = len(images)
-
-                    # Add document metadata on first page
-                    if page_num == 0:
-                        row_data.update(self._extract_document_metadata(reader))
+                    # Process page data using helper method
+                    row_data = self._process_page_data(
+                        page, page_num, num_pages, reader, pdf_bytes
+                    )
 
                     # Create block with single row
                     builder = DelegatingBlockBuilder()
@@ -273,31 +295,10 @@ class PDFDatasource(FileBasedDatasource):
                     try:
                         page = reader.pages[page_num]
 
-                        # Extract text from page
-                        text = self._extract_text_from_page(page)
-
-                        # Build row data
-                        row_data = {
-                            "text": text,
-                            "page_number": page_num + 1,
-                            "num_pages": num_pages,
-                        }
-
-                        # Add page dimensions if available
-                        if hasattr(page, "mediabox"):
-                            mediabox = page.mediabox
-                            row_data["page_width"] = float(mediabox.width)
-                            row_data["page_height"] = float(mediabox.height)
-
-                        # Extract and include images if requested
-                        if self.include_images:
-                            images = self._extract_images_from_page(page)
-                            row_data["images"] = images
-                            row_data["num_images"] = len(images)
-
-                        # Add document metadata on first page
-                        if page_num == 0:
-                            row_data.update(self._extract_document_metadata(reader))
+                        # Process page data using helper method
+                        row_data = self._process_page_data(
+                            page, page_num, num_pages, reader, pdf_bytes
+                        )
 
                         builder.add(row_data)
 
@@ -316,12 +317,14 @@ class PDFDatasource(FileBasedDatasource):
         self,
         reader: "PyPDF2.PdfReader",
         path: str,
+        pdf_bytes: bytes,
     ) -> Iterator[Block]:
         """Read entire PDF document as single row.
 
         Args:
             reader: PyPDF2 PdfReader instance.
             path: Path to the PDF file.
+            pdf_bytes: Raw PDF file bytes.
 
         Yields:
             Block containing document-level data.
@@ -360,11 +363,15 @@ class PDFDatasource(FileBasedDatasource):
         builder.add(row_data)
         yield builder.build()
 
-    def _extract_text_from_page(self, page: "PyPDF2.PageObject") -> str:
+    def _extract_text_from_page(
+        self, page: "PyPDF2.PageObject", page_num: int, pdf_bytes: bytes
+    ) -> str:
         """Extract text from a PDF page.
 
         Args:
             page: PyPDF2 PageObject instance.
+            page_num: Zero-based page number.
+            pdf_bytes: Raw PDF file bytes.
 
         Returns:
             Extracted text content.
@@ -374,7 +381,7 @@ class PDFDatasource(FileBasedDatasource):
 
             # If text extraction failed or returned empty text, try OCR
             if self.ocr and (not text or not text.strip()):
-                text = self._ocr_page(page)
+                text = self._ocr_page(page_num, pdf_bytes)
 
             return text or ""
 
@@ -382,14 +389,15 @@ class PDFDatasource(FileBasedDatasource):
             logger.warning(f"Failed to extract text from page: {e}")
             return ""
 
-    def _ocr_page(self, page: "PyPDF2.PageObject") -> str:
+    def _ocr_page(self, page_num: int, pdf_bytes: bytes) -> str:
         """Extract text from page using OCR.
 
         This method converts the PDF page to an image and uses Tesseract OCR
         to extract text. This is useful for image-based PDFs or scanned documents.
 
         Args:
-            page: PyPDF2 PageObject instance.
+            page_num: Zero-based page number.
+            pdf_bytes: Raw PDF file bytes.
 
         Returns:
             OCR-extracted text content.
@@ -400,10 +408,11 @@ class PDFDatasource(FileBasedDatasource):
 
             # Convert page to image
             # Note: This requires poppler to be installed
+            # Use 1-based page numbering for pdf2image
             images = convert_from_bytes(
-                page._pdf.write_bytes(),
-                first_page=page.page_number + 1,
-                last_page=page.page_number + 1,
+                pdf_bytes,
+                first_page=page_num + 1,
+                last_page=page_num + 1,
             )
 
             if not images:
@@ -438,6 +447,11 @@ class PDFDatasource(FileBasedDatasource):
         images = []
 
         try:
+            # Check if the page has resources
+            if "/Resources" not in page:
+                return images
+
+            # Check if the resources contain XObjects (which may include images)
             if "/XObject" not in page["/Resources"]:
                 return images
 

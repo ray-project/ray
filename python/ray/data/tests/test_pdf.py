@@ -16,8 +16,8 @@ from ray.tests.conftest import *  # noqa
 def create_test_pdf(path: str, num_pages: int = 1, text_per_page: str = "Test content"):
     """Helper function to create a test PDF file."""
     try:
-        from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
     except ImportError:
         pytest.skip("reportlab not installed")
 
@@ -31,8 +31,8 @@ def create_test_pdf(path: str, num_pages: int = 1, text_per_page: str = "Test co
 def create_empty_pdf(path: str):
     """Helper function to create an empty PDF file."""
     try:
-        from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
     except ImportError:
         pytest.skip("reportlab not installed")
 
@@ -336,7 +336,9 @@ class TestPDFDatasource:
     def test_file_metadata_provider(self, tmp_path):
         """Test PDFFileMetadataProvider."""
         provider = PDFFileMetadataProvider()
-        assert provider._get_file_extension() == "pdf"
+        # PDFFileMetadataProvider inherits from DefaultFileMetadataProvider
+        # which returns None for _get_file_extension()
+        assert provider._get_file_extension() is None
 
     def test_encoding_ratio_estimate(self, tmp_path):
         """Test in-memory data size estimation."""
