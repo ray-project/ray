@@ -4241,7 +4241,7 @@
   frequency: weekly
   python: "3.12"
   group: ray-examples
-  team: ml
+  team: train
   working_dir: //doc/source/ray-overview/examples/ray_train_workloads  # use // from repo root
 
   cluster:

@@ -6,6 +6,6 @@ set -euxo pipefail
 ipython README.py
 
 # Run all cleaned tutorial .py scripts
-for pyfile in py_scripts/*.py; do
+for pyfile in ray_train_workloads/ci/py_scripts/*.py; do
     ipython "$pyfile"
 done

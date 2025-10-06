@@ -63,3 +63,5 @@ The tutorials walk through common ML workload patterns—vision, tabular, time-s
 - **Scalability:** Move from laptop prototyping to cluster-scale training without code changes  
 - **Observability:** Metrics, logs, and checkpoints accessible through Ray + Anyscale tooling  
 - **Flexibility:** Mix and match workload patterns for real-world ML pipelines  
+
+Generated from README.ipynb
