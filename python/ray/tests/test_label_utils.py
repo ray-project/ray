@@ -321,7 +321,7 @@ def test_validate_node_labels():
                 {},
             ],
             "Empty dictionary found in `fallback_strategy`.",
-        ),  # fallback_strategy contains unsupported option.
+        ),  # fallback_strategy contains empty dictionary.
         (
             [{"label_selector": {"ray.io/availability-region": "us-west4"}}],
             None,
@@ -351,8 +351,8 @@ def test_validate_node_labels():
     ids=[
         "none",
         "empty-list",
-        "fallback-specified-with-empty-dict",
         "unsupported-fallback-option",
+        "fallback-specified-with-empty-dict",
         "single-valid-label-selector",
         "multiple-valid-label-selector",
         "invalid-label-selector-key",
