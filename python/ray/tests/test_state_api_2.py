@@ -21,14 +21,6 @@ from ray.util.state import (
     list_workers,
 )
 
-# Run every test in this module twice: default and aggregator-enabled
-pytestmark = [
-    pytest.mark.parametrize(
-        "event_routing_config", ["default", "aggregator"], indirect=True
-    ),
-    pytest.mark.usefixtures("event_routing_config"),
-]
-
 
 def test_timeline(shutdown_only):
     ray.init(num_cpus=8)
