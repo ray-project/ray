@@ -7,7 +7,8 @@ time-series data.
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
@@ -21,6 +22,32 @@ if TYPE_CHECKING:
     from mcap.reader import Channel, Message, Schema
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TimeRange:
+    """Time range for filtering MCAP messages.
+
+    Attributes:
+        start_time: Start time in nanoseconds (inclusive).
+        end_time: End time in nanoseconds (exclusive).
+    """
+
+    start_time: int
+    end_time: int
+
+    def __post_init__(self):
+        """Validate time range after initialization."""
+        if self.start_time >= self.end_time:
+            raise ValueError(
+                f"start_time ({self.start_time}) must be less than "
+                f"end_time ({self.end_time})"
+            )
+        if self.start_time < 0 or self.end_time < 0:
+            raise ValueError(
+                f"time values must be non-negative, got start_time={self.start_time}, "
+                f"end_time={self.end_time}"
+            )
 
 
 @DeveloperAPI
@@ -40,12 +67,13 @@ class MCAPDatasource(FileBasedDatasource):
         >>> import ray  # doctest: +SKIP
         >>> ds = ray.data.read_mcap("/path/to/data.mcap")  # doctest: +SKIP
 
-        With channel filtering:
+        With channel filtering and time range:
 
+        >>> from ray.data.datasource import TimeRange  # doctest: +SKIP
         >>> ds = ray.data.read_mcap(  # doctest: +SKIP
         ...     "/path/to/data.mcap",
         ...     channels={"camera", "lidar"},
-        ...     time_range=(1000000000, 2000000000)
+        ...     time_range=TimeRange(start_time=1000000000, end_time=2000000000)
         ... )  # doctest: +SKIP
 
         With topic filtering and metadata:
@@ -65,7 +93,7 @@ class MCAPDatasource(FileBasedDatasource):
         paths: Union[str, List[str]],
         channels: Optional[Union[List[str], Set[str]]] = None,
         topics: Optional[Union[List[str], Set[str]]] = None,
-        time_range: Optional[Tuple[int, int]] = None,
+        time_range: Optional[TimeRange] = None,
         message_types: Optional[Union[List[str], Set[str]]] = None,
         include_metadata: bool = True,
         **file_based_datasource_kwargs,
@@ -81,9 +109,9 @@ class MCAPDatasource(FileBasedDatasource):
             topics: Optional list/set of topic names to include. If specified,
                 only messages from these topics will be read. Mutually exclusive
                 with ``channels``.
-            time_range: Optional tuple of (start_time, end_time) in nanoseconds
-                for filtering messages by timestamp. Both values must be non-negative
-                and start_time < end_time.
+            time_range: Optional TimeRange for filtering messages by timestamp.
+                TimeRange contains start_time and end_time in nanoseconds, where
+                both values must be non-negative and start_time < end_time.
             message_types: Optional list/set of message type names (schema names)
                 to include. Only messages with matching schema names will be read.
             include_metadata: Whether to include MCAP metadata fields in the output.
@@ -105,14 +133,6 @@ class MCAPDatasource(FileBasedDatasource):
         self._message_types = set(message_types) if message_types else None
         self._time_range = time_range
         self._include_metadata = include_metadata
-
-        # Validate time range
-        if self._time_range:
-            start_time, end_time = self._time_range
-            if start_time >= end_time:
-                raise ValueError("start_time must be less than end_time")
-            if start_time < 0 or end_time < 0:
-                raise ValueError("time values must be non-negative")
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         """Read MCAP file and yield blocks of message data.
@@ -151,8 +171,8 @@ class MCAPDatasource(FileBasedDatasource):
             # Use MCAP's built-in filtering for topics and time range
             messages = reader.iter_messages(
                 topics=filter_topics,
-                start_time=self._time_range[0] if self._time_range else None,
-                end_time=self._time_range[1] if self._time_range else None,
+                start_time=self._time_range.start_time if self._time_range else None,
+                end_time=self._time_range.end_time if self._time_range else None,
                 log_time_order=True,
                 reverse=False,
             )

@@ -44,7 +44,7 @@ from ray.data._internal.datasource.json_datasource import (
     PandasJSONDatasource,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.mcap_datasource import MCAPDatasource
+from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
@@ -2255,7 +2255,7 @@ def read_mcap(
     *,
     channels: Optional[Union[List[str], Set[str]]] = None,
     topics: Optional[Union[List[str], Set[str]]] = None,
-    time_range: Optional[Tuple[int, int]] = None,
+    time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
     message_types: Optional[Union[List[str], Set[str]]] = None,
     include_metadata: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -2291,11 +2291,20 @@ def read_mcap(
 
         Read with filtering for specific channels and time range.
 
+        >>> from ray.data.datasource import TimeRange  # doctest: +SKIP
         >>> ds = ray.data.read_mcap( # doctest: +SKIP
         ...     "s3://bucket/mcap-data/", # doctest: +SKIP
         ...     channels={"camera", "lidar"}, # doctest: +SKIP
-        ...     time_range=(1000000000, 5000000000),  # 1-5 seconds in nanoseconds # doctest: +SKIP
+        ...     time_range=TimeRange(start_time=1000000000, end_time=5000000000), # doctest: +SKIP
         ...     message_types={"sensor_msgs/Image", "sensor_msgs/PointCloud2"} # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+        Alternatively, use a tuple for time range (backwards compatible).
+
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "s3://bucket/mcap-data/", # doctest: +SKIP
+        ...     channels={"camera", "lidar"}, # doctest: +SKIP
+        ...     time_range=(1000000000, 5000000000), # doctest: +SKIP
         ... ) # doctest: +SKIP
 
         Read multiple local files with include_paths.
@@ -2321,8 +2330,9 @@ def read_mcap(
             messages from these channels will be read. Mutually exclusive with `topics`.
         topics: Optional list or set of topic names to include. If specified, only
             messages from these topics will be read. Mutually exclusive with `channels`.
-        time_range: Optional tuple of (start_time, end_time) in nanoseconds for filtering
-            messages by timestamp. Both values must be non-negative and start_time < end_time.
+        time_range: Optional time range for filtering messages by timestamp. Can be either
+            a tuple of (start_time, end_time) in nanoseconds (for backwards compatibility)
+            or a TimeRange object. Both values must be non-negative and start_time < end_time.
         message_types: Optional list or set of message type names (schema names) to
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
@@ -2376,6 +2386,10 @@ def read_mcap(
         raise ValueError(
             "Cannot specify both 'channels' and 'topics'. Use one or the other."
         )
+
+    # Convert tuple time_range to TimeRange for backwards compatibility
+    if time_range is not None and isinstance(time_range, tuple):
+        time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
 
     datasource = MCAPDatasource(
         paths,
