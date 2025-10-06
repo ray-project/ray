@@ -1237,7 +1237,7 @@ def read_html(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-    file_extensions: Optional[List[str]] = HTMLDatasource._FILE_EXTENSIONS,
+    file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -1378,6 +1378,9 @@ def read_html(
 
     if meta_provider is None:
         meta_provider = HTMLFileMetadataProvider()
+
+    if file_extensions is None:
+        file_extensions = HTMLDatasource._FILE_EXTENSIONS
 
     datasource = HTMLDatasource(
         paths,
