@@ -948,6 +948,8 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     # Assert commutation
     assert first_arr.type == second_arr.type
     assert second_arr.type == first_arr.type
+    # Assert hashing is correct
+    assert hash(first_arr.type) == hash(second_arr.type)
 
     assert first_arr.type.ndim == 2
     assert second_arr.type.ndim == 2
@@ -990,6 +992,8 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     # Assert commutation
     assert first_arr.type == second_arr.type
     assert second_arr.type == first_arr.type
+    # Assert hashing is correct
+    assert hash(first_arr.type) == hash(second_arr.type)
 
     assert first_arr.type.ndim == 3
     assert second_arr.type.ndim == 2

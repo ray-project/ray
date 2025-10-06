@@ -997,7 +997,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return not self.__eq__(other)
 
     def __hash__(self) -> int:
-        return hash((self.extension_name, self.scalar_type, self._ndim))
+        return hash((self.extension_name, self.scalar_type))
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
