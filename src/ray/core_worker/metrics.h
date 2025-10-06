@@ -19,7 +19,7 @@
 namespace ray {
 namespace core {
 
-inline ray::stats::Gauge GetTaskMetric() {
+inline ray::stats::Gauge GetTaskByStateGaugeMetric() {
   /// Tracks tasks by state, including pending, running, and finished tasks.
   /// This metric may be recorded from multiple components processing the task in Ray,
   /// including the submitting core worker, executor core worker, and pull manager.

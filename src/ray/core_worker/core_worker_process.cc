@@ -470,7 +470,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
       gcs_client,
-      task_by_state_counter_,
+      task_by_state_gauge_,
       /*free_actor_object_callback=*/
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
@@ -681,7 +681,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    task_execution_service_,
                                    std::move(task_event_buffer),
                                    pid,
-                                   task_by_state_counter_);
+                                   task_by_state_gauge_,
+                                   actor_by_state_gauge_);
   return core_worker;
 }
 
