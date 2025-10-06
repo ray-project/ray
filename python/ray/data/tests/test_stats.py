@@ -1159,7 +1159,10 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
     )
 
 
-def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
+def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_context):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     ds = ray.data.range(100, override_num_blocks=10).map(
         column_udf("id", lambda x: x + 1)
     )
