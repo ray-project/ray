@@ -31,12 +31,12 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.hudi_datasource import HudiDatasource
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.html_datasource import (
     HTMLDatasource,
     HTMLFileMetadataProvider,
 )
+from ray.data._internal.datasource.hudi_datasource import HudiDatasource
+from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,

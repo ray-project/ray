@@ -1,6 +1,7 @@
 """Tests for HTML reading functionality in Ray Data."""
 
 import os
+
 import pytest
 
 import ray
