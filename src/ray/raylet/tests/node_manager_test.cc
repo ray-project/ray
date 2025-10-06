@@ -962,7 +962,7 @@ TEST_F(NodeManagerTest, AsyncGetOrWaitRegistersGetForDriver) {
       fbb.GetBufferPointer());
 }
 
-TEST_F(NodeManagerTest, HandleDirectCallTaskUnblockedAlwaysCancelsGetRequests) {
+TEST_F(NodeManagerTest, HandleWorkerUnblockedAlwaysCancelsGetRequests) {
   // Create a worker without a lease and register a GET request for it
   // directly via the LeaseDependencyManager. Even without a lease, unblocked
   // should cancel outstanding GETs.
@@ -978,7 +978,7 @@ TEST_F(NodeManagerTest, HandleDirectCallTaskUnblockedAlwaysCancelsGetRequests) {
   ref.mutable_owner_address()->CopyFrom(rpc::Address());
   lease_dependency_manager_->StartOrUpdateGetRequest(worker->WorkerId(), {ref});
 
-  // Send an NotifyDirectCallTaskUnblocked message from this worker client via
+  // Send an NotifyWorkerUnblocked message from this worker client via
   // ProcessClientMessage.
   local_stream_socket fake_socket(io_service_);
   auto client = ClientConnection::Create(
@@ -995,11 +995,11 @@ TEST_F(NodeManagerTest, HandleDirectCallTaskUnblockedAlwaysCancelsGetRequests) {
   // Assert: the GET request should be canceled.
   EXPECT_CALL(*mock_object_manager_, CancelPull(request_id)).Times(1);
   flatbuffers::FlatBufferBuilder fbb;
-  auto msg = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  auto msg = protocol::CreateNotifyWorkerUnblocked(fbb);
   fbb.Finish(msg);
   node_manager_->ProcessClientMessage(
       client,
-      static_cast<int64_t>(protocol::MessageType::NotifyDirectCallTaskUnblocked),
+      static_cast<int64_t>(protocol::MessageType::NotifyWorkerUnblocked),
       fbb.GetBufferPointer());
 
   // Assert: calling CancelGetRequest again does not trigger additional cancels.
