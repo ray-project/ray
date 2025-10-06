@@ -3545,7 +3545,7 @@ def remote(
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
     label_selector: Dict[str, str] = Undefined,
-    fallback_strategy: List[Dict[str, str]] = Undefined,
+    fallback_strategy: List[Dict[str, Any]] = Undefined,
 ) -> RemoteDecorator:
     ...
 
