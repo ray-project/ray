@@ -77,5 +77,17 @@ def test_parse_pre_hooks():
         assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh"]
 
 
+def test_global_pre_hooks():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+        assert config.global_pre_hooks == [
+            "pre-hook-test1.sh",
+            "pre-hook-test2.sh",
+            "pre-hook-test3.sh",
+        ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

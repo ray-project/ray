@@ -60,6 +60,7 @@ def _dict_to_depset(depset: dict) -> Depset:
 class Config:
     depsets: List[Depset] = field(default_factory=list)
     build_arg_sets: Dict[str, BuildArgSet] = field(default_factory=dict)
+    global_pre_hooks: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
@@ -78,7 +79,11 @@ class Config:
                     depsets.append(_dict_to_depset(depset_yaml))
             else:
                 depsets.append(_dict_to_depset(depset))
-        return Config(depsets=depsets, build_arg_sets=build_arg_sets)
+        return Config(
+            depsets=depsets,
+            build_arg_sets=build_arg_sets,
+            global_pre_hooks=data.get("pre_hooks", []),
+        )
 
     @staticmethod
     def parse_build_arg_sets(build_arg_sets: Dict[str, dict]) -> Dict[str, BuildArgSet]:

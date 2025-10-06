@@ -10,7 +10,6 @@ from unittest.mock import patch
 import pytest
 import runfiles
 from click.testing import CliRunner
-from networkx import topological_sort
 
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
@@ -383,8 +382,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 10
-            assert len(manager.build_graph.edges()) == 5
+            assert len(manager.build_graph.nodes()) == 13
+            assert len(manager.build_graph.edges()) == 13
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -400,11 +399,18 @@ class TestCli(unittest.TestCase):
                 ]
                 == "expand"
             )
-            sorted_nodes = list(topological_sort(manager.build_graph))
-            # assert that the root nodes are the compile depsets
-            assert "ray_base_test_depset" in sorted_nodes[:3]
-            assert "general_depset__py311_cpu" in sorted_nodes[:3]
-            assert "build_args_test_depset__py311_cpu" in sorted_nodes[:3]
+            assert set(manager.build_graph.predecessors("ray_base_test_depset")) == {
+                "pre_hook_pre-hook-test.sh 3"
+            }
+            assert set(
+                manager.build_graph.predecessors("general_depset__py311_cpu")
+            ) == {"pre_hook_pre-hook-test.sh 3"}
+            assert set(
+                manager.build_graph.predecessors("build_args_test_depset__py311_cpu")
+            ) == {"pre_hook_pre-hook-test.sh 3"}
+            assert set(
+                manager.build_graph.predecessors("expand_general_depset__py311_cpu")
+            ) == {"general_depset__py311_cpu", "expanded_depset__py311_cpu"}
 
     def test_build_graph_predecessors(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -428,6 +434,21 @@ class TestCli(unittest.TestCase):
             assert set(
                 manager.build_graph.predecessors("expand_general_depset__py311_cpu")
             ) == {"general_depset__py311_cpu", "expanded_depset__py311_cpu"}
+
+    def test_build_graph_global_pre_hooks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            assert manager.build_graph is not None
+            assert set(
+                manager.build_graph.predecessors("pre_hook_pre-hook-test.sh 2")
+            ) == {"pre_hook_pre-hook-test.sh 1"}
+            assert set(
+                manager.build_graph.predecessors("pre_hook_pre-hook-test.sh 3")
+            ) == {"pre_hook_pre-hook-test.sh 2"}
+            assert set(manager.build_graph.predecessors("ray_base_test_depset")) == {
+                "pre_hook_pre-hook-test.sh 3"
+            }
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -455,7 +476,7 @@ class TestCli(unittest.TestCase):
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
                 == "compile"
             )
-            assert len(manager.build_graph.nodes()) == 1
+            assert len(manager.build_graph.nodes()) == 4
 
     def test_execute_single_depset_that_does_not_exist(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -733,4 +754,4 @@ class TestCli(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

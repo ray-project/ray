@@ -145,11 +145,14 @@ class DependencySetManager:
         return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
 
     def _build(self):
+        # build the globalpre-hook graph and get the last node name
+        last_node = self.build_global_pre_hook_graph()
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
                     depset.name, operation="compile", depset=depset, node_type="depset"
                 )
+                self.build_graph.add_edge(last_node, depset.name)
             elif depset.operation == "subset":
                 self.build_graph.add_node(
                     depset.name, operation="subset", depset=depset, node_type="depset"
@@ -174,10 +177,24 @@ class DependencySetManager:
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
 
+    def build_global_pre_hook_graph(self) -> str:
+        last_node = ""
+        for pre_hook in self.config.global_pre_hooks:
+            hook_name = f"pre_hook_{pre_hook}"
+            self.build_graph.add_node(
+                hook_name, operation="pre_hook", pre_hook=pre_hook, node_type="pre_hook"
+            )
+            if last_node != "":
+                self.build_graph.add_edge(last_node, hook_name)
+            last_node = hook_name
+        return last_node
+
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
         nodes = dependency_nodes | {depset_name}
         self.build_graph = self.build_graph.subgraph(nodes).copy()
+        print(f"Subgraph nodes: {self.build_graph.nodes()}")
+        print(f"Subgraph edges: {self.build_graph.edges()}")
 
     def execute(self, single_depset_name: Optional[str] = None):
         if single_depset_name:
