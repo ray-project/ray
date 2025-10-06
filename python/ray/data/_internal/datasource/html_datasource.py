@@ -193,13 +193,12 @@ class HTMLDatasource(FileBasedDatasource):
                 logger.warning(
                     f"CSS selector '{self.selector}' matched no elements in '{path}'"
                 )
-                # Return empty block
-                builder = DelegatingBlockBuilder()
-                yield builder.build()
-                return
-            # Create new soup with copies of selected elements (preserves original DOM)
-            combined_html = "".join(str(elem) for elem in elements)
-            content_soup = BeautifulSoup(combined_html, parser)
+                # Create empty soup but preserve metadata
+                content_soup = BeautifulSoup("", parser)
+            else:
+                # Create new soup with copies of selected elements (preserves original DOM)
+                combined_html = "".join(str(elem) for elem in elements)
+                content_soup = BeautifulSoup(combined_html, parser)
 
         # Build row data
         row_data = self._extract_content(content_soup, path, metadata)
@@ -422,12 +421,19 @@ class HTMLDatasource(FileBasedDatasource):
         """Estimate in-memory size of parsed HTML data.
 
         Returns:
-            Estimated size in bytes.
+            Estimated size in bytes, or None if size cannot be estimated.
         """
         total_size = 0
+        has_any_size = False
+
         for file_size in self._file_sizes():
             if file_size is not None:
                 total_size += file_size
+                has_any_size = True
+
+        # Return None if no file sizes available (Ray Data will handle accordingly)
+        if not has_any_size:
+            return None
 
         # Apply encoding ratio (HTML expands in memory after parsing)
         return int(total_size * self._encoding_ratio)
