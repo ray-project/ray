@@ -83,9 +83,9 @@ def test_global_pre_hooks():
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
         assert config.global_pre_hooks == [
-            "pre-hook-test1.sh",
-            "pre-hook-test2.sh",
-            "pre-hook-test3.sh",
+            "pre-hook-test.sh 1",
+            "pre-hook-test.sh 2",
+            "pre-hook-test.sh 3",
         ]
 
 

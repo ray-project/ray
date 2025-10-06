@@ -152,7 +152,8 @@ class DependencySetManager:
                 self.build_graph.add_node(
                     depset.name, operation="compile", depset=depset, node_type="depset"
                 )
-                self.build_graph.add_edge(last_node, depset.name)
+                if last_node != "":
+                    self.build_graph.add_edge(last_node, depset.name)
             elif depset.operation == "subset":
                 self.build_graph.add_node(
                     depset.name, operation="subset", depset=depset, node_type="depset"
