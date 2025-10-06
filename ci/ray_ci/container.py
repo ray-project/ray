@@ -29,6 +29,10 @@ _DOCKER_GCP_REGISTRY = os.environ.get(
     "RAYCI_GCP_REGISTRY",
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
 )
+_DOCKER_AZURE_REGISTRY = os.environ.get(
+    "RAYCI_AZURE_REGISTRY",
+    "rayreleasetest.azurecr.io",
+)
 _DOCKER_ENV = [
     "BUILDKITE",
     "BUILDKITE_BUILD_URL",
