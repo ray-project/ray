@@ -13,7 +13,7 @@ from ray_release.config import (
 )
 from ray_release.custom_byod_build_init_helper import (
     generate_custom_build_step_key,
-    get_prerequisite_step_key,
+    get_prerequisite_step,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
@@ -198,6 +198,6 @@ def get_step(
     if test.require_custom_byod_image():
         step["depends_on"] = generate_custom_build_step_key(image)
     else:
-        step["depends_on"] = get_prerequisite_step_key(image)
+        step["depends_on"] = get_prerequisite_step(image)
 
     return step
