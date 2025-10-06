@@ -48,7 +48,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --find-links=.whl/
+      - --find-links=./.whl
     build_arg_sets:
       - py39
       - py310
@@ -69,7 +69,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --find-links=.whl/
+      - --find-links=./.whl
     build_arg_sets:
       - py39
       - py310
@@ -88,7 +88,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --find-links=.whl/
+      - --find-links=./.whl
       - --extra-index-url https://download.pytorch.org/whl/cu121
     build_arg_sets:
       - py39
