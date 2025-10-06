@@ -70,7 +70,8 @@ class GcsActorSchedulerMockTest : public Test {
         *cluster_resource_scheduler,
         /*get_node_info=*/
         [this](const NodeID &nid) {
-          auto node = gcs_node_manager->GetAliveNodeAddress(nid);
+          std::optional<std::shared_ptr<const rpc::GcsNodeAddressAndLiveness>> node =
+              gcs_node_manager->GetAliveNodeAddress(nid);
           return node.has_value() ? node.value().get() : nullptr;
         },
         /*announce_infeasible_lease=*/nullptr,
