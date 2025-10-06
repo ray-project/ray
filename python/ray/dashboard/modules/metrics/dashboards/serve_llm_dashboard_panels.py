@@ -16,8 +16,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (model_name, WorkerId) (rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"}}[$interval]))',
-                legend="{{replica}}, {{WorkerId}}",
+                expr='sum by (model_name, WorkerId, replica) (rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"}}[$interval]))',
+                legend="replica {{replica}}, worker {{WorkerId}}",
             ),
             Target(
                 expr='sum(rate(ray_serve_deployment_request_counter_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"}}[$interval]))',
