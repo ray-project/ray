@@ -74,12 +74,12 @@ class NodeState {
   /// \param message The message received.
   ///
   /// \return true if the local node doesn't have message with newer version.
-  bool ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message);
+  bool ConsumeSyncMessage(std::shared_ptr<RaySyncMessage> message);
 
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<
       std::string,
-      std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
+      std::array<std::shared_ptr<const InnerRaySyncMessage>, kComponentArraySize>>
       &GetClusterView() const {
     return cluster_view_;
   }
@@ -99,7 +99,7 @@ class NodeState {
   /// sending via rpc.
   absl::flat_hash_map<
       std::string,
-      std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
+      std::array<std::shared_ptr<const InnerRaySyncMessage>, kComponentArraySize>>
       cluster_view_;
 };
 

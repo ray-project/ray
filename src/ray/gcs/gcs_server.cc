@@ -574,7 +574,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       kGCSNodeID.Binary(),
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
-      });
+      },
+      RayConfig::instance().gcs_ray_syncer_batching_enabled());
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
@@ -921,13 +922,18 @@ void GcsServer::TryGlobalGC() {
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.set_should_global_gc(true);
 
-    auto msg = std::make_shared<syncer::RaySyncMessage>();
-    msg->set_version(absl::GetCurrentTimeNanos());
-    msg->set_node_id(kGCSNodeID.Binary());
-    msg->set_message_type(syncer::MessageType::COMMANDS);
+    auto inner_msg = std::make_shared<syncer::InnerRaySyncMessage>();
+    inner_msg->set_version(absl::GetCurrentTimeNanos());
+    inner_msg->set_node_id(kGCSNodeID.Binary());
+    inner_msg->set_message_type(syncer::MessageType::COMMANDS);
     std::string serialized_msg;
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-    msg->set_sync_message(std::move(serialized_msg));
+    inner_msg->set_sync_message(std::move(serialized_msg));
+
+    auto msg = std::make_shared<syncer::RaySyncMessage>();
+    msg->set_message_type(syncer::MessageType::COMMANDS);
+    auto batched_msg = msg->mutable_batched_messages();
+    (*batched_msg)[NodeID::FromBinary(kGCSNodeID.Binary()).Hex()] = std::move(*inner_msg);
     ray_syncer_->BroadcastMessage(std::move(msg));
     global_gc_throttler_->RunNow();
   }

@@ -376,16 +376,24 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     return std::nullopt;
   }
 
-  syncer::RaySyncMessage msg;
+  syncer::InnerRaySyncMessage inner_msg;
   syncer::ResourceViewSyncMessage resource_view_sync_message;
   PopulateResourceViewSyncMessage(resource_view_sync_message);
 
-  msg.set_node_id(local_node_id_.Binary());
-  msg.set_version(version_);
-  msg.set_message_type(message_type);
+  inner_msg.set_node_id(local_node_id_.Binary());
+  inner_msg.set_version(version_);
+  inner_msg.set_message_type(message_type);
   std::string serialized_msg;
   RAY_CHECK(resource_view_sync_message.SerializeToString(&serialized_msg));
-  msg.set_sync_message(std::move(serialized_msg));
+  inner_msg.set_sync_message(std::move(serialized_msg));
+
+  syncer::RaySyncMessage msg;
+  msg.set_message_type(message_type);
+  // Add the inner message to the batched messages.
+  auto batched_msg = msg.mutable_batched_messages();
+  (*batched_msg)[NodeID::FromBinary(local_node_id_.Binary()).Hex()] =
+      std::move(inner_msg);
+
   return std::make_optional(std::move(msg));
 }
 

@@ -194,10 +194,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+  void ConsumeSyncMessage(std::shared_ptr<syncer::RaySyncMessage> message) override;
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
+
+  /// Process batched resource view messages
+  void ProcessBatchedResourceViewMessage(std::shared_ptr<syncer::RaySyncMessage> message);
+
+  /// Process batched commads messages
+  void ProcessBatchedCommandsMessage(std::shared_ptr<syncer::RaySyncMessage> message);
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 

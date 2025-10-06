@@ -188,7 +188,7 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
-      ray_syncer_(io_service_, self_node_id_.Binary()),
+      ray_syncer_(io_service_, self_node_id_.Binary(), false),
       worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
@@ -2831,29 +2831,66 @@ void NodeManager::RecordMetrics() {
   lease_dependency_manager_.RecordMetrics();
 }
 
-void NodeManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
+void NodeManager::ConsumeSyncMessage(std::shared_ptr<syncer::RaySyncMessage> message) {
+  RAY_CHECK(message->batched_messages_size() > 0);
   if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-    syncer::ResourceViewSyncMessage resource_view_sync_message;
-    resource_view_sync_message.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(message->node_id());
-    // Set node labels when node added.
-    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
-    ResourceRequest resources;
-    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
-      resources.Set(scheduling::ResourceID(resource_entry.first),
-                    FixedPoint(resource_entry.second));
-    }
-    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
-    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
-    if (capacity_updated || usage_update) {
-      cluster_lease_manager_.ScheduleAndGrantLeases();
-    }
+    // Handle batched resource view messages
+    ProcessBatchedResourceViewMessage(message);
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
+    // Handle batched commands messages
+    ProcessBatchedCommandsMessage(message);
+  }
+}
+
+void NodeManager::ProcessBatchedResourceViewMessage(
+    std::shared_ptr<syncer::RaySyncMessage> message) {
+  RAY_CHECK_EQ(message->message_type(), syncer::MessageType::RESOURCE_VIEW);
+
+  bool should_schedule = false;
+
+  RAY_LOG(DEBUG) << "Processing batched resource view message with "
+                 << message->batched_messages_size() << " individual messages";
+
+  // Process each individual message in the batch
+  for (const auto &[_, inner_message] : message->batched_messages()) {
+    RAY_CHECK_EQ(inner_message.message_type(), syncer::MessageType::RESOURCE_VIEW);
+
+    syncer::ResourceViewSyncMessage resource_view_sync_message;
+    if (resource_view_sync_message.ParseFromString(inner_message.sync_message())) {
+      RAY_LOG(DEBUG) << "Processing resource view message from node "
+                     << NodeID::FromBinary(inner_message.node_id()) << " with version "
+                     << inner_message.version();
+      NodeID node_id = NodeID::FromBinary(inner_message.node_id());
+      if (UpdateResourceUsage(node_id, resource_view_sync_message)) {
+        should_schedule = true;
+      }
+    }
+  }
+
+  // Schedule tasks only once after processing all messages in the batch
+  if (should_schedule) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+  }
+}
+
+void NodeManager::ProcessBatchedCommandsMessage(
+    std::shared_ptr<syncer::RaySyncMessage> message) {
+  RAY_CHECK_EQ(message->message_type(), syncer::MessageType::COMMANDS);
+
+  RAY_LOG(DEBUG) << "Processing batched commands message with "
+                 << message->batched_messages_size() << " individual messages";
+
+  // Process each individual commands message in the batch
+  for (const auto &[_, inner_message] : message->batched_messages()) {
+    RAY_CHECK_EQ(inner_message.message_type(), syncer::MessageType::COMMANDS);
+
     syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.ParseFromString(message->sync_message());
+    commands_sync_message.ParseFromString(inner_message.sync_message());
+
+    RAY_LOG(DEBUG) << "Processing commands message from node "
+                   << NodeID::FromBinary(inner_message.node_id())
+                   << ", should_global_gc=" << commands_sync_message.should_global_gc();
+
     if (commands_sync_message.should_global_gc()) {
       should_local_gc_ = true;
     }
@@ -2868,13 +2905,19 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   commands_sync_message.set_should_global_gc(true);
   commands_sync_message.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >=
                                                             1);
-  syncer::RaySyncMessage msg;
-  msg.set_version(absl::GetCurrentTimeNanos());
-  msg.set_node_id(self_node_id_.Binary());
-  msg.set_message_type(syncer::MessageType::COMMANDS);
+  syncer::InnerRaySyncMessage inner_msg;
+  inner_msg.set_version(absl::GetCurrentTimeNanos());
+  inner_msg.set_node_id(self_node_id_.Binary());
+  inner_msg.set_message_type(syncer::MessageType::COMMANDS);
   std::string serialized_msg;
   RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-  msg.set_sync_message(std::move(serialized_msg));
+  inner_msg.set_sync_message(std::move(serialized_msg));
+
+  syncer::RaySyncMessage msg;
+  msg.set_message_type(syncer::MessageType::COMMANDS);
+  auto batched_msg = msg.mutable_batched_messages();
+  (*batched_msg)[NodeID::FromBinary(self_node_id_.Binary()).Hex()] = std::move(inner_msg);
+
   return std::make_optional(std::move(msg));
 }
 
