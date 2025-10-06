@@ -6,7 +6,7 @@ set -euo pipefail
 #!/bin/bash
 
 # Install Azure CLI
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 # Retrieve credentials from Secrets Manager
 SECRET=$(aws secretsmanager get-secret-value \
