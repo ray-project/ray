@@ -242,7 +242,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::move(raylet_address),
       *client_call_manager,
       /*raylet_unavailable_timeout_callback=*/[] {},
-      /*server_unavailable_timeout_seconds=*/-1,
       /*server_call_unavailable_timeout_immediately=*/true);
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
@@ -277,10 +276,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     }
   }
 
-  // NOTE: The raylet client server_unavailable_timeout_seconds is set to -1 because the
-  // core worker is notified when remote nodes have died from the GCS. Hence we only need
-  // to call the unavailable timeout once immediately to handle the case where the dead
-  // node was evicted from the cache prior to subscription.
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
@@ -291,7 +286,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 core_worker->gcs_client_.get(),
                 core_worker->raylet_client_pool_.get(),
                 addr),
-            /*server_unavailable_timeout_seconds=*/-1,
             /*server_call_unavailable_timeout_immediately=*/true);
       });
 
@@ -869,7 +863,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
     rpc::RayletClient local_raylet_rpc_client(
-        raylet_address, client_call_manager, [] {}, -1, true);
+        raylet_address, client_call_manager, [] {}, true);
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,

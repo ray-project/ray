@@ -159,14 +159,14 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
-    if (server_call_unavailable_timeout_immediately_) {
-      server_unavailable_timeout_time_ = now;
-      CheckChannelStatus(true);
-    } else {
-      server_unavailable_timeout_time_ =
-          now + absl::Seconds(server_unavailable_timeout_seconds_);
-      SetupCheckTimer();
-    }
+    // if (server_call_unavailable_timeout_immediately_) {
+    //   server_unavailable_timeout_time_ = now;
+    //   CheckChannelStatus(true);
+    // } else {
+    server_unavailable_timeout_time_ =
+        now + absl::Seconds(server_unavailable_timeout_seconds_);
+    SetupCheckTimer();
+    // }
   }
 }
 }  // namespace ray::rpc

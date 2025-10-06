@@ -46,12 +46,11 @@ class RayletClient : public RayletClientInterface {
   /// \param port The port that the worker should listen on for gRPC requests. If
   /// 0, the worker should choose a random port.
   /// \param client_call_manager The client call manager to use for the grpc connection.
-  /// \param server_unavailable_timeout_seconds The timeout where the unavailable timeout
-  /// callback will be called.
+  /// \param server_call_unavailable_timeout_immediately Whether to call the unavailable
+  /// timeout callback immediately.
   explicit RayletClient(const rpc::Address &address,
                         rpc::ClientCallManager &client_call_manager,
                         std::function<void()> raylet_unavailable_timeout_callback,
-                        int32_t server_unavailable_timeout_seconds,
                         bool server_call_unavailable_timeout_immediately);
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;

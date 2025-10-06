@@ -76,10 +76,6 @@ GcsServer::GcsServer(
                            config.node_ip_address,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
-      // NOTE: The raylet client server_unavailable_timeout_seconds is set to -1 because
-      // the gcs is notified when any node has died from the gcs node manager.
-      // We still need to invoke the unavailable timeout callback immediately in case we
-      // make a request to the raylet after receiving the node death notification.
       raylet_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<ray::rpc::RayletClient>(
             addr,
@@ -92,7 +88,6 @@ GcsServer::GcsServer(
                 this->raylet_client_pool_.Disconnect(node_id);
               }
             },
-            /*server_unavailable_timeout_seconds=*/-1,
             /*server_call_unavailable_timeout_immediately=*/true);
       }),
       worker_client_pool_([this](const rpc::Address &addr) {
