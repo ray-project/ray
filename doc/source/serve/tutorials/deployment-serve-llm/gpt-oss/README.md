@@ -10,11 +10,6 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy gpt-oss
 
-<div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fgpt-oss"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/gpt-oss" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
-</div>
-
 *gpt-oss* is a family of open-source models designed for general-purpose language understanding and generation. The 20 B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency. This makes it well-suited for local or specialized use cases. The larger 120 B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
 
 For more information, see the [gpt-oss collection](https://huggingface.co/collections/openai/gpt-oss-68911959590a1634ba11c7a4).
@@ -119,8 +114,7 @@ Follow the instructions in [Configure Ray Serve LLM](#configure-ray-serve-llm) a
 In a terminal, run:
 
 
-```bash
-%%bash
+```python
 serve run serve_gpt_oss:app --non-blocking
 ```
 
@@ -135,8 +129,7 @@ Your endpoint is available locally at `http://localhost:8000`. You can use a pla
 **Example curl:**
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -187,8 +180,7 @@ for chunk in response:
 To shutdown your LLM service: 
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
@@ -236,8 +228,7 @@ applications:
 Deploy your service:
 
 
-```bash
-%%bash
+```python
 anyscale service deploy -f service.yaml
 ```
 
@@ -271,8 +262,7 @@ For instructions on enabling LLM-specific logging, see [Enable LLM monitoring](#
 To shutdown your Anyscale Service:
 
 
-```bash
-%%bash
+```python
 anyscale service terminate -n deploy-gpt-oss
 ```
 
