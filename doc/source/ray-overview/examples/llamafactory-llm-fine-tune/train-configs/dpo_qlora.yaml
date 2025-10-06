@@ -61,4 +61,3 @@ ray_init_kwargs:
       # HF_TOKEN: <your_huggingface_token>
       # Enable faster downloads if hf_transfer is installed:
       HF_HUB_ENABLE_HF_TRANSFER: '1'
-      
