@@ -782,27 +782,6 @@ void NodeManager::NodeAdded(const rpc::GcsNodeAddressAndLiveness &node_info) {
   }
 }
 
-void NodeManager::NodeAdded(const rpc::GcsNodeInfo &node_info) {
-  const NodeID node_id = NodeID::FromBinary(node_info.node_id());
-
-  RAY_LOG(DEBUG).WithField(node_id) << "[NodeAdded] Received callback from node id ";
-  if (node_id == self_node_id_) {
-    return;
-  }
-
-  // Store address of the new node manager for rpc requests.
-  remote_node_manager_addresses_[node_id] =
-      std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
-
-  // Update the resource view if a new message has been sent.
-  if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
-                                                 syncer::MessageType::RESOURCE_VIEW)) {
-    if (sync_msg) {
-      ConsumeSyncMessage(sync_msg);
-    }
-  }
-}
-
 void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
 

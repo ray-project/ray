@@ -616,8 +616,8 @@ void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
       [callback](const Status &status, rpc::GetAllNodeAddressAndLivenessReply &&reply) {
         std::vector<rpc::GcsNodeAddressAndLiveness> result;
         result.reserve((reply.node_info_list_size()));
-        for (int index = 0; index < reply.node_info_list_size(); ++index) {
-          result.emplace_back(reply.node_info_list(index));
+        for (auto &node_info : *reply.mutable_node_info_list()) {
+          result.emplace_back(std::move(node_info));
         }
         callback(status, std::move(result));
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "

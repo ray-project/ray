@@ -121,8 +121,8 @@ void GcsSubscriber::SubscribeAllNodeAddressAndLiveness(
     subscribe(std::move(*msg.mutable_node_address_and_liveness_message()));
   };
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
-    RAY_LOG(WARNING) << "Subscription to NodeAddressAndLiveness channel failed: "
-                     << status.ToString();
+    RAY_LOG(ERROR) << "Subscription to NodeAddressAndLiveness channel failed: "
+                   << status.ToString();
   };
   subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
