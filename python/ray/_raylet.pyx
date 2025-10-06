@@ -4385,7 +4385,7 @@ cdef class CoreWorker:
                         "Failed to store task output with object id {} after {} attempts.".format(
                             return_id.Hex().decode("ascii"),
                             max_attempts))
-                time.sleep(base_backoff * (2 ** (attempt-1)))
+                time.sleep(base_backoff_s * (2 ** (attempt-1)))
                 attempt += 1
                 continue
 
