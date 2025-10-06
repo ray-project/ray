@@ -5,7 +5,7 @@ import traceback
 import random
 import string
 from typing import Optional, List, Tuple
-
+import anyscale
 from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import get_cluster_name, LAST_LOGS_LENGTH
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
@@ -16,6 +16,7 @@ from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
+from ray_release.job_manager.new_anyscale_job_manager import NewAnyscaleJobManager
 from ray_release.test import Test
 from ray_release.config import (
     DEFAULT_BUILD_TIMEOUT,
@@ -51,6 +52,11 @@ from ray_release.util import (
     upload_working_dir,
 )
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
+from ray_release.anyscale_util import (
+    get_entrypoint_command,
+    convert_cluster_compute_to_anyscale_compute_config,
+)
+from anyscale.job.models import ComputeConfig
 
 type_str_to_command_runner = {
     "job": JobRunner,
@@ -413,6 +419,88 @@ def run_release_test(
         log_streaming_limit=log_streaming_limit,
         image=image,
     )
+
+
+def new_run_release_test_anyscale(
+    test: Test,
+    result: Result,
+    anyscale_project: str,
+    smoke_test: bool = False,
+    no_terminate: bool = False,
+    reporters: Optional[List[Reporter]] = None,
+    test_definition_root: Optional[str] = None,
+    log_streaming_limit: int = LAST_LOGS_LENGTH,
+    image: Optional[str] = None,
+) -> Result:
+    start_time = time.monotonic()
+    buildkite_group(":spiral_note_pad: Loading test configuration")
+    _initiate_result(test, result, smoke_test)
+    buildkite_group(":wrench: Creating Anyscale compute config")
+    anyscale_compute_config = _create_anyscale_compute_config(
+        test,
+        test_definition_root,
+    )
+    working_dir = get_working_dir(test)
+    command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+    # Get prepare command timeout, if any
+    prepare_cmd = test["run"].get("prepare", None)
+    if prepare_cmd:
+        prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
+    else:
+        prepare_timeout = 0
+    cloud_name = os.environ.get("ANYSCALE_CLOUD_NAME")
+    project_name = os.environ.get("ANYSCALE_PROJECT_NAME")
+    env_vars = test.get_byod_runtime_env()
+    entrypoint = get_entrypoint_command(test, command_timeout, smoke_test)
+
+    job_manager = NewAnyscaleJobManager(
+        start_time=start_time,
+        project_name=project_name,
+        cloud_name=cloud_name,
+        image=image,
+        compute_config=anyscale_compute_config,
+        log_streaming_limit=log_streaming_limit,
+        timeout=command_timeout,
+        prepare_timeout=prepare_timeout,
+    )
+    retcode, duration = job_manager.run_and_wait(
+        entrypoint=entrypoint,
+        env_vars=env_vars,
+        working_dir=working_dir,
+    )
+
+
+def _initiate_result(
+    test: Test,
+    result: Result,
+    smoke_test: bool,
+):
+    result.stable = test.get("stable", True)
+    result.smoke_test = smoke_test
+    result.buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
+    result.buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+    if result.buildkite_url:
+        result.buildkite_url += "#" + result.buildkite_job_id
+    result.buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+
+    extra_tags = _get_extra_tags_from_env()
+    extra_tags["test_name"] = str(test["name"])
+    extra_tags["test_smoke_test"] = str(result.smoke_test)
+    result.extra_tags = extra_tags
+
+
+def _create_anyscale_compute_config(
+    test: Test,
+    test_definition_root: Optional[str] = None,
+) -> ComputeConfig:
+    cluster_compute = load_test_cluster_compute(test, test_definition_root)
+    anyscale_compute_config = convert_cluster_compute_to_anyscale_compute_config(
+        cluster_compute
+    )
+    anyscale_compute_config_name = anyscale.compute_config.create(
+        anyscale_compute_config
+    )
+    return anyscale_compute_config_name
 
 
 def run_release_test_kuberay(
