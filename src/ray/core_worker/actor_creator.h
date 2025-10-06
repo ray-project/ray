@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -74,7 +74,7 @@ class ActorCreatorInterface {
 
 class ActorCreator : public ActorCreatorInterface {
  public:
-  explicit ActorCreator(gcs::ActorInfoAccessor &actor_client)
+  explicit ActorCreator(gcs::ActorInfoAccessorInterface &actor_client)
       : actor_client_(actor_client) {}
 
   Status RegisterActor(const TaskSpecification &task_spec) const override;
@@ -101,7 +101,7 @@ class ActorCreator : public ActorCreatorInterface {
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override;
 
  private:
-  gcs::ActorInfoAccessor &actor_client_;
+  gcs::ActorInfoAccessorInterface &actor_client_;
   using RegisteringActorType =
       absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>>;
   ThreadPrivate<RegisteringActorType> registering_actors_;

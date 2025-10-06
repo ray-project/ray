@@ -14,6 +14,7 @@
 #pragma once
 #include "gmock/gmock.h"
 #include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 
 namespace ray {
 namespace gcs {

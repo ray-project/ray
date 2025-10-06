@@ -24,9 +24,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
-#include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
+#include "ray/gcs_rpc_client/utils/client_utils.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
@@ -192,7 +192,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   std::promise<void> p0;
   auto f0 = p0.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p0](auto status, auto) {
+      "", "A", "B", false, gcs::ClientUtils::GetGcsTimeoutMs(), [&p0](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p0.set_value();
       }));
@@ -205,7 +205,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   std::promise<std::string> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVGet(
-      "", "A", gcs::GetGcsTimeoutMs(), [&p1](auto status, auto p) {
+      "", "A", gcs::ClientUtils::GetGcsTimeoutMs(), [&p1](auto status, auto p) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value(*p);
       }));
@@ -241,7 +241,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   std::promise<void> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
+      "", "A", "B", false, gcs::ClientUtils::GetGcsTimeoutMs(), [&p1](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value();
       }));
@@ -255,7 +255,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   std::promise<void> p2;
   auto f2 = p2.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+      "", "A", "B", false, gcs::ClientUtils::GetGcsTimeoutMs(), [&p2](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p2.set_value();
       }));
@@ -313,7 +313,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
+      "", "A", "B", false, gcs::ClientUtils::GetGcsTimeoutMs(), [&p1](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value();
       }));
@@ -325,7 +325,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p2;
   auto f2 = p2.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+      "", "A", "B", false, gcs::ClientUtils::GetGcsTimeoutMs(), [&p2](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p2.set_value();
       }));
@@ -341,7 +341,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p4;
   auto f4 = p4.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p4](auto status, auto) {
+      "", "A", "B", false, gcs::ClientUtils::GetGcsTimeoutMs(), [&p4](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p4.set_value();
       }));
@@ -372,18 +372,22 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   StartGCS();
   auto client = CreateGCSClient();
   bool added = false;
-  ASSERT_TRUE(
-      client->InternalKV().Put("", "A", "B", false, gcs::GetGcsTimeoutMs(), added).ok());
+  ASSERT_TRUE(client->InternalKV()
+                  .Put("", "A", "B", false, gcs::ClientUtils::GetGcsTimeoutMs(), added)
+                  .ok());
   ASSERT_TRUE(added);
 
   ShutdownGCS();
   std::vector<std::string> values;
-  ASSERT_TRUE(
-      client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).IsTimedOut());
+  ASSERT_TRUE(client->InternalKV()
+                  .Keys("", "A", gcs::ClientUtils::GetGcsTimeoutMs(), values)
+                  .IsTimedOut());
   ASSERT_TRUE(values.empty());
 
   StartGCS();
-  ASSERT_TRUE(client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).ok());
+  ASSERT_TRUE(client->InternalKV()
+                  .Keys("", "A", gcs::ClientUtils::GetGcsTimeoutMs(), values)
+                  .ok());
   ASSERT_EQ(std::vector<std::string>{"A"}, values);
 }
 

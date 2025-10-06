@@ -11,6 +11,10 @@ ray_cc_library(
         "gcs_client.h",
     ],
     deps = [
+        ":accessor_interfaces",
+        ":client_utils",
+        ":gcs_client_context",
+        ":gcs_client_defaults",
         ":rpc_client",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -23,6 +27,89 @@ ray_cc_library(
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
         "//src/ray/util:sequencer",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_client_context",
+    hdrs = [
+        "gcs_client_context.h",
+    ],
+    deps = [
+        ":rpc_client",
+        "//src/ray/pubsub:gcs_subscriber",
+    ],
+)
+
+ray_cc_library(
+    name = "accessor_interfaces",
+    hdrs = [
+        "accessor_factory_interface.h",
+        "accessors/actor_info_accessor_interface.h",
+    ],
+    deps = [
+        ":client_utils",
+        "//src/ray/common:gcs_callback_types",
+        "//src/ray/common:id",
+        "//src/ray/common:placement_group",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "client_utils",
+    srcs = ["utils/client_utils.cc"],
+    hdrs = ["utils/client_utils.h"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "accessor_implementations",
+    srcs = [
+        "accessors/actor_info_accessor.cc",
+    ],
+    hdrs = [
+        "accessors/actor_info_accessor.h",
+    ],
+    deps = [
+        ":accessor_interfaces",
+        ":gcs_client_context",
+        ":rpc_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:placement_group",
+        "//src/ray/common:protobuf_utils",
+        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/protobuf:usage_cc_proto",
+        "//src/ray/pubsub:gcs_subscriber",
+        "//src/ray/pubsub:subscriber",
+        "//src/ray/util:container_util",
+        "//src/ray/util:network_util",
+        "//src/ray/util:sequencer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_client_defaults",
+    srcs = [
+        "default_accessor_factory.cc",
+        "default_gcs_client_context.cc",
+    ],
+    hdrs = [
+        "default_accessor_factory.h",
+        "default_gcs_client_context.h",
+    ],
+    deps = [
+        ":accessor_implementations",
+        ":accessor_interfaces",
+        ":gcs_client_context",
     ],
 )
 

@@ -29,11 +29,13 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessor_factory_interface.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/gcs_client_context.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/pubsub/gcs_subscriber.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
-#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
 
@@ -101,11 +103,15 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  /// \param gcs_client_id The unique ID for the owner of this object.
-  ///    This potentially will be used to tell GCS who is client connecting
-  ///    to GCS.
+  /// \param gcs_client_id The unique ID for the owner of this object. This potentially
+  /// will be used to tell GCS who is client connecting to GCS. \param accessor_factory A
+  /// factory which supplies accessors to this gcs_client instance \param client_context A
+  /// context which supplies lower level functionality like an rpc client and/or a
+  /// subscriber
   explicit GcsClient(const GcsClientOptions &options,
-                     UniqueID gcs_client_id = UniqueID::FromRandom());
+                     UniqueID gcs_client_id = UniqueID::FromRandom(),
+                     std::unique_ptr<AccessorFactoryInterface> accessor_factory = nullptr,
+                     std::shared_ptr<GcsClientContext> client_context = nullptr);
 
   virtual ~GcsClient() { Disconnect(); };
 
@@ -149,7 +155,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get the sub-interface for accessing actor information in GCS.
   /// This function is thread safe.
-  ActorInfoAccessor &Actors() {
+  ActorInfoAccessorInterface &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
@@ -223,14 +229,20 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function is thread safe.
   virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
 
-  virtual pubsub::GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
+  virtual rpc::GcsRpcClient &GetGcsRpcClient() {
+    return client_context_->GetGcsRpcClient();
+  }
 
-  virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
+  virtual pubsub::GcsSubscriber &GetGcsSubscriber() {
+    return client_context_->GetGcsSubscriber();
+  }
 
  protected:
   GcsClientOptions options_;
 
-  std::unique_ptr<ActorInfoAccessor> actor_accessor_;
+  std::shared_ptr<GcsClientContext> client_context_;
+  std::unique_ptr<AccessorFactoryInterface> accessor_factory_;
+  std::unique_ptr<ActorInfoAccessorInterface> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
@@ -250,10 +262,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
-  std::unique_ptr<pubsub::GcsSubscriber> gcs_subscriber_;
-
   // Gcs rpc client
-  std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
 };
