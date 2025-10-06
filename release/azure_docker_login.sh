@@ -10,7 +10,7 @@ curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 # Retrieve credentials from Secrets Manager
 SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id azure-acr-credentials \
+  --secret-id azure-service-principal-oss-release \
   --query SecretString \
   --output text)
 
