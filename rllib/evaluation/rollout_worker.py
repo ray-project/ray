@@ -25,7 +25,6 @@ from gymnasium.spaces import Space
 
 import ray
 from ray import ObjectRef, cloudpickle as pickle
-from ray._common.network_utils import is_ipv6
 from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
