@@ -21,6 +21,7 @@ from ray._private.state_api_test_utils import (
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
+    wait_for_dashboard_agent_available,
 )
 from ray.util.state import (
     StateApiClient,
@@ -609,8 +610,11 @@ def test_ray_intentional_errors(shutdown_only):
 def test_fault_tolerance_chained_task_fail(
     shutdown_only, exit_type, actor_or_normal_tasks
 ):
-    ray.init(_system_config=_SYSTEM_CONFIG)
-
+    ray_context = ray.init(_system_config=_SYSTEM_CONFIG)
+    address = ray_context.address_info["address"]
+    node_id = ray_context.address_info["node_id"]
+    # TODO(#57203): remove this once task event buffer handles this internally.
+    wait_for_dashboard_agent_available(address, node_id)
     def sleep_or_fail(pid_actor=None, exit_type=None):
         if exit_type is None:
             time.sleep(999)

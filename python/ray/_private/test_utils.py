@@ -398,11 +398,14 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
 
 
 def wait_for_dashboard_agent_available(cluster):
-    gcs_client = GcsClient(address=cluster.address)
+    wait_for_dashboard_agent_available(cluster.address, cluster.head_node.node_id)
+
+def wait_for_dashboard_agent_available(address, node_id):
+    gcs_client = GcsClient(address=address)
 
     def get_dashboard_agent_address():
         return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
         )
