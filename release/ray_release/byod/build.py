@@ -20,7 +20,10 @@ RELEASE_BYOD_DIR = (
 
 
 def build_anyscale_custom_byod_image(
-    image: str, base_image: str, post_build_script: str
+    image: str,
+    base_image: str,
+    post_build_script: str,
+    python_depset: Optional[str] = None,
 ) -> None:
     if _image_exist(image):
         logger.info(f"Image {image} already exists")
@@ -28,21 +31,28 @@ def build_anyscale_custom_byod_image(
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
-    subprocess.check_call(
+    docker_build_cmd = [
+        "docker",
+        "build",
+        "--progress=plain",
+        "--build-arg",
+        f"BASE_IMAGE={base_image}",
+        "--build-arg",
+        f"POST_BUILD_SCRIPT={post_build_script}",
+    ]
+    if python_depset:
+        docker_build_cmd.extend(["--build-arg", f"PYTHON_DEPSET={python_depset}"])
+    docker_build_cmd.extend(
         [
-            "docker",
-            "build",
-            "--progress=plain",
-            "--build-arg",
-            f"BASE_IMAGE={base_image}",
-            "--build-arg",
-            f"POST_BUILD_SCRIPT={post_build_script}",
             "-t",
             image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
             RELEASE_BYOD_DIR,
-        ],
+        ]
+    )
+    subprocess.check_call(
+        docker_build_cmd,
         stdout=sys.stderr,
         env=env,
     )
