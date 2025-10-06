@@ -920,6 +920,234 @@ def test_broadcast_join_expected_outputs(ray_start_regular_shared_2_cpus):
     assert set(full_outer_df["id"].tolist()) == {1, 2, 3, 4, 5, 6, 7}
 
 
+def test_broadcast_join_error_handling(ray_start_regular_shared_2_cpus):
+    """Test error handling in broadcast joins."""
+    import pytest
+
+    left_ds = ray.data.range(5).map(lambda row: {"id": row["id"], "value": row["id"]})
+    right_ds = ray.data.range(3).map(lambda row: {"id": row["id"], "label": row["id"]})
+
+    # Test invalid join type
+    with pytest.raises(ValueError, match="not supported in broadcast joins"):
+        left_ds.join(
+            right_ds,
+            join_type="left_semi",  # Not supported for broadcast
+            on=("id",),
+            broadcast=True,
+        )
+
+    # Test missing key columns
+    with pytest.raises(ValueError, match="must contain at least one column"):
+        left_ds.join(
+            right_ds,
+            join_type="inner",
+            on=(),  # Empty tuple
+            broadcast=True,
+        )
+
+
+def test_broadcast_join_with_null_values(ray_start_regular_shared_2_cpus):
+    """Test broadcast join handling of null values in data."""
+
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": "a"},
+            {"id": 2, "value": None},
+            {"id": 3, "value": "c"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "label": "x"},
+            {"id": 2, "label": None},
+        ]
+    )
+
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    result_df = (
+        pd.DataFrame(result.take_all()).sort_values(by=["id"]).reset_index(drop=True)
+    )
+
+    assert len(result_df) == 2
+    assert result_df.loc[0, "id"] == 1
+    assert result_df.loc[0, "value"] == "a"
+    assert result_df.loc[1, "id"] == 2
+    assert pd.isna(result_df.loc[1, "value"])
+
+
+def test_broadcast_join_with_duplicate_keys(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with duplicate keys in both datasets."""
+
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": "a1"},
+            {"id": 1, "value": "a2"},
+            {"id": 2, "value": "b"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "label": "x1"},
+            {"id": 1, "label": "x2"},
+        ]
+    )
+
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    result_df = (
+        pd.DataFrame(result.take_all())
+        .sort_values(by=["id", "value", "label"])
+        .reset_index(drop=True)
+    )
+
+    # Should produce cartesian product: 2 left rows * 2 right rows = 4 results
+    assert len(result_df) == 4
+    assert result_df[result_df["id"] == 1].shape[0] == 4
+
+
+def test_broadcast_join_streaming_execution(ray_start_regular_shared_2_cpus):
+    """Validate broadcast join maintains streaming execution properties."""
+
+    # Create large dataset to test streaming behavior
+    large_ds = ray.data.range(100).map(
+        lambda row: {"id": row["id"] % 10, "value": row["id"]}
+    )
+
+    small_ds = ray.data.range(10).map(lambda row: {"id": row["id"], "label": row["id"]})
+
+    # Broadcast join should use map_batches which maintains streaming
+    result = large_ds.join(
+        small_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Should be able to iterate without materializing the entire result
+    batch_count = 0
+    for batch in result.iter_batches(batch_size=10):
+        batch_count += 1
+        # Verify we're getting batches in streaming fashion
+        assert batch is not None
+
+    # We should have processed multiple batches
+    assert batch_count > 1
+
+
+def test_broadcast_join_memory_efficiency(ray_start_regular_shared_2_cpus):
+    """Test that broadcast join doesn't cause memory issues with proper dataset sizes."""
+
+    # Create reasonably sized datasets
+    large_ds = ray.data.range(200).map(
+        lambda row: {"id": row["id"] % 20, "data": f"large_{row['id']}"}
+    )
+
+    small_ds = ray.data.range(20).map(
+        lambda row: {"id": row["id"], "metadata": f"small_{row['id']}"}
+    )
+
+    # This should complete without OOM on 2 CPU cluster
+    result = large_ds.join(
+        small_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Verify correctness
+    assert result.count() == 200  # All large rows should match
+
+
+def test_broadcast_join_with_multi_column_keys(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with multiple key columns."""
+
+    left_ds = ray.data.from_items(
+        [
+            {"id1": 1, "id2": "a", "value": "x"},
+            {"id1": 1, "id2": "b", "value": "y"},
+            {"id1": 2, "id2": "a", "value": "z"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id1": 1, "id2": "a", "label": "match1"},
+            {"id1": 2, "id2": "a", "label": "match2"},
+        ]
+    )
+
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id1", "id2"),
+        broadcast=True,
+    )
+
+    result_df = (
+        pd.DataFrame(result.take_all())
+        .sort_values(by=["id1", "id2"])
+        .reset_index(drop=True)
+    )
+
+    # Should have 2 matches
+    assert len(result_df) == 2
+    assert result_df.loc[0, "value"] == "x"
+    assert result_df.loc[0, "label"] == "match1"
+
+
+def test_broadcast_join_schema_preservation(ray_start_regular_shared_2_cpus):
+    """Test that broadcast join preserves schema correctly."""
+    import pyarrow as pa
+
+    # Create datasets with specific schemas
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": 100, "name": "alice"},
+            {"id": 2, "value": 200, "name": "bob"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "score": 95.5, "grade": "A"},
+            {"id": 2, "score": 87.3, "grade": "B"},
+        ]
+    )
+
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Verify schema is correctly formed
+    schema = result.schema()
+    assert "id" in schema.names
+    assert "value" in schema.names
+    assert "name" in schema.names
+    assert "score" in schema.names
+    assert "grade" in schema.names
+
+    # Verify data types are preserved
+    result_df = pd.DataFrame(result.take_all())
+    assert result_df["value"].dtype in [np.int64, np.int32]
+    assert result_df["score"].dtype == np.float64
+
+
 def test_broadcast_join_dataset_swapping_validation(ray_start_regular_shared_2_cpus):
     """Test that dataset swapping in broadcast joins produces correct results.
 

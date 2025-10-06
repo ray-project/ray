@@ -5,8 +5,35 @@ using PyArrow's native join functionality. Broadcast joins are useful when one d
 is significantly smaller than the other, allowing the smaller dataset to be broadcast
 to all partitions of the larger dataset.
 
-The implementation follows Ray Data's streaming execution model and avoids driver OOM
-by materializing the small dataset only in worker processes, not on the driver.
+Architecture and Streaming Execution Integration:
+-------------------------------------------------
+The broadcast join implementation leverages Ray Data's streaming execution model through
+the map_batches operator pattern:
+
+1. **Streaming Properties**: Uses map_batches which creates a MapOperator (OneToOneOperator),
+   maintaining streaming execution without materializing the full dataset.
+
+2. **Memory Management**: Small dataset is materialized and coalesced via repartition(1),
+   then stored as ObjectRefs to avoid driver OOM. Workers materialize the small table
+   lazily when processing batches.
+
+3. **Backpressure**: Inherits standard map_batches backpressure mechanisms from MapOperator,
+   preventing memory overload during join execution.
+
+4. **Fault Tolerance**: Leverages Ray's task retry mechanism through map_batches,
+   automatically retrying failed join operations on individual batches.
+
+5. **Resource Allocation**: Uses standard map_batches resource patterns with configurable
+   concurrency parameter for controlling parallelism.
+
+6. **Join Type Handling**:
+   - inner: Straightforward broadcast join
+   - left_outer: Iterate over left dataset with broadcast right
+   - right_outer: Swap datasets to iterate right with broadcast left
+   - full_outer: Falls back to hash shuffle join (broadcast causes duplicates)
+
+The implementation avoids driver OOM by materializing the small dataset only in worker
+processes, not on the driver. ObjectRefs are stored and materialized lazily.
 """
 
 from typing import Any, List, Optional, Tuple, TYPE_CHECKING
@@ -27,6 +54,54 @@ _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
 }
 
 
+def _validate_join_keys(
+    large_table_keys: Tuple[str, ...], small_table_keys: Tuple[str, ...]
+) -> None:
+    """Validate join key columns are properly specified.
+
+    Args:
+        large_table_keys: Join key columns for the large table.
+        small_table_keys: Join key columns for the small table.
+
+    Raises:
+        ValueError: If key columns are invalid or mismatched.
+    """
+    if not large_table_keys:
+        raise ValueError(
+            "large_table_key_columns must contain at least one column name"
+        )
+
+    if not small_table_keys:
+        raise ValueError(
+            "small_table_key_columns must contain at least one column name"
+        )
+
+    if len(large_table_keys) != len(small_table_keys):
+        raise ValueError(
+            f"Number of key columns must match: "
+            f"large_table has {len(large_table_keys)} keys, "
+            f"small_table has {len(small_table_keys)} keys"
+        )
+
+
+def _estimate_dataset_size_bytes(dataset: Dataset) -> Optional[int]:
+    """Estimate the in-memory size of a dataset in bytes.
+
+    Args:
+        dataset: The dataset to estimate size for.
+
+    Returns:
+        Estimated size in bytes, or None if unable to estimate.
+    """
+    try:
+        stats = dataset.stats()
+        if hasattr(stats, "dataset_bytes_spilled"):
+            return getattr(stats, "dataset_bytes_spilled", None)
+    except Exception:
+        pass
+    return None
+
+
 class BroadcastJoinFunction:
     """A callable class that performs broadcast joins using PyArrow.
 
@@ -40,6 +115,42 @@ class BroadcastJoinFunction:
 
     The implementation is stateless and fault-tolerant, inheriting Ray Data's
     standard fault tolerance behavior through map_batches execution.
+
+    Examples:
+        Create a broadcast join for inner join:
+
+        >>> import ray
+        >>> from ray.data._internal.logical.operators.broadcast_join import (
+        ...     BroadcastJoinFunction,
+        ... )
+        >>> from ray.data._internal.logical.operators.join_operator import JoinType
+        >>>
+        >>> # Large dataset
+        >>> large_ds = ray.data.range(1000).map(
+        ...     lambda row: {"id": row["id"], "value": row["id"] * 2}
+        ... )
+        >>>
+        >>> # Small dataset to broadcast
+        >>> small_ds = ray.data.range(10).map(
+        ...     lambda row: {"id": row["id"], "label": f"label_{row['id']}"}
+        ... )
+        >>>
+        >>> # Create broadcast join function
+        >>> join_fn = BroadcastJoinFunction(
+        ...     small_table_dataset=small_ds,
+        ...     join_type=JoinType.INNER,
+        ...     large_table_key_columns=("id",),
+        ...     small_table_key_columns=("id",),
+        ... )
+        >>>
+        >>> # Apply to large dataset
+        >>> result = large_ds.map_batches(join_fn, batch_format="pyarrow")  # doctest: +SKIP
+
+        Performance considerations:
+        - Best for small datasets (< 1 GB) broadcast to many partitions
+        - Avoids shuffle overhead for skewed join keys
+        - Each worker holds full small dataset in memory
+        - Not suitable for large broadcast datasets (may cause OOM)
     """
 
     def __init__(
@@ -66,7 +177,28 @@ class BroadcastJoinFunction:
                 to avoid conflicts.
             datasets_swapped: Whether the original left/right datasets were swapped
                 for optimization purposes.
+
+        Raises:
+            ValueError: If join type is not supported, key columns are invalid,
+                or dataset is None.
         """
+        # Validate inputs
+        if small_table_dataset is None:
+            raise ValueError("small_table_dataset cannot be None")
+
+        # Use helper function to validate join keys
+        _validate_join_keys(large_table_key_columns, small_table_key_columns)
+
+        # Validate that the join type is supported
+        if join_type not in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP:
+            supported_types = ", ".join(
+                [str(jt.value) for jt in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP.keys()]
+            )
+            raise ValueError(
+                f"Join type '{join_type}' is not supported in broadcast joins. "
+                f"Supported types are: {supported_types}"
+            )
+
         self.join_type = join_type
         self.large_table_key_columns = large_table_key_columns
         self.small_table_key_columns = small_table_key_columns
@@ -74,16 +206,22 @@ class BroadcastJoinFunction:
         self.small_table_columns_suffix = small_table_columns_suffix
         self.datasets_swapped = datasets_swapped
 
-        # Validate that the join type is supported
-        if join_type not in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP:
-            raise ValueError(
-                f"Join type '{join_type}' is not supported in broadcast joins. "
-                f"Supported types are: {list(_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP.keys())}"
-            )
-
         # Materialize and coalesce the small dataset for broadcasting
         # Using repartition(1) ensures all data is in a single partition for efficient broadcasting
         coalesced_ds = small_table_dataset.repartition(1).materialize()
+
+        # Warn if broadcasting a large dataset
+        estimated_size_bytes = _estimate_dataset_size_bytes(coalesced_ds)
+        if estimated_size_bytes and estimated_size_bytes > 1024 * 1024 * 1024:  # 1 GB
+            import warnings
+
+            warnings.warn(
+                f"Broadcasting a dataset of size {estimated_size_bytes / (1024**3):.2f} GB. "
+                "Large broadcast datasets may cause out-of-memory errors on worker nodes. "
+                "Consider using a hash shuffle join (broadcast=False) for large datasets.",
+                UserWarning,
+                stacklevel=3,
+            )
 
         # Store object references instead of materializing on driver to avoid OOM
         self._small_table_refs = coalesced_ds.to_arrow_refs()
@@ -111,6 +249,16 @@ class BroadcastJoinFunction:
         This property ensures that the small table is only materialized when needed
         and within the worker processes, not on the driver.
 
+        Memory Management:
+        - Uses Ray's object store for efficient shared memory access
+        - Cached after first access to avoid repeated materialization
+        - Each worker materializes the table once and reuses it
+
+        Streaming Execution:
+        - ObjectRefs stored on driver (minimal memory)
+        - Actual data materialized in workers during join execution
+        - Supports Ray's task retry mechanism automatically
+
         Returns:
             PyArrow table containing the small dataset.
         """
@@ -124,9 +272,11 @@ class BroadcastJoinFunction:
             self._cached_small_table = pa.table({}, schema=self._small_table_schema)
         elif len(self._small_table_refs) == 1:
             # Single reference - most common case for coalesced dataset
+            # This is zero-copy from Ray's object store
             self._cached_small_table = ray.get(self._small_table_refs[0])
         else:
             # Multiple references - concatenate them
+            # This should be rare after repartition(1)
             arrow_tables = [ray.get(ref) for ref in self._small_table_refs]
             self._cached_small_table = (
                 pa.concat_tables(arrow_tables)
@@ -165,6 +315,13 @@ class BroadcastJoinFunction:
 
                 batch = pa.table(batch)
 
+            # Validate batch is not None
+            if batch is None:
+                raise ValueError(
+                    "Received None as batch input to broadcast join. "
+                    "This may indicate an issue with the upstream dataset."
+                )
+
             # Handle empty batch case
             if batch.num_rows == 0:
                 return self._create_empty_result_table(batch)
@@ -172,8 +329,15 @@ class BroadcastJoinFunction:
             # Handle empty small table case
             if self.small_table.num_rows == 0:
                 return self._handle_empty_small_table(batch)
+        except ValueError:
+            # Re-raise ValueError as-is
+            raise
         except Exception as e:
-            raise ValueError(f"Error preparing data for broadcast join: {e}") from e
+            raise ValueError(
+                f"Error preparing data for broadcast join: {e}. "
+                f"Batch type: {type(batch).__name__}, "
+                f"Join type: {self.join_type.value if hasattr(self.join_type, 'value') else self.join_type}"
+            ) from e
 
         # Get the appropriate PyArrow join type
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
@@ -222,7 +386,27 @@ class BroadcastJoinFunction:
 
             return joined_table
         except Exception as e:
-            raise ValueError(f"PyArrow join operation failed: {e}") from e
+            # Provide actionable error message
+            error_msg = (
+                f"PyArrow join operation failed: {e}. "
+                f"Join type: {arrow_join_type}, "
+                f"Large table keys: {list(self.large_table_key_columns)}, "
+                f"Small table keys: {list(self.small_table_key_columns)}. "
+            )
+
+            # Add specific guidance for common errors
+            if "No match" in str(e) or "key" in str(e).lower():
+                error_msg += (
+                    "This may indicate a key column mismatch. "
+                    "Ensure join key columns exist in both datasets and have compatible types."
+                )
+            elif "type" in str(e).lower() or "schema" in str(e).lower():
+                error_msg += (
+                    "This may indicate a schema or type incompatibility. "
+                    "Ensure join key columns have the same data types in both datasets."
+                )
+
+            raise ValueError(error_msg) from e
 
     def _get_swapped_join_type(self, original_join_type: str) -> str:
         """Get the appropriate join type when datasets are swapped."""

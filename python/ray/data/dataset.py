@@ -2556,8 +2556,18 @@ class Dataset:
                 broadcasted to all workers using map_batches with PyArrow joins.
                 This is efficient when the smaller dataset is much smaller than the larger
                 dataset and can fit in a worker node's memory. Defaults to False.
-                Note that this will only check dataset counts if datasets are already
-                materialized to avoid expensive computation.
+
+                Performance characteristics:
+                - Best for small datasets (< 1 GB) joined with large datasets
+                - Avoids shuffle overhead for skewed join keys
+                - Each worker holds full small dataset in memory
+                - Not suitable for large broadcast datasets (may cause OOM)
+                - Maintains streaming execution properties via map_batches
+                - Automatically swaps datasets to broadcast the smaller one
+
+                Note: This will only check dataset counts if datasets are already
+                materialized to avoid expensive computation. For full_outer joins,
+                falls back to hash shuffle join as broadcast is not efficient.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2596,9 +2606,26 @@ class Dataset:
             )
 
             # Broadcast join example (num_partitions is optional)
+            # Best for when squares_ds is much smaller than doubles_ds
             broadcast_joined_ds = doubles_ds.join(
                 squares_ds,
                 join_type="inner",
+                on=("id",),
+                broadcast=True,
+            )
+
+            # Left outer broadcast join - get all left rows with optional right matches
+            left_outer_broadcast = doubles_ds.join(
+                squares_ds,
+                join_type="left_outer",
+                on=("id",),
+                broadcast=True,
+            )
+
+            # Right outer broadcast join - automatically swaps to iterate right dataset
+            right_outer_broadcast = doubles_ds.join(
+                squares_ds,
+                join_type="right_outer",
                 on=("id",),
                 broadcast=True,
             )
