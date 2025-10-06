@@ -2,9 +2,12 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
-from ray.llm._internal.serve.configs.server_models import LLMServingArgs
-from ray.llm._internal.serve.builders.application_builders import build_openai_app
+from ray.serve.llm import (
+    LLMConfig,
+    LLMServingArgs,
+    ModelLoadingConfig,
+    build_openai_app,
+)
 from ray.llm._internal.serve.deployments.data_parallel.dp_server import (
     build_dp_deployment,
 )
