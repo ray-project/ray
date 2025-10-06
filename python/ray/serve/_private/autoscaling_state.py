@@ -776,15 +776,10 @@ class ApplicationAutoscalingState:
                 ]
 
                 decision = deployment_autoscaling_state.get_decision_num_replicas(
-                    curr_target_num_replicas=deployment_detail.target_num_replicas
+                    curr_target_num_replicas=deployment_detail.target_num_replicas,
+                    _skip_bound_check=_skip_bound_check,
                 )
-
-                if not _skip_bound_check:
-                    updated_decisions[
-                        deployment_id
-                    ] = deployment_autoscaling_state.apply_bounds(decision)
-                else:
-                    updated_decisions[deployment_id] = decision
+                updated_decisions[deployment_id] = decision
 
             return updated_decisions
 

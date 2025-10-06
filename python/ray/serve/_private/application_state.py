@@ -439,22 +439,14 @@ class ApplicationState:
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
     def should_autoscale(self) -> bool:
+        """Determine if autoscaling should be enabled for the application."""
+
         return (
             self._target_state.config is not None
             and self._target_state.config.autoscaling_policy is not None
             and self._build_app_task_info is not None
             and self._build_app_task_info.finished
         )
-
-    def should_update_deployment_scaling(self) -> bool:
-        deployments: List[DeploymentStatusInfo] = self.get_deployments_statuses()
-        for deployment in deployments:
-            if self._autoscaling_state_manager.should_autoscale_deployment(
-                DeploymentID(name=deployment.name, app_name=self._name)
-            ):
-                return True
-
-        return False
 
     def update_deployment_scaling_decision(self) -> bool:
         deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
@@ -1187,7 +1179,7 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
-            if app.should_autoscale() or app.should_update_deployment_scaling():
+            if app.should_autoscale():
                 any_target_state_changed = (
                     app.update_deployment_scaling_decision() or any_target_state_changed
                 )
