@@ -843,6 +843,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_time_delta = time.perf_counter() - task_info.start_time
         self.task_completion_time += task_time_delta
 
+        # NOTE: This is used for Issue Detection
+        self._op_task_duration_stats.add_duration(task_time_delta)
+
         assert task_info.cum_block_gen_time is not None
         self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
         inputs = self._running_tasks[task_index].inputs
