@@ -859,8 +859,13 @@ def install_unified_signal_handlers(
             _force(f"Second signal {signum}")
 
     if is_driver:
-        signal.signal(signal.SIGINT, _handler)
-    set_sigterm_handler(_handler)
+        set_sigterm_handler(_handler)
+    else:
+
+        def _worker_term(signum, frame):
+            _force("SIGTERM")
+
+        set_sigterm_handler(_worker_term)
     _unified_signal_installed = True
 
 

@@ -1036,7 +1036,7 @@ class Worker:
                 "intentional_system_exit", b"signal: first"
             ),
             worker_force_cb=lambda detail: self.core_worker.force_exit_worker(
-                "user", detail.encode("utf-8")
+                "system", detail.encode("utf-8")
             ),
         )
         self.core_worker.run_task_loop()
