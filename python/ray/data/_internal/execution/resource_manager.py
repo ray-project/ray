@@ -330,7 +330,15 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
-
+    def clear_usages_and_budget(self):
+        """Resets the usages and budgets. This function should only be called on
+        executor shutdown.
+        """
+        assert isinstance(self.op_resource_allocator, ReservationOpResourceAllocator)
+        for op in self._op_usages:
+            self._op_usages[op] = ExecutionResources.zero()
+            self.op_resource_allocator._op_budgets[op] = ExecutionResources.zero()
+            self.op_resource_allocator._output_budgets[op] = 0
 class OpResourceAllocator(ABC):
     """An interface for dynamic operator resource allocation.
 
