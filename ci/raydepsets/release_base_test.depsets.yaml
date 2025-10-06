@@ -1,0 +1,71 @@
+# This file is used to generate the base extra test dependencies for the Ray release tests
+# Depends on: ci/raydepsets/rayimg.depsets.yaml
+
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+depsets:
+  - name: ray_base_extra_testdeps_py${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
+      - release/ray_release/byod/requirements_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - python/requirements_compiled.txt
+    output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
+
+  - name: ray_ml_cpu_base_extra_testdeps_py${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
+      - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - python/requirements_compiled.txt
+    output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+
+  - name: ray_ml_cuda121_base_extra_testdeps_py${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
+      - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - python/requirements_compiled.txt
+    output: release/ray_release/byod/ray_ml_cuda121_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/cu121
+    build_arg_sets:
+      - py39
+      - py310
