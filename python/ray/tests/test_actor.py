@@ -758,30 +758,36 @@ def test_decorator_label_selector_args(
     "fallback_strategy, expected_error",
     [
         (  # Valid: single selector in the list
-            [{"ray.io/accelerator-type": "H100"}],
+            [{"label_selector": {"ray.io/accelerator-type": "H100"}}],
             None,
         ),
         (  # Valid: multiple selectors in the list
             [
-                {"market-type": "spot"},
-                {"region": "in(us-west-1, us-east-1)"},
+                {"label_selector": {"market-type": "spot"}},
+                {"label_selector": {"region": "in(us-west-1, us-east-1)"}},
             ],
             None,
         ),
+        (  # Invalid: unsupported `fallback_strategy` option.
+            [
+                {"memory": "1Gi"},
+            ],
+            ValueError,
+        ),
         (  # Invalid: not a list
-            {"market-type": "spot"},
+            {"label_selector": {"market-type": "spot"}},
             TypeError,
         ),
-        (  # Invalid: list contains a non-dict element
+        (  # Invalid: `fallback_strategy`` contains a non-dict element
             ["not-a-dict"],
             ValueError,
         ),
-        (  # Invalid: contains a dict with a bad key
-            [{"-bad-key-": "value"}],
+        (  # Invalid: `label_selector` contains a dict with a bad key
+            [{"label_selector": {"-bad-key-": "value"}}],
             ValueError,
         ),
-        (  # Invalid: contains a dict with a bad value
-            [{"key": "-bad-value-"}],
+        (  # Invalid: `label_selector` contains a dict with a bad value
+            [{"label_selector": {"key": "-bad-value-"}}],
             ValueError,
         ),
     ],

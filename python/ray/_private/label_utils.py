@@ -1,6 +1,7 @@
 import json
 import re
 from typing import (
+    Any,
     Dict,
     List,
     Optional,
@@ -193,14 +194,33 @@ def validate_node_label_syntax(labels: Dict[str, str]):
 
 
 def validate_fallback_strategy(
-    fallback_strategy: Optional[List[Dict[str, str]]]
+    fallback_strategy: Optional[List[Dict[str, Any]]]
 ) -> Optional[str]:
     if fallback_strategy is None:
         return None
 
-    for label_selector in fallback_strategy:
-        if not isinstance(label_selector, dict):
+    # Supported options for `fallback_strategy` scheduling.
+    supported_options = {"label_selector"}
+
+    for strategy in fallback_strategy:
+        if not isinstance(strategy, dict):
             return "Each element in fallback_strategy must be a dictionary."
-        possible_error_message = validate_label_selector(label_selector)
-        if possible_error_message:
-            return possible_error_message
+
+        # Validate `fallback_strategy` only contains supported options.
+        for option in strategy:
+            if option not in supported_options:
+                return (
+                    f"Unsupported option found: '{option}'. "
+                    f"Only {list(supported_options)} is currently supported."
+                )
+
+        # Validate the 'label_selector' dictionary.
+        label_selector = strategy.get("label_selector")
+        if label_selector and not isinstance(label_selector, dict):
+            return 'The value of "label_selector" must be a dictionary.'
+
+        error_message = validate_label_selector(label_selector)
+        if error_message:
+            return error_message
+
+    return None

@@ -311,32 +311,45 @@ def test_validate_node_labels():
         (None, None),  # No fallback_strategy specified.
         ([], None),  # fallback_strategy passed an empty list.
         (
-            [{"ray.io/availability-region": "us-west4"}],
+            [
+                {"label_selector": {"valid-key": "valid-value"}, "memory": "500m"},
+            ],
+            "Unsupported option found: 'memory'. Only ['label_selector'] is currently supported.",
+        ),  # fallback_strategy contains unsupported option.
+        (
+            [{"label_selector": {"ray.io/availability-region": "us-west4"}}],
             None,
         ),  # fallback_strategy contains one selector.
         (
             [
-                {"ray.io/availability-zone": "us-central1-a"},
-                {"ray.io/accelerator-type": "A100"},
+                {"label_selector": {"ray.io/availability-zone": "us-central1-a"}},
+                {"label_selector": {"ray.io/accelerator-type": "A100"}},
             ],
             None,
         ),  # fallback_strategy contains multiple valid selectors.
         (
-            [{"valid-key": "valid-value"}, {"-!!invalid-key": "value"}],
+            [
+                {"label_selector": {"valid-key": "valid-value"}},
+                {"label_selector": {"-!!invalid-key": "value"}},
+            ],
             "Invalid label key name",
         ),  # fallback_strategy contains selector with invalid key.
         (
-            [{"valid-key": "valid-value"}, {"key": "-invalid-value!!"}],
+            [
+                {"label_selector": {"valid-key": "valid-value"}},
+                {"label_selector": {"key": "-invalid-value!!"}},
+            ],
             "Invalid label selector value",
         ),  # fallback_strategy contains selector with invalid value.
     ],
     ids=[
         "none",
         "empty-list",
-        "single-valid",
-        "multi-valid",
-        "invalid-key",
-        "invalid-value",
+        "unsupported-fallback-option",
+        "single-valid-label-selector",
+        "multiple-valid-label-selector",
+        "invalid-label-selector-key",
+        "invalid-label-selector-value",
     ],
 )
 def test_validate_fallback_strategy(fallback_strategy, expected_error):
@@ -349,4 +362,4 @@ def test_validate_fallback_strategy(fallback_strategy, expected_error):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", "-vv", __file__]))
