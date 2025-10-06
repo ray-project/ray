@@ -38,14 +38,15 @@ class TuneReportCheckpointCallback(RayReportCallback):
     Example:
         .. code-block:: python
 
-            ############# Using it in TrainSession ###############
+            ############# Using it in Ray Tune ###############
             from ray.tune.integrations.keras import TuneReportCheckpointCallback
-            def train_loop_per_worker():
-                strategy = tf.distribute.MultiWorkerMirroredStrategy()
-                with strategy.scope():
-                    model = build_model()
 
+            def train_fn():
+                model = build_model()
                 model.fit(dataset_shard, callbacks=[TuneReportCheckpointCallback()])
+
+            tuner = tune.Tuner(train_fn)
+            results = tuner.fit()
 
     Args:
         metrics: Metrics to report. If this is a list, each item describes
