@@ -7,6 +7,7 @@ set -euo pipefail
 SECRET=$(aws secretsmanager get-secret-value \
   --secret-id azure-service-principal-oss-release \
   --query SecretString \
+  --region us-west-2 \
   --output text)
 
 CLIENT_ID=$(echo "$SECRET" | jq -r '.client_id')
