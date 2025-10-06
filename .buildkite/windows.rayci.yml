@@ -67,7 +67,7 @@ steps:
     tags: serve
     job_env: WINDOWS
     instance_type: windows
-    parallelism: 4
+    parallelism: 2
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
