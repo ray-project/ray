@@ -1503,16 +1503,6 @@ python/ray/llm/_internal/common/utils/download_utils.py
 python/ray/llm/_internal/serve/configs/openai_api_models.py
     DOC201: Function `to_model_metadata` does not have a return section in docstring
 --------------------
-python/ray/llm/_internal/serve/deployments/routers/router.py
-    DOC101: Method `LLMRouter.completions`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `LLMRouter.completions`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [body: CompletionRequest].
-    DOC101: Method `LLMRouter.chat`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `LLMRouter.chat`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [body: ChatCompletionRequest].
-    DOC101: Method `LLMRouter.embeddings`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `LLMRouter.embeddings`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [body: EmbeddingRequest].
-    DOC101: Method `LLMRouter.as_deployment`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `LLMRouter.as_deployment`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [llm_configs: Optional[List[LLMConfig]]].
---------------------
 python/ray/llm/_internal/serve/observability/metrics/middleware.py
     DOC106: Function `_get_route_details`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `_get_route_details`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
