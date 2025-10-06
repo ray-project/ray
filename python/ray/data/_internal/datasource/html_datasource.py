@@ -165,20 +165,22 @@ class HTMLDatasource(FileBasedDatasource):
             # Auto-detect encoding
             html_content = self._decode_html(data, path)
 
-        # Parse HTML
+        # Parse HTML with appropriate parser
+        # Try lxml first (faster) if available, otherwise use html.parser
+        parser = "html.parser"  # Default fallback
         try:
-            soup = BeautifulSoup(html_content, "lxml")
-        except Exception as e:
-            logger.warning(
-                f"Failed to parse HTML with lxml parser for '{path}', "
-                f"falling back to html.parser: {e}"
-            )
-            try:
-                soup = BeautifulSoup(html_content, "html.parser")
-            except Exception as parse_error:
-                raise ValueError(
-                    f"Failed to parse HTML file '{path}': {parse_error}"
-                ) from parse_error
+            import lxml  # noqa: F401
+
+            parser = "lxml"
+        except ImportError:
+            pass  # lxml not available, use html.parser
+
+        try:
+            soup = BeautifulSoup(html_content, parser)
+        except Exception as parse_error:
+            raise ValueError(
+                f"Failed to parse HTML file '{path}' with {parser} parser: {parse_error}"
+            ) from parse_error
 
         # Extract metadata from full document (before applying selector)
         metadata = self._extract_metadata(soup) if self.extract_metadata else None
@@ -195,10 +197,9 @@ class HTMLDatasource(FileBasedDatasource):
                 builder = DelegatingBlockBuilder()
                 yield builder.build()
                 return
-            # Process only selected elements for content extraction
-            content_soup = BeautifulSoup("<div></div>", "html.parser")
-            for elem in elements:
-                content_soup.div.append(elem)
+            # Create new soup with copies of selected elements (preserves original DOM)
+            combined_html = "".join(str(elem) for elem in elements)
+            content_soup = BeautifulSoup(combined_html, parser)
 
         # Build row data
         row_data = self._extract_content(content_soup, path, metadata)
