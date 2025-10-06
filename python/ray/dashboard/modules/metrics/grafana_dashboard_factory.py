@@ -9,7 +9,6 @@ import ray
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
-    PanelTemplate,
 )
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
@@ -226,9 +225,8 @@ def _generate_panel_template(
         }
 
     # Configure panel visualization settings
-    if panel.template != PanelTemplate.BARGAUGE:
-        template["yaxes"][0]["format"] = panel.unit
 
+    template["yaxes"][0]["format"] = panel.unit
     template["fill"] = panel.fill
     template["stack"] = panel.stack
     template["linewidth"] = panel.linewidth
