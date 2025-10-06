@@ -1881,9 +1881,6 @@ python/ray/train/horovod/horovod_trainer.py
     DOC104: Method `HorovodTrainer.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
     DOC105: Method `HorovodTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, horovod_config, scaling_config, dataset_config, run_config, datasets, metadata, resume_from_checkpoint
 --------------------
-python/ray/train/lightgbm/_lightgbm_utils.py
-    DOC201: Method `RayTrainReportCallback.get_model` does not have a return section in docstring
---------------------
 python/ray/train/lightgbm/lightgbm_predictor.py
     DOC201: Method `LightGBMPredictor.from_checkpoint` does not have a return section in docstring
 --------------------
