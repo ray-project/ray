@@ -367,7 +367,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.materialize()
     assert (
         str(ds)
-        == "MaterializedDataset(num_blocks=2, num_rows=0, schema=Unknown schema)"
+        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
     )
 
     # Test map on empty dataset.
