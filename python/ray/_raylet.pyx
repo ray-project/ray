@@ -4367,7 +4367,7 @@ cdef class CoreWorker:
             #    another worker. We'll keep looping until it's sealed.
             # 2. it existed during the allocation attempt but was evicted before
             #    the pin attempt. We'll allocate and write the second time.
-            base_backoff = 1
+            base_backoff_s = 1
             attempt = 1
             max_attempts = 6 # 6 attempts =~ 60 seconds of total backoff time
             while not self.store_task_output(
