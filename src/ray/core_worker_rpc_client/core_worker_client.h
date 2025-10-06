@@ -56,7 +56,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   bool IsIdleAfterRPCs() const override {
     return grpc_client_->IsChannelIdleAfterRPCs() &&
-           (retryable_grpc_client_->NumPendingRequests() == 0);
+           retryable_grpc_client_->NumActiveRequests() == 0;
   }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
