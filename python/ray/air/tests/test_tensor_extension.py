@@ -922,7 +922,6 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     when concatenating Arrow arrays with variable shaped tensors."""
     from ray.data.extensions.tensor_extension import (
         ArrowVariableShapedTensorArray,
-        ArrowVariableShapedTensorType,
     )
 
     #
@@ -934,13 +933,13 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
         # (2, 2)
         np.array([[1, 2], [3, 4]]),
         # (2, 3)
-        np.array([[5, 6, 7], [8, 9, 10]])
+        np.array([[5, 6, 7], [8, 9, 10]]),
     ]
     second_tensors = [
         # (1, 4)
         np.array([[11, 12, 13, 14]]),
         # (3, 1)
-        np.array([[15], [16], [17]])
+        np.array([[15], [16], [17]]),
     ]
 
     first_arr = ArrowVariableShapedTensorArray.from_numpy(first_tensors)
@@ -960,11 +959,12 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
 
     result_ndarray = concatenated.to_numpy()
 
-    for i, expected_ndarray in enumerate(itertools.chain.from_iterable([first_tensors, second_tensors])):
+    for i, expected_ndarray in enumerate(
+        itertools.chain.from_iterable([first_tensors, second_tensors])
+    ):
         assert result_ndarray[i].shape == expected_ndarray.shape
 
         np.testing.assert_array_equal(result_ndarray[i], expected_ndarray)
-
 
     #
     # Case 2: Tensors are variable-shaped, with diverging ``ndim``s
@@ -975,13 +975,13 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
         # (1, 2, 1)
         np.array([[[1], [2]], [[3], [4]]]),
         # (2, 2, 1)
-        np.array([[[5], [6], [7]], [[8], [9], [10]]])
+        np.array([[[5], [6], [7]], [[8], [9], [10]]]),
     ]
     second_tensors = [
         # (1, 4)
         np.array([[11, 12, 13, 14]]),
         # (3, 1)
-        np.array([[15], [16], [17]])
+        np.array([[15], [16], [17]]),
     ]
 
     first_arr = ArrowVariableShapedTensorArray.from_numpy(first_tensors)
@@ -1004,7 +1004,9 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
 
     print(f">>> Result: {[arr.shape for arr in result_ndarray]=}")
 
-    for i, expected_ndarray in enumerate(itertools.chain.from_iterable([first_tensors, second_tensors])):
+    for i, expected_ndarray in enumerate(
+        itertools.chain.from_iterable([first_tensors, second_tensors])
+    ):
         assert result_ndarray[i].shape == expected_ndarray.shape
 
         np.testing.assert_array_equal(result_ndarray[i], expected_ndarray)
