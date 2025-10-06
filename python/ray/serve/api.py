@@ -77,8 +77,8 @@ def _prepare_http_options(
         elif isinstance(http_options, dict):
             http_options = HTTPOptions(**http_options)
 
-        if isinstance(proxy_location, str):
-            proxy_location = ProxyLocation(proxy_location)
+        # if isinstance(proxy_location, str):
+        #     proxy_location = ProxyLocation(proxy_location)
 
         http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
     return http_options
