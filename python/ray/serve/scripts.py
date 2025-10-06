@@ -533,8 +533,7 @@ def run(
     grpc_options = gRPCOptions()
     # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        config_http_options = config.http_options.dict()
-        http_options = {**config_http_options, **http_options}
+        http_options = {**config.http_options.dict(), **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
     client = _private_api.serve_start(
