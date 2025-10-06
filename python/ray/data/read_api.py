@@ -33,6 +33,10 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
 )
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+from ray.data._internal.datasource.html_datasource import (
+    HTMLDatasource,
+    HTMLFileMetadataProvider,
+)
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
@@ -1188,6 +1192,201 @@ def read_images(
         paths,
         size=size,
         mode=mode,
+        include_paths=include_paths,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        open_stream_args=arrow_open_file_args,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_html(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_file_args: Optional[Dict[str, Any]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    text_mode: str = "clean",
+    extract_tables: bool = False,
+    extract_links: bool = False,
+    extract_metadata: bool = True,
+    selector: Optional[str] = None,
+    encoding: Optional[str] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = HTMLDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from HTML files.
+
+    This function reads HTML files and extracts text content, tables, links, and
+    metadata. It's particularly useful for web scraping, documentation processing,
+    and building RAG (Retrieval-Augmented Generation) pipelines.
+
+    The column name defaults to "text" (configurable via ``text_mode``).
+
+    Examples:
+        Read HTML files and extract clean text:
+
+        >>> import ray
+        >>> ds = ray.data.read_html("s3://bucket/pages/")  # doctest: +SKIP
+        >>> ds.take(1)  # doctest: +SKIP
+        [{'text': 'Clean page content...', 'title': 'Page Title', 'path': '...'}]
+
+        Extract text in markdown format:
+
+        >>> ds = ray.data.read_html(  # doctest: +SKIP
+        ...     "s3://bucket/docs/",
+        ...     text_mode="markdown"
+        ... )
+
+        Extract tables from HTML:
+
+        >>> ds = ray.data.read_html(  # doctest: +SKIP
+        ...     "s3://bucket/reports.html",
+        ...     extract_tables=True
+        ... )
+        >>> ds.take(1)[0]["tables"]  # doctest: +SKIP
+        [[[header1, header2], [row1col1, row1col2], ...]]
+
+        Extract specific elements using CSS selectors:
+
+        >>> ds = ray.data.read_html(  # doctest: +SKIP
+        ...     "s3://bucket/docs/",
+        ...     selector="article.main-content",
+        ...     extract_links=True
+        ... )
+
+        Process local HTML files with custom encoding:
+
+        >>> ds = ray.data.read_html(  # doctest: +SKIP
+        ...     "local_folder/*.html",
+        ...     encoding="utf-8",
+        ...     extract_metadata=True
+        ... )
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The pyarrow filesystem implementation to read from. These
+            filesystems are specified in the `pyarrow docs
+            <https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations>`_.
+            Specify this parameter if you need to provide specific configurations to
+            the filesystem. By default, the filesystem is automatically selected based
+            on the scheme of the paths. For example, if the path begins with ``s3://``,
+            the `S3FileSystem` is used.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        arrow_open_file_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file
+            <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_file>`_
+            when opening input files to read.
+        partition_filter: A :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
+            Use with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match ``*.html`` or ``*.htm``.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        text_mode: The text extraction mode. Options:
+
+            - ``"clean"`` (default): Remove scripts, styles, and extra whitespace
+            - ``"raw"``: Preserve all text including whitespace
+            - ``"markdown"``: Convert HTML to markdown format
+
+        extract_tables: If ``True``, extract HTML tables as structured data. Tables
+            are returned as a list of lists (rows and cells) in the ``"tables"`` column.
+            Defaults to ``False``.
+        extract_links: If ``True``, extract all hyperlinks from the HTML. Links are
+            returned as a list of dictionaries with ``"href"`` and ``"text"`` keys in
+            the ``"links"`` column. Defaults to ``False``.
+        extract_metadata: If ``True``, extract metadata including page title, meta
+            description, meta keywords, and headers (h1-h6). Metadata is included as
+            additional columns. Defaults to ``True``.
+        selector: A CSS selector to extract only specific HTML elements. For example,
+            ``"article.main-content"`` extracts only elements matching that selector.
+            If no elements match, an empty block is returned. Defaults to ``None``
+            (extracts all content).
+        encoding: Character encoding to use when reading HTML files. If ``None``,
+            encoding is auto-detected by trying common encodings (utf-8, latin-1, etc.).
+            Defaults to ``None``.
+        include_paths: If ``True``, include the path to each HTML file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by. Defaults to
+            ``["html", "htm"]``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing parsed HTML data with text content
+        and optionally tables, links, and metadata.
+
+    Raises:
+        ValueError: if ``text_mode`` is not one of "clean", "raw", or "markdown".
+        ValueError: if HTML files cannot be decoded with the specified encoding.
+
+    .. seealso::
+
+        :func:`read_text`
+            Read raw text files without HTML parsing.
+
+        :func:`read_binary_files`
+            Read raw binary files.
+    """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
+    if meta_provider is None:
+        meta_provider = HTMLFileMetadataProvider()
+
+    datasource = HTMLDatasource(
+        paths,
+        text_mode=text_mode,
+        extract_tables=extract_tables,
+        extract_links=extract_links,
+        extract_metadata=extract_metadata,
+        selector=selector,
+        encoding=encoding,
         include_paths=include_paths,
         filesystem=filesystem,
         meta_provider=meta_provider,
@@ -2987,7 +3186,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
             return df
         else:
             raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
             )
 
     ds = from_pandas_refs(
@@ -3117,12 +3316,11 @@ def from_pandas_refs(
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
                 )
     else:
         raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
         )
 
     context = DataContext.get_current()
