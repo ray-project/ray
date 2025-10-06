@@ -12,5 +12,6 @@ srcs:
   - python/requirements/test-requirements.txt
 build_args:
   - DOCKER_IMAGE_BASE_TEST=cr.ray.io/rayproject/oss-ci-base_test-aarch64
+  - RAYCI_DISABLE_JAVA
 tags:
   - cr.ray.io/rayproject/oss-ci-base_build-aarch64
