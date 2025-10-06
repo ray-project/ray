@@ -41,10 +41,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   GcsClientTest()
       : no_redis_(GetParam()),
         fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
+    // core_worker_rpc_server_reconnect_timeout_s is needed for
+    // TestEvictExpiredDestroyedActors since the actors get stuck until the unavailable
+    // callback fires and don't get cleaned up
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
+  "core_worker_rpc_server_reconnect_timeout_s": 0,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
   "gcs_storage": $0
