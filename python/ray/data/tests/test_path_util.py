@@ -55,6 +55,21 @@ def test_windows_path(path):
         assert _is_local_windows_path(path)
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "some/file",
+        "some/file;semicolon",
+        "some/file?questionmark",
+        "some/file#hash",
+        "some/file;all?of the#above",
+    ],
+)
+def test_weird_local_paths(path):
+    resolved_paths, _ = _resolve_paths_and_filesystem(path)
+    assert resolved_paths[0] == path
+
+
 if __name__ == "__main__":
     import sys
 
