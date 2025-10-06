@@ -165,16 +165,16 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                              const Status &status,
                              const rpc::SendReplyCallback &canceled_send_reply_callback) {
     if (canceled_task_spec.IsActorTask()) {
-      // For actor tasks, check if cancellation is due to worker shutdown.
-      // This information must travel with the RPC response because the actor death
-      // notification from GCS may arrive at the submitter after this response.
+      // If task cancelation is due to worker shutdown, propagate that information
+      // to the submitter.
       {
         absl::MutexLock lock(&stop_mu_);
         if (stopping_) {
           reply->set_worker_exiting(true);
+          reply->set_was_cancelled_before_running(true);
         }
       }
-      canceled_send_reply_callback(status, nullptr, nullptr);
+      canceled_send_reply_callback(Status::OK(), nullptr, nullptr);
     } else {
       reply->set_was_cancelled_before_running(true);
       canceled_send_reply_callback(status, nullptr, nullptr);
@@ -185,14 +185,11 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     absl::MutexLock lock(&stop_mu_);
     task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
     if (stopping_) {
-      RAY_LOG(INFO)
-          << "Rejecting PushTask due to worker shutdown: task will be cancelled";
       reply->set_was_cancelled_before_running(true);
       if (task_spec.IsActorTask()) {
         reply->set_worker_exiting(true);
       }
-      send_reply_callback(
-          Status::SchedulingCancelled("Worker is shutting down"), nullptr, nullptr);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
 
