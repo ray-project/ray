@@ -43,12 +43,6 @@ namespace core {
 class ReferenceCounter : public ReferenceCounterInterface,
                          public LocalityDataProviderInterface {
  public:
-  using ReferenceTableProto =
-      ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
-  using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
-  using LineageReleasedCallback =
-      std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
-
   ReferenceCounter(rpc::Address rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,

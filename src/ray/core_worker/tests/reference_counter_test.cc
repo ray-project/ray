@@ -37,7 +37,7 @@ namespace ray {
 namespace core {
 
 static const rpc::Address empty_borrower;
-static const ReferenceCounter::ReferenceTableProto empty_refs;
+static const ReferenceCounterInterface::ReferenceTableProto empty_refs;
 
 class ReferenceCountTest : public ::testing::Test {
  protected:
@@ -406,7 +406,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     return return_id;
   }
 
-  ReferenceCounter::ReferenceTableProto FinishExecutingTask(
+  ReferenceCounterInterface::ReferenceTableProto FinishExecutingTask(
       const ObjectID &arg_id,
       const ObjectID &return_id,
       const ObjectID *return_wrapped_id = nullptr,
@@ -415,7 +415,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       rc_.AddNestedObjectIds(return_id, {*return_wrapped_id}, *owner_address);
     }
 
-    ReferenceCounter::ReferenceTableProto refs;
+    ReferenceCounterInterface::ReferenceTableProto refs;
     if (!arg_id.IsNil()) {
       rc_.PopAndClearLocalBorrowers({arg_id}, &refs, nullptr);
     }
@@ -427,7 +427,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       const ObjectID &arg_id,
       const absl::flat_hash_map<ObjectID, std::vector<ObjectID>> &nested_return_ids = {},
       const rpc::Address &borrower_address = empty_borrower,
-      const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
+      const ReferenceCounterInterface::ReferenceTableProto &borrower_refs = empty_refs) {
     std::vector<ObjectID> arguments;
     for (const auto &pair : nested_return_ids) {
       // NOTE(swang): https://github.com/ray-project/ray/issues/17553.
@@ -2735,7 +2735,7 @@ TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
   ASSERT_TRUE(rc->HasReference(outer_id));
   // Task finishes and our local ref to the outer ObjectRef is deleted. We
   // return borrower information to the owner.
-  ReferenceCounter::ReferenceTableProto refs_proto;
+  ReferenceCounterInterface::ReferenceTableProto refs_proto;
   rc->PopAndClearLocalBorrowers({outer_id}, &refs_proto, nullptr);
   ASSERT_FALSE(rc->HasReference(outer_id));
   // Future resolution is async, so we may receive information about the inner

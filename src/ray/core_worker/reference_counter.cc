@@ -960,7 +960,7 @@ ReferenceCounter::GetAllReferenceCounts() const {
 
 void ReferenceCounter::PopAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
-    ReferenceCounter::ReferenceTableProto *proto,
+    ReferenceTableProto *proto,
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   ReferenceProtoTable borrowed_refs;

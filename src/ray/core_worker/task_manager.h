@@ -645,7 +645,7 @@ class TaskManager : public TaskManagerInterface {
       TaskSpecification &spec,
       bool release_lineage,
       const rpc::Address &worker_addr,
-      const ReferenceCounter::ReferenceTableProto &borrowed_refs);
+      const ReferenceCounterInterface::ReferenceTableProto &borrowed_refs);
 
   /// Get the objects that were stored in plasma upon the first successful
   /// execution of this task. If the task is re-executed, these objects should

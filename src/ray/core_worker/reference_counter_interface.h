@@ -30,9 +30,10 @@
 namespace ray {
 namespace core {
 
-// Interface for mocking.
 class ReferenceCounterInterface {
  public:
+  using ReferenceTableProto =
+      ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using LineageReleasedCallback =
       std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
 
@@ -213,7 +214,6 @@ class ReferenceCounterInterface {
   /// if one exists. An outer_id may not exist if object_id was inlined
   /// directly in a task spec, or if it was passed in the application
   /// out-of-band.
-  /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   virtual bool AddBorrowedObject(const ObjectID &object_id,
                                  const ObjectID &outer_id,
@@ -241,7 +241,7 @@ class ReferenceCounterInterface {
 
   //// Checks to see if objects have an owner.
   ///
-  /// \param[in] object_id The ID of the object.
+  /// \param[in] object_ids The IDs of the objects.
   /// \return StatusT::OK if all objects have owners.
   /// \return StatusT::NotFound if any object does not have an owner. The error message
   /// contains objects without owners.
