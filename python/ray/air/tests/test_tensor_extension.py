@@ -970,7 +970,7 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     # Case 2: Tensors are variable-shaped, with diverging ``ndim``s
     #
 
-    # Create arrays with variable-shaped tensors (but same ndim)
+    # Create arrays with variable-shaped tensors (but different ndim)
     first_tensors = [
         # (1, 2, 1)
         np.array([[[1], [2]], [[3], [4]]]),
@@ -1001,8 +1001,6 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     assert concatenated.type == first_arr.type
 
     result_ndarray = concatenated.to_numpy()
-
-    print(f">>> Result: {[arr.shape for arr in result_ndarray]=}")
 
     for i, expected_ndarray in enumerate(
         itertools.chain.from_iterable([first_tensors, second_tensors])
