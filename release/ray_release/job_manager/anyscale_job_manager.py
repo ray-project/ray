@@ -63,8 +63,6 @@ class AnyscaleJobManager:
             "env_vars": env_vars_for_job,
             "pip": pip or [],
         }
-        print("Working dir: ", working_dir)
-        print("Upload path: ", upload_path)
         if working_dir:
             runtime_env["working_dir"] = working_dir
             if upload_path:
@@ -73,8 +71,8 @@ class AnyscaleJobManager:
         try:
             job_config = JobConfig(
                 name=self.cluster_manager.cluster_name,
-                project="default",
-                cloud="anyscale_aks_public_default_cloud_us_west_2",
+                project="prj_y8syktydl7ltabhz5axdelwnce",
+                cloud="cld_5nnv7pt2jn2312x2e5v72z53n2",
                 image_uri="rayreleasetest.azurecr.io/anyscale/ray:abfss-adlfs-rebase",
                 working_dir=working_dir,
                 entrypoint=cmd_to_run,
