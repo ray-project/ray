@@ -14,7 +14,7 @@ cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
-packaging
+packaging>=23.2
 protobuf>=3.20.3
 pyyaml
 requests

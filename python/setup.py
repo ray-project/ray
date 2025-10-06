@@ -403,7 +403,7 @@ if setup_spec.type == SetupType.RAY:
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
-        "packaging",
+        "packaging>=23.2",
         "protobuf>=3.20.3",
         "pyyaml",
         "requests",

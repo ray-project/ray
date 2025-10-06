@@ -1,0 +1,6 @@
+daft==0.6.2
+numpy==1.26.4
+av==15.1.0
+ultralytics==8.3.200
+pillow==11.3.0
+decord==0.6.0
