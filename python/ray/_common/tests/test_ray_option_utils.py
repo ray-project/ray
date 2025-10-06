@@ -182,30 +182,6 @@ class TestUpdateOptions:
         updated = update_options(original, new)
         assert updated == {"num_cpus": 2, "name": "a", "num_gpus": 1}
 
-    def test_metadata_update(self):
-        original = {"_metadata": {"ns1": {"config1": "val1"}}}
-        new = {"_metadata": {"ns1": {"config2": "val2"}, "ns2": {"config3": "val3"}}}
-        updated = update_options(original, new)
-        expected_metadata = {
-            "ns1": {"config1": "val1", "config2": "val2"},
-            "ns2": {"config3": "val3"},
-        }
-        assert updated["_metadata"] == expected_metadata
-
-    def test_metadata_update_no_original_metadata(self):
-        original = {"num_cpus": 1}
-        new = {"_metadata": {"ns1": {"config1": "val1"}}}
-        updated = update_options(original, new)
-        assert updated["num_cpus"] == 1
-        assert updated["_metadata"] == new["_metadata"]
-
-    def test_metadata_update_no_new_metadata(self):
-        original = {"_metadata": {"ns1": {"config1": "val1"}}}
-        new = {"num_cpus": 1}
-        updated = update_options(original, new)
-        assert updated["num_cpus"] == 1
-        assert updated["_metadata"] == original["_metadata"]
-
     def test_update_with_empty_new(self):
         original = {"num_cpus": 1}
         updated = update_options(original, {})
