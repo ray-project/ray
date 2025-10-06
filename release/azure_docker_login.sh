@@ -3,11 +3,6 @@
 
 set -euo pipefail
 
-#!/bin/bash
-
-# Install Azure CLI
-curl -sL https://aka.ms/InstallAzureCLIDeb | bash
-
 # Retrieve credentials from Secrets Manager
 SECRET=$(aws secretsmanager get-secret-value \
   --secret-id azure-service-principal-oss-release \
