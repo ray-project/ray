@@ -211,337 +211,43 @@ SERVE_LLM_GRAFANA_PANELS = [
     ),
     Panel(
         id=33,
-        title="vLLM: Prompt Length Histogram",
+        title="vLLM: Prompt Length",
         description="",
         unit="short",
         targets=[
             Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="1", {global_filters}}}[$interval])\n'
-                    ")"
-                ),
-                legend="[1, 2)",
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P50-{{model_name}}-{{WorkerId}}",
             ),
             Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2", {global_filters}}}[$interval])\n'
-                    ")"
-                ),
-                legend="[2, 5)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5", {global_filters}}}[$interval])\n'
-                    ")"
-                ),
-                legend="[5, 10)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[10, 20)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="50", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[20, 50)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="100", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="50", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[50, 100)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="200", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="100", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[100, 200)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="500", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="200", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[200, 500)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="1000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="500", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[500, 1000]",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="1000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[1000, 2000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[2000, 5000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[5000, 10000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[10000, 20000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="+Inf", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[20000, +Inf)",
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P90-{{model_name}}-{{WorkerId}}",
             ),
         ],
         fill=1,
         linewidth=1,
         stack=False,
         grid_pos=GridPos(0, 32, 12, 8),
-        template=PanelTemplate.BARGAUGE,
     ),
     Panel(
         id=35,
-        title="vLLM: Generation Length Histogram",
+        title="vLLM: Generation Length",
         description="",
         unit="short",
         targets=[
             Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="1", {global_filters}}}[$interval])\n'
-                    ")"
-                ),
-                legend="[1, 2)",
+                expr='histogram_quantile(0.50, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P50-{{model_name}}-{{WorkerId}}",
             ),
             Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2", {global_filters}}}[$interval])\n'
-                    ")"
-                ),
-                legend="[2, 5)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5", {global_filters}}}[$interval])\n'
-                    ")"
-                ),
-                legend="[5, 10)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[10, 20)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="50", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[20, 50)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="100", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="50", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[50, 100)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="200", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="100", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[100, 200)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="500", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="200", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[200, 500)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="1000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="500", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[500, 1000]",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="1000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[1000, 2000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="2000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[2000, 5000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="5000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[5000, 10000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="10000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[10000, 20000)",
-            ),
-            Target(
-                expr=(
-                    "sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="+Inf", {global_filters}}}[$interval])\n'
-                    ")\n"
-                    "- ignoring(le) sum by (model_name) (\n"
-                    '  increase(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", le="20000", {global_filters}}}[$interval])\n'
-                    ")\n"
-                ),
-                legend="[20000, +Inf)",
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                legend="P90-{{model_name}}-{{WorkerId}}",
             ),
         ],
         fill=1,
         linewidth=1,
         stack=False,
         grid_pos=GridPos(12, 32, 12, 8),
-        template=PanelTemplate.BARGAUGE,
     ),
     Panel(
         id=10,

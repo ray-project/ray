@@ -365,39 +365,6 @@ PIE_CHART_TEMPLATE = {
 }
 
 
-BARGAUGE_PANEL_TEMPLATE = {
-    "datasource": r"${datasource}",
-    "fieldConfig": {
-        "defaults": {
-            "color": {"mode": "thresholds"},
-            "mappings": [],
-            "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                    {"color": "green", "value": None},
-                    {"color": "red", "value": 80},
-                ],
-            },
-        },
-        "overrides": [],
-    },
-    "id": 29,
-    "options": {
-        "displayMode": "gradient",
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
-        "showUnfilled": True,
-        "text": {},
-    },
-    "pluginVersion": "7.5.17",
-    "targets": [],
-    "timeFrom": None,
-    "timeShift": None,
-    "title": "<Title>",
-    "type": "bargauge",
-}
-
-
 @DeveloperAPI
 class PanelTemplate(Enum):
     GRAPH = GRAPH_PANEL_TEMPLATE
@@ -405,7 +372,6 @@ class PanelTemplate(Enum):
     PIE_CHART = PIE_CHART_TEMPLATE
     STAT = STAT_PANEL_TEMPLATE
     GAUGE = GAUGE_PANEL_TEMPLATE
-    BARGAUGE = BARGAUGE_PANEL_TEMPLATE
 
 
 @DeveloperAPI
