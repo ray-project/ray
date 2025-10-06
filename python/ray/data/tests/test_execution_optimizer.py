@@ -307,7 +307,7 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
     read_op = get_parquet_read_logical_op()
     op = Filter(
         read_op,
-        lambda x: x,
+        fn=lambda x: x,
     )
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
