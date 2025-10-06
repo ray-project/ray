@@ -811,9 +811,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// will be called when lineage ref count is also 0.
     std::vector<std::function<void(const ObjectID &)>>
         on_object_out_of_scope_or_freed_callbacks;
-    /// Callback that will be called when the object ref is deleted
+    /// Callbacks that will be called when the object ref is deleted
     /// from the reference table (all refs including lineage ref count go to 0).
-    std::function<void(const ObjectID &)> on_object_ref_delete;
+    /// Need to store multiple due to message reordering where the callback of the retry
+    /// of the request could be overwritten by the callback of the initial request
+    std::vector<std::function<void(const ObjectID &)>> on_object_ref_delete;
     /// If this is set, we'll call PublishRefRemovedInternal when this process is no
     /// longer a borrower (RefCount() == 0).
     bool publish_ref_removed = false;

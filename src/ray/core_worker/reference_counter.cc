@@ -771,8 +771,10 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_objects_owned_by_us_--;
     }
   }
-  if (it->second.on_object_ref_delete) {
-    it->second.on_object_ref_delete(it->first);
+  if (it->second.on_object_ref_delete.size() > 0) {
+    for (const auto &callback : it->second.on_object_ref_delete) {
+      callback(it->first);
+    }
   }
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
@@ -821,7 +823,7 @@ bool ReferenceCounter::SetObjectRefDeletedCallback(
   if (it == object_id_refs_.end()) {
     return false;
   }
-  it->second.on_object_ref_delete = callback;
+  it->second.on_object_ref_delete.push_back(callback);
   return true;
 }
 

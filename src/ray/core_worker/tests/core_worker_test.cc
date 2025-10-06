@@ -965,7 +965,7 @@ class HandleWaitForActorRefDeletedRetriesTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
 
-TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorHandleRemovedForRegisteredActor) {
+TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorRefDeletedForRegisteredActor) {
   // delete_actor_handle: determines whether the actor handle is removed from the
   // reference counter. This is used to trigger the send_reply_callback which is stored in
   // the reference counter via delete_actor_handle == true: the actor handle is removed
@@ -1004,6 +1004,9 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorHandleRemovedForRegisteredA
     // Triggers the send_reply_callback which is stored in the reference counter
     reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
     ASSERT_EQ(deleted.size(), 1u);
+    ASSERT_EQ(callback_count, 1);
+  } else {
+    ASSERT_EQ(callback_count, 0);
   }
 
   // The send_reply_callback is immediately triggered since the object has gone out of
@@ -1024,7 +1027,7 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorHandleRemovedForRegisteredA
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(ActorHandleRemovedForRegisteredActor,
+INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteredActor,
                          HandleWaitForActorRefDeletedRetriesTest,
                          ::testing::Values(true, false));
 
@@ -1033,7 +1036,7 @@ class HandleWaitForActorRefDeletedWhileRegisteringRetriesTest
       public ::testing::WithParamInterface<bool> {};
 
 TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
-       ActorHandleRemovedForRegisteringActor) {
+       ActorRefDeletedForRegisteringActor) {
   // delete_actor_handle: determines whether the actor handle is removed from the
   // reference counter. This is used to trigger the send_reply_callback which is stored in
   // the reference counter via delete_actor_handle == true: the actor handle is removed
@@ -1107,10 +1110,12 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
     ASSERT_EQ(deleted.size(), 1u);
     // Only last callback fires due to the first being overwritten
     ASSERT_EQ(callback_count, 1);
+  } else {
+    ASSERT_EQ(callback_count, 0);
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(ActorHandleRemovedForRegisteringActor,
+INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
                          HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
                          ::testing::Values(true, false));
 
