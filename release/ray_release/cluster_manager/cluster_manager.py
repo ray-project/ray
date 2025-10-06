@@ -6,7 +6,7 @@ from ray_release.aws import (
     add_tags_to_aws_config,
     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
 )
-from ray_release.anyscale_util import get_project_name, LAST_LOGS_LENGTH
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.test import Test
 from ray_release.exception import CloudInfoError
@@ -29,13 +29,13 @@ class ClusterManager(abc.ABC):
         log_streaming_limit: int = LAST_LOGS_LENGTH,
     ):
         self.sdk = sdk or get_anyscale_sdk()
-
+        self.image = test.get_anyscale_byod_image()
         self.test = test
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = project_name
         self.cloud_name = cloud_name
-        self.project_name = get_project_name(self.project_id, self.sdk)
+        # self.project_name = get_project_name(self.project_id, self.sdk)
         self.log_streaming_limit = log_streaming_limit
 
         self.cluster_name = (
