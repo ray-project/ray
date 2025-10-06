@@ -30,7 +30,9 @@ from ray.dashboard.modules.aggregator.publisher.metrics import (
     published_counter_name,
     time_since_last_success_gauge_name,
 )
-from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
+from ray.dashboard.modules.aggregator.task_events_metadata_buffer import (
+    TaskEventsMetadataBuffer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ class RayEventPublisher(RayEventPublisherInterface):
         publish_client: PublisherClientInterface,
         event_buffer: MultiConsumerEventBuffer,
         common_metric_tags: Optional[Dict[str, str]] = None,
-        task_metadata_buffer: Optional[TaskMetadataBuffer] = None,
+        task_metadata_buffer: Optional[TaskEventsMetadataBuffer] = None,
         max_retries: int = PUBLISHER_MAX_RETRIES,
         initial_backoff: float = PUBLISHER_INITIAL_BACKOFF_SECONDS,
         max_backoff: float = PUBLISHER_MAX_BACKOFF_SECONDS,
@@ -120,14 +122,13 @@ class RayEventPublisher(RayEventPublisherInterface):
                 await self._async_publish_with_retries(publish_batch)
         except asyncio.CancelledError:
             logger.info(f"Publisher {self._name} cancelled, shutting down gracefully")
-            self._started_event.clear()
-            await self._publish_client.close()
             raise
         except Exception as e:
             logger.error(f"Publisher {self._name} encountered error: {e}")
+            raise
+        finally:
             self._started_event.clear()
             await self._publish_client.close()
-            raise
 
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         """Wait until the publisher has started.

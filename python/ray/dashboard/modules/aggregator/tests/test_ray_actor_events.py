@@ -37,7 +37,7 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     cluster.add_node(
         env_vars={
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": f"http://127.0.0.1:{_ACTOR_EVENT_PORT}",
-            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES": "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT",
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT",
         },
         _system_config={
             "enable_ray_event": True,
@@ -57,49 +57,28 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     a = ray.remote(A).options(name="actor-test").remote()
     ray.get(a.ping.remote())
 
-    # Check that an actor definition and lifecycle events are published.
+    # Check that an actor definition and a lifecycle event are published.
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    # Wait until we observe both event types across requests.
-    wait_for_condition(
-        lambda: (
-            any(
-                "actorDefinitionEvent" in item
-                for req, _ in httpserver.log
-                for item in json.loads(req.data)
-            )
-            and any(
-                "actorLifecycleEvent" in item
-                for req, _ in httpserver.log
-                for item in json.loads(req.data)
-            )
-        )
-    )
-    # One definition event and potentially many lifecycle events across requests.
-    definition_event = next(
-        item
-        for req, _ in httpserver.log
-        for item in json.loads(req.data)
-        if "actorDefinitionEvent" in item
-    )
-    lifecycle_events = [
-        item
-        for req, _ in httpserver.log
-        for item in json.loads(req.data)
-        if "actorLifecycleEvent" in item
-    ]
-    # Verify IDs
+    wait_for_condition(lambda: len(httpserver.log) >= 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    # We expect batched events containing definition then lifecycle
+    assert len(req_json) >= 2
+    # Verify event types and IDs exist
     assert (
-        base64.b64decode(definition_event["actorDefinitionEvent"]["actorId"]).hex()
+        base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex()
         == a._actor_id.hex()
     )
-    # Verify lifecycle events
+    # Verify ActorId and state for ActorLifecycleEvents
     has_alive_state = False
-    for lifecycle_event in lifecycle_events:
+    for actorLifeCycleEvent in req_json[1:]:
         assert (
-            base64.b64decode(lifecycle_event["actorLifecycleEvent"]["actorId"]).hex()
+            base64.b64decode(
+                actorLifeCycleEvent["actorLifecycleEvent"]["actorId"]
+            ).hex()
             == a._actor_id.hex()
         )
-        for stateTransition in lifecycle_event["actorLifecycleEvent"][
+        for stateTransition in actorLifeCycleEvent["actorLifecycleEvent"][
             "stateTransitions"
         ]:
             assert stateTransition["state"] in [
@@ -120,32 +99,24 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     # Kill the actor and verify we get a DEAD state with death cause
     ray.kill(a)
 
-    # Wait until a lifecycle event with DEAD state is observed in any request.
+    # Wait for the death event to be published
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    wait_for_condition(
-        lambda: any(
-            any(
-                st.get("state") == "DEAD"
-                for st in item["actorLifecycleEvent"].get("stateTransitions", [])
-            )
-            for req, _ in httpserver.log
-            for item in json.loads(req.data)
-            if "actorLifecycleEvent" in item
-        )
-    )
+    wait_for_condition(lambda: len(httpserver.log) >= 2)
 
     has_dead_state = False
     for death_req, _ in httpserver.log:
         death_req_json = json.loads(death_req.data)
-        for lifecycle_event in death_req_json:
-            if "actorLifecycleEvent" in lifecycle_event:
+
+        for actorLifeCycleEvent in death_req_json:
+            if "actorLifecycleEvent" in actorLifeCycleEvent:
                 assert (
                     base64.b64decode(
-                        lifecycle_event["actorLifecycleEvent"]["actorId"]
+                        actorLifeCycleEvent["actorLifecycleEvent"]["actorId"]
                     ).hex()
                     == a._actor_id.hex()
                 )
-                for stateTransition in lifecycle_event["actorLifecycleEvent"][
+
+                for stateTransition in actorLifeCycleEvent["actorLifecycleEvent"][
                     "stateTransitions"
                 ]:
                     if stateTransition["state"] == "DEAD":

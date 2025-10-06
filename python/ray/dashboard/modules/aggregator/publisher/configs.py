@@ -22,17 +22,17 @@ PUBLISHER_MAX_BACKOFF_SECONDS = ray_constants.env_float(
 PUBLISHER_JITTER_RATIO = ray_constants.env_float(f"{env_var_prefix}_JITTER_RATIO", 0.1)
 # Maximum sleep time between sending batches of events to the destination, should be greater than 0.0 to avoid busy looping
 PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 1
+    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 0.1
 )
 
 # HTTP Publisher specific configurations
 # Comma-separated list of event types that are allowed to be exposed to external HTTP services
-# Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
+# Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_EXECUTION_EVENT
 # The list of all supported event types can be found in src/ray/protobuf/public/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
 DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES = (
     "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
-    "ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,"
+    "ACTOR_TASK_EXECUTION_EVENT,"
     "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_LIFECYCLE_EVENT,"
     "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT,"
     "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT,"
