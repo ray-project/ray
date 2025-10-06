@@ -1369,19 +1369,6 @@ class TaskResult(BaseModel):
     result: Any = Field(..., description="The result of the task.")
 
 
-class TaskConsumerWrapper(ABC):
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def initialize_callable(
-        self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
-    ):
-        pass
-
-    def __del__(self):
-        pass
-
-
 @PublicAPI(stability="alpha")
 class AsyncCapability(Enum):
     """

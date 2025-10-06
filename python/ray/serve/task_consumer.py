@@ -1,5 +1,6 @@
 import inspect
 import logging
+from abc import ABC
 from functools import wraps
 from typing import Callable, Optional
 
@@ -9,13 +10,25 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve.schema import (
-    TaskConsumerWrapper,
     TaskProcessorAdapter,
     TaskProcessorConfig,
 )
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class TaskConsumerWrapper(ABC):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def initialize_callable(
+        self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
+    ):
+        pass
+
+    def __del__(self):
+        pass
 
 
 @PublicAPI(stability="alpha")
