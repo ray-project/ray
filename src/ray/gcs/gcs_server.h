@@ -31,12 +31,11 @@
 #include "ray/gcs/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/gcs_task_manager.h"
+#include "ray/gcs/metrics.h"
 #include "ray/gcs/pubsub_handler.h"
 #include "ray/gcs/runtime_env_handler.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/store_client/observable_store_client.h"
-#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
@@ -83,6 +82,7 @@ class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 class GcsTaskManager;
 class GcsAutoscalerStateManager;
+struct RedisClientOptions;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -98,8 +98,8 @@ class GcsAutoscalerStateManager;
 class GcsServer {
  public:
   GcsServer(const GcsServerConfig &config,
-            instrumented_io_context &main_service,
-            ray::observability::MetricInterface &event_recorder_dropped_events_counter);
+            const ray::gcs::GcsServerMetrics &metrics,
+            instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -159,19 +159,34 @@ class GcsServer {
   void InitClusterLeaseManager();
 
   /// Initialize gcs job manager.
-  void InitGcsJobManager(const GcsInitData &gcs_init_data);
+  void InitGcsJobManager(
+      const GcsInitData &gcs_init_data,
+      ray::observability::MetricInterface &running_job_gauge,
+      ray::observability::MetricInterface &finished_job_counter,
+      ray::observability::MetricInterface &job_duration_in_seconds_gauge);
 
   /// Initialize gcs actor manager.
-  void InitGcsActorManager(const GcsInitData &gcs_init_data);
+  void InitGcsActorManager(const GcsInitData &gcs_init_data,
+                           ray::observability::MetricInterface &actor_by_state_gauge,
+                           ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
   /// Initialize gcs placement group manager.
-  void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
+  void InitGcsPlacementGroupManager(
+      const GcsInitData &gcs_init_data,
+      ray::observability::MetricInterface &placement_group_gauge,
+      ray::observability::MetricInterface
+          &placement_group_creation_latency_in_ms_histogram,
+      ray::observability::MetricInterface
+          &placement_group_scheduling_latency_in_ms_histogram,
+      ray::observability::MetricInterface &placement_group_count_gauge);
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
 
   /// Initialize gcs task manager.
-  void InitGcsTaskManager();
+  void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
+                          ray::observability::MetricInterface &task_events_dropped_gauge,
+                          ray::observability::MetricInterface &task_events_stored_gauge);
 
   /// Initialize gcs autoscaling manager.
   void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
@@ -202,10 +217,7 @@ class GcsServer {
   StorageType GetStorageType() const;
 
   /// Print debug info periodically.
-  std::string GetDebugState() const;
-
-  /// Dump the debug info to debug_state_gcs.txt.
-  void DumpDebugStateToFile() const;
+  void PrintDebugState() const;
 
   /// Collect stats from each module.
   void RecordMetrics() const;
@@ -216,13 +228,12 @@ class GcsServer {
   /// Makes several InternalKV calls, all in continuation.io_context().
   void GetOrGenerateClusterId(Postable<void(ClusterID cluster_id)> continuation);
 
-  /// Print the asio event loop stats for debugging.
-  void PrintAsioStats();
-
   RedisClientOptions GetRedisClientOptions();
 
   void TryGlobalGC();
 
+  /// GCS server metrics
+  const ray::gcs::GcsServerMetrics &metrics_;
   IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
 
   /// NOTICE: The declaration order for data members should follow dependency.

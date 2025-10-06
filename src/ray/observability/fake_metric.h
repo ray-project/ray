@@ -76,7 +76,22 @@ class FakeGauge : public FakeMetric {
       tags_map[tag.first.name()] = tag.second;
     }
     // record the last value of the tag set
-    tag_to_value_.emplace(std::move(tags_map), value);
+    tag_to_value_[std::move(tags_map)] = value;
+  }
+};
+
+class FakeHistogram : public FakeMetric {
+ public:
+  FakeHistogram() {}
+  ~FakeHistogram() = default;
+
+  void Record(double value, stats::TagsType tags) override {
+    absl::flat_hash_map<std::string, std::string> tags_map;
+    for (const auto &tag : tags) {
+      tags_map[tag.first.name()] = tag.second;
+    }
+    // record the last value of the tag set
+    tag_to_value_[std::move(tags_map)] = value;
   }
 };
 

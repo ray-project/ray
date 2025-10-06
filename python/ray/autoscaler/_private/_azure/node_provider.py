@@ -7,6 +7,7 @@ from threading import RLock
 from typing import List, Optional
 from uuid import uuid4
 
+from azure.common.credentials import get_cli_profile
 from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
@@ -66,7 +67,16 @@ class AzureNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        subscription_id = provider_config["subscription_id"]
+        subscription_id = provider_config.get("subscription_id")
+        if subscription_id is None:
+            # Get subscription from logged in azure profile
+            # if it isn't provided in the provider_config
+            # so operations like `get-head-ip` will work
+            subscription_id = get_cli_profile().get_subscription_id()
+            logger.info(
+                "subscription_id not found in provider config, falling back "
+                f"to subscription_id from the logged in azure profile: {subscription_id}"
+            )
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
         credential = DefaultAzureCredential(exclude_shared_token_cache_credential=True)
         self.compute_client = ComputeManagementClient(credential, subscription_id)
