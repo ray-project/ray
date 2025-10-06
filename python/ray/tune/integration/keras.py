@@ -1,8 +1,8 @@
 from typing import Dict
 
 import ray.tune
-from ray.air.integrations.keras import RayReportCallback
 from ray.train.tensorflow import TensorflowCheckpoint
+from ray.train.tensorflow.keras import RayReportCallback
 from ray.util.annotations import PublicAPI
 
 _DEPRECATION_MESSAGE = (
@@ -27,7 +27,7 @@ class _TuneCheckpointCallback:
         raise DeprecationWarning(_DEPRECATION_MESSAGE)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class TuneReportCheckpointCallback(RayReportCallback):
     """Keras callback for Ray Tune reporting and checkpointing.
 
