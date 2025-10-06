@@ -407,6 +407,14 @@ py_test(
 )
 
 py_test(
+    name = "test_base_worker_group",
+    size = "small",
+    srcs = ["tests/test_base_worker_group.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_checkpoint",
     size = "small",
     srcs = ["tests/test_checkpoint.py"],
