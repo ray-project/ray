@@ -398,9 +398,12 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
 
 
 def wait_for_dashboard_agent_available(cluster):
-    wait_for_dashboard_agent_available(cluster.address, cluster.head_node.node_id)
+    wait_for_dashboard_agent_available_for_address(
+        cluster.address, cluster.head_node.node_id
+    )
 
-def wait_for_dashboard_agent_available(address, node_id):
+
+def wait_for_dashboard_agent_available_for_address(address, node_id):
     gcs_client = GcsClient(address=address)
 
     def get_dashboard_agent_address():

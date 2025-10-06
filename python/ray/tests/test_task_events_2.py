@@ -21,7 +21,7 @@ from ray._private.state_api_test_utils import (
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_dashboard_agent_available,
+    wait_for_dashboard_agent_available_for_address,
 )
 from ray.util.state import (
     StateApiClient,
@@ -614,7 +614,8 @@ def test_fault_tolerance_chained_task_fail(
     address = ray_context.address_info["address"]
     node_id = ray_context.address_info["node_id"]
     # TODO(#57203): remove this once task event buffer handles this internally.
-    wait_for_dashboard_agent_available(address, node_id)
+    wait_for_dashboard_agent_available_for_address(address, node_id)
+
     def sleep_or_fail(pid_actor=None, exit_type=None):
         if exit_type is None:
             time.sleep(999)

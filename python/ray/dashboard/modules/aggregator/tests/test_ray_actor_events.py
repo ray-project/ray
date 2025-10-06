@@ -5,10 +5,10 @@ import sys
 import pytest
 
 import ray
-import ray.dashboard.consts as dashboard_consts
-from ray._private import ray_constants
-from ray._private.test_utils import wait_for_condition, wait_for_dashboard_agent_available
-from ray._raylet import GcsClient
+from ray._private.test_utils import (
+    wait_for_condition,
+    wait_for_dashboard_agent_available,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 
 _ACTOR_EVENT_PORT = 12346
