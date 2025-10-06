@@ -1858,7 +1858,7 @@ class CoreWorker {
   std::atomic<int64_t> num_get_pin_args_in_flight_;
 
   // Number of failed argument pinning requests
-  std::atomic<int64_t> num_failed_get_pin_args;
+  std::atomic<int64_t> num_failed_get_pin_args_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
