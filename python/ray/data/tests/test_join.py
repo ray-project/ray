@@ -375,6 +375,7 @@ def test_invalid_join_not_matching_key_columns(
 def test_default_shuffle_aggregator_args():
     parent_op_mock = MagicMock(PhysicalOperator)
     parent_op_mock._output_dependencies = []
+    parent_op_mock._logical_operators = []
 
     op = JoinOperator(
         data_context=DataContext.get_current(),
@@ -693,12 +694,17 @@ def test_broadcast_join_with_different_key_names_and_swapping(
         regular_df = regular_df[common_columns]
 
         # Results should be identical
-        pd.testing.assert_frame_equal(
-            broadcast_df,
-            regular_df,
-            check_dtype=False,
-            err_msg=f"Failed for case: {case_name}, join_type: {join_type}",
-        )
+        # Note: Add context to assertion failure message
+        try:
+            pd.testing.assert_frame_equal(
+                broadcast_df,
+                regular_df,
+                check_dtype=False,
+            )
+        except AssertionError as e:
+            raise AssertionError(
+                f"Failed for case: {case_name}, join_type: {join_type}. {str(e)}"
+            ) from e
 
 
 def test_broadcast_join_with_suffixes(ray_start_regular_shared_2_cpus):

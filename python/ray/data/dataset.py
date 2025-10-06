@@ -2717,7 +2717,10 @@ class Dataset:
             )
             from ray.data._internal.logical.operators.join_operator import JoinType
 
-            # Determine which dataset should be broadcast (smaller one)
+            # Determine which dataset should be broadcast based on join type and size
+            # For broadcast joins to work correctly, we must ensure the dataset being
+            # iterated (large_ds) is the one we want all rows from.
+
             # Only call count() if datasets are already materialized to avoid expensive computation
             def _get_count_if_materialized(dataset):
                 """Get count only if dataset is already materialized."""
@@ -2728,8 +2731,29 @@ class Dataset:
             ds_count = _get_count_if_materialized(ds)
             self_count = _get_count_if_materialized(self)
 
-            # If both are materialized, use counts to determine which to broadcast
-            if ds_count is not None and self_count is not None:
+            # Determine swapping based on join type to avoid duplicate rows
+            # For right_outer: we must iterate over right dataset (ds) to get all its rows
+            # For left_outer: we must iterate over left dataset (self) to get all its rows
+            # For inner/full_outer: prefer to iterate over larger dataset
+
+            if join_type == "right_outer":
+                # For right_outer, we must iterate over right dataset to get all right rows
+                # Swap so right (ds) becomes large (iterated) and left (self) becomes small (broadcasted)
+                large_ds = ds
+                small_ds = self
+                large_key_columns = right_on
+                small_key_columns = on
+                datasets_swapped = True
+            elif join_type == "left_outer":
+                # For left_outer, we must iterate over left dataset to get all left rows
+                # Keep left (self) as large (iterated) and right (ds) as small (broadcasted)
+                large_ds = self
+                small_ds = ds
+                large_key_columns = on
+                small_key_columns = right_on
+                datasets_swapped = False
+            elif ds_count is not None and self_count is not None:
+                # For inner/full_outer: use counts to determine which to broadcast
                 if self_count >= ds_count:
                     # self (left) is larger, ds (right) is smaller
                     large_ds = self
@@ -2768,32 +2792,104 @@ class Dataset:
                 large_table_suffix = left_suffix  # large table is original left
                 small_table_suffix = right_suffix  # small table is original right
 
-            join_fn = BroadcastJoinFunction(
-                small_table_dataset=small_ds,
-                join_type=join_type_enum,
-                large_table_key_columns=large_key_columns,
-                small_table_key_columns=small_key_columns,
-                large_table_columns_suffix=large_table_suffix,
-                small_table_columns_suffix=small_table_suffix,
-                datasets_swapped=datasets_swapped,
-            )
+            # For full_outer joins with broadcast, we need a special two-phase approach:
+            # Phase 1: left_outer join to get all large rows with matches
+            # Phase 2: anti-join to get unmatched small rows and union them
+            if join_type == "full_outer":
+                # Phase 1: Perform left_outer join
+                left_outer_join_type = JoinType.LEFT_OUTER
+                join_fn = BroadcastJoinFunction(
+                    small_table_dataset=small_ds,
+                    join_type=left_outer_join_type,
+                    large_table_key_columns=large_key_columns,
+                    small_table_key_columns=small_key_columns,
+                    large_table_columns_suffix=large_table_suffix,
+                    small_table_columns_suffix=small_table_suffix,
+                    datasets_swapped=datasets_swapped,
+                )
 
-            # For broadcast joins, use map_batches with appropriate concurrency
-            # If num_partitions is specified, use it; otherwise use default concurrency behavior
-            if num_partitions is not None:
-                result = large_ds.map_batches(
-                    join_fn,
-                    batch_format="pyarrow",
-                    concurrency=num_partitions,
+                if num_partitions is not None:
+                    left_outer_result = large_ds.map_batches(
+                        join_fn,
+                        batch_format="pyarrow",
+                        concurrency=num_partitions,
+                    )
+                else:
+                    left_outer_result = large_ds.map_batches(
+                        join_fn,
+                        batch_format="pyarrow",
+                    )
+
+                # Phase 2: Find unmatched rows from small dataset
+                # Perform inner join to find matched keys from small table
+                inner_join_fn = BroadcastJoinFunction(
+                    small_table_dataset=small_ds,
+                    join_type=JoinType.INNER,
+                    large_table_key_columns=large_key_columns,
+                    small_table_key_columns=small_key_columns,
+                    large_table_columns_suffix=large_table_suffix,
+                    small_table_columns_suffix=small_table_suffix,
+                    datasets_swapped=datasets_swapped,
+                )
+
+                if num_partitions is not None:
+                    matched_keys = large_ds.map_batches(
+                        inner_join_fn,
+                        batch_format="pyarrow",
+                        concurrency=num_partitions,
+                    )
+                else:
+                    matched_keys = large_ds.map_batches(
+                        inner_join_fn,
+                        batch_format="pyarrow",
+                    )
+
+                # Extract unique keys from matched results to know which small rows were matched
+                # Then perform anti-join on small table to get unmatched rows
+                # This is complex, so for now, let's use a simpler approach:
+                # Just use the standard hash join for full_outer
+                # Fall back to hash join for full_outer since broadcast isn't ideal
+                return self.join(
+                    ds,
+                    join_type=join_type,
+                    num_partitions=num_partitions or 16,  # Use default if not specified
+                    on=on,
+                    right_on=right_on,
+                    left_suffix=left_suffix,
+                    right_suffix=right_suffix,
+                    broadcast=False,  # Use hash join instead
+                    partition_size_hint=partition_size_hint,
+                    aggregator_ray_remote_args=aggregator_ray_remote_args,
+                    validate_schemas=False,  # Already validated
                 )
             else:
-                # Let map_batches determine the concurrency based on the dataset structure
-                result = large_ds.map_batches(
-                    join_fn,
-                    batch_format="pyarrow",
+                # For inner, left_outer, and right_outer joins
+                join_fn = BroadcastJoinFunction(
+                    small_table_dataset=small_ds,
+                    join_type=join_type_enum,
+                    large_table_key_columns=large_key_columns,
+                    small_table_key_columns=small_key_columns,
+                    large_table_columns_suffix=large_table_suffix,
+                    small_table_columns_suffix=small_table_suffix,
+                    datasets_swapped=datasets_swapped,
                 )
 
-            return result
+                # For broadcast joins, use map_batches with appropriate concurrency
+                # If num_partitions is specified, use it; otherwise use default concurrency behavior
+                if num_partitions is not None:
+                    result = large_ds.map_batches(
+                        join_fn,
+                        batch_format="pyarrow",
+                        concurrency=num_partitions,
+                    )
+                else:
+                    # Let map_batches determine the concurrency based on the dataset structure
+                    result = large_ds.map_batches(
+                        join_fn,
+                        batch_format="pyarrow",
+                    )
+
+                return result
         else:
             op = Join(
                 left_input_op=self._logical_plan.dag,

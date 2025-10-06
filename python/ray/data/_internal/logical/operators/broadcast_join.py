@@ -4,16 +4,20 @@ This module provides the BroadcastJoinFunction class which implements broadcast 
 using PyArrow's native join functionality. Broadcast joins are useful when one dataset
 is significantly smaller than the other, allowing the smaller dataset to be broadcast
 to all partitions of the larger dataset.
+
+The implementation follows Ray Data's streaming execution model and avoids driver OOM
+by materializing the small dataset only in worker processes, not on the driver.
 """
 
-from typing import Optional, Tuple
-
-import pyarrow as pa
+from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data.block import DataBatch
 from ray.data.dataset import Dataset
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
@@ -87,6 +91,8 @@ class BroadcastJoinFunction:
         # Get schema from the dataset without materializing data on driver
         if len(self._small_table_refs) == 0:
             # Handle empty dataset case - safe to create empty table on driver
+            import pyarrow as pa
+
             self._small_table_schema = pa.schema([])
             self._is_small_table_empty = True
         else:
@@ -99,7 +105,7 @@ class BroadcastJoinFunction:
         self._cached_small_table = None
 
     @property
-    def small_table(self) -> pa.Table:
+    def small_table(self) -> "pa.Table":
         """Lazily materialize the small table to avoid driver OOM.
 
         This property ensures that the small table is only materialized when needed
@@ -112,6 +118,8 @@ class BroadcastJoinFunction:
             return self._cached_small_table
 
         # Materialize the small table from references
+        import pyarrow as pa
+
         if len(self._small_table_refs) == 0:
             self._cached_small_table = pa.table({}, schema=self._small_table_schema)
         elif len(self._small_table_refs) == 1:
@@ -129,12 +137,12 @@ class BroadcastJoinFunction:
         return self._cached_small_table
 
     @property
-    def small_table_column_names(self) -> list:
+    def small_table_column_names(self) -> List[str]:
         """Get column names without materializing the table."""
         return self._small_table_schema.names
 
     @property
-    def small_table_schema_field(self):
+    def small_table_schema_field(self) -> Any:
         """Get schema field accessor without materializing the table."""
         return self._small_table_schema.field
 
@@ -153,6 +161,8 @@ class BroadcastJoinFunction:
         try:
             # Convert batch to PyArrow table if needed
             if isinstance(batch, dict):
+                import pyarrow as pa
+
                 batch = pa.table(batch)
 
             # Handle empty batch case
@@ -225,7 +235,7 @@ class BroadcastJoinFunction:
         }
         return join_type_mapping.get(original_join_type, original_join_type)
 
-    def _create_empty_result_table(self, batch: pa.Table) -> pa.Table:
+    def _create_empty_result_table(self, batch: "pa.Table") -> "pa.Table":
         """Create an empty result table with proper schema for join operations.
 
         Args:
@@ -240,6 +250,7 @@ class BroadcastJoinFunction:
 
         # Create result schema based on join type
         result_schema_fields = []
+        import pyarrow as pa
 
         # Add batch columns with suffix if needed
         for col_name in batch.column_names:
@@ -266,7 +277,7 @@ class BroadcastJoinFunction:
         result_schema = pa.schema(result_schema_fields)
         return pa.table([], schema=result_schema)
 
-    def _handle_empty_small_table(self, batch: pa.Table) -> pa.Table:
+    def _handle_empty_small_table(self, batch: "pa.Table") -> "pa.Table":
         """Handle the case where the small table is empty.
 
         Args:
@@ -302,7 +313,7 @@ class BroadcastJoinFunction:
             else:
                 return self._create_empty_result_table(batch)
 
-    def _add_null_columns_for_missing_right(self, batch: pa.Table) -> pa.Table:
+    def _add_null_columns_for_missing_right(self, batch: "pa.Table") -> "pa.Table":
         """Add null columns for missing right side in outer joins.
 
         Args:
@@ -317,7 +328,7 @@ class BroadcastJoinFunction:
         for col_name in self.small_table_column_names:
             if (
                 col_name not in self.small_table_key_columns
-                or col_name not in batch.column_names
+                and col_name not in batch.column_names
             ):
                 # Add null column with appropriate name and type
                 if col_name in batch.column_names and self.small_table_columns_suffix:
@@ -326,12 +337,14 @@ class BroadcastJoinFunction:
                     new_col_name = col_name
 
                 col_type = self.small_table_schema_field(col_name).type
+                import pyarrow as pa
+
                 null_array = pa.array([None] * batch.num_rows, type=col_type)
                 result_table = result_table.append_column(new_col_name, null_array)
 
         return result_table
 
-    def _add_null_columns_for_missing_left(self, batch: pa.Table) -> pa.Table:
+    def _add_null_columns_for_missing_left(self, batch: "pa.Table") -> "pa.Table":
         """Add null columns for missing left side in outer joins when datasets are swapped.
 
         This method handles the case where the original left dataset (small table) is empty
@@ -349,7 +362,7 @@ class BroadcastJoinFunction:
         for col_name in self.small_table_column_names:
             if (
                 col_name not in self.small_table_key_columns
-                or col_name not in batch.column_names
+                and col_name not in batch.column_names
             ):
                 # Add null column with appropriate name and type
                 if col_name in batch.column_names and self.small_table_columns_suffix:
@@ -358,6 +371,8 @@ class BroadcastJoinFunction:
                     new_col_name = col_name
 
                 col_type = self.small_table_schema_field(col_name).type
+                import pyarrow as pa
+
                 null_array = pa.array([None] * batch.num_rows, type=col_type)
                 result_table = result_table.append_column(new_col_name, null_array)
 
