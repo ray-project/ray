@@ -16,7 +16,7 @@
 // TODO(#54703): SysFsCgroupDriver should not be a public target.
 // It will be hidden behind a CgroupManagerFactory which will create
 // an appropriate depending on configuration and platform.
-// #include <mntent.h>
+#include <mntent.h>
 
 #include <string>
 #include <unordered_set>
@@ -44,7 +44,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   /**
    * @param mount_file_path only used for testing.
    */
-  explicit SysFsCgroupDriver(std::string mount_file_path = kMountFilePath)
+  explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
       : mount_file_path_(std::move(mount_file_path)) {}
 
   ~SysFsCgroupDriver() override = default;
@@ -296,6 +296,5 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
-  static inline std::string kMountFilePath = "/etc/mtab";
 };
 }  // namespace ray
