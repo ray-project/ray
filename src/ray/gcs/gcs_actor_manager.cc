@@ -976,7 +976,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    std::function<void()> done_callback,
                                    int64_t graceful_shutdown_timeout_ms) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Destroying actor";
+  RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+      << "Destroying actor, force_kill=" << force_kill
+      << ", timeout_ms=" << graceful_shutdown_timeout_ms;
   actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {

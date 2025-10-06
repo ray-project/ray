@@ -1428,13 +1428,17 @@ def test_actor_ray_shutdown_called_on_del(ray_start_regular_shared, tempfile_fac
     )
 
     with open(shutdown_file, "r") as f:
-        assert f.read() == "shutdown_called_on_del"
+        assert f.read() == "shutdown_called_on_del", (
+            "Expected __ray_shutdown__ to be called within actor_graceful_shutdown_timeout_ms "
+            "after actor handle was deleted with del"
+        )
 
 
 def test_actor_del_with_atexit(ray_start_regular_shared, tempfile_factory):
     """Test that both __ray_shutdown__ and atexit handlers run on del actor."""
     shutdown_file = tempfile_factory()
     atexit_file = tempfile_factory()
+    order_file = tempfile_factory()
 
     @ray.remote
     class BothHandlersActor:
@@ -1445,10 +1449,17 @@ def test_actor_del_with_atexit(ray_start_regular_shared, tempfile_factory):
             with open(shutdown_file, "w") as f:
                 f.write("ray_shutdown_del")
                 f.flush()
+            with open(order_file, "a") as f:
+                f.write(f"shutdown:{time.time()}\n")
+                f.flush()
 
         def cleanup(self):
             with open(atexit_file, "w") as f:
                 f.write("atexit_del")
+                f.flush()
+
+            with open(order_file, "a") as f:
+                f.write(f"atexit:{time.time()}\n")
                 f.flush()
 
         def ready(self):
@@ -1462,17 +1473,32 @@ def test_actor_del_with_atexit(ray_start_regular_shared, tempfile_factory):
         lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
     )
     with open(shutdown_file, "r") as f:
-        assert f.read() == "ray_shutdown_del"
+        assert (
+            f.read() == "ray_shutdown_del"
+        ), "Expected __ray_shutdown__ to be called when actor deleted"
 
     wait_for_condition(lambda: check_file_exists_and_not_empty(atexit_file), timeout=10)
     with open(atexit_file, "r") as f:
-        assert f.read() == "atexit_del"
+        assert f.read() == "atexit_del", "Expected atexit handler to be called"
+
+    # Verify execution order: __ray_shutdown__ should run before atexit
+    wait_for_condition(lambda: check_file_exists_and_not_empty(order_file), timeout=10)
+    with open(order_file, "r") as f:
+        order = f.read()
+        lines = order.strip().split("\n")
+        assert len(lines) == 2, f"Expected 2 entries, got: {lines}"
+        assert lines[0].startswith(
+            "shutdown:"
+        ), f"Expected __ray_shutdown__ first, got order: {lines}"
+        assert lines[1].startswith(
+            "atexit:"
+        ), f"Expected atexit second, got order: {lines}"
 
 
 def test_actor_ray_shutdown_called_on_scope_exit(
     ray_start_regular_shared, tempfile_factory
 ):
-    """Test that __ray_shutdown__ is called when actor goes out of scope naturally."""
+    """Test that __ray_shutdown__ is called when actor goes out of scope."""
     shutdown_file = tempfile_factory()
 
     @ray.remote
@@ -1515,9 +1541,9 @@ def test_actor_graceful_shutdown_timeout_fallback(shutdown_only, tempfile_factor
                 f.flush()
 
             # Hang indefinitely - simulating buggy cleanup code
-            time.sleep(600)
+            time.sleep(5)
 
-            # This should never be reached due to timeout fallback
+            # This should never be reached due to force kill fallback
             with open(shutdown_completed_file, "w") as f:
                 f.write("should_not_reach")
                 f.flush()
@@ -1534,13 +1560,15 @@ def test_actor_graceful_shutdown_timeout_fallback(shutdown_only, tempfile_factor
         lambda: check_file_exists_and_not_empty(shutdown_started_file), timeout=5
     )
     with open(shutdown_started_file, "r") as f:
-        assert f.read() == "shutdown_started"
-
-    # Wait for timeout + buffer time
-    time.sleep(2)
+        assert (
+            f.read() == "shutdown_started"
+        ), "Expected __ray_shutdown__ to start execution"
 
     # Verify that shutdown did NOT complete (force killed before completion)
-    assert not check_file_exists_and_not_empty(shutdown_completed_file)
+    assert not check_file_exists_and_not_empty(shutdown_completed_file), (
+        "Expected actor to be force-killed before __ray_shutdown__ completed, "
+        "but completion file exists. This means force kill fallback did not work."
+    )
 
 
 if __name__ == "__main__":
