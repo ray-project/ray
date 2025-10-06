@@ -976,7 +976,7 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     first_tensors = [
         # (1, 2, 1)
         np.array([[[1], [2]], [[3], [4]]]),
-        # (2, 2, 1)
+        # (2, 3, 1)
         np.array([[[5], [6], [7]], [[8], [9], [10]]]),
     ]
     second_tensors = [
