@@ -243,13 +243,17 @@ class HTMLDatasource(FileBasedDatasource):
 
         Args:
             soup: BeautifulSoup object for content extraction.
-            path: File path.
+            path: File path (for logging/debugging, not added to output).
             metadata: Pre-extracted metadata from full document (optional).
 
         Returns:
             Dictionary with extracted data.
+
+        Note:
+            The 'path' column is automatically added by FileBasedDatasource
+            if include_paths=True. Do not manually add it here.
         """
-        row_data = {"path": path} if self._include_paths else {}
+        row_data = {}
 
         # Extract text
         if self.text_mode == "clean":
