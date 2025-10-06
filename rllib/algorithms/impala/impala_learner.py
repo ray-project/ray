@@ -1,7 +1,7 @@
-from collections import deque
 import queue
 import threading
 import time
+from collections import deque
 from typing import Any, Dict, Union
 
 import ray
@@ -12,8 +12,8 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
