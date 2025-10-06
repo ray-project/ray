@@ -9,12 +9,10 @@ import numpy as np
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    convert_actor_state,
     get_error_message,
     init_error_pubsub,
 )
@@ -562,6 +560,7 @@ def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only):
                 "health_check_period_ms": 100,
                 "timeout_ms_task_wait_for_death_info": 100,
             },
+            "include_dashboard": True,  # for list_actors API
         },
     ],
     indirect=True,
@@ -619,13 +618,11 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # Wait for the actor to be alive again in a new worker process.
     def check_actor_restart():
-        actors = list(ray._private.state.actors().values())
+        actors = ray.util.state.list_actors(
+            detail=True
+        )  # detail is needed for num_restarts to populate
         assert len(actors) == 1
-        print(actors)
-        return (
-            actors[0]["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-            and actors[0]["NumRestarts"] == 1
-        )
+        return actors[0].state == "ALIVE" and actors[0].num_restarts == 1
 
     wait_for_condition(check_actor_restart)
 
