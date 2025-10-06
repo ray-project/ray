@@ -185,8 +185,6 @@ class vLLMEngineWrapper:
         self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
-        self._generate_async = self.generate_async
-
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
         self.max_pending_requests = max_pending_requests
@@ -325,7 +323,7 @@ class vLLMEngineWrapper:
         output_data = vLLMOutputData.from_vllm_engine_output(output)
         return request, output_data.model_dump(), time_taken
 
-    async def generate_async(self, request: vLLMEngineRequest) -> Any:
+    async def _generate_async(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
 
         Args:

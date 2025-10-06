@@ -118,6 +118,7 @@ class VLLMEngine(LLMEngine):
             )
         from vllm import envs as vllm_envs
 
+        # TODO (Kourosh): Remove this after a few releases.
         if not vllm_envs.VLLM_USE_V1:
             logger.error(
                 "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
@@ -283,7 +284,6 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        from vllm import envs as vllm_envs
 
         from vllm.v1.engine.async_llm import AsyncLLM
         from vllm.v1.executor.abstract import Executor
