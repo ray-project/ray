@@ -19,7 +19,6 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --find-links=./.whl
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
     build_arg_sets:
       - cu121_py39
