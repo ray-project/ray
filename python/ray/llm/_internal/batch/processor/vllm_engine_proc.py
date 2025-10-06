@@ -28,9 +28,9 @@ from ray.llm._internal.batch.stages import (
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
     download_model_files,
-    EXCLUDE_SAFETENSORS_MODES,
 )
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
@@ -186,7 +186,10 @@ def build_vllm_engine_processor(
                 ),
             )
         )
-    if config.engine_kwargs.get("load_format", None) in EXCLUDE_SAFETENSORS_MODES:
+
+    # We download the config files here so that we can report the underlying architecture to the telemetry system.
+    # This should be a lightweight operation.
+    if config.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
         download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
     else:
         download_model_mode = NodeModelDownloadable.TOKENIZER_ONLY
