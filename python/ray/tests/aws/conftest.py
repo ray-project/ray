@@ -1,9 +1,8 @@
 import pytest
-
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
-from ray.autoscaler._private.aws.utils import resource_cache, client_cache
-
 from botocore.stub import Stubber
+
+from ray.autoscaler._private.aws.utils import client_cache, resource_cache
+from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 
 
 @pytest.fixture()

@@ -25,7 +25,6 @@ from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
-    Aggregate,
     RandomShuffle,
     Repartition,
     Sort,
@@ -52,7 +51,6 @@ from ray.data._internal.logical.rules.configure_map_task_memory import (
 from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.stats import DatasetStats
-from ray.data.aggregate import Count
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -106,7 +104,6 @@ def test_read_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert physical_op.actual_target_max_block_size == ctx.target_max_block_size
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
     assert physical_op.input_dependencies[0]._logical_operators == [op]
@@ -117,14 +114,22 @@ def test_read_operator_emits_warning_for_large_read_tasks():
         def estimate_inmemory_data_size(self) -> Optional[int]:
             return None
 
-        def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        def get_read_tasks(
+            self, parallelism: int, per_task_row_limit: Optional[int] = None
+        ) -> List[ReadTask]:
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
             def read_fn():
                 _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
-            return [ReadTask(read_fn, BlockMetadata(1, None, None, None))]
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(1, None, None, None),
+                    per_task_row_limit=per_task_row_limit,
+                )
+            ]
 
     with pytest.warns(UserWarning):
         ray.data.read_datasource(StubDatasource()).materialize()
@@ -144,10 +149,6 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
     assert physical_op._additional_split_factor == 10
 
     # Test that split blocks prevents fusion.
@@ -306,7 +307,7 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
     read_op = get_parquet_read_logical_op()
     op = Filter(
         read_op,
-        lambda x: x,
+        fn=lambda x: x,
     )
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
@@ -315,10 +316,6 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
 
 def test_filter_e2e(ray_start_regular_shared_2_cpus):
@@ -391,10 +388,6 @@ def test_flat_map(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
 
 def test_flat_map_e2e(ray_start_regular_shared_2_cpus):
@@ -456,10 +449,6 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
-    )
 
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
@@ -492,16 +481,6 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    if shuffle:
-        assert (
-            physical_op.actual_target_max_block_size
-            == DataContext.get_current().target_shuffle_max_block_size
-        )
-    else:
-        assert (
-            physical_op.actual_target_max_block_size
-            == DataContext.get_current().target_max_block_size
-        )
 
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
@@ -602,10 +581,6 @@ def test_sort_operator(
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
-    )
 
 
 def test_sort_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method, tmp_path):
@@ -725,32 +700,6 @@ def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
     ) == {"prod": 384}
 
 
-def test_aggregate_operator(ray_start_regular_shared_2_cpus):
-    ctx = DataContext.get_current()
-
-    planner = create_planner()
-    read_op = get_parquet_read_logical_op()
-    op = Aggregate(
-        read_op,
-        key="col1",
-        aggs=[Count()],
-    )
-    plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
-
-    assert op.name == "Aggregate"
-    assert isinstance(physical_op, AllToAllOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_shuffle_max_block_size
-    )
-
-    # Check that the linked logical operator is the same the input op.
-    assert physical_op._logical_operators == [op]
-
-
 def test_aggregate_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.groupby("id").count()
@@ -776,13 +725,13 @@ def test_aggregate_validate_keys(ray_start_regular_shared_2_cpus):
     )
 
     ds_groupby_col1 = ds_named.groupby("col1").count()
-    assert ds_groupby_col1.take_all() == [
+    assert ds_groupby_col1.sort("col1").take_all() == [
         {"col1": 1, "count()": 2},
         {"col1": 2, "count()": 1},
         {"col1": 3, "count()": 1},
     ]
     ds_groupby_col2 = ds_named.groupby("col2").count()
-    assert ds_groupby_col2.take_all() == [
+    assert ds_groupby_col2.sort("col2").take_all() == [
         {"col2": "a", "count()": 1},
         {"col2": "b", "count()": 1},
         {"col2": "c", "count()": 2},
@@ -811,27 +760,29 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert isinstance(physical_op.input_dependencies[1], MapOperator)
 
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
-
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
 
 
 @pytest.mark.parametrize(
-    "num_blocks1,num_blocks2",
-    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+    "num_blocks1,num_blocks2,num_blocks3",
+    list(itertools.combinations_with_replacement(range(1, 12), 3)),
 )
-def test_zip_e2e(ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2):
+def test_zip_e2e(
+    ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2, num_blocks3
+):
     n = 12
     ds1 = ray.data.range(n, override_num_blocks=num_blocks1)
     ds2 = ray.data.range(n, override_num_blocks=num_blocks2).map(
         column_udf("id", lambda x: x + 1)
     )
-    ds = ds1.zip(ds2)
-    assert ds.take() == named_values(["id", "id_1"], zip(range(n), range(1, n + 1)))
+    ds3 = ray.data.range(n, override_num_blocks=num_blocks3).map(
+        column_udf("id", lambda x: x + 2)
+    )
+    ds = ds1.zip(ds2, ds3)
+    assert ds.take() == named_values(
+        ["id", "id_1", "id_2"], zip(range(n), range(1, n + 1), range(2, n + 2))
+    )
     _check_usage_record(["ReadRange", "Zip"])
 
 
@@ -1549,6 +1500,76 @@ def test_configure_map_task_memory_rule(
 
     remote_args = new_plan.dag._get_runtime_ray_remote_args()
     assert remote_args.get("memory") == expected_memory
+
+
+def test_limit_pushdown_map_per_block_limit_applied(ray_start_regular_shared_2_cpus):
+    """Test that per-block limits are actually applied during map execution."""
+
+    # Create a global counter using Ray
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+        def get(self):
+            return self.value
+
+    counter = Counter.remote()
+
+    def track_processing(row):
+        # Record that this row was processed
+        ray.get(counter.increment.remote())
+        return row
+
+    # Create dataset with limit pushed through map
+    ds = ray.data.range(1000, override_num_blocks=10).map(track_processing).limit(50)
+
+    # Execute and get results
+    result = ds.take_all()
+
+    # Verify correct results
+    expected = [{"id": i} for i in range(50)]
+    assert result == expected
+
+    # Check how many rows were actually processed
+    processed_count = ray.get(counter.get.remote())
+
+    # With per-block limits, we should process fewer rows than the total dataset
+    # but at least the number we need for the final result
+    assert (
+        processed_count >= 50
+    ), f"Expected at least 50 rows processed, got {processed_count}"
+    assert (
+        processed_count < 1000
+    ), f"Expected fewer than 1000 rows processed, got {processed_count}"
+
+    print(f"Processed {processed_count} rows to get {len(result)} results")
+
+
+def test_limit_pushdown_preserves_map_behavior(ray_start_regular_shared_2_cpus):
+    """Test that adding per-block limits doesn't change the logical result."""
+
+    def add_one(row):
+        row["id"] += 1
+        return row
+
+    # Compare with and without limit pushdown
+    ds_with_limit = ray.data.range(100).map(add_one).limit(10)
+    ds_without_limit = ray.data.range(100).limit(10).map(add_one)
+
+    result_with = ds_with_limit.take_all()
+    result_without = ds_without_limit.take_all()
+
+    # Results should be identical
+    assert result_with == result_without
+
+    # Both should have the expected transformation applied
+    expected = [{"id": i + 1} for i in range(10)]
+    assert result_with == expected
 
 
 if __name__ == "__main__":

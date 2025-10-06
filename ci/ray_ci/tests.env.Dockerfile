@@ -10,6 +10,10 @@ ARG RAY_INSTALL_MASK=
 ENV CC=clang
 ENV CXX=clang++-12
 
+# Disable C++ API/worker building by default on CI.
+# To use C++ API/worker, set BUILD_TYPE to "multi-lang".
+ENV RAY_DISABLE_EXTRA_CPP=1
+
 RUN mkdir /rayci
 WORKDIR /rayci
 COPY . .
@@ -19,7 +23,7 @@ RUN <<EOF
 
 set -euo pipefail
 
-if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
+if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   # Disables uploading cache when it is read-only.
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
@@ -60,16 +64,23 @@ echo "--- Build dashboard"
 
 echo "--- Install Ray with -e"
 
+
+# Dependencies are already installed in the base CI images.
+# So we use --no-deps to avoid reinstalling them.
+INSTALL_FLAGS=(--no-deps --force-reinstall -v)
+
 if [[ "$BUILD_TYPE" == "debug" ]]; then
-  RAY_DEBUG_BUILD=debug pip install -v -e python/
+  RAY_DEBUG_BUILD=debug pip install "${INSTALL_FLAGS[@]}" -e python/
 elif [[ "$BUILD_TYPE" == "asan" ]]; then
-  pip install -v -e python/
-  bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
+  pip install "${INSTALL_FLAGS[@]}" -e python/
+  bazel run $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:gen_ray_pkg
+elif [[ "$BUILD_TYPE" == "multi-lang" ]]; then
+  RAY_DISABLE_EXTRA_CPP=0 RAY_INSTALL_JAVA=1 pip install "${INSTALL_FLAGS[@]}" -e python/
 elif [[ "$BUILD_TYPE" == "java" ]]; then
   bash java/build-jar-multiplatform.sh linux
-  RAY_INSTALL_JAVA=1 pip install -v -e python/
+  RAY_INSTALL_JAVA=1 pip install "${INSTALL_FLAGS[@]}" -e python/
 else
-  pip install -v -e python/
+  pip install "${INSTALL_FLAGS[@]}" -e python/
 fi
 
 EOF

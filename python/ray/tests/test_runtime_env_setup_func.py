@@ -1,16 +1,16 @@
-import threading
-import os
-import sys
 import logging
-import tempfile
+import os
 import platform
+import sys
+import tempfile
+import threading
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._private.test_utils import format_web_url
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 def _hook():

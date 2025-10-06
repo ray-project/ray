@@ -1,7 +1,6 @@
-import shutil
 import sys
-import os
 import logging
+import time
 
 import pytest
 
@@ -9,6 +8,38 @@ import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def disable_vllm_compile_cache(monkeypatch):
+    """Automatically disable vLLM compile cache for all tests.
+
+    Avoids AssertionError due to torch compile cache corruption caused by
+    running multiple engines on the same node.
+    See: https://github.com/vllm-project/vllm/issues/18851, fix expected with
+    PyTorch 2.8.0
+    """
+    monkeypatch.setenv("VLLM_DISABLE_COMPILE_CACHE", "1")
+
+
+@pytest.fixture(autouse=True)
+def add_buffer_time_between_tests():
+    """Add buffer time after each test to avoid resource conflicts, which cause
+    flakiness.
+    """
+    # yield  # test runs
+    # time.sleep(10)
+    import gc
+
+    gc.collect()
+    time.sleep(15)
+
+
+@pytest.fixture(autouse=True)
+def cleanup_ray_resources():
+    """Automatically cleanup Ray resources between tests to prevent conflicts."""
+    yield
+    ray.shutdown()
 
 
 def test_chat_template_with_vllm():
@@ -25,6 +56,7 @@ def test_chat_template_with_vllm():
         detokenize=True,
         batch_size=16,
         concurrency=1,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -84,6 +116,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
         batch_size=16,
         accelerator_type=None,
         concurrency=concurrency,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -136,6 +169,7 @@ def test_vllm_llama_lora():
         detokenize=True,
         batch_size=16,
         concurrency=1,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -167,18 +201,6 @@ def test_vllm_llama_lora():
     assert all("resp" in out for out in outs)
 
 
-@ray.remote(num_gpus=1)
-def delete_torch_compile_cache_on_worker():
-    """Delete torch compile cache on worker.
-    Avoids AssertionError due to torch compile cache corruption
-    TODO(seiji): check if this is still needed after https://github.com/vllm-project/vllm/issues/18851 is fixed
-    """
-    torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
-    if os.path.exists(torch_compile_cache_path):
-        shutil.rmtree(torch_compile_cache_path)
-        logger.warning(f"Deleted torch compile cache at {torch_compile_cache_path}")
-
-
 @pytest.mark.parametrize(
     "model_source,tp_size,pp_size,concurrency,sample_size",
     [
@@ -189,16 +211,13 @@ def delete_torch_compile_cache_on_worker():
     ],
 )
 def test_vllm_vision_language_models(
-    model_source, tp_size, pp_size, concurrency, sample_size
+    model_source,
+    tp_size,
+    pp_size,
+    concurrency,
+    sample_size,
 ):
     """Test vLLM with vision language models using different configurations."""
-
-    # todo(seiji): Commenting out due to https://github.com/ray-project/ray/issues/53824
-    # Need to follow up once torch_compile_cache issue is fixed or PyTorch 2.8
-    if model_source == "mistral-community/pixtral-12b":
-        pytest.skip("Skipping test due to torch_compile_cache issue")
-
-    ray.get(delete_torch_compile_cache_on_worker.remote())
 
     # vLLM v1 does not support decoupled tokenizer,
     # but since the tokenizer is in a separate process,
@@ -221,6 +240,7 @@ def test_vllm_vision_language_models(
         batch_size=16,
         concurrency=concurrency,
         has_image=True,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -281,6 +301,7 @@ def test_async_udf_queue_capped(concurrency):
         batch_size=4,
         accelerator_type=None,
         concurrency=concurrency,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -316,6 +337,81 @@ def test_async_udf_queue_capped(concurrency):
 
     outs = ds.take_all()
     assert all(out["large_memory_still_there"] for out in outs)
+
+
+@pytest.mark.parametrize(
+    "backend, placement_group_config",
+    [
+        # Custom placement group with STRICT_PACK strategy
+        (
+            "ray",
+            dict(bundles=[{"CPU": 1, "GPU": 1}] * 4, strategy="STRICT_PACK"),
+        ),
+        # Custom placement group leaving GPU and strategy unspecified
+        (
+            "ray",
+            dict(bundles=[{"CPU": 1}] * 4),
+        ),
+        # Empty placement group
+        (
+            "ray",
+            None,
+        ),
+        # Custom placement group with MP backend
+        (
+            "mp",
+            dict(bundles=[{"GPU": 1}] * 4),
+        ),
+        # Empty placement group with MP backend
+        (
+            "mp",
+            None,
+        ),
+    ],
+)
+def test_vllm_placement_group(backend, placement_group_config):
+    """Test vLLM with different placement group configurations."""
+
+    config = vLLMEngineProcessorConfig(
+        model_source="facebook/opt-1.3b",
+        engine_kwargs=dict(
+            enable_prefix_caching=True,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=4096,
+            pipeline_parallel_size=2,
+            tensor_parallel_size=2,
+            distributed_executor_backend=backend,
+        ),
+        tokenize=False,
+        detokenize=False,
+        concurrency=1,
+        batch_size=16,
+        apply_chat_template=False,
+        placement_group_config=placement_group_config,
+    )
+
+    processor = build_llm_processor(
+        config,
+        preprocess=lambda row: dict(
+            prompt=f"You are a calculator. {row['id']} ** 3 = ?",
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=20,
+                detokenize=True,
+            ),
+        ),
+        postprocess=lambda row: dict(
+            resp=row["generated_text"],
+        ),
+    )
+
+    ds = ray.data.range(60)
+    ds = processor(ds)
+    ds = ds.materialize()
+
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
 
 
 if __name__ == "__main__":

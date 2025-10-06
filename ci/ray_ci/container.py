@@ -1,11 +1,9 @@
 import abc
 import os
+import re
 import subprocess
 import sys
-import re
-
-from typing import List, Tuple, Optional
-
+from typing import List, Optional, Tuple
 
 # Regex pattern to match CUDA copyright header with any version
 _CUDA_COPYRIGHT_PATTERN = r"""==========
@@ -38,11 +36,21 @@ _DOCKER_ENV = [
     "BUILDKITE_COMMIT",
     "BUILDKITE_JOB_ID",
     "BUILDKITE_LABEL",
-    "BUILDKITE_BAZEL_CACHE_URL",
     "BUILDKITE_PIPELINE_ID",
     "BUILDKITE_PULL_REQUEST",
+    "BUILDKITE_BAZEL_CACHE_URL",
+    "BUILDKITE_CACHE_READONLY",
 ]
-_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
+_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
+
+
+def get_docker_image(docker_tag: str, build_id: Optional[str] = None) -> str:
+    """Get rayci image for a particular tag."""
+    if not build_id:
+        build_id = _RAYCI_BUILD_ID
+    if build_id:
+        return f"{_DOCKER_ECR_REPO}:{build_id}-{docker_tag}"
+    return f"{_DOCKER_ECR_REPO}:{docker_tag}"
 
 
 class Container(abc.ABC):
@@ -81,10 +89,8 @@ class Container(abc.ABC):
         )
 
     def _get_docker_image(self) -> str:
-        """
-        Get docker image for a particular commit
-        """
-        return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
+        """Get docker image for a particular commit."""
+        return get_docker_image(self.docker_tag)
 
     @abc.abstractmethod
     def install_ray(

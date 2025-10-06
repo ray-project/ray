@@ -1,0 +1,262 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "core_worker_resubmit_queue_test",
+    size = "small",
+    srcs = ["core_worker_resubmit_queue_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker:core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "shutdown_coordinator_test",
+    size = "medium",
+    srcs = ["shutdown_coordinator_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker:shutdown_coordinator",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "memory_store_test",
+    size = "small",
+    srcs = ["memory_store_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:memory_store",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "reference_counter_test",
+    size = "small",
+    srcs = ["reference_counter_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_object",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/pubsub:fake_subscriber",
+        "//src/ray/pubsub:publisher",
+        "//src/ray/pubsub:publisher_interface",
+        "//src/ray/pubsub:subscriber_interface",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "object_recovery_manager_test",
+    size = "small",
+    srcs = ["object_recovery_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker:object_recovery_manager",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/pubsub:fake_subscriber",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/raylet_rpc_client:raylet_client_interface",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "task_manager_test",
+    size = "small",
+    srcs = ["task_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:task_common",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker:reference_counter",
+        "//src/ray/core_worker:task_event_buffer",
+        "//src/ray/core_worker:task_manager",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/pubsub:fake_subscriber",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "task_event_buffer_test",
+    size = "small",
+    srcs = ["task_event_buffer_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:task_common",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:task_event_buffer",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/util:event",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "task_event_buffer_export_event_test",
+    size = "small",
+    srcs = ["task_event_buffer_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:task_event_buffer",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/util:event",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "actor_creator_test",
+    size = "small",
+    srcs = ["actor_creator_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:actor_creator",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "generator_waiter_test",
+    size = "small",
+    srcs = ["generator_waiter_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:common",
+        "//src/ray/core_worker:generator_waiter",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "actor_manager_test",
+    size = "small",
+    srcs = ["actor_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:actor_manager",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "lease_policy_test",
+    size = "small",
+    srcs = ["lease_policy_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker:lease_policy",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "mutable_object_provider_test",
+    srcs = [
+        "mutable_object_provider_test.cc",
+    ],
+    tags = [
+        "no_tsan",
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:osx": [],
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//:ray_mock",
+        "//src/ray/core_worker:experimental_mutable_object_provider",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/object_manager/plasma:plasma_store_server_lib",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "core_worker_test",
+    size = "small",
+    srcs = ["core_worker_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:fake_periodical_runner",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/core_worker:grpc_service",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker:reference_counter",
+        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/object_manager/plasma:fake_plasma_client",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/pubsub:fake_subscriber",
+        "//src/ray/raylet_ipc_client:fake_raylet_ipc_client",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

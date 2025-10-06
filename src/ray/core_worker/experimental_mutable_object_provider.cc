@@ -71,8 +71,10 @@ void MutableObjectProvider::RegisterWriterChannel(
 
   // Find remote readers.
   for (const auto &node_id : remote_reader_node_ids) {
-    client_call_managers_.push_back(
-        std::make_unique<rpc::ClientCallManager>(io_context, /*record_stats=*/false));
+    // NOTE: Not setting local address because we're not testing compiled graphs with
+    // testing_rpc_failure_avoid_intra_node_failures for now.
+    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(
+        io_context, /*record_stats=*/false, /*local_address=*/"always not local"));
     std::shared_ptr<RayletClientInterface> reader = raylet_client_factory_(node_id);
     remote_readers->push_back(reader);
   }
@@ -242,9 +244,9 @@ void MutableObjectProvider::PollWriterClosure(
         object->GetData()->Data(),
         object->GetMetadata()->Data(),
         [this, &io_context, writer_object_id, remote_readers, num_replied](
-            const Status &status, const rpc::PushMutableObjectReply &reply) {
+            const Status &push_object_status, const rpc::PushMutableObjectReply &reply) {
           *num_replied += 1;
-          if (!status.ok()) {
+          if (!push_object_status.ok()) {
             RAY_LOG(ERROR)
                 << "Failed to transfer object to a remote node for an object id "
                 << writer_object_id << ". It can cause hang.";

@@ -6,10 +6,10 @@ Ray Tune Examples
 =================
 
 .. tip:: 
-    See :ref:`overview` to learn more about Tune features.
+    See :ref:`tune-main` to learn more about Tune features.
 
 
-Below are examples for using Ray Tune for a variety use cases and sorted by categories:
+Below are examples for using Ray Tune for a variety of use cases and sorted by categories:
 
 * `ML frameworks`_
 * `Experiment tracking tools`_
@@ -32,7 +32,6 @@ ML frameworks
     Hugging Face Transformers Example <pbt_transformers>
     Ray RLlib Example <pbt_ppo_example>
     Keras Example <tune_mnist_keras>
-    Horovod Example <horovod_simple>
 
 Ray Tune integrates with many popular machine learning frameworks. Here you find a few practical examples showing you how to tune your models. At the end of these guides you will often find links to even more examples.
 
@@ -44,7 +43,6 @@ Ray Tune integrates with many popular machine learning frameworks. Here you find
   * - :doc:`Tuning RL experiments with Ray Tune and Ray Serve <pbt_ppo_example>`
   * - :doc:`Tuning XGBoost parameters with Tune <tune-xgboost>`
   * - :doc:`Tuning LightGBM parameters with Tune <lightgbm_example>`
-  * - :doc:`Tuning Horovod parameters with Tune <horovod_simple>`
   * - :doc:`Tuning Hugging Face Transformers with Tune <pbt_transformers>`
   * - :doc:`End-to-end example for tuning a TensorFlow model <../../train/examples/tf/tune_tensorflow_mnist_example>`
   * - :doc:`End-to-end example for tuning a PyTorch model with PBT <../../train/examples/pytorch/tune_cifar_torch_pbt_example>`  

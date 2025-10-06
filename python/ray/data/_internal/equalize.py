@@ -2,8 +2,12 @@ from typing import List, Tuple
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
-from ray.data._internal.util import unify_ref_bundles_schema
-from ray.data.block import Block, BlockMetadata, BlockPartition
+from ray.data.block import (
+    Block,
+    BlockMetadata,
+    BlockPartition,
+    _take_first_non_empty_schema,
+)
 from ray.types import ObjectRef
 
 
@@ -41,7 +45,7 @@ def _equalize(
 
     # phase 2: based on the num rows needed for each shaved split, split the leftovers
     # in the shape that exactly matches the rows needed.
-    schema = unify_ref_bundles_schema(per_split_bundles)
+    schema = _take_first_non_empty_schema(bundle.schema for bundle in per_split_bundles)
     leftover_bundle = RefBundle(leftovers, owns_blocks=owned_by_consumer, schema=schema)
     leftover_splits = _split_leftovers(leftover_bundle, per_split_needed_rows)
 

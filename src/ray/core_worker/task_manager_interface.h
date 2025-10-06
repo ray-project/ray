@@ -19,9 +19,9 @@
 
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
-#include "ray/common/task/task.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -57,7 +57,6 @@ class TaskManagerInterface {
   /// \param[in] reply Proto response to a direct actor or task call.
   /// \param[in] worker_addr Address of the worker that executed the task.
   /// \param[in] is_application_error Whether this is an Exception return.
-  /// \return Void.
   virtual void CompletePendingTask(const TaskID &task_id,
                                    const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr,

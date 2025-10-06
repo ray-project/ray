@@ -9,6 +9,7 @@ We have the following Mock:
 - An engine that returns a string of form "test_i" for i in range(max_tokens)
 """
 
+import sys
 from typing import Optional
 
 import pytest
@@ -81,3 +82,22 @@ class TestMockLLMEngine:
 
         async for response in engine.embeddings(request):
             LLMResponseValidator.validate_embedding_response(response, dimensions)
+
+    @pytest.mark.asyncio
+    async def test_score_mock_engine(self, mock_llm_config, mock_score_request):
+        """Test score API for text similarity."""
+        # Create and start the engine
+        engine = MockVLLMEngine(mock_llm_config)
+        await engine.start()
+
+        # Create score request
+        request = mock_score_request
+
+        print("\n\n_____ SCORE _____\n\n")
+
+        async for response in engine.score(request):
+            LLMResponseValidator.validate_score_response(response)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

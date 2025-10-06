@@ -3,9 +3,9 @@
       Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
       https://arxiv.org/pdf/1706.03762.pdf
 """
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()

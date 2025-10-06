@@ -121,6 +121,7 @@ test_cpp() {
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
+  bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
   bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
@@ -150,8 +151,8 @@ test_macos_wheels() {
   return "${TEST_WHEEL_RESULT}"
 }
 
-install_npm_project() {
-  if [ "${OSTYPE}" = msys ]; then
+_install_npm_project() {
+  if [[ "${OSTYPE}" == msys ]]; then
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
     { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
@@ -169,14 +170,16 @@ build_dashboard_front_end() {
       cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
-      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
-        set +x  # suppress set -x since it'll get very noisy here
-        . "${HOME}/.nvm/nvm.sh"
-        NODE_VERSION="14"
-        nvm install $NODE_VERSION
-        nvm use --silent $NODE_VERSION
+      if [[ -z "${BUILDKITE-}" || "${OSTYPE}" != linux* ]]; then
+        if [[ -d "${HOME}/.nvm" ]]; then
+          set +x  # suppress set -x since it'll get very noisy here
+          . "${HOME}/.nvm/nvm.sh"
+          NODE_VERSION="14"
+          nvm install $NODE_VERSION
+          nvm use --silent $NODE_VERSION
+        fi
       fi
-      install_npm_project
+      _install_npm_project
       npm run build
     )
   fi
@@ -211,11 +214,11 @@ _bazel_build_before_install() {
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
   if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
-    bazel build //:ray_pkg
+    bazel run //:gen_ray_pkg
   elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
     echo "No need to build anything before install"
   elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
-    bazel build --config debug //:ray_pkg
+    bazel run --config debug //:gen_ray_pkg
   else
     echo "Invalid config given"
     exit 1
@@ -241,25 +244,20 @@ install_ray() {
   )
 }
 
-validate_wheels_commit_str() {
-  if [ "${OSTYPE}" = msys ]; then
-    echo "Windows builds do not set the commit string, skipping wheel commit validity check."
-    return 0
-  fi
-
-  if [ -n "${BUILDKITE_COMMIT}" ]; then
-    EXPECTED_COMMIT=${BUILDKITE_COMMIT:-}
+_validate_macos_wheels_commit_str() {
+  if [[ -n "${BUILDKITE_COMMIT}" ]]; then
+    EXPECTED_COMMIT="${BUILDKITE_COMMIT:-}"
   else
-    EXPECTED_COMMIT=${TRAVIS_COMMIT:-}
+    EXPECTED_COMMIT="$(git rev-parse HEAD)"
   fi
 
-  if [ -z "$EXPECTED_COMMIT" ]; then
-    echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
-    return 0
+  if [[ -z "$EXPECTED_COMMIT" ]]; then
+    echo "Could not validate expected wheel commits: BUILDKITE_COMMIT is empty." >&2
+    exit 1
   fi
 
   for whl in .whl/*.whl; do
-    basename=${whl##*/}
+    basename="${whl##*/}"
 
     if [[ "$basename" =~ "_cpp" ]]; then
       # cpp wheels cannot be checked this way
@@ -280,85 +278,29 @@ validate_wheels_commit_str() {
   echo "All wheels passed the sanity check and have the correct wheel commit set."
 }
 
-build_wheels_and_jars() {
+build_macos_wheels_and_jars() {
+  if [[ "${OSTYPE}" != darwin* ]]; then
+    echo "Not on macOS"
+    exit 1
+  fi
+
   _bazel_build_before_install
 
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
+  rm -rf .whl
   mkdir -p .whl
-  rm -rf .whl/* || true
 
-  case "${OSTYPE}" in
-    linux*)
-      # Mount bazel cache dir to the docker container.
-      # For the linux wheel build, we use a shared cache between all
-      # wheels, but not between different travis runs, because that
-      # caused timeouts in the past. See the "cache: false" line below.
-      local MOUNT_BAZEL_CACHE=(
-        -e "TRAVIS=true"
-        -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
-        -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
-        -e "CI=${CI}"
-        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-1}"
-        -e "BUILDKITE=${BUILDKITE:-}"
-        -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
-        -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
-        -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
-        -e "BUILD_ONE_PYTHON_ONLY=${BUILD_ONE_PYTHON_ONLY:-}"
-      )
+  # This command should be kept in sync with ray/python/README-building-wheels.md.
+  "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
 
-      IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
-      IMAGE_TAG="2022-12-20-b4884d9"
+  mkdir -p /tmp/artifacts
+  rm -rf /tmp/artifacts/.whl
+  cp -r .whl /tmp/artifacts/.whl
+  chmod 755 /tmp/artifacts/.whl
+  chmod 644 /tmp/artifacts/.whl/*
 
-      local MOUNT_ENV=()
-      if [[ "${LINUX_JARS-}" == "1" ]]; then
-        MOUNT_ENV+=(-e "BUILD_JAR=1")
-      fi
-
-      if [[ -z "${BUILDKITE-}" ]]; then
-        # This command should be kept in sync with ray/python/README-building-wheels.md,
-        # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-        docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-      else
-        rm -rf /ray-mount/*
-        rm -rf /ray-mount/.whl || true
-        rm -rf /ray/.whl || true
-        cp -rT /ray /ray-mount
-        ls -a /ray-mount
-        docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-        cp -rT /ray-mount /ray # copy new files back here
-        find . | grep whl # testing
-
-        # Sync the directory to buildkite artifacts
-        rm -rf /artifact-mount/.whl || true
-
-        if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
-          cp -r .whl /artifact-mount/.whl
-          chmod -R 777 /artifact-mount/.whl
-        fi
-
-        validate_wheels_commit_str
-      fi
-      ;;
-    darwin*)
-      # This command should be kept in sync with ray/python/README-building-wheels.md.
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      mkdir -p /tmp/artifacts/.whl
-      rm -rf /tmp/artifacts/.whl || true
-
-      if [[ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" == "1" ]]; then
-        cp -r .whl /tmp/artifacts/.whl
-        chmod -R 777 /tmp/artifacts/.whl
-      fi
-
-      validate_wheels_commit_str
-      ;;
-    msys*)
-      "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
-      ;;
-  esac
+  _validate_macos_wheels_commit_str
 }
 
 configure_system() {

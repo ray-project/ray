@@ -31,7 +31,7 @@ from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.models.torch.torch_distributions import (
+from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchMultiCategorical,

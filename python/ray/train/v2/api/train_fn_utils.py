@@ -1,19 +1,27 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from ray.train import Checkpoint
-from ray.train.v2._internal.execution.context import get_train_context
+from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
+from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
+from ray.train.v2.api.report_config import CheckpointUploadMode
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
+    from ray.train import Checkpoint
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
 @PublicAPI(stability="stable")
 def report(
     metrics: Dict[str, Any],
-    checkpoint: Optional[Checkpoint] = None,
+    checkpoint: Optional["Checkpoint"] = None,
     checkpoint_dir_name: Optional[str] = None,
+    checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+    delete_local_checkpoint_after_upload: Optional[bool] = None,
+    checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
+    validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+    validate_config: Optional[Dict] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -86,10 +94,36 @@ def report(
             If provided, it must be unique across all checkpoints per worker to avoid
             naming collisions. Consider including identifiers such as the epoch or batch
             index in the name.
+        checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+            Defaults to uploading the checkpoint synchronously.
+            This works when no checkpoint is provided but is not useful in that case.
+        delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+        checkpoint_upload_fn: A user defined function that will be called with the
+            checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
+            utility for copying to the destination `storage_path`.
+        validate_fn: If provided, Ray Train will validate the checkpoint using
+            this function.
+        validate_config: Configuration passed to the validate_fn. Can contain info
+            like the validation dataset.
     """
+    if delete_local_checkpoint_after_upload is None:
+        delete_local_checkpoint_after_upload = (
+            checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
+        )
 
-    get_train_context().report(
-        metrics=metrics, checkpoint=checkpoint, checkpoint_dir_name=checkpoint_dir_name
+    # TODO: figure out how to validate validate_fn itself
+    if validate_config and not validate_fn:
+        raise ValueError("validate_fn must be provided together with validate_config")
+
+    get_train_fn_utils().report(
+        metrics=metrics,
+        checkpoint=checkpoint,
+        checkpoint_dir_name=checkpoint_dir_name,
+        checkpoint_upload_mode=checkpoint_upload_mode,
+        delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
+        checkpoint_upload_fn=checkpoint_upload_fn,
+        validate_fn=validate_fn,
+        validate_config=validate_config or {},
     )
 
 
@@ -103,11 +137,11 @@ def get_context() -> TrainContext:
     """
     # TODO: Return a dummy train context on the controller and driver process
     # instead of raising an exception if the train context does not exist.
-    return TrainContext()
+    return get_train_fn_utils().get_context()
 
 
 @PublicAPI(stability="stable")
-def get_checkpoint() -> Optional[Checkpoint]:
+def get_checkpoint() -> Optional["Checkpoint"]:
     """Access the latest reported checkpoint to resume from if one exists.
 
     Example:
@@ -148,7 +182,52 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
-    return get_train_context().get_checkpoint()
+    return get_train_fn_utils().get_checkpoint()
+
+
+@PublicAPI(stability="alpha")
+def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
+    """Get all the reported checkpoints so far.
+
+    Blocks until Ray Train has finished processing every `ray.train.report` call.
+
+    Example:
+
+        .. testcode::
+
+            import tempfile
+
+            from ray import train
+            from ray.train import Checkpoint
+            from ray.train.torch import TorchTrainer
+
+
+            def train_func(config):
+                start_epoch = 0
+
+                for epoch in range(start_epoch, config.get("num_epochs", 10)):
+                    # Do training...
+
+                    metrics = {"loss": ...}
+
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                       # Save the checkpoint...
+
+                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+                        train.report(metrics, checkpoint=checkpoint)
+
+                reported_checkpoints = train.get_all_reported_checkpoints()
+                # Report artifacts/metrics to experiment tracking framework...
+
+            trainer = TorchTrainer(
+                train_func, scaling_config=train.ScalingConfig(num_workers=2)
+            )
+
+    Returns:
+        List of ReportedCheckpoint objects that represent the checkpoints and
+        corresponding metrics reported by the workers.
+    """
+    return get_train_fn_utils().get_all_reported_checkpoints()
 
 
 @PublicAPI(stability="stable")
@@ -195,4 +274,6 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_context().get_dataset_shard(dataset_name)
+    return get_train_fn_utils().get_dataset_shard(
+        DatasetShardMetadata(dataset_name=dataset_name)
+    )

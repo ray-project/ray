@@ -10,7 +10,7 @@ from starlette.types import ASGIApp
 
 import ray
 from ray import cloudpickle
-from ray._private.serialization import pickle_dumps
+from ray._common.serialization import pickle_dumps
 from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -135,6 +135,26 @@ def shutdown():
         return
 
     client.shutdown()
+    _set_global_client(None)
+
+
+@PublicAPI(stability="alpha")
+async def shutdown_async():
+    """Completely shut down Serve on the cluster asynchronously.
+
+    Deletes all applications and shuts down Serve system actors.
+    """
+
+    try:
+        client = _get_global_client()
+    except RayServeException:
+        logger.info(
+            "Nothing to shut down. There's no Serve application "
+            "running on this Ray cluster."
+        )
+        return
+
+    await client.shutdown_async()
     _set_global_client(None)
 
 

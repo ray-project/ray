@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -43,7 +44,9 @@ TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
 # Deprecated configs can use this value to detect if the user has set it.
-_DEPRECATED_VALUE = "DEPRECATED"
+# This has type Any to allow it to be assigned to any annotated parameter
+# without causing type errors.
+_DEPRECATED_VALUE: Any = "DEPRECATED"
 
 
 # ==================================================
@@ -122,6 +125,12 @@ TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE = (
     "TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE"
 )
 
+# Seconds to wait for torch process group to shut down.
+# Shutting down a healthy torch process group, which we may want to do for reasons
+# like restarting a group of workers if an async checkpoint upload fails, can hang.
+# This is a workaround until we figure out how to avoid this hang.
+TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S = "TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S"
+DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S = 30
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -134,6 +143,7 @@ TRAIN_ENV_VARS = {
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
     TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE,
+    TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata

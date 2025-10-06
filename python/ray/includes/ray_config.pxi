@@ -62,10 +62,6 @@ cdef class Config:
         return RayConfig.instance().object_manager_push_timeout_ms()
 
     @staticmethod
-    def object_manager_default_chunk_size():
-        return RayConfig.instance().object_manager_default_chunk_size()
-
-    @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
 
@@ -122,18 +118,6 @@ cdef class Config:
         return RayConfig.instance().health_check_failure_threshold()
 
     @staticmethod
-    def memory_monitor_refresh_ms():
-        return (RayConfig.instance().memory_monitor_refresh_ms())
-
-    @staticmethod
-    def grpc_keepalive_time_ms():
-        return RayConfig.instance().grpc_keepalive_time_ms()
-
-    @staticmethod
-    def grpc_keepalive_timeout_ms():
-        return RayConfig.instance().grpc_keepalive_timeout_ms()
-
-    @staticmethod
     def grpc_client_keepalive_time_ms():
         return RayConfig.instance().grpc_client_keepalive_time_ms()
 
@@ -154,9 +138,9 @@ cdef class Config:
         return RayConfig.instance().py_gcs_connect_timeout_s()
 
     @staticmethod
-    def gcs_rpc_server_reconnect_timeout_s():
-        return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()
-
-    @staticmethod
     def maximum_gcs_destroyed_actor_cached_count():
         return RayConfig.instance().maximum_gcs_destroyed_actor_cached_count()
+
+    @staticmethod
+    def start_python_gc_manager_thread():
+        return RayConfig.instance().start_python_gc_manager_thread()

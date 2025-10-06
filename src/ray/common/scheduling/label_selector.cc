@@ -14,20 +14,20 @@
 
 #include "ray/common/scheduling/label_selector.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/match.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 
 // Constructor to parse LabelSelector data type from proto.
 LabelSelector::LabelSelector(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
+  // Label selector keys and values are validated before construction in
+  // `prepare_label_selector`.
+  // https://github.com/ray-project/ray/blob/feb1c6180655b69fc64c5e0c25cc56cbe96e0b26/python/ray/_raylet.pyx#L782C1-L784C70
   for (const auto &[key, value] : label_selector) {
-    if (key.empty()) {
-      // TODO (ryanaoleary@): propagate up an InvalidArgument from here.
-      RAY_LOG(ERROR) << "Empty Label Selector key.";
-    }
-
     AddConstraint(key, value);
   }
 }
@@ -77,12 +77,6 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
       if (pos == std::string_view::npos) break;
       val.remove_prefix(pos + 1);
     }
-
-    if (values.empty()) {
-      // TODO (ryanaoleary@): propagate up an InvalidArgument from here.
-      RAY_LOG(ERROR) << "No values provided for Label Selector key: " << key;
-    }
-
     op = is_negated ? LabelSelectorOperator::LABEL_NOT_IN
                     : LabelSelectorOperator::LABEL_IN;
   } else {

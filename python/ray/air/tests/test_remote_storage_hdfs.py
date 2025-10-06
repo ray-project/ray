@@ -5,6 +5,7 @@ import os
 import pytest
 
 from ray import train
+from ray._common.network_utils import build_address
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.tests.test_new_persistence import (
@@ -44,7 +45,7 @@ def test_hdfs_train_checkpointing(tmp_path, monkeypatch, setup_hdfs):
     no_checkpoint_ranks = [0]
 
     hostname, port = setup_hdfs
-    storage_path = f"hdfs://{hostname}:{port}/results/"
+    storage_path = f"hdfs://{build_address(hostname, port)}/results/"
     storage_filesystem = None
 
     checkpoint_config = train.CheckpointConfig(

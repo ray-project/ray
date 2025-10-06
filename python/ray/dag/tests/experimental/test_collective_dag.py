@@ -2,7 +2,8 @@
 import logging
 import os
 import sys
-from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
+
 import pytest
 
 import ray

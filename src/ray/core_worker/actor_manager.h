@@ -24,10 +24,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/transport/actor_task_submitter.h"
-#include "ray/core_worker/transport/task_receiver.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 namespace ray {
 namespace core {
 
@@ -192,7 +191,6 @@ class ActorManager {
   /// Check if actor is valid.
   bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;
 
-  /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Interface to submit tasks directly to other actors.
