@@ -537,7 +537,8 @@ def run(
         # proxy_location = config.proxy_location
         # http_options = HTTPOptions(**config.http_options.dict())
         # http_options = {**config.http_options.dict(), **http_options}
-        http_options = {**http_options, **config.http_options.dict()}
+        # http_options = {**http_options, **config.http_options.dict()}
+        http_options = {**config.http_options.dict(), **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
     # http_options = _prepare_http_options(proxy_location, http_options)
