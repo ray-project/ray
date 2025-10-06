@@ -2845,7 +2845,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: req_per_replica
@@ -3033,7 +3034,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: 2 for replica in replicas
@@ -3129,7 +3131,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: 1 for replica in replicas
@@ -3238,7 +3241,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: 1 for replica in replicas
@@ -3355,7 +3359,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=1,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
+            aggregated_queued_requests=1,
             aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
@@ -3471,7 +3476,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=1,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
+            aggregated_queued_requests=1,
             aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
@@ -3547,7 +3553,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=0,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+            aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {ds._replicas.get()[0]._actor.replica_id: 2}
             },
@@ -3654,7 +3661,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="d2_replica_actor_id",
             handle_source=DeploymentHandleSource.REPLICA,
-            queued_requests=0,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+            aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {ds1._replicas.get()[0]._actor.replica_id: 2}
             },
