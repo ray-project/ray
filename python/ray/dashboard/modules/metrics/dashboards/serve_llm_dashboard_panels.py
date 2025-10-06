@@ -52,7 +52,7 @@ SERVE_LLM_GRAFANA_PANELS = [
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="Mean - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -136,15 +136,15 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="percent",
         targets=[
             Target(
-                expr="max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval]))))",
+                expr='max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))))',
                 legend="Max Hit Rate",
             ),
             Target(
-                expr="min(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval]))))",
+                expr='min(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))))',
                 legend="Min Hit Rate",
             ),
             Target(
-                expr="100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval])))",
+                expr='100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="Hit Rate: worker {{WorkerId}}",
             ),
         ],
