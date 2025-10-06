@@ -99,7 +99,7 @@ class GcsClientOptions {
 /// Before exit, `Disconnect()` must be called.
 class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  public:
-  GcsClient() = default;
+  GcsClient();
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.

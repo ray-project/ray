@@ -100,6 +100,10 @@ bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
   }
 }
 
+GcsClient::GcsClient() {
+  accessor_factory_ = std::make_unique<DefaultAccessorFactory>();
+  client_context_ = std::make_shared<DefaultGcsClientContext>();
+};
 GcsClient::GcsClient(const GcsClientOptions &options,
                      UniqueID gcs_client_id,
                      std::unique_ptr<AccessorFactoryInterface> accessor_factory,
