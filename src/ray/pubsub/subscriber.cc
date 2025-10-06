@@ -305,12 +305,11 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   auto subscriber_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
-  auto &[last_publisher_id, max_processed_sequence_id] =
-      processed_sequences_[publisher_id];
-  long_polling_request.set_publisher_id(last_publisher_id.Binary());
-  long_polling_request.set_max_processed_sequence_id(max_processed_sequence_id);
+  auto &processed_state = processed_sequences_[publisher_id];
+  long_polling_request.set_publisher_id(processed_state.first.Binary());
+  long_polling_request.set_max_processed_sequence_id(processed_state.second);
   subscriber_client->PubsubLongPolling(
-      std::move(long_polling_request),
+      long_polling_request,
       [this, publisher_address](const Status &status,
                                 rpc::PubsubLongPollingReply &&reply) {
         absl::MutexLock lock(&mutex_);
@@ -338,15 +337,16 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   } else {
     RAY_CHECK(!reply.publisher_id().empty()) << "publisher_id is empty.";
     auto reply_publisher_id = UniqueID::FromBinary(reply.publisher_id());
-    const auto &last_publisher_id = processed_sequences_[publisher_id].first;
-    if (reply_publisher_id != last_publisher_id) {
-      if (last_publisher_id != kDefaultUniqueID) {
+    if (reply_publisher_id != processed_sequences_[publisher_id].first) {
+      if (processed_sequences_[publisher_id].first != kDefaultUniqueID) {
         RAY_LOG(INFO) << "Received publisher_id " << reply_publisher_id.Hex()
-                      << " is different from last seen publisher_id " << last_publisher_id
+                      << " is different from last seen publisher_id "
+                      << processed_sequences_[publisher_id].first
                       << ", this can only happen when gcs failsover.";
       }
       // reset publisher_id and processed_sequence if the publisher_id changes.
-      processed_sequences_[publisher_id] = {reply_publisher_id, 0};
+      processed_sequences_[publisher_id].first = reply_publisher_id;
+      processed_sequences_[publisher_id].second = 0;
     }
 
     for (int i = 0; i < reply.pub_messages_size(); i++) {
@@ -428,7 +428,7 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
     command_batch_sent_.emplace(publisher_id);
     auto subscriber_client = get_client_(publisher_address);
     subscriber_client->PubsubCommandBatch(
-        std::move(command_batch_request),
+        command_batch_request,
         [this, publisher_address, publisher_id, done_cb = std::move(done_cb)](
             Status status, const rpc::PubsubCommandBatchReply &reply) {
           {
