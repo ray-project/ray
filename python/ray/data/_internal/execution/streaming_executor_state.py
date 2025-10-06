@@ -353,6 +353,8 @@ class OpState:
                 self.op.metrics.num_external_inqueue_bytes -= ref.size_bytes()
                 self.op.metrics.num_external_inqueue_blocks -= len(ref.blocks)
                 input_op = self.op.input_dependencies[i]
+                # TODO: This needs to be cleaned up.
+                # the input_op's output queue = curr_op's input queue
                 input_op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                 input_op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
                 return
@@ -378,6 +380,7 @@ class OpState:
             ref = self.output_queue.pop(output_split_idx)
             if ref is not None:
                 # Update outqueue metrics when blocks are removed from this operator's outqueue
+                # TODO: Abstract queue-releated metrics to queue.
                 self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                 self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
                 return ref
