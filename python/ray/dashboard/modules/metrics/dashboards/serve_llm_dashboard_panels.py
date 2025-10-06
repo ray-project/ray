@@ -133,7 +133,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         id=31,
         title="vLLM: KV Cache Hit Rate",
         description="",
-        unit="percentunit",
+        unit="percent",
         targets=[
             Target(
                 expr="max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total[$interval]))))",
