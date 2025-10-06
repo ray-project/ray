@@ -55,6 +55,19 @@ def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
+
+    # Resolve to local cache path if model was downloaded from S3/GCS mirror
+    # Only do this if mirror_config was specified (intentional S3/GCS download)
+    if engine_config.mirror_config:
+        from ray.llm._internal.common.utils.download_utils import (
+            get_model_location_on_disk,
+        )
+
+        local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
+        if local_path and local_path != engine_config.actual_hf_model_id:
+            engine_config.hf_model_id = local_path
+            logger.info(f"Resolved model from mirror to local path: {local_path}")
+
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
