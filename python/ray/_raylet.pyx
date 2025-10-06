@@ -4367,6 +4367,9 @@ cdef class CoreWorker:
             #    another worker. We'll keep looping until it's sealed.
             # 2. it existed during the allocation attempt but was evicted before
             #    the pin attempt. We'll allocate and write the second time.
+            base_backoff = 1
+            attempt = 1
+            max_attempts = 6 # 6 attempts =~ 60 seconds of total backoff time
             while not self.store_task_output(
                     serialized_object,
                     return_id,
@@ -4377,6 +4380,13 @@ cdef class CoreWorker:
                     caller_address,
                     &task_output_inlined_bytes,
                     return_ptr):
+                if (attempt > max_attempts):
+                    raise RaySystemError(
+                        "Failed to store task output with object id {} after {} attempts.".format(
+                            return_id.Hex().decode("ascii"),
+                            max_attempts))
+                time.sleep(base_backoff * (2 ** (attempt-1)))
+                attempt += 1
                 continue
 
             num_outputs_stored += 1
