@@ -180,7 +180,11 @@ class HTMLDatasource(FileBasedDatasource):
                     f"Failed to parse HTML file '{path}': {parse_error}"
                 ) from parse_error
 
-        # Apply selector if specified
+        # Extract metadata from full document (before applying selector)
+        metadata = self._extract_metadata(soup) if self.extract_metadata else None
+
+        # Apply selector if specified (for text/tables/links extraction)
+        content_soup = soup
         if self.selector:
             elements = soup.select(self.selector)
             if not elements:
@@ -191,13 +195,13 @@ class HTMLDatasource(FileBasedDatasource):
                 builder = DelegatingBlockBuilder()
                 yield builder.build()
                 return
-            # Process only selected elements
-            soup = BeautifulSoup("<div></div>", "html.parser")
+            # Process only selected elements for content extraction
+            content_soup = BeautifulSoup("<div></div>", "html.parser")
             for elem in elements:
-                soup.div.append(elem)
+                content_soup.div.append(elem)
 
         # Build row data
-        row_data = self._extract_content(soup, path)
+        row_data = self._extract_content(content_soup, path, metadata)
 
         # Create block
         builder = DelegatingBlockBuilder()
@@ -229,17 +233,23 @@ class HTMLDatasource(FileBasedDatasource):
         )
         return data.decode("utf-8", errors="replace")
 
-    def _extract_content(self, soup: "BeautifulSoup", path: str) -> Dict[str, Any]:
+    def _extract_content(
+        self,
+        soup: "BeautifulSoup",
+        path: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Extract content from parsed HTML.
 
         Args:
-            soup: BeautifulSoup object.
+            soup: BeautifulSoup object for content extraction.
             path: File path.
+            metadata: Pre-extracted metadata from full document (optional).
 
         Returns:
             Dictionary with extracted data.
         """
-        row_data = {"path": path}
+        row_data = {"path": path} if self._include_paths else {}
 
         # Extract text
         if self.text_mode == "clean":
@@ -249,9 +259,8 @@ class HTMLDatasource(FileBasedDatasource):
         elif self.text_mode == "markdown":
             row_data[self._COLUMN_NAME] = self._extract_markdown(soup)
 
-        # Extract metadata
-        if self.extract_metadata:
-            metadata = self._extract_metadata(soup)
+        # Add pre-extracted metadata (if provided)
+        if metadata is not None:
             row_data.update(metadata)
 
         # Extract tables
@@ -284,10 +293,8 @@ class HTMLDatasource(FileBasedDatasource):
         # Get text and clean whitespace
         text = soup.get_text(separator=" ")
 
-        # Clean up whitespace
-        lines = (line.strip() for line in text.splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = " ".join(chunk for chunk in chunks if chunk)
+        # Clean up whitespace (collapse all whitespace to single spaces)
+        text = " ".join(text.split())
 
         return text
 
@@ -424,6 +431,11 @@ class HTMLDatasource(FileBasedDatasource):
 @DeveloperAPI
 class HTMLFileMetadataProvider(DefaultFileMetadataProvider):
     """Metadata provider for HTML files with custom encoding ratio."""
+
+    def __init__(self):
+        """Initialize with default encoding ratio."""
+        super().__init__()
+        self._encoding_ratio = HTML_ENCODING_RATIO_ESTIMATE_DEFAULT
 
     def _set_encoding_ratio(self, encoding_ratio: float):
         """Set HTML file encoding ratio.

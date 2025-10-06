@@ -328,12 +328,21 @@ class TestHTMLReading:
         html_path = os.path.join(tmp_path, "paths.html")
         create_test_html(html_path)
 
+        # Test include_paths=True
         ds = ray.data.read_html(html_path, include_paths=True)
         records = ds.take_all()
 
         assert len(records) == 1
         assert "path" in records[0]
         assert "paths.html" in records[0]["path"]
+
+        # Test include_paths=False (default)
+        ds = ray.data.read_html(html_path, include_paths=False)
+        records = ds.take_all()
+
+        assert len(records) == 1
+        assert "path" not in records[0]
+        assert "text" in records[0]  # Should still have text
 
     def test_multiple_files(self, ray_start_regular_shared, tmp_path):
         """Test reading multiple HTML files."""
