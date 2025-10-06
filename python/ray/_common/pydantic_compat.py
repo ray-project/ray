@@ -1,6 +1,5 @@
 # ruff: noqa
 import packaging.version
-from typing import Type
 
 # Pydantic is a dependency of `ray["default"]` but not the minimal installation,
 # so handle the case where it isn't installed.
@@ -107,23 +106,3 @@ def register_pydantic_serializers(serialization_context):
         },
         custom_deserializer=lambda kwargs: ModelField(**kwargs),
     )
-
-
-def model_dump_json(model: BaseModel) -> str:
-    if IS_PYDANTIC_2:
-        return model.model_dump_json()
-    else:
-        return model.json()
-
-
-def model_validate_json(model_cls: Type[BaseModel], json_str: str):
-    if IS_PYDANTIC_2:
-        from pydantic_core import from_json
-
-        json_dict = from_json(json_str)
-        return model_cls.model_validate(json_dict)
-    else:
-        import json
-
-        json_dict = json.loads(json_str)
-        return model_cls.parse_obj(json_dict)
