@@ -27,7 +27,9 @@ from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     NoopPublisher,
     RayEventPublisher,
 )
-from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
+from ray.dashboard.modules.aggregator.task_events_metadata_buffer import (
+    TaskEventsMetadataBuffer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +98,7 @@ class AggregatorAgent(
         )
 
         # Task metadata buffer accumulates dropped task attempts for GCS publishing
-        self._task_metadata_buffer = TaskMetadataBuffer()
+        self._task_metadata_buffer = TaskEventsMetadataBuffer()
 
         self._events_export_addr = (
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR

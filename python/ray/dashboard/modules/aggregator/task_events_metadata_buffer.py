@@ -8,7 +8,7 @@ from ray.core.generated import events_event_aggregator_service_pb2
 from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 
 
-class TaskMetadataBuffer:
+class TaskEventsMetadataBuffer:
     """Buffer for accumulating task event metadata and batching it into a bounded queue.
 
     This buffer is used to construct TaskEventsMetadata protobuf messages (defined in events_event_aggregator_service.proto).

@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import aiohttp
+import grpc
 
 from ray._common.utils import get_or_create_event_loop
 from ray._private.protobuf_compat import message_to_json
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
+    gcs_service_pb2_grpc,
 )
 from ray.dashboard.modules.aggregator.publisher.configs import (
     GCS_EXPOSABLE_EVENT_TYPES,
@@ -179,7 +181,7 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
 
     def __init__(
         self,
-        async_gcs_ray_event_export_service_stub,
+        async_gcs_ray_event_export_service_stub: gcs_service_pb2_grpc.RayEventExportGcsServiceStub,
         timeout: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
         super().__init__()
@@ -241,7 +243,7 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
                 num_events_published=len(filtered_events),
                 num_events_filtered_out=num_filtered_out,
             )
-        except Exception as e:
+        except grpc.RpcError as e:
             logger.error(f"Failed to send events to GCS: {e}")
             return PublishStats(
                 is_publish_successful=False,

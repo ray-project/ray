@@ -3,7 +3,9 @@ import sys
 import pytest
 
 from ray.core.generated.events_event_aggregator_service_pb2 import TaskEventsMetadata
-from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
+from ray.dashboard.modules.aggregator.task_events_metadata_buffer import (
+    TaskEventsMetadataBuffer,
+)
 
 
 def _create_test_metadata(dropped_task_ids: list = None, attempt_number=1):
@@ -26,7 +28,7 @@ def _result_to_attempts_list(result):
     return list(attempts)
 
 
-def _drain_all_attempts(buffer: TaskMetadataBuffer):
+def _drain_all_attempts(buffer: TaskEventsMetadataBuffer):
     """Drain the buffer completely via public API and return list of bytes task_ids.
 
     Continues calling get() until it returns an empty set of attempts.
@@ -49,7 +51,7 @@ class TestTaskMetadataBuffer:
 
     def test_merge_and_get(self):
         """Test merging multiple metadata objects and verify task attempts are combined."""
-        buffer = TaskMetadataBuffer(
+        buffer = TaskEventsMetadataBuffer(
             max_buffer_size=100, max_dropped_attempts_per_metadata_entry=10
         )
 
@@ -91,7 +93,7 @@ class TestTaskMetadataBuffer:
         expected_drop_attempts,
         expected_num_metadata_entries,
     ):
-        buffer = TaskMetadataBuffer(
+        buffer = TaskEventsMetadataBuffer(
             max_buffer_size=max_buffer_size,
             max_dropped_attempts_per_metadata_entry=max_attempts_per_metadata_entry,
         )
