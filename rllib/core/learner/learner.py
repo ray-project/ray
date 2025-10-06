@@ -1619,6 +1619,7 @@ class Learner(Checkpointable):
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
+        module_steps = 0
         for mid, module_batch in batch.policy_batches.items():
             # Log weights seq no for this batch.
             self.metrics.log_value(
@@ -1646,20 +1647,21 @@ class Learner(Checkpointable):
                 reduce="sum",
                 with_throughput=True,
             )
-            # Log module steps (sum of all modules).
-            self.metrics.log_value(
-                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
-                value=module_batch_size,
-                reduce="sum",
-                clear_on_reduce=True,
-                with_throughput=True,
-            )
-            self.metrics.log_value(
-                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
-                value=module_batch_size,
-                reduce="sum",
-                with_throughput=True,
-            )
+            module_steps += module_batch_size
+        # Log module steps (sum of all modules).
+        self.metrics.log_value(
+            key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
+            value=module_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+            with_throughput=True,
+        )
+        self.metrics.log_value(
+            key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+            value=module_steps,
+            reduce="sum",
+            with_throughput=True,
+        )
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
