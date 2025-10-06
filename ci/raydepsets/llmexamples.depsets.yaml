@@ -13,13 +13,13 @@ depsets:
   - name: distributing_pytorch_py${PYTHON_SHORT}_${CUDA_VERSION}
     operation: compile
     requirements:
-      - python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
+      - release/ray_release/byod/ray_ml_cuda121_base_extra_testdeps_py${PYTHON_VERSION}.lock
       - doc/source/train/examples/pytorch/distributing-pytorch/requirements.in
     output: release/ray_release/byod/distributing_pytorch_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --unsafe-package ray
+      - --find-links=.whl/
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
     build_arg_sets:
       - cu121_py39
