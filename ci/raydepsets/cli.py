@@ -193,8 +193,6 @@ class DependencySetManager:
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
         nodes = dependency_nodes | {depset_name}
         self.build_graph = self.build_graph.subgraph(nodes).copy()
-        print(f"Subgraph nodes: {self.build_graph.nodes()}")
-        print(f"Subgraph edges: {self.build_graph.edges()}")
 
     def execute(self, single_depset_name: Optional[str] = None):
         if single_depset_name:
