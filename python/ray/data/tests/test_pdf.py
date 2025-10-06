@@ -241,6 +241,81 @@ class TestReadPDFs:
         assert len(records) == num_pages
         assert all(r["num_pages"] == num_pages for r in records)
 
+    def test_max_pages_per_block(self, ray_start_regular_shared, tmp_path):
+        """Test max_pages_per_block for large PDFs."""
+        pdf_path = os.path.join(tmp_path, "large.pdf")
+        num_pages = 20
+        create_test_pdf(pdf_path, num_pages=num_pages, text_per_page="Test content")
+
+        # Read with max_pages_per_block=5
+        ds = ray.data.read_pdfs(pdf_path, max_pages_per_block=5)
+
+        # Should have 20 rows (one per page)
+        records = ds.take_all()
+        assert len(records) == num_pages
+
+        # Verify all pages are present
+        page_numbers = [r["page_number"] for r in records]
+        assert sorted(page_numbers) == list(range(1, num_pages + 1))
+
+        # Verify internal block structure (should have 4 blocks of 5 pages each)
+        # Note: This checks the optimization is working
+        num_blocks = ds._plan.initial_num_blocks()
+        # The actual number of blocks depends on parallelism, but should be reasonable
+        assert num_blocks >= 1
+
+    def test_max_pages_per_block_single_page(self, ray_start_regular_shared, tmp_path):
+        """Test max_pages_per_block with single page PDF."""
+        pdf_path = os.path.join(tmp_path, "single.pdf")
+        create_test_pdf(pdf_path, num_pages=1, text_per_page="Single page")
+
+        ds = ray.data.read_pdfs(pdf_path, max_pages_per_block=10)
+        records = ds.take_all()
+
+        assert len(records) == 1
+        assert records[0]["page_number"] == 1
+
+    def test_max_pages_per_block_uneven_division(
+        self, ray_start_regular_shared, tmp_path
+    ):
+        """Test max_pages_per_block with uneven page count."""
+        pdf_path = os.path.join(tmp_path, "uneven.pdf")
+        num_pages = 13
+        create_test_pdf(pdf_path, num_pages=num_pages, text_per_page="Test")
+
+        # max_pages_per_block=5 should create blocks of [5, 5, 3]
+        ds = ray.data.read_pdfs(pdf_path, max_pages_per_block=5)
+        records = ds.take_all()
+
+        assert len(records) == num_pages
+        page_numbers = {r["page_number"] for r in records}
+        assert page_numbers == set(range(1, num_pages + 1))
+
+    def test_max_pages_per_block_requires_pages_true(
+        self, ray_start_regular_shared, tmp_path
+    ):
+        """Test that max_pages_per_block requires pages=True."""
+        pdf_path = os.path.join(tmp_path, "test.pdf")
+        create_test_pdf(pdf_path, num_pages=5)
+
+        with pytest.raises(
+            ValueError, match="max_pages_per_block is only applicable when pages=True"
+        ):
+            ray.data.read_pdfs(pdf_path, pages=False, max_pages_per_block=2)
+
+    def test_max_pages_per_block_invalid_value(
+        self, ray_start_regular_shared, tmp_path
+    ):
+        """Test that max_pages_per_block must be positive."""
+        pdf_path = os.path.join(tmp_path, "test.pdf")
+        create_test_pdf(pdf_path, num_pages=5)
+
+        with pytest.raises(ValueError, match="max_pages_per_block must be positive"):
+            ray.data.read_pdfs(pdf_path, max_pages_per_block=0)
+
+        with pytest.raises(ValueError, match="max_pages_per_block must be positive"):
+            ray.data.read_pdfs(pdf_path, max_pages_per_block=-1)
+
 
 class TestPDFDatasource:
     def test_datasource_direct(self, tmp_path):

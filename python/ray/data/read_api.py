@@ -1232,6 +1232,7 @@ def read_pdfs(
     include_images: bool = False,
     ocr: bool = False,
     ocr_config: Optional[Dict[str, Any]] = None,
+    max_pages_per_block: Optional[int] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -1246,7 +1247,7 @@ def read_pdfs(
     return entire documents as single rows.
 
     The function supports:
-    
+
     - Text extraction from text-based PDFs
     - OCR (Optical Character Recognition) for image-based or scanned PDFs
     - Page-level and document-level reading modes
@@ -1299,6 +1300,15 @@ def read_pdfs(
         ...     ocr_config={"lang": "eng"}
         ... )  # doctest: +SKIP
 
+        Handle very large PDFs efficiently by batching pages:
+
+        >>> # For a 500-page PDF, create 50 blocks of 10 pages each
+        >>> ds = ray.data.read_pdfs(
+        ...     "s3://bucket/large-pdfs/",
+        ...     max_pages_per_block=10
+        ... )  # doctest: +SKIP
+        >>> # This reduces memory overhead and improves performance
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -1350,6 +1360,13 @@ def read_pdfs(
             for English) and ``config`` for custom Tesseract configuration strings.
             See `pytesseract documentation <https://github.com/madmaze/pytesseract>`_
             for available options. Defaults to ``None``.
+        max_pages_per_block: Maximum number of pages to include in a single output
+            block. This helps manage memory usage for very large PDF files. For example,
+            if ``max_pages_per_block=10`` and you have a 100-page PDF, Ray Data will
+            yield 10 blocks with 10 pages each instead of 100 separate blocks. This
+            significantly reduces memory overhead and improves performance for large
+            documents. Only applicable when ``pages=True``. If ``None``, each page
+            becomes its own block (default behavior). Defaults to ``None``.
         include_paths: If ``True``, include the path to each PDF file. File paths are
             stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file or directory paths in ``paths``
@@ -1371,7 +1388,7 @@ def read_pdfs(
     Returns:
         A :class:`~ray.data.Dataset` containing the extracted PDF content. The schema
         depends on the configuration options:
-        
+
         - ``pages=True`` (default): Each row represents a PDF page with columns for
           text content, page number, total page count, and optionally page dimensions.
         - ``pages=False``: Each row represents a complete PDF document with combined
@@ -1387,27 +1404,27 @@ def read_pdfs(
         ValueError: If a PDF file is corrupted or password-protected.
 
     .. note::
-        
+
         OCR Support:
-        
+
         To enable OCR for image-based or scanned PDFs, you need to install additional
         dependencies:
-        
+
         .. code-block:: bash
-        
+
             pip install pytesseract pdf2image
             # On Ubuntu/Debian
             sudo apt-get install tesseract-ocr poppler-utils
             # On macOS
             brew install tesseract poppler
-        
+
         OCR processing is significantly slower than standard text extraction and should
         only be enabled when necessary.
 
     .. note::
-        
+
         Performance Considerations:
-        
+
         - PDF parsing can be CPU-intensive. Consider increasing ``num_cpus`` for
           faster processing of large or complex PDFs.
         - Image extraction (``include_images=True``) dramatically increases memory
@@ -1428,6 +1445,7 @@ def read_pdfs(
         include_images=include_images,
         ocr=ocr,
         ocr_config=ocr_config,
+        max_pages_per_block=max_pages_per_block,
         include_paths=include_paths,
         filesystem=filesystem,
         meta_provider=meta_provider,
@@ -3227,7 +3245,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
             return df
         else:
             raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
             )
 
     ds = from_pandas_refs(
@@ -3357,12 +3375,11 @@ def from_pandas_refs(
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
                 )
     else:
         raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
         )
 
     context = DataContext.get_current()

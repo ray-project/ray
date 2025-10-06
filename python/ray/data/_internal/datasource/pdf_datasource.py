@@ -79,6 +79,7 @@ class PDFDatasource(FileBasedDatasource):
         include_images: bool = False,
         ocr: bool = False,
         ocr_config: Optional[Dict[str, Any]] = None,
+        max_pages_per_block: Optional[int] = None,
         **file_based_datasource_kwargs,
     ):
         """Initialize PDF datasource.
@@ -95,6 +96,12 @@ class PDFDatasource(FileBasedDatasource):
                 Defaults to False.
             ocr_config: Configuration options for OCR processing. Only used if ocr=True.
                 See pytesseract documentation for available options. Defaults to None.
+            max_pages_per_block: Maximum number of pages to include in a single block.
+                This helps manage memory usage for very large PDF files. If None, all
+                pages are included in their respective blocks based on the pages parameter.
+                For example, if pages=True and max_pages_per_block=10, a 100-page PDF
+                will yield 10 blocks of 10 pages each. Only applicable when pages=True.
+                Defaults to None (no limit).
             **file_based_datasource_kwargs: Additional arguments passed to
                 FileBasedDatasource constructor (filesystem, partition_filter, etc.).
 
@@ -118,10 +125,22 @@ class PDFDatasource(FileBasedDatasource):
                 "when pages=False (document-level reading)."
             )
 
+        if max_pages_per_block is not None:
+            if max_pages_per_block <= 0:
+                raise ValueError(
+                    f"max_pages_per_block must be positive, got {max_pages_per_block}"
+                )
+            if not pages:
+                raise ValueError(
+                    "max_pages_per_block is only applicable when pages=True. "
+                    "When pages=False, the entire document is returned as one row."
+                )
+
         self.pages = pages
         self.include_images = include_images
         self.ocr = ocr
         self.ocr_config = ocr_config or {}
+        self.max_pages_per_block = max_pages_per_block
 
         # Set encoding ratio for memory estimation
         meta_provider = file_based_datasource_kwargs.get("meta_provider", None)
@@ -186,58 +205,112 @@ class PDFDatasource(FileBasedDatasource):
         reader: "PyPDF2.PdfReader",
         path: str,
     ) -> Iterator[Block]:
-        """Read PDF pages individually.
+        """Read PDF pages individually or in batches.
+
+        If max_pages_per_block is set, pages are batched together into blocks
+        to control memory usage for very large PDFs.
 
         Args:
             reader: PyPDF2 PdfReader instance.
             path: Path to the PDF file.
 
         Yields:
-            Blocks containing individual page data.
+            Blocks containing individual page data (or batched pages if
+            max_pages_per_block is set).
         """
         num_pages = len(reader.pages)
 
-        for page_num in range(num_pages):
-            try:
-                page = reader.pages[page_num]
+        if self.max_pages_per_block is None:
+            # Original behavior: one block per page
+            for page_num in range(num_pages):
+                try:
+                    page = reader.pages[page_num]
 
-                # Extract text from page
-                text = self._extract_text_from_page(page)
+                    # Extract text from page
+                    text = self._extract_text_from_page(page)
 
-                # Build row data
-                row_data = {
-                    "text": text,
-                    "page_number": page_num + 1,
-                    "num_pages": num_pages,
-                }
+                    # Build row data
+                    row_data = {
+                        "text": text,
+                        "page_number": page_num + 1,
+                        "num_pages": num_pages,
+                    }
 
-                # Add page dimensions if available
-                if hasattr(page, "mediabox"):
-                    mediabox = page.mediabox
-                    row_data["page_width"] = float(mediabox.width)
-                    row_data["page_height"] = float(mediabox.height)
+                    # Add page dimensions if available
+                    if hasattr(page, "mediabox"):
+                        mediabox = page.mediabox
+                        row_data["page_width"] = float(mediabox.width)
+                        row_data["page_height"] = float(mediabox.height)
 
-                # Extract and include images if requested
-                if self.include_images:
-                    images = self._extract_images_from_page(page)
-                    row_data["images"] = images
-                    row_data["num_images"] = len(images)
+                    # Extract and include images if requested
+                    if self.include_images:
+                        images = self._extract_images_from_page(page)
+                        row_data["images"] = images
+                        row_data["num_images"] = len(images)
 
-                # Add document metadata on first page
-                if page_num == 0:
-                    row_data.update(self._extract_document_metadata(reader))
+                    # Add document metadata on first page
+                    if page_num == 0:
+                        row_data.update(self._extract_document_metadata(reader))
 
-                # Create block with single row
+                    # Create block with single row
+                    builder = DelegatingBlockBuilder()
+                    builder.add(row_data)
+                    yield builder.build()
+
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to extract content from page {page_num + 1} of "
+                        f"'{path}': {e}. Skipping page."
+                    )
+                    continue
+        else:
+            # Batched behavior: multiple pages per block
+            for block_start in range(0, num_pages, self.max_pages_per_block):
+                block_end = min(block_start + self.max_pages_per_block, num_pages)
                 builder = DelegatingBlockBuilder()
-                builder.add(row_data)
-                yield builder.build()
 
-            except Exception as e:
-                logger.warning(
-                    f"Failed to extract content from page {page_num + 1} of "
-                    f"'{path}': {e}. Skipping page."
-                )
-                continue
+                for page_num in range(block_start, block_end):
+                    try:
+                        page = reader.pages[page_num]
+
+                        # Extract text from page
+                        text = self._extract_text_from_page(page)
+
+                        # Build row data
+                        row_data = {
+                            "text": text,
+                            "page_number": page_num + 1,
+                            "num_pages": num_pages,
+                        }
+
+                        # Add page dimensions if available
+                        if hasattr(page, "mediabox"):
+                            mediabox = page.mediabox
+                            row_data["page_width"] = float(mediabox.width)
+                            row_data["page_height"] = float(mediabox.height)
+
+                        # Extract and include images if requested
+                        if self.include_images:
+                            images = self._extract_images_from_page(page)
+                            row_data["images"] = images
+                            row_data["num_images"] = len(images)
+
+                        # Add document metadata on first page
+                        if page_num == 0:
+                            row_data.update(self._extract_document_metadata(reader))
+
+                        builder.add(row_data)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to extract content from page {page_num + 1} of "
+                            f"'{path}': {e}. Skipping page."
+                        )
+                        continue
+
+                # Yield block with multiple pages
+                if builder.num_rows() > 0:
+                    yield builder.build()
 
     def _read_document(
         self,
