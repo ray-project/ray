@@ -422,7 +422,7 @@ def build_streaming_topology(
 
     # DFS walk to wire up operator states.
     def setup_state(op: PhysicalOperator) -> OpState:
-        if op in topology:
+        if op in topology: 
             raise ValueError("An operator can only be present in a topology once.")
 
         # Wire up the input outqueues to this op's inqueues.
