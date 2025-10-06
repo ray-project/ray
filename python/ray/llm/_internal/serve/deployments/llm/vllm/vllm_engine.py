@@ -276,7 +276,6 @@ class VLLMEngine(LLMEngine):
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
-
     def _start_async_llm_engine(
         self,
         vllm_engine_args: "AsyncEngineArgs",
