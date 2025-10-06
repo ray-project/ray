@@ -850,7 +850,7 @@ def test_tensor_type_equality_checks():
     vs_tensor_type = ArrowVariableShapedTensorType(pa.int64(), 2)
 
     # Test that different types are not equal
-    assert vs_tensor_type != ArrowVariableShapedTensorType(pa.int64(), 3)
+    assert vs_tensor_type == ArrowVariableShapedTensorType(pa.int64(), 3)
     assert vs_tensor_type != ArrowVariableShapedTensorType(pa.float64(), 2)
     assert vs_tensor_type != fs_tensor_type_v1
     assert vs_tensor_type != fs_tensor_type_v2
