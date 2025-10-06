@@ -241,7 +241,8 @@ def test_replica_actor_died(serve_instance, die_during_request):
 
     h = serve.run(Dummy.options(num_replicas=2, health_check_period_s=1000).bind())
 
-    deployment_details = get_deployment_details("Dummy", _client=serve_instance)
+    # deployment_details = get_deployment_details("Dummy", _client=serve_instance)
+    deployment_details = get_deployment_details("Dummy")
     replicas = [r["actor_name"] for r in deployment_details["replicas"]]
 
     # Wait for controller to health check both replicas
