@@ -206,6 +206,9 @@ def validate_fallback_strategy(
         if not isinstance(strategy, dict):
             return "Each element in fallback_strategy must be a dictionary."
 
+        if not strategy:
+            return "Empty dictionary found in `fallback_strategy`."
+
         # Validate `fallback_strategy` only contains supported options.
         for option in strategy:
             if option not in supported_options:
@@ -216,11 +219,12 @@ def validate_fallback_strategy(
 
         # Validate the 'label_selector' dictionary.
         label_selector = strategy.get("label_selector")
-        if label_selector and not isinstance(label_selector, dict):
-            return 'The value of "label_selector" must be a dictionary.'
+        if label_selector:
+            if not isinstance(label_selector, dict):
+                return 'The value of "label_selector" must be a dictionary.'
 
-        error_message = validate_label_selector(label_selector)
-        if error_message:
-            return error_message
+            error_message = validate_label_selector(label_selector)
+            if error_message:
+                return error_message
 
     return None

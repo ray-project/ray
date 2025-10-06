@@ -317,6 +317,12 @@ def test_validate_node_labels():
             "Unsupported option found: 'memory'. Only ['label_selector'] is currently supported.",
         ),  # fallback_strategy contains unsupported option.
         (
+            [
+                {},
+            ],
+            "Empty dictionary found in `fallback_strategy`.",
+        ),  # fallback_strategy contains unsupported option.
+        (
             [{"label_selector": {"ray.io/availability-region": "us-west4"}}],
             None,
         ),  # fallback_strategy contains one selector.
@@ -345,6 +351,7 @@ def test_validate_node_labels():
     ids=[
         "none",
         "empty-list",
+        "fallback-specified-with-empty-dict",
         "unsupported-fallback-option",
         "single-valid-label-selector",
         "multiple-valid-label-selector",
