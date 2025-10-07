@@ -6071,8 +6071,8 @@ class Dataset:
             stat: (np.nan if stat in all_stats else None) for stat in expected_stats
         }
 
-        for col_name, dtype_str in dtype_aggs.column_to_dtype.items():
-            row = {"column": col_name, "dtype": dtype_str, **default_stats}
+        for col_name, _ in dtype_aggs.column_to_dtype.items():
+            row = {"column": col_name, **default_stats}
 
             # Add all available statistics for this column from results
             for result_key, value in results.items():

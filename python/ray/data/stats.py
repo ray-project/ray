@@ -7,6 +7,11 @@ import pandas as pd
 import pyarrow as pa
 from pandas.core.arrays.masked import BaseMaskedDtype
 
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorType,
+    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
+)
 from ray.data.aggregate import (
     AggregateFnV2,
     Count,
@@ -117,6 +122,9 @@ def _is_list_dtype(dtype: pa.DataType) -> bool:
         or pa.types.is_fixed_size_list(underlying)
         or pa.types.is_list_view(underlying)
         or pa.types.is_large_list_view(underlying)
+        or isinstance(
+            dtype, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)
+        )
     )
 
 
@@ -139,11 +147,6 @@ def _is_null_dtype(dtype: pa.DataType) -> bool:
     """Check if Arrow dtype is null."""
     underlying = _get_underlying_type(dtype)
     return pa.types.is_null(underlying)
-
-
-def _get_arrow_dtype_string(dtype: pa.DataType) -> str:
-    """Convert Arrow dtype to string representation."""
-    return str(dtype)
 
 
 def _aggregators_for_dtype(column: str, dtype: pa.DataType) -> List[AggregateFnV2]:
@@ -290,7 +293,7 @@ def _dtype_aggregators_for_dataset(
                 continue
 
         # Store the arrow dtype string representation
-        dtype_str = _get_arrow_dtype_string(ftype)
+        dtype_str = str(ftype)
         column_to_dtype[name] = dtype_str
 
         # Get aggregators based on the dtype
