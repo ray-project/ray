@@ -73,7 +73,7 @@ def request_cluster_resources(
         counts.append(count)
 
     GcsClient(gcs_address).request_cluster_resource_constraint(
-        bundles, counts, label_selectors, timeout_s=timeout
+        bundles, label_selectors, counts, timeout_s=timeout
     )
 
 
