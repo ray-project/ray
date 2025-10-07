@@ -184,7 +184,7 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
     with (
         patch("vllm.AsyncLLMEngine") as mock_engine,
         patch(
-            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async"
+            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper._generate_async"
         ) as mock_generate_async,
     ):
         mock_engine.from_engine_args.return_value = AsyncMock()
