@@ -14,16 +14,16 @@ You can post questions or issues or feedback through the following channels:
 To contribute a patch:
 ----------------------
 
-We welcome contributions! See `Getting Involved`_. To set up your development environment, see
-the `Setting up your development environment`_ section.
+Before submitting a pull request:
 
+1. Review the `Getting Involved`_ guide for detailed contribution guidelines
+2. Set up your `Setting up your development environment`_
+3. Follow the `Code Style`_ guidelines (lint and formatting) and the `Testing guide`_ for tests.
+4. Sign off all commits with ``git commit -s``
+5. Write tests and update docs for your changes
 
-.. _`Discourse forum`: https://discuss.ray.io/
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`Join Slack`: https://www.ray.io/join-slack
-.. _`Getting Involved`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html
-.. _`Setting up your development environment`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#setting-up-your-development-environment
+Our PR template will guide you through the rest when you open the PR. 
+See the PR Review Process section below for what happens after you submit your PR.
 
 PR Review Process
 -----------------
@@ -43,3 +43,13 @@ For contributors who are not in the ray-project organization:
 
 - Your PRs will have assignees shortly. Assignees or PRs will be actively engaging with contributors to merge the PR.
 - Please actively ping assignees after you address your comments!
+
+.. _`Discourse forum`: https://discuss.ray.io/
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`Join Slack`: https://www.ray.io/join-slack
+.. _`Getting Involved`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html
+.. _`Setting up your development environment`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#setting-up-your-development-environment
+.. _`Code Style`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#code-style
+.. _`Pre-commit hooks`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#lint-and-formatting
+.. _`Testing guide`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#testing
