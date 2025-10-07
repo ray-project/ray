@@ -71,3 +71,23 @@ depsets:
       - python/requirements.txt
       - python/requirements/llm/llm-requirements.txt
     output: python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
+
+  - name: deployment_serve_llm_subset_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    operation: subset
+    source_depset: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    requirements:
+      - python/requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/base-test-requirements.txt
+      - python/requirements/llm/llm-test-requirements.txt
+    output: python/deplocks/llm/deployment_serve_llm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
+
+  - name: deployment_serve_llm_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    operation: expand
+    depsets:
+      - deployment_serve_llm_subset_${PYTHON_VERSION}_${CUDA_CODE}
+    requirements:
+      - bazel-ray/doc/source/serve/tutorials/deployment-serve-llm/requirements.in
+    output: release/ray_release/byod/deployment_serve_llm_${PYTHON_VERSION}_${CUDA_CODE}.lock
