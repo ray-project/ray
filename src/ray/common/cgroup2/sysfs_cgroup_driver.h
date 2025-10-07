@@ -13,9 +13,6 @@
 // limitations under the License.
 #pragma once
 
-// TODO(#54703): SysFsCgroupDriver should not be a public target.
-// It will be hidden behind a CgroupManagerFactory which will create
-// an appropriate depending on configuration and platform.
 #include <mntent.h>
 
 #include <string>
