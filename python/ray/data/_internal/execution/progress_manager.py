@@ -154,7 +154,11 @@ class SubProgressBar(AbstractProgressBar):
             tid: rich.TaskId for the corresponding sub-progress bar task.
         """
         # progress, tid type Optional[Any] due to conditional rich import.
-        assert enabled and progress is not None and tid is not None
+        if enabled:
+            assert progress is not None and tid is not None
+        else:
+            progress = None
+            tid = None
         self._total = total
         self._completed = 0
         self._start_time = None
