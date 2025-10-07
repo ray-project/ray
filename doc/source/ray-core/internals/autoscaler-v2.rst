@@ -185,7 +185,7 @@ Appendix
 --------
 
 How ``get_cluster_resource_state`` Aggregates Cluster State
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The autoscaler retrieves a cluster snapshot through the ``get_cluster_resource_state`` RPC served by GCS (`HandleGetClusterResourceState <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L48>`__) which builds the reply in `MakeClusterResourceStateInternal <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L179>`__. Internally, GCS assembles the reply by combining per-node resource reports, pending workload demand, and any user-requested cluster constraints into a single ``ClusterResourceState`` message.
 
