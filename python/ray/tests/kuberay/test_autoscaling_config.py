@@ -1,5 +1,6 @@
 import copy
 import platform
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
@@ -223,6 +224,61 @@ def _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource() -> dict:
     return cr
 
 
+def _get_ray_cr_with_top_level_labels() -> dict:
+    """CR with a top-level `labels` field."""
+    cr = get_basic_ray_cr()
+    # This top-level structured labels take priority.
+    cr["spec"]["workerGroupSpecs"][0]["labels"] = {"instance-type": "mx5"}
+
+    # rayStartParams labels field should be ignored.
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["labels"] = "instance-type=n2"
+    return cr
+
+
+def _get_autoscaling_config_with_top_level_labels() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["small-group"]["labels"] = {"instance-type": "mx5"}
+    return config
+
+
+def _get_ray_cr_with_invalid_top_level_labels() -> dict:
+    """CR with a syntactically invalid top-level `labels` field."""
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][0]["labels"] = {"!!invalid-key!!": "some-value"}
+    return cr
+
+
+def _get_ray_cr_with_top_level_resources() -> dict:
+    """CR with a top-level `resources` field to test priority."""
+    cr = get_basic_ray_cr()
+
+    # The top-level resources field should take priority.
+    cr["spec"]["workerGroupSpecs"][1]["resources"] = {
+        "CPU": "16",
+        "GPU": "8",
+        "memory": "2Gi",
+        "CustomResource": "99",
+    }
+    # These rayStartParams should be ignored.
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"]["num-gpus"] = "1"
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"][
+        "resources"
+    ] = '"{"Custom2": 1}"'
+    return cr
+
+
+def _get_autoscaling_config_with_top_level_resources() -> dict:
+    config = _get_basic_autoscaling_config()
+
+    config["available_node_types"]["gpu-group"]["resources"] = {
+        "CPU": 16.0,
+        "GPU": 8.0,
+        "memory": 2147483648.0,
+        "CustomResource": 99.0,
+    }
+    return config
+
+
 def _get_ray_cr_with_no_tpus() -> dict:
     cr = get_basic_ray_cr()
     # remove TPU worker group
@@ -408,7 +464,33 @@ TEST_DATA = (
             None,
             None,
             None,
-            id="groups-with-labels",
+            id="groups-with-raystartparam-labels",
+        ),
+        pytest.param(
+            _get_ray_cr_with_top_level_labels(),
+            _get_autoscaling_config_with_top_level_labels(),
+            None,
+            None,
+            None,
+            id="groups-with-top-level-labels",
+        ),
+        pytest.param(
+            _get_ray_cr_with_top_level_resources(),
+            _get_autoscaling_config_with_top_level_resources(),
+            None,
+            None,
+            None,
+            id="groups-with-top-level-resources",
+        ),
+        pytest.param(
+            _get_ray_cr_with_invalid_top_level_labels(),
+            None,
+            ValueError,
+            re.escape(
+                "Invalid label key name `!!invalid-key!!`. Name must be 63 chars or less beginning and ending with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),dots (.), and alphanumerics between."
+            ),
+            None,
+            id="invalid-top-level-labels",
         ),
     ]
 )
@@ -615,11 +697,11 @@ def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
     for worker_group in ray_cr_in["spec"]["workerGroupSpecs"]:
         ray_start_params = worker_group["rayStartParams"]
         custom_resources = _get_custom_resources(
-            ray_start_params, worker_group["groupName"]
+            {}, ray_start_params, worker_group["groupName"]
         )
         k8s_resources = worker_group["template"]["spec"]["containers"][0]["resources"]
 
-        num_tpus = _get_num_tpus(custom_resources, k8s_resources)
+        num_tpus = _get_num_tpus({}, custom_resources, k8s_resources)
 
         if worker_group["groupName"] == "tpu-group":
             assert num_tpus == expected_num_tpus
