@@ -1,7 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -655,7 +655,7 @@ def _concat_cols_with_extension_object_types(
 
 
 def _concat_cols_with_native_pyarrow_types(
-    col_names: Set[str], blocks: List["pyarrow.Table"], promote_types: bool = False
+    col_names: List[str], blocks: List["pyarrow.Table"], promote_types: bool = False
 ) -> Dict[str, "pyarrow.ChunkedArray"]:
     if not col_names:
         return {}
@@ -728,7 +728,7 @@ def concat(
 
     # Concatenate the columns according to their type
     concatenated_cols = {}
-    native_pyarrow_cols = set()
+    native_pyarrow_cols = []
     for col_name in schema.names:
         col_type = schema.field(col_name).type
 
@@ -750,7 +750,7 @@ def concat(
             )
         else:
             # Add to the list of native pyarrow columns, these will be concatenated after the loop using pyarrow.concat_tables
-            native_pyarrow_cols.add(col_name)
+            native_pyarrow_cols.append(col_name)
 
     concatenated_cols.update(
         _concat_cols_with_native_pyarrow_types(
