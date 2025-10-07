@@ -2147,27 +2147,6 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self) -> bool:
-        """
-        Compute a scaling decision from the autoscaling manager and apply it.
-
-        No-op if the deployment is deleting.
-
-        Returns:
-            bool: True if the target replica count was updated, False otherwise.
-        """
-        if self._target_state.deleting:
-            return False
-
-        decision_num_replicas = (
-            self._autoscaling_state_manager.get_scaling_decision_for_deployment(
-                deployment_id=self._id,
-                curr_target_num_replicas=self._target_state.target_num_replicas,
-            )
-        )
-
-        return self.scale(decision_num_replicas)
-
     def scale(self, decision_num_replicas: Optional[int] = None) -> bool:
         """
         Apply the given scaling decision by updating the target replica count.
@@ -3348,10 +3327,8 @@ class DeploymentStateManager:
                         )
                         or target_state_changed
                     )
-                else:
-                    target_state_changed = (
-                        deployment_state.autoscale() or target_state_changed
-                    )
+                    # clean up the scaling decision after it is applied
+                    del self._scaling_decisions[deployment_id]
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status

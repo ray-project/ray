@@ -669,31 +669,10 @@ class ApplicationAutoscalingState:
     def register(
         self,
         config: ServeApplicationSchema,
-        deployment_infos: Optional[Dict[str, DeploymentInfo]] = None,
     ):
         """Register or update application-level autoscaling config and deployments."""
-        self._config = config
         self._policy = config.get_autoscaling_policy()
         self._policy_state = {}
-
-        for deployment_name in config.deployment_names:
-            deployment_id = DeploymentID(deployment_name, self._app_name)
-            if deployment_id not in self._deployment_autoscaling_states:
-                self._deployment_autoscaling_states[
-                    deployment_id
-                ] = DeploymentAutoscalingState(deployment_id)
-
-            if deployment_infos and deployment_name in deployment_infos:
-                deployment_info = deployment_infos[deployment_name]
-                target_num_replicas = get_capacity_adjusted_num_replicas(
-                    deployment_info.deployment_config.num_replicas,
-                    deployment_info.target_capacity,
-                )
-                self._deployment_autoscaling_states[deployment_id].register(
-                    deployment_info,
-                    target_num_replicas,
-                    is_part_of_autoscaling_application=True,
-                )
 
     def register_deployment(
         self,
@@ -713,14 +692,13 @@ class ApplicationAutoscalingState:
             is_part_of_autoscaling_application=self.has_policy(),
         )
 
-    def deregister(self, deployment_names: List[str]):
-        """Remove deployments from this application."""
-        for deployment_name in deployment_names:
-            deployment_id = DeploymentID(deployment_name, self._app_name)
-            self._deployment_autoscaling_states.pop(deployment_id, None)
-
     def deregister_deployment(self, deployment_id: DeploymentID):
-        self._deployment_autoscaling_states.pop(deployment_id, None)
+        if deployment_id not in self._deployment_autoscaling_states:
+            logger.warning(
+                f"Cannot deregister autoscaling state for deployment {deployment_id} because it is not registered"
+            )
+            return
+        self._deployment_autoscaling_states.pop(deployment_id)
 
     def get_scaling_decisions(
         self,
@@ -733,6 +711,7 @@ class ApplicationAutoscalingState:
         - Otherwise, fall back to per-deployment policies.
         """
         if self._policy:
+            # Using app-level policy
             autoscaling_contexts: Dict[str, AutoscalingContext] = {}
             for name, deployment_detail in deployments.items():
                 deployment_id = DeploymentID(name=name, app_name=self._app_name)
@@ -768,6 +747,7 @@ class ApplicationAutoscalingState:
             return updated_decisions
 
         else:
+            # Using per-deployment policies
             updated_decisions: Dict[DeploymentID, int] = {}
             for name, deployment_detail in deployments.items():
                 deployment_id = DeploymentID(name=name, app_name=self._app_name)
@@ -881,20 +861,20 @@ class AutoscalingStateManager:
         self,
         app_name: ApplicationName,
         config: ServeApplicationSchema,
-        deployment_infos: Optional[Dict[str, DeploymentInfo]],
     ):
         app_state = self._app_autoscaling_states.setdefault(
             app_name, ApplicationAutoscalingState(app_name)
         )
-        app_state.register(config, deployment_infos)
+        app_state.register(config)
 
-    def deregister_application(
-        self, app_name: ApplicationName, deployment_names: List[str]
-    ):
+    def deregister_application(self, app_name: ApplicationName):
         """Remove application from tracking."""
         if app_name in self._app_autoscaling_states:
-            self._app_autoscaling_states[app_name].deregister(deployment_names)
             self._app_autoscaling_states.pop(app_name, None)
+        else:
+            logger.warning(
+                f"Cannot deregister autoscaling state for application {app_name} because it is not registered"
+            )
 
     def get_scaling_decisions_for_application(
         self, app_name: ApplicationName, deployments: Dict[str, DeploymentDetails]

@@ -875,6 +875,7 @@ class ApplicationState:
                         self._build_app_task_info.target_capacity_direction
                     ),
                 )
+                self._register_autoscaling_if_needed()
             elif task_status == BuildAppStatus.FAILED:
                 self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
@@ -887,8 +888,6 @@ class ApplicationState:
             )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
-
-            self._register_autoscaling_if_needed()
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
