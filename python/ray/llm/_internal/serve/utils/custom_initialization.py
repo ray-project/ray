@@ -50,3 +50,13 @@ class CustomInitCallback(Protocol):
                  initialization.
         """
         pass
+
+
+class NoOpInitCallback(CustomInitCallback):
+    """A no-operation implementation of CustomInitCallback.
+
+    This callback does nothing and uses the default pass implementations
+    from the CustomInitCallback protocol.
+    """
+
+    pass

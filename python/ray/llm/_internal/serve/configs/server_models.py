@@ -33,7 +33,10 @@ from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
     SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.utils.custom_initialization import CustomInitCallback
+from ray.llm._internal.serve.utils.custom_initialization import (
+    CustomInitCallback,
+    NoOpInitCallback,
+)
 from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
@@ -212,12 +215,12 @@ class LLMConfig(BaseModelExtended):
 
     init_callback_class: Optional[Union[str, Type[CustomInitCallback]]] = Field(
         default=None,
-        description="Custom initialization class to use for model initialization. Can be a string path to a class or a CustomInitialization subclass.",
+        description="Custom initialization class to use for model initialization. Can be a string path to a class or a CustomInitCallback subclass.",
     )
 
     init_callback_kwargs: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Optional keyword arguments to pass to the callback functions.",
+        default={},
+        description="Optional keyword arguments to pass to the CustomInitCallback class at construction.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -287,10 +290,10 @@ class LLMConfig(BaseModelExtended):
         The instance is cached so the same object is used across all hooks.
 
         Returns:
-            RayServeLLMCallback instance or None if no callback configured
+            Instance of class that implements CustomInitCallback
         """
         if self.init_callback_class is None:
-            self.init_callback_class = CustomInitCallback
+            self.init_callback_class = NoOpInitCallback
 
         # Return cached instance if exists
         if self._callback_instance is not None:

@@ -15,8 +15,6 @@ from ray.llm._internal.serve.utils.custom_initialization import (
 
 
 class TestingCallback(CustomInitCallback):
-    """Custom callback that disables all downloads by setting NodeModelDownloadable.NONE."""
-
     def __init__(self, **kwargs):
         self.before_init_called = False
         self.after_init_called = False
@@ -45,11 +43,8 @@ class TestingCallback(CustomInitCallback):
 
 
 class TestCustomInitialization:
-    """Test custom initialization behaviors with callbacks."""
-
     @pytest.fixture
     def llm_config(self):
-        """Create a real LLMConfig for testing."""
         config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model"),
             llm_engine="vLLM",

@@ -107,29 +107,30 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
 
     await callback.on_before_init(ctx)
 
-    if engine_config.placement_strategy == "STRICT_PACK":
-        # If the placement strategy is STRICT_PACK, we know that all the
-        # workers run on the same node as the engine. Therefore, we can run
-        # all initialization steps directly instead of in tasks in the PG.
-        # This removes the task launching overhead reducing the initialization
-        # time.
-        ctx.local_node_download_model = ctx.local_node_download_model.union(
-            ctx.worker_node_download_model
-        )
+    if ctx.run_downloads:
+        if engine_config.placement_strategy == "STRICT_PACK":
+            # If the placement strategy is STRICT_PACK, we know that all the
+            # workers run on the same node as the engine. Therefore, we can run
+            # all initialization steps directly instead of in tasks in the PG.
+            # This removes the task launching overhead reducing the initialization
+            # time.
+            ctx.local_node_download_model = ctx.local_node_download_model.union(
+                ctx.worker_node_download_model
+            )
 
-        await _initialize_local_node(
-            llm_config,
-            download_model=ctx.local_node_download_model,
-            download_extra_files=True,
-        )
-    else:
-        await initialize_worker_nodes(
-            llm_config,
-            placement_group=ctx.placement_group,
-            runtime_env=ctx.runtime_env,
-            download_model=ctx.worker_node_download_model,
-            download_extra_files=True,
-        )
+            await _initialize_local_node(
+                llm_config,
+                download_model=ctx.local_node_download_model,
+                download_extra_files=True,
+            )
+        else:
+            await initialize_worker_nodes(
+                llm_config,
+                placement_group=ctx.placement_group,
+                runtime_env=ctx.runtime_env,
+                download_model=ctx.worker_node_download_model,
+                download_extra_files=True,
+            )
 
     await callback.on_after_init(ctx)
 
