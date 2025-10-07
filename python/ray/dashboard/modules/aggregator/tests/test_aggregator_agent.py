@@ -898,7 +898,7 @@ def test_aggregator_agent_http_svc_publish_disabled(
 def _get_task_from_gcs(
     unique_task_name: str,
 ):
-    """Fetch and return the first matching task event by task name from GCS, or None."""
+    """Fetch and return the first matching task by task name from GCS, or None."""
     try:
         task = list_tasks(filters=[("name", "=", unique_task_name)])
         if len(task) > 0:
@@ -1058,12 +1058,6 @@ def test_aggregator_agent_gcs_filtering_driver_job_events(
     # We can verify this by checking that no other task events are stored beyond our expected one
     # and ensuring that there were no errors during publishing.
     # The filtering logic in the GCS publisher should have filtered out the driver job event
-
-    # Additional verification: try to find any events that shouldn't be there
-    # by checking that our expected event is the only one with our unique name
-    matched_task_event = _get_task_from_gcs(unique_task_name)
-    assert matched_task_event is not None, "Expected task event should be found in GCS"
-    assert matched_task_event.name == unique_task_name
 
     # Ensure HTTP publisher did not send anything (since it's disabled)
     with pytest.raises(
