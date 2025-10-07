@@ -268,8 +268,12 @@ class AnyscaleJobRunner(JobRunner):
             logger.info(
                 f"Uploading working directory to Azure Blob Storage: {self.upload_path}"
             )
-            upload_dir_to_azure(local_path=os.getcwd(), azure_path=self.upload_path)
-            working_dir = self.upload_path
+            azure_path = upload_dir_to_azure(
+                local_path=os.getcwd(), azure_path=self.upload_path
+            )
+            self.upload_path = azure_path
+            working_dir = azure_path
+
             logger.info(
                 f"Uploaded working directory to Azure Blob Storage: {self.upload_path}"
             )

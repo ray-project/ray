@@ -307,12 +307,14 @@ def create_cluster_env_from_image(
     return cluster_env_id
 
 
-def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
+def upload_dir_to_azure(local_path: str, azure_path: str) -> str:
     """Archive and upload a directory to Azure Blob Storage.
 
     Args:
         local_path: Path to directory to upload.
-        azure_path: Path to archived directory in Azure Blob Storage.
+        azure_path: Path to directory in Azure Blob Storage.
+    Returns:
+        Azure Blob Storage path where directory was uploaded.
     """
     try:
         from azure.storage.blob import BlobServiceClient
@@ -340,6 +342,7 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
         )
         with open(zip_file_path, "rb") as data:
             blob_client.upload_blob(data)
+        return f"abfss://{container}@{account}.dfs.core.windows.net/{path}/{archived_filename}"
     except Exception as e:
         logger.exception(f"Failed to upload directory to Azure Blob Storage: {e}")
         raise
