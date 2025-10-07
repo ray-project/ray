@@ -28,18 +28,21 @@ def test_column_name_type_check(ray_start_regular_shared):
 @pytest.mark.skipif(
     sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
 )
-def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
+def test_unsupported_pyarrow_versions_check(shutdown_only):
     ray.shutdown()
 
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
+    ray.init(runtime_env={"pip": ["pyarrow==8.0.0"]})
 
     @ray.remote
     def should_error():
         _check_pyarrow_version()
 
-    with pytest.raises(ImportError):
+    with pytest.raises(
+        Exception,
+        match=r".*Dataset requires pyarrow >= 9.0.0, but 8.0.0 is installed.*",
+    ):
         ray.get(should_error.remote())
 
 
