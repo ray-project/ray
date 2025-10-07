@@ -1,26 +1,23 @@
+import argparse
+import logging
 import os
 import tempfile
 import uuid
-import logging
-
-import argparse
-from typing import Dict, Any
+from typing import Any, Dict
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+import deepspeed
+import torch
+from datasets import DownloadConfig, load_dataset
+from torch.utils.data import DataLoader
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import ray
 import ray.train
 import ray.train.torch
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.train import ScalingConfig, RunConfig, Checkpoint
-
-import torch
-from torch.utils.data import DataLoader
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_dataset, DownloadConfig
-
-import deepspeed
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +38,9 @@ def get_tokenizer(model_name: str, trust_remote_code: bool = True) -> Any:
     Returns:
         Configured tokenizer
     """
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, trust_remote_code=trust_remote_code
+    )
 
     # Set pad token if not already set
     if tokenizer.pad_token is None:
@@ -54,28 +53,41 @@ def get_tokenizer(model_name: str, trust_remote_code: bool = True) -> Any:
     return tokenizer
 
 
-def setup_dataloader(model_name: str, dataset_name: str, seq_length: int, batch_size: int) -> DataLoader:
+def setup_dataloader(
+    model_name: str, dataset_name: str, seq_length: int, batch_size: int
+) -> DataLoader:
     tokenizer = get_tokenizer(model_name)
 
-    dataset = load_dataset(dataset_name, split=f"train[:1%]", download_config=DownloadConfig(disable_tqdm=True))
+    dataset = load_dataset(
+        dataset_name,
+        split="train[:1%]",
+        download_config=DownloadConfig(disable_tqdm=True),
+    )
 
     def tokenize_function(examples):
-        return tokenizer(examples['text'], padding='max_length', max_length=seq_length, truncation=True)
+        return tokenizer(
+            examples["text"],
+            padding="max_length",
+            max_length=seq_length,
+            truncation=True,
+        )
 
-    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=1, keep_in_memory=True)
-    tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
-    data_loader = DataLoader(
-        tokenized_dataset,
-        batch_size=batch_size,
-        shuffle=True
+    tokenized_dataset = dataset.map(
+        tokenize_function, batched=True, num_proc=1, keep_in_memory=True
     )
+    tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+    data_loader = DataLoader(tokenized_dataset, batch_size=batch_size, shuffle=True)
 
     return ray.train.torch.prepare_data_loader(data_loader)
 
 
-def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: Dict[str, Any]) -> deepspeed.runtime.engine.DeepSpeedEngine:
+def setup_model_and_optimizer(
+    model_name: str, learning_rate: float, ds_config: Dict[str, Any]
+) -> deepspeed.runtime.engine.DeepSpeedEngine:
     model = AutoModelForCausalLM.from_pretrained(model_name)
-    log_rank0(f"Model loaded: {model_name} (#parameters: {sum(p.numel() for p in model.parameters())})")
+    log_rank0(
+        f"Model loaded: {model_name} (#parameters: {sum(p.numel() for p in model.parameters())})"
+    )
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     ds_engine, optimizer, _, _ = deepspeed.initialize(
@@ -87,8 +99,7 @@ def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: 
 
 
 def report_metrics_and_save_checkpoint(
-    ds_engine: deepspeed.runtime.engine.DeepSpeedEngine,
-    metrics: Dict[str, Any]
+    ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, metrics: Dict[str, Any]
 ) -> None:
     ctx = ray.train.get_context()
     epoch_value = metrics["epoch"]
@@ -113,7 +124,9 @@ def report_metrics_and_save_checkpoint(
             )
 
 
-def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: ray.train.Checkpoint) -> int:
+def load_checkpoint(
+    ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: ray.train.Checkpoint
+) -> int:
     next_epoch = 0
     try:
         with ckpt.as_directory() as checkpoint_dir:
@@ -132,7 +145,7 @@ def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: r
 
             if torch.distributed.is_available() and torch.distributed.is_initialized():
                 torch.distributed.barrier()
-                
+
         log_rank0("Successfully loaded distributed checkpoint")
     except Exception as e:
         logger.error(f"Failed to load checkpoint: {e}")
@@ -142,7 +155,9 @@ def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: r
 
 def train_loop(config: Dict[str, Any]) -> None:
 
-    ds_engine = setup_model_and_optimizer(config["model_name"], config["learning_rate"], config["ds_config"])
+    ds_engine = setup_model_and_optimizer(
+        config["model_name"], config["learning_rate"], config["ds_config"]
+    )
 
     # Load checkpoint if exists
     ckpt = ray.train.get_checkpoint()
@@ -153,24 +168,38 @@ def train_loop(config: Dict[str, Any]) -> None:
     if start_epoch > 0:
         log_rank0(f"Resuming training from epoch {start_epoch}")
 
-    train_loader = setup_dataloader(config["model_name"], config["dataset_name"], config["seq_length"], config["batch_size"])
+    train_loader = setup_dataloader(
+        config["model_name"],
+        config["dataset_name"],
+        config["seq_length"],
+        config["batch_size"],
+    )
     steps_per_epoch = len(train_loader)
     device = ray.train.torch.get_device()
 
     for epoch in range(start_epoch, config["epochs"]):
-        if ray.train.get_context().get_world_size() > 1 and hasattr(train_loader, "sampler"):
+        if ray.train.get_context().get_world_size() > 1 and hasattr(
+            train_loader, "sampler"
+        ):
             sampler = getattr(train_loader, "sampler", None)
             if sampler and hasattr(sampler, "set_epoch"):
                 sampler.set_epoch(epoch)
-                
+
         running_loss = 0.0
         num_batches = 0
         for step, batch in enumerate(train_loader):
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            outputs = ds_engine(input_ids=input_ids, attention_mask=attention_mask, labels=input_ids, use_cache=False)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            outputs = ds_engine(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=input_ids,
+                use_cache=False,
+            )
             loss = outputs.loss
-            log_rank0(f"Epoch: {epoch} Step: {step + 1}/{steps_per_epoch} Loss: {loss.item()}")
+            log_rank0(
+                f"Epoch: {epoch} Step: {step + 1}/{steps_per_epoch} Loss: {loss.item()}"
+            )
 
             ds_engine.backward(loss)
             ds_engine.step()
@@ -192,7 +221,9 @@ def main():
     args = get_args()
     print(args)
 
-    scaling_config = ScalingConfig(num_workers=args.num_workers, use_gpu=not args.cpu_only)
+    scaling_config = ScalingConfig(
+        num_workers=args.num_workers, use_gpu=not args.cpu_only
+    )
 
     ds_config = {
         "train_micro_batch_size_per_gpu": args.batch_size,
@@ -217,7 +248,11 @@ def main():
         "debug_steps": args.debug_steps,
     }
 
-    name = f"deepspeed_sample_{uuid.uuid4().hex[:8]}" if args.resume_experiment is None else args.resume_experiment
+    name = (
+        f"deepspeed_sample_{uuid.uuid4().hex[:8]}"
+        if args.resume_experiment is None
+        else args.resume_experiment
+    )
     print(f"Experiment name: {name}")
     run_config = RunConfig(
         storage_path=args.storage_path,
@@ -247,20 +282,17 @@ def get_args():
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--cpu_only", action="store_true", help="Disable GPU usage")
     parser.add_argument("--storage_path", type=str, default="/mnt/cluster_storage")
-    parser.add_argument("--resume_experiment", type=str, default=None, help="Path to the experiment to resume from")
+    parser.add_argument(
+        "--resume_experiment",
+        type=str,
+        default=None,
+        help="Path to the experiment to resume from",
+    )
     parser.add_argument("--debug_steps", type=int, default=0)
 
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    main()        
-
-
-
-
-
-
-
-
+    main()
 
