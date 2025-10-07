@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from google.cloud import storage
 import requests
 import shutil
-
+from urllib.parse import urlparse
+import click
 from ray_release.logger import logger
 from ray_release.configs.global_config import get_global_config
 from ray_release.exception import ClusterEnvCreateError
@@ -32,7 +33,9 @@ class DeferredEnvVar:
 ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 S3_CLOUD_STORAGE = "s3"
 GS_CLOUD_STORAGE = "gs"
+AZURE_CLOUD_STORAGE = "abfss"
 GS_BUCKET = "anyscale-oss-dev-bucket"
+AZURE_BUCKET = "rayreleasetests"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
@@ -302,3 +305,63 @@ def create_cluster_env_from_image(
         logger.info(f"Cluster env created with ID {cluster_env_id}")
 
     return cluster_env_id
+
+
+def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
+    """Upload a directory to Azure Blob Storage.
+
+    Args:
+        local_path: Path to directory to upload.
+        azure_path: Path to directory in Azure Blob Storage.
+    """
+    try:
+        from azure.storage.blob import BlobServiceClient
+        from azure.identity import DefaultAzureCredential
+
+        account, container, path = _parse_abfss_uri(azure_path)
+        logger.info(
+            f"Uploading directory to Azure Blob Storage: {account}, {container}, {path}"
+        )
+
+        account_url = f"https://{account}.blob.core.windows.net"
+
+        # Create a zip file of the local path
+        zip_file = f"{local_path}.zip"
+        shutil.make_archive(zip_file, "zip", local_path)
+
+        # Upload the zip file to the azure path
+        credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
+        blob_service_client = BlobServiceClient(account_url, credential)
+
+        blob_client = blob_service_client.get_blob_client(
+            container=container, blob=path
+        )
+        with open(zip_file, "rb") as data:
+            blob_client.upload_blob(data)
+    except Exception as e:
+        logger.exception(f"Failed to upload directory to Azure Blob Storage: {e}")
+        raise
+
+
+def _parse_abfss_uri(uri: str) -> tuple:
+    """Parse ABFSS URI to extract account, container, and path.
+    ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
+    Returns: (account_name, container_name, path)
+    """
+    parsed = urlparse(uri)
+    if "@" not in parsed.netloc:
+        raise click.ClickException(
+            f"Invalid ABFSS URI format: {uri}. "
+            "Expected format: abfss://container@account.dfs.core.windows.net/path"
+        )
+
+    # Split netloc into container@account.dfs.core.windows.net
+    container, account_part = parsed.netloc.split("@", 1)
+
+    # Extract account name from account.dfs.core.windows.net
+    account = account_part.split(".")[0]
+
+    # Path starts with / which we keep for the blob path
+    path = parsed.path.lstrip("/")
+
+    return account, container, path

@@ -27,6 +27,8 @@ from ray_release.util import (
     generate_tmp_cloud_storage_path,
     get_anyscale_sdk,
     S3_CLOUD_STORAGE,
+    AZURE_CLOUD_STORAGE,
+    upload_dir_to_azure,
 )
 
 if TYPE_CHECKING:
@@ -76,6 +78,11 @@ class AnyscaleJobRunner(JobRunner):
             f"{cloud_storage_provider}://{self.file_manager.bucket}",
             self.path_in_bucket,
         )
+        if cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            self.upload_path = join_cloud_storage_paths(
+                f"{cloud_storage_provider}://working-dirs@{self.file_manager.bucket}.dfs.core.windows.net",
+                self.path_in_bucket,
+            )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0
@@ -256,11 +263,15 @@ class AnyscaleJobRunner(JobRunner):
             - self._wait_for_nodes_timeout
             + 900,
         )
+        working_dir = "."
+        if self.upload_path.startswith("abfss"):
+            upload_dir_to_azure(path=os.getcwd(), upload_path=self.upload_path)
+            working_dir = self.upload_path
 
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
-            working_dir=".",
+            working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
             pip=pip,

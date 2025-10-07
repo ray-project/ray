@@ -18,6 +18,8 @@ from ray_release.util import (
     S3_CLOUD_STORAGE,
     GS_CLOUD_STORAGE,
     GS_BUCKET,
+    AZURE_BUCKET,
+    AZURE_CLOUD_STORAGE,
 )
 
 
@@ -37,6 +39,8 @@ class JobFileManager(FileManager):
         elif self.cloud_storage_provider == GS_CLOUD_STORAGE:
             self.bucket = GS_BUCKET
             self.gs_client = storage.Client()
+        elif self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            self.bucket = AZURE_BUCKET
         else:
             raise RuntimeError(
                 f"Non supported anyscale service provider: "
