@@ -1,5 +1,5 @@
 name: "ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"
-froms: ["cr.ray.io/rayproject/manylinux"]
+froms: ["cr.ray.io/rayproject/manylinux$ARCH_SUFFIX"]
 dockerfile: ci/docker/ray-core.Dockerfile
 srcs:
   - .bazelversion
