@@ -68,3 +68,4 @@ Cache-aware request routing <prefix-aware-request-router>
 - {doc}`Deploy a vision LLM <../tutorials/deployment-serve-llm/vision-llm/README>`
 - {doc}`Deploy a reasoning LLM <../tutorials/deployment-serve-llm/reasoning-llm/README>`
 - {doc}`Deploy a hybrid reasoning LLM <../tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`
+- {doc}`Deploy gpt-oss <../tutorials/deployment-serve-llm/gpt-oss/README>`
