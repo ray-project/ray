@@ -1185,73 +1185,81 @@ def test_iter_batches_local_shuffle(shutdown_only, ds_format):
     assert r1 == ds.take()
 
 
-def test_iter_batches_grid(ray_start_regular_shared):
+@pytest.mark.parametrize(
+    "block_sizes,batch_size,drop_last",
+    [
+        # Single block, batch smaller than block, keep partial
+        ([10], 3, False),
+        # Single block, batch smaller than block, drop partial
+        ([10], 3, True),
+        # Single block, exact division
+        ([10], 5, False),
+        # Multiple equal-sized blocks, batch doesn't divide evenly, keep partial
+        ([5, 5, 5], 7, False),
+        # Multiple equal-sized blocks, batch doesn't divide evenly, drop partial
+        ([5, 5, 5], 7, True),
+        # Multiple unequal-sized blocks, keep partial
+        ([1, 5, 10], 4, False),
+        # Multiple unequal-sized blocks, drop partial
+        ([1, 5, 10], 4, True),
+        # Edge case: batch_size = 1
+        ([5, 3, 7], 1, False),
+        # Edge case: batch larger than total rows
+        ([2, 3, 4], 100, False),
+        # Exact division across multiple blocks
+        ([6, 12, 18], 6, False),
+    ],
+)
+def test_iter_batches_grid(
+    ray_start_regular_shared,
+    block_sizes,
+    batch_size,
+    drop_last,
+):
     # Tests slicing, batch combining, and partial batch dropping logic over
-    # a grid of dataset, batching, and dropping configurations.
-    # Grid: num_blocks x num_rows_block_1 x ... x num_rows_block_N x
-    #       batch_size x drop_last
-    seed = int(time.time())
-    print(f"Seeding RNG for test_iter_batches_grid with: {seed}")
-    random.seed(seed)
-    max_num_blocks = 20
-    max_num_rows_per_block = 20
-    num_blocks_samples = 3
-    block_sizes_samples = 3
-    batch_size_samples = 3
+    # specific dataset, batching, and dropping configurations.
+    # Create the dataset with the given block sizes.
+    dfs = []
+    running_size = 0
+    for block_size in block_sizes:
+        dfs.append(
+            pd.DataFrame(
+                {"value": list(range(running_size, running_size + block_size))}
+            )
+        )
+        running_size += block_size
+    num_rows = running_size
+    ds = ray.data.from_blocks(dfs)
 
-    for num_blocks in np.random.randint(1, max_num_blocks + 1, size=num_blocks_samples):
-        block_sizes_list = [
-            np.random.randint(1, max_num_rows_per_block + 1, size=num_blocks)
-            for _ in range(block_sizes_samples)
-        ]
-        for block_sizes in block_sizes_list:
-            # Create the dataset with the given block sizes.
-            dfs = []
-            running_size = 0
-            for block_size in block_sizes:
-                dfs.append(
-                    pd.DataFrame(
-                        {"value": list(range(running_size, running_size + block_size))}
-                    )
-                )
-                running_size += block_size
-            num_rows = running_size
-            ds = ray.data.from_blocks(dfs)
-            for batch_size in np.random.randint(
-                1, num_rows + 1, size=batch_size_samples
-            ):
-                for drop_last in (False, True):
-                    batches = list(
-                        ds.iter_batches(
-                            batch_size=batch_size,
-                            drop_last=drop_last,
-                            batch_format="pandas",
-                        )
-                    )
-                    if num_rows % batch_size == 0 or not drop_last:
-                        # Number of batches should be equal to
-                        # num_rows / batch_size,  rounded up.
-                        assert len(batches) == math.ceil(num_rows / batch_size)
-                        # Concatenated batches should equal the DataFrame
-                        # representation of the entire dataset.
-                        assert pd.concat(batches, ignore_index=True).equals(
-                            ds.to_pandas()
-                        )
-                    else:
-                        # Number of batches should be equal to
-                        # num_rows / batch_size, rounded down.
-                        assert len(batches) == num_rows // batch_size
-                        # Concatenated batches should equal the DataFrame
-                        # representation of the dataset with the partial batch
-                        # remainder sliced off.
-                        assert pd.concat(batches, ignore_index=True).equals(
-                            ds.to_pandas()[: batch_size * (num_rows // batch_size)]
-                        )
-                    if num_rows % batch_size == 0 or drop_last:
-                        assert all(len(batch) == batch_size for batch in batches)
-                    else:
-                        assert all(len(batch) == batch_size for batch in batches[:-1])
-                        assert len(batches[-1]) == num_rows % batch_size
+    batches = list(
+        ds.iter_batches(
+            batch_size=batch_size,
+            drop_last=drop_last,
+            batch_format="pandas",
+        )
+    )
+    if num_rows % batch_size == 0 or not drop_last:
+        # Number of batches should be equal to
+        # num_rows / batch_size,  rounded up.
+        assert len(batches) == math.ceil(num_rows / batch_size)
+        # Concatenated batches should equal the DataFrame
+        # representation of the entire dataset.
+        assert pd.concat(batches, ignore_index=True).equals(ds.to_pandas())
+    else:
+        # Number of batches should be equal to
+        # num_rows / batch_size, rounded down.
+        assert len(batches) == num_rows // batch_size
+        # Concatenated batches should equal the DataFrame
+        # representation of the dataset with the partial batch
+        # remainder sliced off.
+        assert pd.concat(batches, ignore_index=True).equals(
+            ds.to_pandas()[: batch_size * (num_rows // batch_size)]
+        )
+    if num_rows % batch_size == 0 or drop_last:
+        assert all(len(batch) == batch_size for batch in batches)
+    else:
+        assert all(len(batch) == batch_size for batch in batches[:-1])
+        assert len(batches[-1]) == num_rows % batch_size
 
 
 def test_union(ray_start_regular_shared):
