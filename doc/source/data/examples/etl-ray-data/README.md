@@ -10,7 +10,12 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Ray Data for ETL: a comprehensive beginner's guide
 
-This notebook provides a complete introduction to Ray Data for Extract, Transform, Load (ETL) workflows. You'll learn both the practical aspects of building ETL pipelines and the underlying architecture that makes Ray Data powerful for distributed data processing.
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/etl-ray-data"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/data/examples/etl-ray-data" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
+This notebook provides a complete introduction to Ray Data for Extract, Transform, Load (ETL) workflows. It covers both the practical aspects of building ETL pipelines and the underlying architecture that makes Ray Data powerful for distributed data processing.
 
 Learning roadmap:
 
@@ -62,7 +67,7 @@ print(f"Ray cluster resources: {ray.cluster_resources()}")
 
 ### What is Ray Data?
 
-Ray Data is a distributed data processing library built on top of Ray that is a **General Availability (GA)** library. As the fastest-growing use case for Ray, it's designed to handle **both traditional ETL/ML workloads and next-generation AI applications**, providing a unified platform that scales from CPU clusters to heterogeneous GPU environments.
+Ray Data is a distributed data processing library built on top of Ray and is a **General Availability (GA)** component. As the fastest-growing use case for Ray, it's designed to handle **both traditional ETL/ML workloads and next-generation AI applications**, providing a unified platform that scales from CPU clusters to heterogeneous GPU environments.
 
 **Tip: Ray Data - One platform for all data workloads**
 
