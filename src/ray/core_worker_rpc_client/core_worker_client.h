@@ -96,19 +96,17 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
-                                   CoreWorkerService,
-                                   PubsubLongPolling,
-                                   grpc_client_,
-                                   /*method_timeout_ms*/ -1,
-                                   override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         PubsubLongPolling,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
 
-  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
-                                   CoreWorkerService,
-                                   PubsubCommandBatch,
-                                   grpc_client_,
-                                   /*method_timeout_ms*/ -1,
-                                   override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         PubsubCommandBatch,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
 
   VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
                                    CoreWorkerService,
