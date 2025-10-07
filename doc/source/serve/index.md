@@ -18,6 +18,7 @@ Production Guide <production-guide/index>
 monitoring
 resource-allocation
 autoscaling-guide
+asynchronous-inference
 advanced-guides/index
 architecture
 examples

@@ -19,14 +19,15 @@ class LLMServer(InternalLLMServer):
 
     To build a Deployment object you should use `build_llm_deployment` function.
     We also expose a lower level API for more control over the deployment class
-    through `as_deployment` method.
+    through `serve.deployment` function.
 
     Examples:
         .. testcode::
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, LLMServer
+            from ray.serve.llm import LLMConfig
+            from ray.serve.llm.deployment import LLMServer
 
             # Configure the model
             llm_config = LLMConfig(
@@ -43,8 +44,9 @@ class LLMServer(InternalLLMServer):
             )
 
             # Build the deployment directly
-            LLMDeployment = LLMServer.as_deployment(llm_config.get_serve_options())
-            llm_app = LLMDeployment.bind(llm_config)
+            serve_options = LLMServer.get_deployment_options(llm_config)
+            llm_app = serve.deployment(LLMServer).options(
+                **serve_options).bind(llm_config)
 
             model_handle = serve.run(llm_app)
 
