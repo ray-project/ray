@@ -754,6 +754,66 @@ def test_decorator_label_selector_args(
                 pass
 
 
+@pytest.mark.parametrize(
+    "fallback_strategy, expected_error",
+    [
+        (  # Valid: single selector in the list
+            [{"label_selector": {"ray.io/accelerator-type": "H100"}}],
+            None,
+        ),
+        (  # Valid: multiple selectors in the list
+            [
+                {"label_selector": {"market-type": "spot"}},
+                {"label_selector": {"region": "in(us-west-1, us-east-1)"}},
+            ],
+            None,
+        ),
+        (  # Invalid: unsupported `fallback_strategy` option.
+            [
+                {"memory": "1Gi"},
+            ],
+            ValueError,
+        ),
+        (  # Invalid: not a list
+            {"label_selector": {"market-type": "spot"}},
+            TypeError,
+        ),
+        (  # Invalid: `fallback_strategy`` contains a non-dict element
+            ["not-a-dict"],
+            ValueError,
+        ),
+        (  # Invalid: `label_selector` contains a dict with a bad key
+            [{"label_selector": {"-bad-key-": "value"}}],
+            ValueError,
+        ),
+        (  # Invalid: `label_selector` contains a dict with a bad value
+            [{"label_selector": {"key": "-bad-value-"}}],
+            ValueError,
+        ),
+    ],
+)
+def test_decorator_fallback_strategy_args(
+    ray_start_regular_shared, fallback_strategy, expected_error
+):
+    """
+    Tests that the fallback_strategy actor option is validated correctly.
+    """
+    if expected_error:
+        with pytest.raises(expected_error):
+
+            @ray.remote(fallback_strategy=fallback_strategy)
+            class Actor:
+                def __init__(self):
+                    pass
+
+    else:
+
+        @ray.remote(fallback_strategy=fallback_strategy)
+        class Actor:
+            def __init__(self):
+                pass
+
+
 def test_random_id_generation(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -1698,7 +1758,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     psutil.Process(pid).kill()
     a_actor_id = a._actor_id.hex()
 
-    wait_for_condition(lambda: ray.state.actors(a_actor_id)["State"] == "DEAD")
+    wait_for_condition(lambda: ray.util.state.get_actor(id=a_actor_id).state == "DEAD")
 
     # When a reference is held, the name cannot be reused.
     with pytest.raises(ValueError):
@@ -1721,7 +1781,9 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
 
     # ray.kill can proactively release the name.
     ray.kill(b)
-    wait_for_condition(lambda: ray.state.actors(b._actor_id.hex())["State"] == "DEAD")
+    wait_for_condition(
+        lambda: ray.util.state.get_actor(id=b._actor_id.hex()).state == "DEAD"
+    )
 
     c = Actor.options(name=ACTOR_NAME, lifetime="detached").remote()
     ray.get(c.__ray_ready__.remote())
@@ -1730,7 +1792,9 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     pid = ray.get(c.get_pid.remote())
     psutil.Process(pid).kill()
 
-    wait_for_condition(lambda: ray.state.actors(c._actor_id.hex())["State"] == "DEAD")
+    wait_for_condition(
+        lambda: ray.util.state.get_actor(id=c._actor_id.hex()).state == "DEAD"
+    )
 
     # Detached actors do not subscribe to reference counting, so
     # they release the actor name when the actor is dead, without waiting for the reference count

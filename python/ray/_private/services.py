@@ -173,7 +173,10 @@ def _build_python_executable_command_memory_profileable(
         output_file_path = profile_dir / f"{session_name}_memory_{component}.bin"
         options = os.getenv(RAY_MEMRAY_PROFILE_OPTIONS_ENV, None)
         options = options.split(",") if options else []
-        command.extend(["-m", "memray", "run", "-o", str(output_file_path), *options])
+        # If neither --live nor any output option (-o/--output) is specified, add the default output path
+        if not any(opt in options for opt in ("--live", "-o", "--output")):
+            options[0:0] = ["-o", str(output_file_path)]
+        command.extend(["-m", "memray", "run", *options])
 
     return command
 
@@ -1750,18 +1753,6 @@ def start_raylet(
         ]
     )
 
-    if resource_isolation_config.is_enabled():
-        # TODO(irabbani): enable passing args to raylet once the raylet has been modified
-        logging.info(
-            f"Resource isolation enabled with cgroup_path={resource_isolation_config.cgroup_path}, "
-            f"system_reserved_cpu={resource_isolation_config.system_reserved_cpu_weight} "
-            f"system_reserved_memory={resource_isolation_config.system_reserved_memory}"
-        )
-        # start_worker_command.append("--enable-resource-isolation")
-        # start_worker_command.append(f"--cgroup-path={resource_isolation_config.cgroup_path}")
-        # start_worker_command.append(f"--system-reserved-cpu={resource_isolation_config.system_reserved_cpu_weight}")
-        # start_worker_command.append(f"--system-reserved-memory={resource_isolation_config.system_reserved_memory}")
-
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
     if redis_username:
@@ -1901,6 +1892,22 @@ def start_raylet(
         f"--labels={labels_json_str}",
         f"--cluster-id={cluster_id}",
     ]
+
+    if resource_isolation_config.is_enabled():
+        logging.info(
+            f"Resource isolation enabled with cgroup_path={resource_isolation_config.cgroup_path}, "
+            f"system_reserved_cpu={resource_isolation_config.system_reserved_cpu_weight} "
+            f"system_reserved_memory={resource_isolation_config.system_reserved_memory}."
+        )
+        command.append("--enable-resource-isolation")
+        command.append(f"--cgroup-path={resource_isolation_config.cgroup_path}")
+        command.append(
+            f"--system-reserved-cpu-weight={resource_isolation_config.system_reserved_cpu_weight}"
+        )
+        command.append(
+            f"--system-reserved-memory-bytes={resource_isolation_config.system_reserved_memory}"
+        )
+        command.append(f"--system-pids={resource_isolation_config.system_pids}")
 
     if raylet_stdout_filepath:
         command.append(f"--stdout_filepath={raylet_stdout_filepath}")

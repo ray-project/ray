@@ -1,15 +1,19 @@
 from collections import UserDict
 
 import numpy as np
+import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.pandas import TensorDtype
 from ray.data.context import DataContext
+from ray.data.dataset import Schema
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-def test_strict_read_schemas(ray_start_regular_shared):
+def test_strict_read_schemas(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(1)
     assert ds.take()[0] == {"id": 0}
 
@@ -41,7 +45,7 @@ def test_strict_read_schemas(ray_start_regular_shared):
     assert "text" in ds.take()[0]
 
 
-def test_strict_map_output(ray_start_regular_shared):
+def test_strict_map_output(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(1)
 
     with pytest.raises(ValueError):
@@ -78,7 +82,7 @@ def test_strict_map_output(ray_start_regular_shared):
     ds.map(lambda x: UserDict({"x": object()})).materialize()
 
 
-def test_strict_convert_map_output(ray_start_regular_shared):
+def test_strict_convert_map_output(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(1).map_batches(lambda x: {"id": [0, 1, 2, 3]}).materialize()
     assert ds.take_batch()["id"].tolist() == [0, 1, 2, 3]
 
@@ -100,7 +104,7 @@ def test_strict_convert_map_output(ray_start_regular_shared):
     assert ds.take_batch()["id"].tolist() == [0, 1, 2, UserObj()]
 
 
-def test_strict_convert_map_groups(ray_start_regular_shared):
+def test_strict_convert_map_groups(ray_start_regular_shared_2_cpus):
     ds = ray.data.read_csv("example://iris.csv")
 
     def process_group(group):
@@ -117,7 +121,7 @@ def test_strict_convert_map_groups(ray_start_regular_shared):
     ds.show()
 
 
-def test_strict_default_batch_format(ray_start_regular_shared):
+def test_strict_default_batch_format(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(1)
 
     @ray.remote
@@ -145,7 +149,9 @@ def test_strict_default_batch_format(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("shape", [(10,), (10, 2)])
-def test_strict_tensor_support(ray_start_regular_shared, restore_data_context, shape):
+def test_strict_tensor_support(
+    ray_start_regular_shared_2_cpus, restore_data_context, shape
+):
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
     ds = ray.data.from_items([np.ones(shape), np.ones(shape)])
@@ -158,7 +164,7 @@ def test_strict_tensor_support(ray_start_regular_shared, restore_data_context, s
     assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(shape))
 
 
-def test_strict_value_repr(ray_start_regular_shared):
+def test_strict_value_repr(ray_start_regular_shared_2_cpus):
     ds = ray.data.from_items([{"__value__": np.ones(10)}])
 
     ds = ds.map_batches(lambda x: {"__value__": x["__value__"] * 2})
@@ -167,19 +173,19 @@ def test_strict_value_repr(ray_start_regular_shared):
     assert np.array_equal(ds.take_batch()["x"][0], 4 * np.ones(10))
 
 
-def test_strict_object_support(ray_start_regular_shared):
+def test_strict_object_support(ray_start_regular_shared_2_cpus):
     ds = ray.data.from_items([{"x": 2}, {"x": object()}])
     ds.map_batches(lambda x: x, batch_format="numpy").materialize()
 
 
-def test_strict_compute(ray_start_regular_shared):
+def test_strict_compute(ray_start_regular_shared_2_cpus):
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="actors").show()
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 
 
-def test_strict_schema(ray_start_regular_shared):
+def test_strict_schema(ray_start_regular_shared_2_cpus):
     import pyarrow as pa
 
     from ray.data._internal.pandas_block import PandasBlockSchema
@@ -225,7 +231,7 @@ def test_strict_schema(ray_start_regular_shared):
     assert schema.names == ["data"]
 
     from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
-    from ray.data import DataContext
+    from ray.data.context import DataContext
 
     if DataContext.get_current().use_arrow_tensor_v2:
         expected_arrow_ext_type = ArrowTensorTypeV2(shape=(10,), dtype=pa.float64())
@@ -234,13 +240,58 @@ def test_strict_schema(ray_start_regular_shared):
 
     assert schema.types == [expected_arrow_ext_type]
 
-    schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
+    def _id(batch):
+        assert isinstance(batch, pd.DataFrame)
+        return batch
+
+    schema = ds.map_batches(_id, batch_format="pandas").schema()
+
     assert isinstance(schema.base_schema, PandasBlockSchema)
     assert schema.names == ["data"]
+    assert schema.base_schema.types == [TensorDtype(shape=(10,), dtype=pa.float64())]
+    # NOTE: Schema by default returns Arrow types
     assert schema.types == [expected_arrow_ext_type]
 
 
-def test_use_raw_dicts(ray_start_regular_shared):
+@pytest.mark.parametrize(
+    "input_dtype, expected_arrow_type",
+    [
+        (pd.ArrowDtype(pa.int32()), pa.int32()),
+        (np.dtype("int64"), pa.int64()),
+        # Integer nullable types
+        (pd.Int8Dtype(), pa.int8()),
+        (pd.Int16Dtype(), pa.int16()),
+        (pd.Int32Dtype(), pa.int32()),
+        (pd.Int64Dtype(), pa.int64()),
+        (pd.UInt8Dtype(), pa.uint8()),
+        (pd.UInt16Dtype(), pa.uint16()),
+        (pd.UInt32Dtype(), pa.uint32()),
+        (pd.UInt64Dtype(), pa.uint64()),
+        # Float nullable types
+        (pd.Float32Dtype(), pa.float32()),
+        (pd.Float64Dtype(), pa.float64()),
+        # Boolean nullable type
+        (pd.BooleanDtype(), pa.bool_()),
+        # String type (default storage)
+        (pd.StringDtype(), pa.string()),
+        # String type with explicit pyarrow storage
+        (pd.StringDtype(storage="pyarrow"), pa.string()),
+        # String type with python storage
+        (pd.StringDtype(storage="python"), pa.string()),
+    ],
+)
+def test_schema_types_property(input_dtype, expected_arrow_type):
+    """
+    Tests that the Schema.types property correctly converts pandas and numpy
+    dtypes to pyarrow types, including BaseMaskedDtype subclasses.
+    """
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    schema = Schema(PandasBlockSchema(names=["a"], types=[input_dtype]))
+    assert schema.types == [expected_arrow_type]
+
+
+def test_use_raw_dicts(ray_start_regular_shared_2_cpus):
     assert type(ray.data.range(10).take(1)[0]) is dict
     assert type(ray.data.from_items([1]).take(1)[0]) is dict
 
