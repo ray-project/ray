@@ -6,8 +6,8 @@ Autoscaler V2
 This document explains how the OSS autoscaler V2 works in Ray 2.48, outlining its high-level responsibilities and implementation details.
 
 
-Responsibilities
-----------------
+Overview
+--------
 
 The autoscaler is responsible for resizing the cluster based on resource demand including tasks, actors, and placement groups.
 To achieve this, it follows a structured process: evaluating worker group configurations, periodically reconciling cluster state with user constraints, applying bin-packing strategies to pending workload demands, and interacting with cloud providers through the Instance Manager.
@@ -16,13 +16,17 @@ The following sections describe these components in detail.
 Worker Group Configurations
 ---------------------------
 
-Worker groups (node types) can be configured in these ways:
+Worker groups (also referred to as node types) define the sets of nodes that the Ray autoscaler scales.
+Each worker group represents a logical category of nodes with the same resource configurations, such as CPU, memory, GPU, or custom resources.
+
+The autoscaler dynamically adjusts the cluster size by adding or removing nodes within each group as workload demands change. In other words, it scales the cluster by modifying the number of nodes per worker group according to the specified scaling rules and resource requirements.
+
+Worker groups be configured in these ways:
 
 - The `available_nodes_types <https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#node-types>`__ field in the Cluster YAML file, if you are using the `ray up` cluster launcher.
 - The `workerGroupSpecs <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#pod-configuration-headgroupspec-and-workergroupspecs>`__ field in the RayCluster CRD, if you are using KubeRay.
 
-This configuration specifies the logical resources each node has in a worker group, along with the minimum and maximum number of nodes that should exist in each group.
-The autoscaler then adds or removes nodes from worker groups based on the current pending resource demand and the cluster configuration.
+The configuration specifies the logical resources each node has in a worker group, along with the minimum and maximum number of nodes that should exist in each group.
 
 .. note::
    Although the autoscaler fulfills pending resource demands and releases idle nodes, it doesn't perform the actual scheduling of Ray tasks, actors, or placement groups. Scheduling is handled internally by Ray.
@@ -34,11 +38,14 @@ Periodic Reconciliation
 
 The entrypoint of the autoscaler is `monitor.py <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L332>`__, which starts a GCS client and does the reconciliation loop.
 
-It periodically `reconciles <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L200-L213>`__ on a snapshot of the following information with the Reconciler:
+This process is launched on the head node by the `start_head_processes <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439>`__ function when using the ray up cluster launcher.
+When running under KubeRay, it instead runs as a separate autoscaler container in the Head Pod and Kubernetes will restart the container if it crashes.
+
+The process periodically `reconciles <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L200-L213>`__ on a snapshot of the following information with the Reconciler:
 
 1. **The Latest Pending Demands** (queried from the `get_cluster_resource_state` GCS RPC): Pending Ray tasks, actors, and placement groups.
 2. **The Latest User Cluster Constraints** (queried from the `get_cluster_resource_state` GCS RPC): The minimum cluster size, if specified by the user `ray.autoscaler.sdk.request_resources` invocation.
-3. **The Latest Total and Available Node Resources** (queried from the `get_cluster_resource_state` GCS RPC): The total and currently available resources of each active Ray node.
+3. **The Latest Total and Available Node Resources** (queried from the `get_cluster_resource_state` GCS RPC): The total and currently available resources of each alive Ray node.
 4. **The Latest Cloud Instances** (queried from the cloud provider's implementation): The list of instances managed by the Cloud Provider implementation.
 5. **The Latest Worker Group Configurations.** (queried from the cluster YAML file or the RayCluster CRD).
 
@@ -54,6 +61,8 @@ After the sync phase, the Reconciler performs the `following steps <https://gith
 5. Terminate idle instances according to the `idle_duration_ms` on each node queried from GCS and the configured idle timeout for each group.
 6. Send accumulated scaling decisions (steps 1–5) to the Instance Manager with `Reconciler._update_instance_manager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L1157-L1193>`__.
 7. `Sleep briefly (5s by default) <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L178>`__, then go back to the sync phase.
+
+If any error occurs, such as an error from the cloud provider or a timeout in the sync phase, the current reconciliation is break and jumps to step 7 to wait for the next reconciliation.
 
 .. note::
 
@@ -113,7 +122,7 @@ Scaling decisions are represented as a list of ``InstanceUpdateEvent`` records. 
 
 These update events are passed to the Instance Manager, which transitions instance statuses.
 
-A normal status transition flow for an instance is:
+A normal transition flow for an instance is:
 
 - ``(non-existent) -> QUEUED``: The Reconciler creates an instance with the ``QUEUED`` InstanceUpdateEvent when it decides to launch a new instance.
 - ``QUEUED -> REQUESTED``: The Reconciler considers `max_concurrent_launches` and `upscaling_speed` when selecting an instance from the queue to transition ``REQUESTED`` during each reconciliation iteration.
@@ -126,7 +135,7 @@ A normal status transition flow for an instance is:
 - ``RAY_STOPPED -> TERMINATING`` Reconciler will transition the instance from ``RAY_STOPPED`` to ``TERMINATING``.
 - ``TERMINATING -> TERMINATED`` Once the Reconciler detects the instance is stopped from the cloud provider, it will transition the instance to ``TERMINATED``.
 
-You can find all valid instance status transitions in the `get_valid_transitions <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/common.py#L193>`__ method.
+You can find all valid transitions in the `get_valid_transitions <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/common.py#L193>`__ method.
 
 Once transitions are triggered by the Reconciler, subscribers perform side effects, such as:
 
@@ -138,8 +147,8 @@ Once transitions are triggered by the Reconciler, subscribers perform side effec
 
 .. note::
 
-   Status transitions trigger side effects, but side effects don't trigger new status transitions directly.
-   Instead, their results are observed from the external states at the beginning, the sync phase, and their new status transitions are triggered from the observations.
+   Status transitions trigger side effects, but side effects don't trigger new transitions directly.
+   Instead, their results are observed from the external states at the beginning, the sync phase, and their new transitions are triggered from the observations.
 
 
 .. note::
