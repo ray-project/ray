@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 from ray_release.configs.global_config import get_global_config
 
@@ -44,10 +45,17 @@ class AnyscaleDockerContainer(DockerContainer):
                 ]
 
         if os.environ.get("BUILDKITE"):
-            cmds += [
-                f"buildkite-agent annotate --style=info --context={self.image_type}-images --append {aws_alias_image}",
-                f"buildkite-agent annotate --style=info --context={self.image_type}-images --append {gcp_alias_image}",
-            ]
+            subprocess.run(
+                [
+                    "buildkite-agent",
+                    "annotate",
+                    "--style=info",
+                    "--context=anyscale-images",
+                    "--append",
+                    f"{aws_alias_image}",
+                    f"{gcp_alias_image}",
+                ]
+            )
 
         self.run_script(cmds)
 
