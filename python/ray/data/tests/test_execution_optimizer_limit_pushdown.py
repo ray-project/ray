@@ -1,4 +1,3 @@
-import itertools
 import sys
 
 import pandas as pd
@@ -9,8 +8,6 @@ from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.test_util import _check_usage_record
-from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -491,28 +488,6 @@ def test_limit_pushdown_preserves_map_behavior(ray_start_regular_shared_2_cpus):
     # Both should have the expected transformation applied
     expected = [{"id": i + 1} for i in range(10)]
     assert result_with == expected
-
-
-@pytest.mark.parametrize(
-    "num_blocks1,num_blocks2,num_blocks3",
-    list(itertools.combinations_with_replacement(range(1, 4), 3)),
-)
-def test_zip_e2e(
-    ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2, num_blocks3
-):
-    n = 4
-    ds1 = ray.data.range(n, override_num_blocks=num_blocks1)
-    ds2 = ray.data.range(n, override_num_blocks=num_blocks2).map(
-        lambda x: {"id": x["id"] + 1}
-    )
-    ds3 = ray.data.range(n, override_num_blocks=num_blocks3).map(
-        lambda x: {"id": x["id"] + 2}
-    )
-    ds = ds1.zip(ds2, ds3)
-    assert ds.take() == named_values(
-        ["id", "id_1", "id_2"], zip(range(n), range(1, n + 1), range(2, n + 2))
-    )
-    _check_usage_record(["ReadRange", "Zip"])
 
 
 if __name__ == "__main__":
