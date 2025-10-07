@@ -16,6 +16,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/gcs_rpc_client/python_callbacks.h
 from asyncio import Future
+from ray._common.utils import get_or_create_event_loop
 from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
@@ -689,7 +690,7 @@ cdef class InnerGcsClient:
      #############################################################
     # GcsRpcClient methods
     #############################################################
-    def async_add_events(self, serialized_request: bytes, timeout_s=None) -> Future[None]:
+    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None) -> Future[None]:
         """Async AddEvents using native C++ AddEvents with Status callback."""
         cdef:
             CAddEventsRequest c_req
@@ -699,7 +700,16 @@ cdef class InnerGcsClient:
 
         # Parse the protobuf payload
         cdef c_string payload = serialized_request
-        if not c_req.ParseFromString(payload):
+        cdef bint parsed = False
+        if executor is not None:
+            parsed = await get_or_create_event_loop().run_in_executor(
+                executor,
+                lambda: c_req.ParseFromString(payload),
+            )
+        else:
+            parsed = c_req.ParseFromString(payload)
+
+        if not parsed:
             # Fail fast on parse error
             assign_and_decrement_fut((None, ValueError("Invalid AddEventsRequest payload")), fut)
             return asyncio.wrap_future(fut)

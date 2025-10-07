@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import aiohttp
 
+import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private.protobuf_compat import message_to_json
 from ray._raylet import GcsClient
@@ -231,11 +232,12 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
                 self._executor,
                 lambda: request.SerializeToString(),
             )
-            response_dict = await self._gcs_client.async_add_events(
-                serialized_request, self._timeout_s
+            status_code = await self._gcs_client.async_add_events(
+                serialized_request, self._timeout_s, self._executor
             )
-            if response_dict.get("status", {}).get("code", 0) != 0:
-                logger.error(f"GCS AddEvents failed: {response_dict}")
+
+            if status_code != dashboard_utils.HTTPStatusCode.OK:
+                logger.error(f"GCS AddEvents failed: {status_code}")
                 return PublishStats(
                     is_publish_successful=False,
                     num_events_published=0,
