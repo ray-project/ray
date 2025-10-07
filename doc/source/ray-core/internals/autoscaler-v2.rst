@@ -179,3 +179,26 @@ Once transitions are triggered by the Reconciler, subscribers perform side effec
    ``KubeRayProvider`` is one such cloud provider implementation.
 
    ``NodeProviderAdapter`` is an adapter that can wrap a v1 node provider (such as ``AWSNodeProvider``) to act as a cloud provider.
+
+
+Appendix
+--------
+
+How ``get_cluster_resource_state`` Aggregates Cluster State
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The autoscaler retrieves a cluster snapshot through the ``get_cluster_resource_state`` RPC served by GCS (`HandleGetClusterResourceState <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L48>`__) which builds the reply in `MakeClusterResourceStateInternal <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L179>`__. Internally, GCS assembles the reply by combining per-node resource reports, pending workload demand, and any user-requested cluster constraints into a single ``ClusterResourceState`` message.
+
+- Data sources and ownership:
+
+  - ``GcsAutoscalerStateManager`` maintains a per-node cache of ``ResourcesData`` that includes totals, availables, and load-by-shape. GCS periodically polls each alive raylet (``GetResourceLoad``) and updates this cache (`GcsServer::InitGcsResourceManager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_server.cc#L375-L418>`__, `UpdateResourceLoadAndUsage <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L267-L281>`__), then uses it to construct snapshots.
+  - ``GcsNodeInfo`` provides static and slowly changing node metadata (node ID, instance ID, node type name, IP, labels, instance type) and dead/alive status.
+  - Placement group demand comes from the placement group manager.
+  - User cluster constraints come from autoscaler SDK requests that GCS records.
+
+- Fields assembled in the reply:
+
+  - ``node_states``: For each node, GCS sets identity and metadata from ``GcsNodeInfo`` and pulls resources and status from the cached ``ResourcesData`` (`GetNodeStates <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L319>`__). Dead nodes are marked ``DEAD`` and omit resource details. For alive nodes, GCS also includes ``idle_duration_ms`` and any node activity strings.
+  - ``pending_resource_requests``: Computed by aggregating per-node load-by-shape across the cluster (`GetPendingResourceRequests <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L303-L317>`__). For each resource shape, the count is the sum of infeasible, backlog, and ready requests that haven't been scheduled yet.
+  - ``pending_gang_resource_requests``: Pending or rescheduling placement groups represented as gang requests (`GetPendingGangResourceRequests <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L193>`__).
+  - ``cluster_resource_constraints``: The set of minimal cluster resource constraints previously requested via ``ray.autoscaler.sdk.request_resources`` (`GetClusterResourceConstraints <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L245>`__).
