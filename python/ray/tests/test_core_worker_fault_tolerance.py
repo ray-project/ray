@@ -42,7 +42,7 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
     """Test that WaitForActorRefDeleted RPC retries work correctly.
     Verify that the RPC is idempotent when network failures occur.
     The GCS actor manager will trigger this RPC during actor initialization
-    to monitor when the actor handles have gone out of scope and the actor should be destroyed.Collapse commentComment on line R46jjyao commented on Oct 6, 2025 jjyaoon Oct 6, 2025CollaboratorMore actions
+    to monitor when the actor handles have gone out of scope and the actor should be destroyed.
     """
 
     monkeypatch.setenv(
