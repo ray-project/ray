@@ -26,6 +26,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"

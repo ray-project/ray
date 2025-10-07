@@ -31,12 +31,14 @@ namespace ray {
 namespace core {
 
 class ReferenceCounterInterface {
- public:
-  using ReferenceTableProto =
-      ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
+ protected:
   // Returns the amount of lineage in bytes released.
   using LineageReleasedCallback =
       std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
+
+ public:
+  using ReferenceTableProto =
+      ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 
   /// Wait for all object references to go out of scope, and then shutdown.
   ///
