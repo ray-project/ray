@@ -330,6 +330,7 @@ py_library(
     deps = [
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
+        bk_require("azure-storage-file-datalake"),
         bk_require("bazel-runfiles"),
         bk_require("aioboto3"),
         bk_require("boto3"),
@@ -337,6 +338,7 @@ py_library(
         bk_require("click"),
         bk_require("google-cloud-storage"),
         bk_require("jinja2"),
+        bk_require("msal"),
         bk_require("pybuildkite"),
         bk_require("pygithub"),
         bk_require("requests"),
