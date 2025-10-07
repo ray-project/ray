@@ -1834,6 +1834,22 @@
   alert: default
 
 
+- name: torch_local_mode
+  group: Train tests
+  working_dir: train_tests/local_mode
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_gpu_2x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python torch_local_mode_launcher.py
+
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   python: "3.10"
   group: Train tests
@@ -2214,6 +2230,7 @@
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 - name: microbenchmark
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2241,6 +2258,7 @@
       python: "3.12"
 
 - name: compiled_graphs
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2315,6 +2333,7 @@
     script: python experimental/gpu_object_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2400,6 +2419,7 @@
         num_nodes: 5
 
 - name: stress_test_state_api_scale
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2447,6 +2467,7 @@
 
 
 - name: shuffle_20gb_with_state_api
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2473,6 +2494,7 @@
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
 - name: stress_test_many_tasks
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2513,6 +2535,7 @@
         frequency: manual
 
 - name: stress_test_dead_actors
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2556,6 +2579,7 @@
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
 - name: threaded_actors_stress_test
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2615,6 +2639,7 @@
 #         timeout: 600
 
 - name: stress_test_many_runtime_envs
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2735,6 +2760,7 @@
 #
 
 - name: pg_autoscaling_regression_test
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2757,6 +2783,7 @@
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 

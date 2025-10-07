@@ -185,7 +185,8 @@ class CoreWorkerTest : public ::testing::Test {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
         mock_gcs_client,
-        fake_task_by_state_counter_);
+        fake_task_by_state_counter_,
+        /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -229,7 +230,7 @@ class CoreWorkerTest : public ::testing::Test {
         *actor_creator,
         /*tensor_transport_getter=*/
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        [](const ActorID &actor_id, uint64_t num_queued) { return Status::OK(); },
+        [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
         reference_counter_);
     actor_task_submitter_ = actor_task_submitter.get();
