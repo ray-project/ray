@@ -357,9 +357,8 @@ class ProjectionPushdown(Rule):
             and input_op.supports_projection_pushdown()
         ):
             required_columns = _collect_referenced_columns(list(current_project.exprs))
-            if required_columns:
-                # Push the column list into the source operator
-                optimized_source = input_op.apply_projection(sorted(required_columns))
-                return optimized_source
+            # Push the column list into the source operator
+            optimized_source = input_op.apply_projection(sorted(required_columns))
+            return optimized_source
 
         return current_project

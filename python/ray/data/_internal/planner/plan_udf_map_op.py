@@ -118,11 +118,25 @@ def plan_project_op(
         try:
             block_accessor = BlockAccessor.for_block(block)
 
-            if not block_accessor.num_rows():
+            # Skip projection only for schema-less empty blocks.
+            # Note: PyArrow tables with 0 columns but N rows will have num_rows() == 0
+            # due to PyArrow's behavior, but they need to be processed to add columns.
+            if (
+                block_accessor.num_rows() == 0
+                and len(block_accessor.column_names()) == 0
+            ):
                 return block
 
             if len(op.exprs) == 0:
                 if not op.preserve_existing:
+                    # Preserve row count for zero-column projection by inserting a stub column.
+                    # This avoids Arrow's zero-column tables collapsing to 0 rows.
+                    if block_accessor.num_rows() > 0:
+                        from ray.data._internal.arrow_block import (
+                            _BATCH_SIZE_PRESERVING_STUB_COL_NAME as _STUB,
+                        )
+
+                        return BlockAccessor.for_block(block).fill_column(_STUB, None)
                     return block_accessor.select([])
                 return block
 
@@ -537,15 +551,19 @@ def _generate_transform_fn_for_map_batches(
         ) -> Iterable[DataBatch]:
             for batch in batches:
                 try:
-                    if (
-                        not isinstance(batch, collections.abc.Mapping)
-                        and BlockAccessor.for_block(batch).num_rows() == 0
-                    ):
-                        # For empty input blocks, we directly output them without
-                        # calling the UDF.
-                        # TODO(hchen): This workaround is because some all-to-all
-                        # operators output empty blocks with no schema.
-                        res = [batch]
+                    if not isinstance(batch, collections.abc.Mapping):
+                        acc = BlockAccessor.for_block(batch)
+                        # Only skip UDF for truly schema-less empty blocks
+                        if acc.num_rows() == 0 and len(acc.column_names()) == 0:
+                            # For empty input blocks, we directly output them without
+                            # calling the UDF.
+                            # TODO(hchen): This workaround is because some all-to-all
+                            # operators output empty blocks with no schema.
+                            res = [batch]
+                        else:
+                            res = fn(batch)
+                            if not isinstance(res, GeneratorType):
+                                res = [res]
                     else:
                         res = fn(batch)
                         if not isinstance(res, GeneratorType):

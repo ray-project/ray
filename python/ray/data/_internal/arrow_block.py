@@ -161,25 +161,6 @@ class ArrowBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _combine_tables(tables: List[Block]) -> Block:
         if len(tables) > 1:
-            # Check if we have 0-column tables to avoid losing rows during concat
-            # PyArrow's concat on 0-column tables returns a 0-row table
-            if all(table.num_columns == 0 for table in tables):
-                # Add stub column to preserve rows during concatenation
-                import pyarrow as pa
-
-                tables_with_stub = []
-                for table in tables:
-                    if table.num_rows > 0:
-                        table = table.append_column(
-                            _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
-                            pa.nulls(table.num_rows),
-                        )
-                    tables_with_stub.append(table)
-                result = transform_pyarrow.concat(tables_with_stub, promote_types=True)
-                # Remove stub column after concatenation
-                if result.num_columns > 0:
-                    result = result.select([])
-                return result
             return transform_pyarrow.concat(tables, promote_types=True)
         else:
             return tables[0]
@@ -325,8 +306,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table
 
     def num_rows(self) -> int:
-        # Arrow may represent an empty table via an N > 0 row, 0-column table, e.g. when
-        # slicing an empty table, so we return 0 if num_columns == 0.
         return self._table.num_rows
 
     def size_bytes(self) -> int:
