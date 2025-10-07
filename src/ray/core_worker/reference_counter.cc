@@ -771,8 +771,8 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_objects_owned_by_us_--;
     }
   }
-  if (it->second.on_object_ref_delete.size() > 0) {
-    for (const auto &callback : it->second.on_object_ref_delete) {
+  if (it->second.object_ref_deleted_callbacks.size() > 0) {
+    for (const auto &callback : it->second.object_ref_deleted_callbacks) {
       callback(it->first);
     }
   }
@@ -816,14 +816,14 @@ void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
   }
 }
 
-bool ReferenceCounter::SetObjectRefDeletedCallback(
+bool ReferenceCounter::AddObjectRefDeletedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
   }
-  it->second.on_object_ref_delete.push_back(callback);
+  it->second.object_ref_deleted_callbacks.push_back(callback);
   return true;
 }
 

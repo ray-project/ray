@@ -46,7 +46,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
 
-  MOCK_METHOD2(SetObjectRefDeletedCallback,
+  MOCK_METHOD2(AddObjectRefDeletedCallback,
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
 

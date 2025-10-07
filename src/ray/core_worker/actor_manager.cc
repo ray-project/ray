@@ -203,7 +203,7 @@ void ActorManager::WaitForActorRefDeleted(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the gcs server can destroy the actor.
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
+  if (!reference_counter_.AddObjectRefDeletedCallback(actor_creation_return_id,
                                                       callback)) {
     RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
     callback(actor_creation_return_id);

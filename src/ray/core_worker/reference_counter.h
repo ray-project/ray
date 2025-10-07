@@ -59,7 +59,7 @@ class ReferenceCounterInterface {
   virtual bool AddObjectOutOfScopeOrFreedCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
-  virtual bool SetObjectRefDeletedCallback(
+  virtual bool AddObjectRefDeletedCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
@@ -348,7 +348,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// from the reference table (all refs including lineage ref count go to 0).
   /// Returns true if the object was in the reference table and the callback was added
   /// else false.
-  bool SetObjectRefDeletedCallback(const ObjectID &object_id,
+  bool AddObjectRefDeletedCallback(const ObjectID &object_id,
                                    const std::function<void(const ObjectID &)> callback)
       override ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -807,7 +807,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Callback that will be called when this object
     /// is out of scope or manually freed.
     /// Note: when an object is out of scope, it can still
-    /// have lineage ref count and on_object_ref_delete
+    /// have lineage ref count and the callbacks in object_ref_deleted_callbacks
     /// will be called when lineage ref count is also 0.
     std::vector<std::function<void(const ObjectID &)>>
         on_object_out_of_scope_or_freed_callbacks;
@@ -815,7 +815,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// from the reference table (all refs including lineage ref count go to 0).
     /// Need to store multiple due to message reordering where the callback of the retry
     /// of the request could be overwritten by the callback of the initial request
-    std::vector<std::function<void(const ObjectID &)>> on_object_ref_delete;
+    std::vector<std::function<void(const ObjectID &)>> object_ref_deleted_callbacks;
     /// If this is set, we'll call PublishRefRemovedInternal when this process is no
     /// longer a borrower (RefCount() == 0).
     bool publish_ref_removed = false;
