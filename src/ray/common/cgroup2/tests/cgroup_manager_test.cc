@@ -121,15 +121,16 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
 
   FakeCgroupDriver *driver = owned_driver.get();
 
-  // node, system, and application cgroups were created in the fake
+  // node, system, workers, and user cgroups were created in the fake
   std::string node_id = "id_123";
   std::string base_cgroup_path = "/sys/fs/cgroup";
   std::string node_cgroup_path = "/sys/fs/cgroup/ray_node_id_123";
   std::string system_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/system";
   std::string system_leaf_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/system/leaf";
-  std::string application_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/application";
-  std::string application_leaf_cgroup_path =
-      "/sys/fs/cgroup/ray_node_id_123/application/leaf";
+  std::string workers_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/workers";
+  std::string workers_leaf_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/workers/leaf";
+  std::string user_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/user";
+  std::string user_leaf_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/user/leaf";
   int64_t system_reserved_cpu_weight = 1000;
   int64_t system_reserved_memory_bytes = 1024 * 1024 * 1024;
 
@@ -140,33 +141,37 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
                                                 std::move(owned_driver));
 
   // The cgroup hierarchy was created correctly.
-  ASSERT_EQ(cgroups->size(), 6);
+  ASSERT_EQ(cgroups->size(), 8);
   ASSERT_NE(cgroups->find(base_cgroup_path), cgroups->end());
   ASSERT_NE(cgroups->find(node_cgroup_path), cgroups->end());
   ASSERT_NE(cgroups->find(system_cgroup_path), cgroups->end());
   ASSERT_NE(cgroups->find(system_leaf_cgroup_path), cgroups->end());
-  ASSERT_NE(cgroups->find(application_cgroup_path), cgroups->end());
-  ASSERT_NE(cgroups->find(application_leaf_cgroup_path), cgroups->end());
+  ASSERT_NE(cgroups->find(workers_cgroup_path), cgroups->end());
+  ASSERT_NE(cgroups->find(workers_leaf_cgroup_path), cgroups->end());
+  ASSERT_NE(cgroups->find(user_cgroup_path), cgroups->end());
+  ASSERT_NE(cgroups->find(user_leaf_cgroup_path), cgroups->end());
 
-  std::array<FakeCgroup *, 4> controlled_cgroups{&cgroups->at(base_cgroup_path),
+  std::array<FakeCgroup *, 5> controlled_cgroups{&cgroups->at(base_cgroup_path),
                                                  &cgroups->at(node_cgroup_path),
                                                  &cgroups->at(system_cgroup_path),
-                                                 &cgroups->at(application_cgroup_path)};
+                                                 &cgroups->at(workers_cgroup_path),
+                                                 &cgroups->at(user_cgroup_path)};
 
-  // Controllers are enabled on base, node, application, and system cgroups.
+  // Controllers are enabled on base, node, system, workers, and user cgroups.
   for (const FakeCgroup *cg : controlled_cgroups) {
     ASSERT_EQ(cg->enabled_controllers_.size(), 2);
     ASSERT_NE(cg->enabled_controllers_.find("cpu"), cg->enabled_controllers_.end());
     ASSERT_NE(cg->enabled_controllers_.find("memory"), cg->enabled_controllers_.end());
   }
 
-  // Processes were moved out of the base cgroup into the system leaf cgroup.
+  // Processes were moved out of the base cgroup into the user leaf cgroup.
   const FakeCgroup &base_cgroup = cgroups->find(base_cgroup_path)->second;
-  const FakeCgroup &system_cgroup = cgroups->find(system_cgroup_path)->second;
-  const FakeCgroup &system_leaf_cgroup = cgroups->find(system_leaf_cgroup_path)->second;
+  const FakeCgroup &user_cgroup = cgroups->find(user_cgroup_path)->second;
+  const FakeCgroup &user_leaf_cgroup = cgroups->find(user_leaf_cgroup_path)->second;
   ASSERT_TRUE(base_cgroup.processes_.empty());
-  ASSERT_EQ(system_leaf_cgroup.processes_.size(), 1);
+  ASSERT_EQ(user_leaf_cgroup.processes_.size(), 1);
 
+  const FakeCgroup &system_cgroup = cgroups->find(system_cgroup_path)->second;
   // Check to see that the memory and cpu constraints were enabled correctly
   // for the system and application cgroups.
   ASSERT_EQ(system_cgroup.constraints_.size(), 2);
@@ -177,11 +182,17 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   ASSERT_EQ(system_cgroup.constraints_.at("memory.min"),
             std::to_string(system_reserved_memory_bytes));
 
-  const FakeCgroup &app_cgroup = cgroups->find(application_cgroup_path)->second;
-  ASSERT_EQ(app_cgroup.constraints_.size(), 1);
-  ASSERT_NE(app_cgroup.constraints_.find("cpu.weight"), app_cgroup.constraints_.end());
-  ASSERT_EQ(app_cgroup.constraints_.at("cpu.weight"),
-            std::to_string(10000 - system_reserved_cpu_weight));
+  const FakeCgroup &workers_cgroup = cgroups->find(workers_cgroup_path)->second;
+  ASSERT_EQ(workers_cgroup.constraints_.size(), 1);
+  ASSERT_NE(workers_cgroup.constraints_.find("cpu.weight"),
+            workers_cgroup.constraints_.end());
+  // (10000 - system_reserved_cpu_weight) * 0.95
+  ASSERT_EQ(workers_cgroup.constraints_.at("cpu.weight"), "8550");
+
+  ASSERT_EQ(user_cgroup.constraints_.size(), 1);
+  ASSERT_NE(user_cgroup.constraints_.find("cpu.weight"), user_cgroup.constraints_.end());
+  // (10000 - system_reserved_cpu_weight) * 0.05)
+  ASSERT_EQ(user_cgroup.constraints_.at("cpu.weight"), "450");
 
   // Switching the mode of the FakeCgroupDriver to cleanup to record cleanup
   // operations
@@ -198,7 +209,7 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   // to have to check the fake for side-effects extensively:
   //
   // Constraints have to be disabled before controllers are disabled.
-  ASSERT_EQ(constraints_disabled->size(), 3);
+  ASSERT_EQ(constraints_disabled->size(), 4);
   // Since constraints were only enabled on leaf nodes, the order does not matter.
   ASSERT_EQ(
       std::count_if(constraints_disabled->begin(),
@@ -216,37 +227,46 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
                              item.second.name_ == "memory.min";
                     }),
       1);
-  ASSERT_EQ(std::count_if(
-                constraints_disabled->begin(),
-                constraints_disabled->end(),
-                [&application_cgroup_path](const std::pair<int, FakeConstraint> &item) {
-                  return item.second.cgroup_ == application_cgroup_path &&
-                         item.second.name_ == "cpu.weight";
-                }),
-            1);
+  ASSERT_EQ(
+      std::count_if(constraints_disabled->begin(),
+                    constraints_disabled->end(),
+                    [&workers_cgroup_path](const std::pair<int, FakeConstraint> &item) {
+                      return item.second.cgroup_ == workers_cgroup_path &&
+                             item.second.name_ == "cpu.weight";
+                    }),
+      1);
+  ASSERT_EQ(
+      std::count_if(constraints_disabled->begin(),
+                    constraints_disabled->end(),
+                    [&user_cgroup_path](const std::pair<int, FakeConstraint> &item) {
+                      return item.second.cgroup_ == user_cgroup_path &&
+                             item.second.name_ == "cpu.weight";
+                    }),
+      1);
 
   // Controllers were disabled second.
-  ASSERT_EQ(controllers_disabled->size(), 8);
+  ASSERT_EQ(controllers_disabled->size(), 10);
   // Controllers must be disabled after the constraints are removed.
   ASSERT_LT(constraints_disabled->back().first, controllers_disabled->front().first);
   // Check to see controllers are disabled on all cgroups from the leaves to
   // the root.
-  ASSERT_EQ((*controllers_disabled)[0].second.cgroup_, application_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[1].second.cgroup_, system_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[2].second.cgroup_, node_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[3].second.cgroup_, base_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[4].second.cgroup_, application_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[5].second.cgroup_, system_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[6].second.cgroup_, node_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[7].second.cgroup_, base_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[0].second.cgroup_, user_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[1].second.cgroup_, workers_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[2].second.cgroup_, system_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[3].second.cgroup_, node_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[4].second.cgroup_, base_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[5].second.cgroup_, user_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[6].second.cgroup_, workers_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[7].second.cgroup_, system_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[8].second.cgroup_, node_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[9].second.cgroup_, base_cgroup_path);
 
   // The memory and cpu controller are both disabled for each cgroup
-  std::array<std::string, 4> cgroup_names{
-      base_cgroup_path,
-      node_cgroup_path,
-      system_cgroup_path,
-      application_cgroup_path,
-  };
+  std::array<std::string, 5> cgroup_names{base_cgroup_path,
+                                          node_cgroup_path,
+                                          system_cgroup_path,
+                                          workers_cgroup_path,
+                                          user_cgroup_path};
 
   for (const auto &cgroup_name : cgroup_names) {
     ASSERT_EQ(std::count_if(controllers_disabled->begin(),
@@ -268,19 +288,21 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   // Processes were moved third.
   ASSERT_EQ(processes_moved->size(), 1);
 
-  ASSERT_EQ((*processes_moved)[0].second.from_, system_leaf_cgroup_path);
+  ASSERT_EQ((*processes_moved)[0].second.from_, user_leaf_cgroup_path);
 
   ASSERT_EQ((*processes_moved)[0].second.to_, base_cgroup_path);
   ASSERT_LT(constraints_disabled->back().first, processes_moved->front().first);
 
   // Cgroups were deleted last and in reverse order i.e. application, system, node.
-  ASSERT_EQ(deleted_cgroups->size(), 5);
+  ASSERT_EQ(deleted_cgroups->size(), 7);
   ASSERT_LT(processes_moved->back().first, deleted_cgroups->front().first);
-  ASSERT_EQ((*deleted_cgroups)[0].second, application_leaf_cgroup_path);
-  ASSERT_EQ((*deleted_cgroups)[1].second, application_cgroup_path);
-  ASSERT_EQ((*deleted_cgroups)[2].second, system_leaf_cgroup_path);
-  ASSERT_EQ((*deleted_cgroups)[3].second, system_cgroup_path);
-  ASSERT_EQ((*deleted_cgroups)[4].second, node_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[0].second, user_leaf_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[1].second, user_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[2].second, workers_leaf_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[3].second, workers_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[4].second, system_leaf_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[5].second, system_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[6].second, node_cgroup_path);
 }
 
 TEST(CgroupManagerTest, AddProcessToSystemCgroupFailsIfInvalidProcess) {

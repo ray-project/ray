@@ -1,6 +1,7 @@
 import os
 import platform
 import sys
+from math import floor
 from pathlib import Path
 from typing import Set
 
@@ -30,7 +31,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 _ROOT_CGROUP = Path("/sys/fs/cgroup")
 #
 # To run locally, uncomment the following line.
-# _ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
+_ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
 
 # The integration tests assume that the _ROOT_CGROUP exists and that
 # the process has read and write access.
@@ -45,10 +46,10 @@ _ROOT_CGROUP = Path("/sys/fs/cgroup")
 #                 TEST_CGROUP   LEAF_CGROUP
 #                      |
 #               ray_node_<node_id>
-#               /               \
-#           system            application
-#             |                    |
-#           leaf                  leaf
+#             /        |         \
+#           system   workers    user
+#             |        |         |
+#            leaf     leaf      leaf
 #
 # NOTE: The test suite does not assume that ROOT_CGROUP is an actual root cgroup. Therefore,
 #   1. setup will migrate all processes from the ROOT_CGROUP -> LEAF_CGROUP
@@ -270,32 +271,35 @@ def assert_cgroup_hierarchy_exists_for_node(
 
     The cgroup hierarchy looks like:
 
-           _TEST_CGROUP
+            _TEST_CGROUP
                 |
         ray_node_<node_id>
-          |            |
-        system     application
-          |            |
-        leaf         leaf
+        |        |        |
+      system   workers   user
+        |        |        |
+       leaf     leaf     leaf
 
     Args:
         node_id: used to find the path of the cgroup subtree
-        resource_isolation_config: used to verify constraints enabled on the system
-            and application cgroups
+        resource_isolation_config: used to verify constraints enabled on the system, workers, and user cgroups
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
     node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
     system_cgroup = node_cgroup / "system"
     system_leaf_cgroup = system_cgroup / "leaf"
-    application_cgroup = node_cgroup / "application"
-    application_leaf_cgroup = application_cgroup / "leaf"
+    workers_cgroup = node_cgroup / "workers"
+    workers_leaf_cgroup = workers_cgroup / "leaf"
+    user_cgroup = node_cgroup / "user"
+    user_leaf_cgroup = user_cgroup / "leaf"
 
     # 1) Check that the cgroup hierarchy is created correctly for the node.
     assert node_cgroup.is_dir()
     assert system_cgroup.is_dir()
     assert system_leaf_cgroup.is_dir()
-    assert application_cgroup.is_dir()
-    assert application_leaf_cgroup.is_dir()
+    assert workers_cgroup.is_dir()
+    assert workers_leaf_cgroup.is_dir()
+    assert user_cgroup.is_dir()
+    assert user_leaf_cgroup.is_dir()
 
     # 2) Verify the constraints are applied correctly.
     system_cgroup_memory_min = system_cgroup / "memory.min"
@@ -306,17 +310,23 @@ def assert_cgroup_hierarchy_exists_for_node(
     with open(system_cgroup_cpu_weight, "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_cpu_weight)
-    application_cgroup_cpu_weight = application_cgroup / "cpu.weight"
-    with open(application_cgroup_cpu_weight, "r") as cpu_weight_file:
+    workers_cgroup_cpu_weight = workers_cgroup / "cpu.weight"
+    with open(workers_cgroup_cpu_weight, "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()
         assert contents == str(
-            10000 - resource_isolation_config.system_reserved_cpu_weight
+            floor((10000 - resource_isolation_config.system_reserved_cpu_weight) * 0.95)
         )
 
 
 def assert_system_processes_are_in_system_cgroup(
     node_id, resource_isolation_config, expected_count
 ):
+    """Asserts that the system processes were created in the correct cgroup.
+    node_id: used to construct the path of the cgroup subtree
+    resource_isolation_config: used to construct the path of the cgroup
+        subtree
+    expected_count: the number of expected system processes.
+    """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
     node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
     system_cgroup = node_cgroup / "system"
@@ -330,26 +340,24 @@ def assert_system_processes_are_in_system_cgroup(
         ), f"Expected only system process passed into the raylet. Found {lines}"
 
 
-def assert_worker_processes_are_in_application_cgroup(
+def assert_worker_processes_are_in_workers_cgroup(
     node_id: str,
     resource_isolation_config: ResourceIsolationConfig,
     worker_pids: Set[str],
 ):
-    """Asserts that the cgroup hierarchy was deleted correctly for the node.
+    """Asserts that the worker processes were created in the correct cgroup.
 
     Args:
         node_id: used to construct the path of the cgroup subtree
         resource_isolation_config: used to construct the path of the cgroup
             subtree
-        worker_pids: a set of pids that are expected inside the application
+        worker_pids: a set of pids that are expected inside the workers
             leaf cgroup.
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
     node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
-    application_leaf_cgroup_procs = (
-        node_cgroup / "application" / "leaf" / "cgroup.procs"
-    )
-    with open(application_leaf_cgroup_procs, "r") as cgroup_procs_file:
+    workers_leaf_cgroup_procs = node_cgroup / "workers" / "leaf" / "cgroup.procs"
+    with open(workers_leaf_cgroup_procs, "r") as cgroup_procs_file:
         pids_in_cgroup = set()
         lines = cgroup_procs_file.readlines()
         for line in lines:
@@ -442,7 +450,7 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     worker_pids = set()
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
-    assert_worker_processes_are_in_application_cgroup(
+    assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
     runner.invoke(scripts.stop)
@@ -503,7 +511,7 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     worker_pids = set()
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
-    assert_worker_processes_are_in_application_cgroup(
+    assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
     ray.shutdown()
