@@ -366,15 +366,14 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 @PublicAPI(stability="alpha")
 def build_llm_processor(
     config: ProcessorConfig,
-    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    builder_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
     """Build a LLM processor using the given config.
 
     Args:
         config: The processor config.
-        chat_template_kwargs: The optional kwargs to pass apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -384,12 +383,17 @@ def build_llm_processor(
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
             you can use the `**row` syntax to return all the original columns.
-
+        builder_kwargs: Optional additional kwargs to pass to the processor builder
+            function. These will be passed through to the registered builder and
+            should match the signature of the specific builder being used.
+            For example, vLLM and SGLang processors support `chat_template_kwargs`.
 
     Returns:
         The built processor.
 
-    Example:
+    Examples:
+        Basic usage:
+
         .. testcode::
             :skipif: True
 
@@ -430,15 +434,56 @@ def build_llm_processor(
             ds = processor(ds)
             for row in ds.take_all():
                 print(row)
+
+        Using builder_kwargs to pass chat_template_kwargs:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+
+            config = vLLMEngineProcessorConfig(
+                model_source="Qwen/Qwen3-0.6B",
+                apply_chat_template=True,
+                concurrency=1,
+                batch_size=64,
+            )
+
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[
+                        {"role": "user", "content": row["prompt"]},
+                    ],
+                    sampling_params=dict(
+                        temperature=0.6,
+                        max_tokens=100,
+                    ),
+                ),
+                builder_kwargs=dict(
+                    chat_template_kwargs={"enable_thinking": True},
+                ),
+            )
+
+            ds = ray.data.from_items([{"prompt": "What is 2+2?"}])
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
-    return ProcessorBuilder.build(
-        config,
-        chat_template_kwargs=chat_template_kwargs,
+    ProcessorBuilder.validate_builder_kwargs(builder_kwargs)
+    build_kwargs = dict(
         preprocess=preprocess,
         postprocess=postprocess,
     )
+
+    # Pass through any additional builder kwargs
+    if builder_kwargs is not None:
+        build_kwargs.update(builder_kwargs)
+
+    return ProcessorBuilder.build(config, **build_kwargs)
 
 
 __all__ = [
