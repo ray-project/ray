@@ -36,7 +36,7 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     """
     total_gpus = tp_size * pp_size
     placement_group_config = {
-        "bundles": [{"GPU": 1, "CPU": 2}] * total_gpus,
+        "bundles": [{"GPU": 1, "CPU": 1}] * total_gpus,
         "strategy": "PACK",
     }
 
@@ -81,7 +81,7 @@ def test_llm_serve_data_parallelism():
 
     """
     placement_group_config = {
-        "bundles": [{"GPU": 1, "CPU": 2}],
+        "bundles": [{"GPU": 1, "CPU": 1}],
         "strategy": "SPREAD",  # Will be overridden to STRICT_PACK
     }
 
@@ -105,7 +105,7 @@ def test_llm_serve_data_parallelism():
     )
 
     # Deploy DP application
-    # build_dp_deployment internally calls get_serve_options() which validates:
+    # build_dp_deployment internally validates deployment options via LLMServer.get_deployment_options():
     # - STRICT_PACK override (SPREAD -> STRICT_PACK)
     # - num_replicas = data_parallel_size (2)
     # - placement_group_bundles are properly configured
