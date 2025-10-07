@@ -245,6 +245,7 @@ GcsActorManager::GcsActorManager(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
+      usage_stats_client_(nullptr),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
       actor_by_state_gauge_(actor_by_state_gauge),
       gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge) {

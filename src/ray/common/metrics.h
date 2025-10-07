@@ -14,6 +14,14 @@
 
 #pragma once
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN  // The macro ensures that windows.h will include winsock2.h
+                             // and not winsock.h. boost.asio (another dependency in the
+                             // codebase) is not compatible with winsock.h.
+                             // (https://stackoverflow.com/a/8294669).
+#include <winsock2.h>
+#endif  // #ifdef _WIN32
+
 #include "ray/stats/metric.h"
 
 namespace ray {
