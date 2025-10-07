@@ -33,7 +33,7 @@ echo \
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
 
-# Install Azure CLI 2.77.0
+# Install Azure CLI 2.72.0
 apt-get update
 apt-get install apt-transport-https ca-certificates curl gnupg lsb-release -y
 AZ_VER=2.72.0
