@@ -342,8 +342,8 @@ CoreWorker::CoreWorker(
       actor_id_(ActorID::Nil()),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      num_get_pin_args_in_flight(0),
-      num_failed_get_pin_args(0),
+      num_get_pin_args_in_flight_(0),
+      num_failed_get_pin_args_(0),
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
@@ -2721,13 +2721,13 @@ Status CoreWorker::ExecuteTask(
   // execution and unpinned once the task completes. We will notify the caller
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
-  num_get_pin_args_in_flight += 1;
-  Status pinArgsRequestStatus =
+  ++num_get_pin_args_in_flight_;
+  Status pin_args_request_status =
       GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
-  num_get_pin_args_in_flight -= 1;
-  if (!pinArgsRequestStatus.ok()) {
-    ++num_failed_get_pin_args;
-    return pinArgsRequestStatus;
+  --num_get_pin_args_in_flight_;
+  if (!pin_args_request_status.ok()) {
+    ++num_failed_get_pin_args_;
+    return pin_args_request_status;
   }
 
   task_queue_length_ -= 1;
@@ -4038,8 +4038,8 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_->GetWorkerType());
   stats->set_num_running_tasks(running_tasks_.size());
-  stats->set_num_in_flight_arg_pinning_requests(num_get_pin_args_in_flight);
-  stats->set_num_of_failed_arg_pinning_requests(num_failed_get_pin_args);
+  stats->set_num_in_flight_arg_pinning_requests(num_get_pin_args_in_flight_);
+  stats->set_num_of_failed_arg_pinning_requests(num_failed_get_pin_args_);
   auto *used_resources_map = stats->mutable_used_resources();
   for (auto const &[resource_name, resource_allocations] : resource_ids_) {
     rpc::ResourceAllocations allocations;
