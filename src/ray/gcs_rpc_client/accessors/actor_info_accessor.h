@@ -47,8 +47,8 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param actor_id The ID of actor to look up in the GCS.
     @param callback Callback that will be called after lookup finishes.
    */
-  virtual void AsyncGet(const ActorID &actor_id,
-                        const OptionalItemCallback<rpc::ActorTableData> &callback);
+  void AsyncGet(const ActorID &actor_id,
+                const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
   /**
     Get all actor specification from the GCS asynchronously.
@@ -59,11 +59,11 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param callback Callback that will be called after lookup finishes.
     @param timeout_ms request timeout, defaults to -1 for infinite timeout.
    */
-  virtual void AsyncGetAllByFilter(const std::optional<ActorID> &actor_id,
-                                   const std::optional<JobID> &job_id,
-                                   const std::optional<std::string> &actor_state_name,
-                                   const MultiItemCallback<rpc::ActorTableData> &callback,
-                                   int64_t timeout_ms = -1);
+  void AsyncGetAllByFilter(const std::optional<ActorID> &actor_id,
+                           const std::optional<JobID> &job_id,
+                           const std::optional<std::string> &actor_state_name,
+                           const MultiItemCallback<rpc::ActorTableData> &callback,
+                           int64_t timeout_ms = -1) override;
 
   /**
     Get actor specification for a named actor from the GCS asynchronously.
@@ -73,10 +73,10 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param callback Callback that will be called after lookup finishes.
     @param timeout_ms RPC timeout in milliseconds. -1 means the default.
    */
-  virtual void AsyncGetByName(const std::string &name,
-                              const std::string &ray_namespace,
-                              const OptionalItemCallback<rpc::ActorTableData> &callback,
-                              int64_t timeout_ms = -1);
+  void AsyncGetByName(const std::string &name,
+                      const std::string &ray_namespace,
+                      const OptionalItemCallback<rpc::ActorTableData> &callback,
+                      int64_t timeout_ms = -1) override;
 
   /**
     Get actor specification for a named actor from the GCS synchronously.
@@ -87,10 +87,10 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
 
     @return Status. TimedOut status if RPC is timed out.
    */
-  virtual Status SyncGetByName(const std::string &name,
-                               const std::string &ray_namespace,
-                               rpc::ActorTableData &actor_table_data,
-                               rpc::TaskSpec &task_spec);
+  Status SyncGetByName(const std::string &name,
+                       const std::string &ray_namespace,
+                       rpc::ActorTableData &actor_table_data,
+                       rpc::TaskSpec &task_spec) override;
 
   /**
     List all named actors from the GCS synchronously.
@@ -103,10 +103,10 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     namespace and name of the actor.
     @return Status. TimeOut if RPC times out.
    */
-  virtual Status SyncListNamedActors(
+  Status SyncListNamedActors(
       bool all_namespaces,
       const std::string &ray_namespace,
-      std::vector<std::pair<std::string, std::string>> &actors);
+      std::vector<std::pair<std::string, std::string>> &actors) override;
 
   /**
     Report actor out of scope asynchronously.
@@ -117,11 +117,10 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param callback Callback that will be called after the operation completes.
     @param timeout_ms RPC timeout in milliseconds. -1 means the default.
    */
-  virtual void AsyncReportActorOutOfScope(
-      const ActorID &actor_id,
-      uint64_t num_restarts_due_to_lineage_reconstruction,
-      const StatusCallback &callback,
-      int64_t timeout_ms = -1);
+  void AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                  uint64_t num_restarts_due_to_lineage_reconstruction,
+                                  const StatusCallback &callback,
+                                  int64_t timeout_ms = -1) override;
 
   /**
     Register actor to GCS asynchronously.
@@ -130,9 +129,9 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param callback Callback that will be called after the actor info is written to GCS.
     @param timeout_ms RPC timeout ms. -1 means there's no timeout.
    */
-  virtual void AsyncRegisterActor(const TaskSpecification &task_spec,
-                                  const StatusCallback &callback,
-                                  int64_t timeout_ms = -1);
+  void AsyncRegisterActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback,
+                          int64_t timeout_ms = -1) override;
 
   /**
     Restart actor for lineage reconstruction asynchronously.
@@ -143,11 +142,11 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param callback Callback that will be called after the operation completes.
     @param timeout_ms RPC timeout in milliseconds. -1 means the default.
    */
-  virtual void AsyncRestartActorForLineageReconstruction(
+  void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
       const StatusCallback &callback,
-      int64_t timeout_ms = -1);
+      int64_t timeout_ms = -1) override;
 
   /**
     Register actor to GCS synchronously.
@@ -158,7 +157,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @return Status. Timedout if actor is not registered by the global
     GCS timeout.
    */
-  virtual Status SyncRegisterActor(const ray::TaskSpecification &task_spec);
+  Status SyncRegisterActor(const ray::TaskSpecification &task_spec) override;
 
   /**
     Kill actor via GCS asynchronously.
@@ -169,11 +168,11 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param callback Callback that will be called after the actor is destroyed.
     @param timeout_ms RPC timeout in milliseconds. -1 means infinite.
    */
-  virtual void AsyncKillActor(const ActorID &actor_id,
-                              bool force_kill,
-                              bool no_restart,
-                              const StatusCallback &callback,
-                              int64_t timeout_ms = -1);
+  void AsyncKillActor(const ActorID &actor_id,
+                      bool force_kill,
+                      bool no_restart,
+                      const StatusCallback &callback,
+                      int64_t timeout_ms = -1) override;
 
   /**
     Asynchronously request GCS to create the actor.
@@ -186,9 +185,9 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param task_spec The specification for the actor creation task.
     @param callback Callback that will be called after the actor info is written to GCS.
    */
-  virtual void AsyncCreateActor(
+  void AsyncCreateActor(
       const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback);
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override;
 
   /**
     Subscribe to any update operations of an actor.
@@ -198,10 +197,9 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param done Callback that will be called when subscription is complete.
     @return Status
    */
-  virtual Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done);
+  Status AsyncSubscribe(const ActorID &actor_id,
+                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                        const StatusCallback &done) override;
 
   /**
     Cancel subscription to an actor.
@@ -209,7 +207,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param actor_id The ID of the actor to be unsubscribed to.
     @return Status
    */
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id);
+  Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
   /**
     Reestablish subscription.
@@ -219,7 +217,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     resubscribe from PubSub server, otherwise we only need to fetch data from GCS
     server.
    */
-  virtual void AsyncResubscribe();
+  void AsyncResubscribe() override;
 
   /**
     Check if the specified actor is unsubscribed.
@@ -227,7 +225,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param actor_id The ID of the actor.
     @return Whether the specified actor is unsubscribed.
    */
-  virtual bool IsActorUnsubscribed(const ActorID &actor_id);
+  bool IsActorUnsubscribed(const ActorID &actor_id) override;
 
  private:
   // Mutex to protect the resubscribe_operations_ field and fetch_data_operations_ field.

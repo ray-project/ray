@@ -16,7 +16,6 @@
 
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/pubsub/gcs_subscriber.h"
-#include "rpc_client.h"
 
 namespace ray {
 namespace gcs {
