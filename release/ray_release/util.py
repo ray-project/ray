@@ -330,7 +330,7 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
         zip_file = f"{local_path}.zip"
         shutil.make_archive(zip_file, "zip", local_path)
         logger.info(f"Zipped file: {zip_file}")
-
+        time.sleep(10000)
         # Upload the zip file to the azure path
         credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
         blob_service_client = BlobServiceClient(account_url, credential)
