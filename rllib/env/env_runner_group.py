@@ -575,30 +575,28 @@ class EnvRunnerGroup:
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
-        local_env_runner: bool = False,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
-    ) -> List[Tuple[int, T]]:
+        return_actor_ids: bool = False,
+    ) -> List[Union[Tuple[int, T], T]]:
         """Calls the given function asynchronously and returns previous results if any.
 
-        This is a convenience function that calls `foreach_env_runner_async()` and `fetch_ready_async_reqs()`.
+        This is a convenience function that calls the underlying actor manager's
+        `foreach_actor_async_fetch_ready()` method.
 
         """
-        results = self.fetch_ready_async_reqs(
-            tags=tag,
+        return self._worker_manager.foreach_actor_async_fetch_ready(
+            func=func,
+            tag=tag,
+            kwargs=kwargs,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
             mark_healthy=mark_healthy,
-        )
-        self.foreach_env_runner_async(
-            func,
-            kwargs=kwargs,
-            tag=tag,
             healthy_only=healthy_only,
-            remote_worker_ids=remote_worker_ids,
+            remote_actor_ids=remote_worker_ids,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
+            return_actor_ids=return_actor_ids,
         )
-
-        return results
 
     def sync_weights(
         self,
@@ -914,9 +912,6 @@ class EnvRunnerGroup:
             tag: A tag to identify the results from this async call when fetching with
                 `fetch_ready_async_reqs()`.
             kwargs: An optional kwargs dict to be passed to the remote function calls.
-            local_env_runner: Whether to apply `func` to local EnvRunner, too.
-                Default is False (unlike the sync version, async calls typically don't
-                need the local runner).
             healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
             remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
 
