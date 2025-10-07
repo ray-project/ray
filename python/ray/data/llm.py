@@ -473,6 +473,7 @@ def build_llm_processor(
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
+    ProcessorBuilder.validate_builder_kwargs(builder_kwargs)
     build_kwargs = dict(
         preprocess=preprocess,
         postprocess=postprocess,
@@ -480,15 +481,6 @@ def build_llm_processor(
 
     # Pass through any additional builder kwargs
     if builder_kwargs is not None:
-        # Check for conflicts with explicitly passed arguments
-        reserved_keys = {"preprocess", "postprocess"}
-        conflicting_keys = reserved_keys & builder_kwargs.keys()
-        if conflicting_keys:
-            raise ValueError(
-                f"builder_kwargs cannot contain {conflicting_keys} as these are "
-                "passed as explicit arguments to build_llm_processor. "
-                "Please pass these directly instead of in builder_kwargs."
-            )
         build_kwargs.update(builder_kwargs)
 
     return ProcessorBuilder.build(config, **build_kwargs)

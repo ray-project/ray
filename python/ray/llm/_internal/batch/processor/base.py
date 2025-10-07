@@ -341,6 +341,34 @@ class ProcessorBuilder:
         cls._registry[type_name] = builder
 
     @classmethod
+    def clear_registry(cls) -> None:
+        """Clear the processor builder registry."""
+        cls._registry.clear()
+
+    @classmethod
+    def validate_builder_kwargs(cls, builder_kwargs: Optional[Dict[str, Any]]) -> None:
+        """Validate builder kwargs for conflicts with reserved keys.
+
+        Args:
+            builder_kwargs: Optional additional kwargs to pass to the processor builder
+                function.
+
+        Raises:
+            ValueError: If builder_kwargs contains reserved keys that conflict with
+                explicit arguments.
+        """
+        if builder_kwargs is not None:
+            # Check for conflicts with explicitly passed arguments
+            reserved_keys = {"preprocess", "postprocess"}
+            conflicting_keys = reserved_keys & builder_kwargs.keys()
+            if conflicting_keys:
+                raise ValueError(
+                    f"builder_kwargs cannot contain {conflicting_keys} as these are "
+                    "passed as explicit arguments to build_llm_processor. "
+                    "Please pass these directly instead of in builder_kwargs."
+                )
+
+    @classmethod
     def build(
         cls,
         config: ProcessorConfig,
