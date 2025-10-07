@@ -122,7 +122,6 @@ from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
-from ray.data.stats import DatasetSummary
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -5994,95 +5993,99 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP, stability="alpha")
-    def summary(self, columns: Optional[List[str]] = None) -> "DatasetSummary":
-        """Generate a statistical summary of the dataset, organized by column type.
+    def summary(self, columns: Optional[List[str]] = None) -> "Dataset":
+        """Generate a statistical summary of the dataset, organized by arrow dtype.
 
-        This method computes various statistics for different column types:
+        This method computes various statistics for different column dtypes:
 
-        - For numerical columns: count, mean, min, max, std, missing%, zero%
-        - For categorical columns: count, missing%
-        - For vector/list columns: count, missing%
+        - For numerical dtypes (int*, float*, decimal, bool): count, mean, min, max, std, missing%, zero%
+        - For string dtypes: count, missing%
+        - For list dtypes: count, missing%
 
-        The resulting DatasetSummary object contains separate DataFrames for each
-        column type and provides a unified view when printed.
+        The resulting Ray Data Dataset where each row represents a column with its arrow dtype and computed statistics.
 
         Examples:
             >>> import ray
             >>> ds = ray.data.from_items([
-            ...     {"age": 25, "salary": 50000, "name": "Alice", "city": "NYC", "scores": [1, 2, 3], "tags": ["a", "b"]},
-            ...     {"age": 30, "salary": 60000, "name": None, "city": "LA", "scores": [4, 5, 6], "tags": ["c"]},
-            ...     {"age": 0, "salary": None, "name": "Bob", "city": None, "scores": None, "tags": None},
-            ...     {"age": None, "salary": 45000, "name": "Charlie", "city": "Chicago", "scores": [7, 8, 9], "tags": ["d", "e"]},
+            ...     {"age": 25, "salary": 50000, "name": "Alice", "city": "NYC"},
+            ...     {"age": 30, "salary": 60000, "name": None, "city": "LA"},
+            ...     {"age": 0, "salary": None, "name": "Bob", "city": None},
             ... ])
             >>> summary = ds.summary()
-            >>> print(summary)  # doctest: +SKIP
-                agg         numerical               categorical       vector
-                column             age        salary        name  city scores  tags
-                count         4.000000      4.000000         4.0   4.0    4.0   4.0
-                mean         18.333333  51666.666667         NaN   NaN    NaN   NaN
-                min           0.000000  45000.000000         NaN   NaN    NaN   NaN
-                max          30.000000  60000.000000         NaN   NaN    NaN   NaN
-                std          13.123346   6236.095645         NaN   NaN    NaN   NaN
-                missing_pct  25.000000     25.000000        25.0  25.0   25.0  25.0
-                zero_pct     33.333333      0.000000         NaN   NaN    NaN   NaN
-
+            >>> summary.to_pandas()  # doctest: +SKIP
+               column   dtype  count          mean    min    max          std  missing_pct   zero_pct
+            0     age   int64      3     18.333333      0     30    13.123346     0.000000  33.333333
+            1  salary   int64      3  55000.000000  50000  60000  5000.000000    33.333333   0.000000
+            2    name  string      3           NaN   None   None          NaN    33.333333        NaN
+            3    city  string      3           NaN   None   None          NaN    33.333333        NaN
         Args:
             columns: Optional list of column names to include in the summary.
                 If None, all columns will be included.
 
         Returns:
-            A DatasetSummary object containing separate DataFrames for each column
-            type (numerical, categorical, vector).
+            A Ray Data Dataset with statistics per column, organized by arrow dtype.
         """
-        import pandas as pd
+        import pyarrow as pa
 
+        import ray
         from ray.data.stats import (
-            STAT_ORDER,
-            ColumnType,
-            DatasetSummary,
-            feature_aggregators_for_dataset,
+            _dtype_aggregators_for_dataset,
         )
 
         # Get aggregators and compute results
-        feature_aggs = feature_aggregators_for_dataset(self.schema(), columns=columns)
-        results = self.aggregate(*feature_aggs.aggregators)
+        dtype_aggs = _dtype_aggregators_for_dataset(self.schema(), columns=columns)
+        results = self.aggregate(*dtype_aggs.aggregators)
+
         if not results:
-            return DatasetSummary(
-                numerical=pd.DataFrame(),
-                categorical=pd.DataFrame(),
-                vector=pd.DataFrame(),
+            # Return empty dataset with minimal schema
+            empty_schema = pa.schema(
+                [
+                    ("column", pa.string()),
+                    ("dtype", pa.string()),
+                    ("count", pa.float64()),
+                    ("mean", pa.float64()),
+                    ("min", pa.float64()),
+                    ("max", pa.float64()),
+                    ("std", pa.float64()),
+                    ("missing_pct", pa.float64()),
+                    ("zero_pct", pa.float64()),
+                ]
             )
+            return ray.data.from_arrow(pa.table(empty_schema))
 
-        # Build DataFrames using aggregator names directly
-        aggs_by_type = feature_aggs.aggregators_by_type
+        # Define expected statistics columns in order
+        expected_stats = [
+            "count",
+            "mean",
+            "min",
+            "max",
+            "std",
+            "missing_pct",
+            "zero_pct",
+        ]
+        all_stats = set(expected_stats)
 
-        dataframes = {}
-        for col_type in ColumnType:
-            # Build column data for this type
-            col_data = {}
-            for col, agg_list in aggs_by_type[col_type].items():
-                col_stats = {}
-                for agg in agg_list:
-                    if agg.name in results:
-                        # Extract stat name from agg.name (e.g., "count(col)" -> "count")
-                        stat_name = agg.name.split("(")[0]
-                        col_stats[stat_name] = results[agg.name]
-                col_data[col] = col_stats
+        # Build summary rows: one row per column with its dtype and statistics
+        summary_rows = []
+        default_stats = {
+            stat: (np.nan if stat in all_stats else None) for stat in expected_stats
+        }
 
-            # Create DataFrame and reindex to match STAT_ORDER
-            dataframes[col_type] = (
-                pd.DataFrame(col_data) if col_data else pd.DataFrame()
-            )
-            if not dataframes[col_type].empty:
-                dataframes[col_type] = dataframes[col_type].reindex(
-                    [stat for stat in STAT_ORDER if stat in dataframes[col_type].index]
-                )
+        for col_name, dtype_str in dtype_aggs.column_to_dtype.items():
+            row = {"column": col_name, "dtype": dtype_str, **default_stats}
 
-        return DatasetSummary(
-            numerical=dataframes[ColumnType.NUMERICAL],
-            categorical=dataframes[ColumnType.CATEGORICAL],
-            vector=dataframes[ColumnType.VECTOR],
-        )
+            # Add all available statistics for this column from results
+            for result_key, value in results.items():
+                # Parse keys like "count(col_name)", "min(col_name)", etc.
+                if result_key.endswith(f"({col_name})"):
+                    stat_name = result_key[: result_key.index("(")]
+                    row[stat_name] = value
+
+            summary_rows.append(row)
+
+        summary_dataset = ray.data.from_items(summary_rows)
+
+        return summary_dataset
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI

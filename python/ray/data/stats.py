@@ -1,12 +1,12 @@
 import logging
 from dataclasses import dataclass
-from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
+from pandas.core.arrays.masked import BaseMaskedDtype
 
-from ray.data._expression_evaluator import _is_pa_string_type
 from ray.data.aggregate import (
     AggregateFnV2,
     Count,
@@ -17,231 +17,243 @@ from ray.data.aggregate import (
     Std,
     ZeroPercentage,
 )
-from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
 
 
 logger = logging.getLogger(__name__)
-RAY_DATA_DUMMY_COL = "__ray_data_dummy_col"
-STAT_ORDER = ["count", "mean", "min", "max", "std", "missing_pct", "zero_pct"]
 
 
-@DeveloperAPI(stability="alpha")
-@dataclass
-class DatasetSummary:
-    """A statistical summary of a dataset, organized by column type.
-
-    This class contains separate pandas DataFrames for each column type:
-    numerical, categorical, and vector columns. Each DataFrame contains
-    the relevant statistics for that column type.
-
-    Attributes:
-        numerical: DataFrame with statistics for numerical columns
-        categorical: DataFrame with statistics for categorical columns
-        vector: DataFrame with statistics for vector/list columns
-    """
-
-    numerical: pd.DataFrame
-    categorical: pd.DataFrame
-    vector: pd.DataFrame
-
-    def to_pandas(self) -> pd.DataFrame:
-        # Combine all DataFrames into a single MultiIndex DataFrame
-        summary_data = {}
-
-        # Map column types to their corresponding DataFrames
-        dataframe_map = {
-            ColumnType.NUMERICAL: self.numerical,
-            ColumnType.CATEGORICAL: self.categorical,
-            ColumnType.VECTOR: self.vector,
-        }
-
-        # Loop over ColumnType enum to build summary data
-        for column_type, df in dataframe_map.items():
-            if not df.empty:
-                for col in df.columns:
-                    # Create a full stats dict with NaN for missing values
-                    column_stats = {}
-                    for stat in STAT_ORDER:
-                        if stat in df.index:
-                            column_stats[stat] = df.loc[stat, col]
-                        else:
-                            column_stats[stat] = float("nan")
-                    summary_data[(column_type.value, col)] = column_stats
-
-        if not summary_data:
-            return pd.DataFrame()
-
-        # Create MultiIndex DataFrame
-        df = pd.DataFrame(summary_data)
-        df.columns = pd.MultiIndex.from_tuples(df.columns, names=["agg", "column"])
-
-        return df.reindex(STAT_ORDER)
-
-    def __repr__(self) -> str:
-        """Return a string representation showing the combined MultiIndex DataFrame."""
-        return self.to_pandas().to_string()
-
-
-@DeveloperAPI(stability="alpha")
-class ColumnType(Enum):
-    """Enumeration of supported column types for statistical analysis."""
-
-    NUMERICAL = "numerical"
-    CATEGORICAL = "categorical"
-    VECTOR = "vector"
-
-
-@DeveloperAPI(stability="alpha")
-def numerical_aggregators(column: str) -> List[AggregateFnV2]:
-    """Generate default metrics for numerical columns.
-
-    This function returns a list of aggregators that compute the following metrics:
-    - count
-    - mean
-    - min
-    - max
-    - std
-    - missing_value_percentage
-    - zero_percentage
+def _convert_to_pa_type(
+    dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+) -> pa.DataType:
+    """Convert pandas/numpy dtype to PyArrow dtype.
 
     Args:
-        column: The name of the numerical column to compute metrics for.
+        dtype: A pandas or numpy dtype
 
     Returns:
-        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
+        Corresponding PyArrow DataType
     """
-    return [
-        Count(on=column, ignore_nulls=False),
-        Mean(on=column, ignore_nulls=True),
-        Min(on=column, ignore_nulls=True),
-        Max(on=column, ignore_nulls=True),
-        Std(on=column, ignore_nulls=True, ddof=0),
-        MissingValuePercentage(on=column),
-        ZeroPercentage(on=column, ignore_nulls=True),
-    ]
-
-
-@DeveloperAPI(stability="alpha")
-def categorical_aggregators(column: str) -> List[AggregateFnV2]:
-    """Generate default metrics for string columns.
-
-    This function returns a list of aggregators that compute the following metrics:
-    - count
-    - MissingValuePercentage
-
-    Args:
-        column: The name of the categorical column to compute metrics for.
-
-    Returns:
-        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
-    """
-    return [
-        Count(on=column, ignore_nulls=False),
-        MissingValuePercentage(on=column),
-    ]
-
-
-@DeveloperAPI(stability="alpha")
-def vector_aggregators(column: str) -> List[AggregateFnV2]:
-    """Generate default metrics for vector columns.
-
-    This function returns a list of aggregators that compute the following metrics:
-    - count
-    - MissingValuePercentage
-
-    Args:
-        column: The name of the vector column to compute metrics for.
-    Returns:
-        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
-
-    """
-    return [
-        Count(on=column, ignore_nulls=False),
-        MissingValuePercentage(on=column),
-    ]
+    if isinstance(dtype, pd.ArrowDtype):
+        return dtype.pyarrow_dtype
+    elif isinstance(dtype, pd.StringDtype):
+        # StringDtype is not a BaseMaskedDtype, handle separately
+        return pa.string()
+    elif isinstance(dtype, BaseMaskedDtype):
+        dtype = dtype.numpy_dtype
+    return pa.from_numpy_dtype(dtype)
 
 
 def _get_underlying_type(ftype: pa.DataType) -> pa.DataType:
-    """Get the underlying Arrow type, handling dictionary encoding."""
-    return ftype.value_type if pa.types.is_dictionary(ftype) else ftype
+    """Get the underlying Arrow type, handling dictionary and run-end encoding."""
+    if pa.types.is_dictionary(ftype):
+        return ftype.value_type
+    elif pa.types.is_run_end_encoded(ftype):
+        return ftype.value_type
+    return ftype
 
 
-def _is_numerical_type(ftype: pa.DataType) -> bool:
-    """Check if Arrow type is numerical (including dictionary-encoded numerical)."""
-    underlying_type = _get_underlying_type(ftype)
+def _is_numerical_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is numerical (supports arithmetic operations).
+
+    Includes: integers, floats, decimals, booleans
+    """
+    underlying = _get_underlying_type(dtype)
     return (
-        pa.types.is_integer(underlying_type)
-        or pa.types.is_floating(underlying_type)
-        or pa.types.is_decimal(underlying_type)
-        or pa.types.is_boolean(underlying_type)
+        pa.types.is_integer(underlying)
+        or pa.types.is_floating(underlying)
+        or pa.types.is_decimal(underlying)
+        or pa.types.is_boolean(underlying)
     )
 
 
-def _is_string_type(ftype: pa.DataType) -> bool:
-    """Check if Arrow type is string (including dictionary-encoded string)."""
-    underlying_type = _get_underlying_type(ftype)
-    return _is_pa_string_type(underlying_type)
+def _is_string_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is string-like.
+
+    Includes: string, large_string, string_view
+    """
+    underlying = _get_underlying_type(dtype)
+    return (
+        pa.types.is_string(underlying)
+        or pa.types.is_large_string(underlying)
+        or pa.types.is_string_view(underlying)
+    )
 
 
-@DeveloperAPI(stability="alpha")
+def _is_binary_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is binary.
+
+    Includes: binary, large_binary, binary_view, fixed_size_binary
+    """
+    underlying = _get_underlying_type(dtype)
+    return (
+        pa.types.is_binary(underlying)
+        or pa.types.is_large_binary(underlying)
+        or pa.types.is_binary_view(underlying)
+        or pa.types.is_fixed_size_binary(underlying)
+    )
+
+
+def _is_temporal_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is temporal.
+
+    Includes: date, time, timestamp, duration, interval
+    """
+    underlying = _get_underlying_type(dtype)
+    return pa.types.is_temporal(underlying)
+
+
+def _is_list_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is list-like.
+
+    Includes: list, large_list, fixed_size_list, list_view, large_list_view
+    """
+    underlying = _get_underlying_type(dtype)
+    return (
+        pa.types.is_list(underlying)
+        or pa.types.is_large_list(underlying)
+        or pa.types.is_fixed_size_list(underlying)
+        or pa.types.is_list_view(underlying)
+        or pa.types.is_large_list_view(underlying)
+    )
+
+
+def _is_union_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is union (dense or sparse)."""
+    underlying = _get_underlying_type(dtype)
+    return pa.types.is_union(underlying)
+
+
+def _is_nested_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is nested.
+
+    Includes: list, struct, map, union
+    """
+    underlying = _get_underlying_type(dtype)
+    return pa.types.is_nested(underlying)
+
+
+def _is_null_dtype(dtype: pa.DataType) -> bool:
+    """Check if Arrow dtype is null."""
+    underlying = _get_underlying_type(dtype)
+    return pa.types.is_null(underlying)
+
+
+def _get_arrow_dtype_string(dtype: pa.DataType) -> str:
+    """Convert Arrow dtype to string representation."""
+    return str(dtype)
+
+
+def _aggregators_for_dtype(column: str, dtype: pa.DataType) -> List[AggregateFnV2]:
+    """Get appropriate aggregators for a given arrow dtype.
+
+    Args:
+        column: Column name
+        dtype: Arrow dtype
+
+    Returns:
+        List of aggregators appropriate for this dtype
+    """
+    # Check types in order of specificity, with most common types first for performance
+
+    if _is_null_dtype(dtype):
+        # Null dtype: only count (everything is null)
+        return [
+            Count(on=column, ignore_nulls=False),
+        ]
+    elif _is_numerical_dtype(dtype):
+        # Numerical dtypes: compute comprehensive statistics
+        # Includes: integers, floats, decimals, booleans
+        return [
+            Count(on=column, ignore_nulls=False),
+            Mean(on=column, ignore_nulls=True),
+            Min(on=column, ignore_nulls=True),
+            Max(on=column, ignore_nulls=True),
+            Std(on=column, ignore_nulls=True, ddof=0),
+            MissingValuePercentage(on=column),
+            ZeroPercentage(on=column, ignore_nulls=True),
+        ]
+    elif _is_string_dtype(dtype):
+        # String dtypes: count and missing values
+        # Includes: string, large_string, string_view
+        return [
+            Count(on=column, ignore_nulls=False),
+            MissingValuePercentage(on=column),
+        ]
+    elif _is_temporal_dtype(dtype):
+        # Temporal dtypes: count, min, max, missing values
+        # Includes: date, time, timestamp, duration, interval
+        # Can compute min/max since temporal types are orderable
+        return [
+            Count(on=column, ignore_nulls=False),
+            Min(on=column, ignore_nulls=True),
+            Max(on=column, ignore_nulls=True),
+            MissingValuePercentage(on=column),
+        ]
+    elif _is_binary_dtype(dtype):
+        # Binary dtypes: count and missing values
+        # Includes: binary, large_binary, binary_view, fixed_size_binary
+        return [
+            Count(on=column, ignore_nulls=False),
+            MissingValuePercentage(on=column),
+        ]
+    elif _is_list_dtype(dtype):
+        # List dtypes: count and missing values
+        # Includes: list, large_list, fixed_size_list, list_view, large_list_view
+        return [
+            Count(on=column, ignore_nulls=False),
+            MissingValuePercentage(on=column),
+        ]
+    elif _is_union_dtype(dtype):
+        # Union dtypes (dense or sparse): count and missing values
+        return [
+            Count(on=column, ignore_nulls=False),
+            MissingValuePercentage(on=column),
+        ]
+    elif _is_nested_dtype(dtype):
+        # Catch-all for any nested types not explicitly handled above
+        # Nested includes: list, struct, map, union variants
+        return [
+            Count(on=column, ignore_nulls=False),
+            MissingValuePercentage(on=column),
+        ]
+    else:
+        # Other/unknown types (e.g., extension types): basic statistics
+        # Includes: fixed_shape_tensor, opaque, json, uuid, bool8
+        logger.info(
+            f"Dtype {dtype} for column {column} is not a standard Arrow type, "
+            f"computing basic statistics only"
+        )
+        return [
+            Count(on=column, ignore_nulls=False),
+            MissingValuePercentage(on=column),
+        ]
+
+
 @dataclass
-class FeatureAggregators:
-    """Container for categorized columns and their aggregators."""
+class DtypeAggregators:
+    """Container for columns grouped by arrow dtype and their aggregators."""
 
-    numerical_columns: List[str]
-    str_columns: List[str]
-    vector_columns: List[str]
+    column_to_dtype: Dict[str, str]  # column name -> arrow dtype string
     aggregators: List[AggregateFnV2]
 
-    @property
-    def columns_by_type(self) -> Dict[ColumnType, List[str]]:
-        """Get columns organized by ColumnType enum for easier iteration."""
-        return {
-            ColumnType.NUMERICAL: self.numerical_columns,
-            ColumnType.CATEGORICAL: self.str_columns,
-            ColumnType.VECTOR: self.vector_columns,
-        }
 
-    @property
-    def aggregators_by_type(self) -> Dict[ColumnType, Dict[str, List[AggregateFnV2]]]:
-        """Get aggregators organized by column type and column name.
-
-        Returns:
-            Dict mapping ColumnType -> column name -> list of aggregators for that column
-        """
-        # Map column types to their aggregator functions
-        aggregator_fn_map = {
-            ColumnType.NUMERICAL: numerical_aggregators,
-            ColumnType.CATEGORICAL: categorical_aggregators,
-            ColumnType.VECTOR: vector_aggregators,
-        }
-
-        result = {}
-        for col_type, columns in self.columns_by_type.items():
-            result[col_type] = {}
-            for col in columns:
-                result[col_type][col] = aggregator_fn_map[col_type](col)
-
-        return result
-
-
-@DeveloperAPI(stability="alpha")
-def feature_aggregators_for_dataset(
+def _dtype_aggregators_for_dataset(
     schema: Optional["Schema"], columns: Optional[List[str]] = None
-) -> FeatureAggregators:
-    """Generate aggregators for all columns in a dataset.
+) -> DtypeAggregators:
+    """Generate aggregators for all columns in a dataset, grouped by arrow dtype.
 
     Args:
         schema: A Ray Schema instance
         columns: A list of columns to include in the summary. If None, all columns will be included.
+
     Returns:
-        FeatureAggregators containing categorized column names and their aggregators
+        DtypeAggregators containing column-to-dtype mapping and aggregators
     """
     if not schema:
-        raise ValueError("Dataset must have a schema to determine numerical columns")
+        raise ValueError("Dataset must have a schema to determine column types")
 
     if columns is None:
         columns = schema.names
@@ -251,12 +263,6 @@ def feature_aggregators_for_dataset(
     if missing_cols:
         raise ValueError(f"Columns {missing_cols} not found in dataset schema")
 
-    # Categorize columns and build aggregators
-    numerical_columns = []
-    str_columns = []
-    vector_columns = []
-    all_aggs = []
-
     # Get column types - Ray's Schema provides names and types as lists
     column_names = schema.names
     column_types = schema.types
@@ -264,33 +270,34 @@ def feature_aggregators_for_dataset(
     # Create a mapping of column names to types
     name_to_type = dict(zip(column_names, column_types))
 
+    column_to_dtype = {}
+    all_aggs = []
+
     for name in columns:
         ftype = name_to_type.get(name)
-        if ftype is None or not isinstance(ftype, pa.DataType):
-            logger.warning(
-                f"Skipping field {name}: type {ftype} is not a PyArrow DataType"
-            )
+        if ftype is None:
+            logger.warning(f"Skipping field {name}: type is None")
             continue
 
-        if pa.types.is_dictionary(ftype):
-            ftype = ftype.value_type
+        # Convert pandas/numpy dtype to PyArrow dtype if necessary
+        if not isinstance(ftype, pa.DataType):
+            try:
+                ftype = _convert_to_pa_type(ftype)
+            except Exception as e:
+                logger.warning(
+                    f"Skipping field {name}: could not convert type {ftype} to PyArrow DataType: {e}"
+                )
+                continue
 
-        # Check for numerical types (including boolean as numerical)
-        if _is_numerical_type(ftype):
-            numerical_columns.append(name)
-            all_aggs.extend(numerical_aggregators(name))
-        elif _is_string_type(ftype):
-            str_columns.append(name)
-            all_aggs.extend(categorical_aggregators(name))
-        elif pa.types.is_list(ftype):
-            vector_columns.append(name)
-            all_aggs.extend(vector_aggregators(name))
-        else:
-            logger.warning(f"Skipping field {name}: type {ftype} not supported")
+        # Store the arrow dtype string representation
+        dtype_str = _get_arrow_dtype_string(ftype)
+        column_to_dtype[name] = dtype_str
 
-    return FeatureAggregators(
-        numerical_columns=numerical_columns,
-        str_columns=str_columns,
-        vector_columns=vector_columns,
+        # Get aggregators based on the dtype
+        aggs = _aggregators_for_dtype(name, ftype)
+        all_aggs.extend(aggs)
+
+    return DtypeAggregators(
+        column_to_dtype=column_to_dtype,
         aggregators=all_aggs,
     )
