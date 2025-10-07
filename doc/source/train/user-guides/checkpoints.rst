@@ -323,21 +323,22 @@ Validating checkpoints asynchronously
 
 You can also asynchronously validate checkpoints that you :func:`~ray.train.report` as follows:
 
-* Define your own ``validation_fn`` whose inputs are the :class:`~ray.train.Checkpoint` to validate
-  and an optional ``validate_config`` dict and whose output is a dict of metrics from the validation. We recommend
-  performing the validation with an eval-only :ref:`Trainer <train-overview-trainers>` or with
+* Define your own ``validate_fn`` that takes a :class:`~ray.train.Checkpoint` to validate
+  and an optional ``validate_config`` dictionary, which contain arguments needed for validation
+  such as the validation dataset, and returns a dictionary of metrics from the validation.
+  We recommend performing the validation with an eval-only :ref:`Trainer <train-overview-trainers>` or with
   :func:`~ray.data.Dataset.map_batches` - see :ref:`train-validate-fn` for more details.
-* Call :func:`~ray.train.report` with your ``validation_fn`` and a ``validate_config`` dict.
-  Ray Train runs your ``validation_fn`` with the ``validation_config`` and ``checkpoint``
+* Call :func:`~ray.train.report` with your ``validate_fn`` and a ``validate_config`` dict.
+  Ray Train runs your ``validate_fn`` with the ``validation_config`` and ``checkpoint``
   in a new Ray task. When that task completes, Ray Train associates the metrics returned by
-  ``validation_fn`` with that ``checkpoint``.
+  ``validate_fn`` with that ``checkpoint``.
 
 The main benefits of validating with :func:`~ray.train.report` over performing the validation
 in the training loop include:
 
 * Running validation in parallel with the training loop
 * Running validation on different hardware than training
-* Leveraging :ref:`vms-autoscaling` to only use validation resources when needed
+* Leveraging :ref:`vms-autoscaling` to rent user-specified machines only for the duration of the validation
 
 .. _train-validate-fn:
 
@@ -346,12 +347,15 @@ Writing your own validation function
 
 Here is an example ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
 to calculate average cross entropy loss on a validation set. Note that this ``report``\s
-a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
+a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics. Also note that while
+the ``TorchTrainer`` is typically used for training, it can also be used for isolated
+validation, and if you are using Anyscale, all these validation-only train runs will
+show up on the `Train dashboard <https://docs.anyscale.com/monitoring/workload-debugging/train-dashboard>`.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
-    :start-after: __validation_fn_torch_trainer_start__
-    :end-before: __validation_fn_torch_trainer_end__
+    :start-after: __validate_fn_torch_trainer_start__
+    :end-before: __validate_fn_torch_trainer_end__
 
 Here is an example ``validate_fn`` that uses :func:`~ray.data.Dataset.map_batches` to
 calculate average cross entropy loss on a validation set. To learn more about how to use
@@ -359,8 +363,8 @@ calculate average cross entropy loss on a validation set. To learn more about ho
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
-    :start-after: __validation_fn_map_batches_start__
-    :end-before: __validation_fn_map_batches_end__
+    :start-after: __validate_fn_map_batches_start__
+    :end-before: __validate_fn_map_batches_end__
 
 You should use ``TorchTrainer`` if:
 
@@ -377,12 +381,12 @@ Reporting with your validation function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Once you've defined your ``validate_fn``, you can ``report`` it along with a ``validation_config``,
-which can contain information like the validation dataset.
+which can contain information such as the validation dataset.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
-    :start-after: __validation_fn_report_start__
-    :end-before: __validation_fn_report_end__
+    :start-after: __validate_fn_report_start__
+    :end-before: __validate_fn_report_end__
 
 Using checkpoints after training
 --------------------------------

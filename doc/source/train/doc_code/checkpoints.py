@@ -502,7 +502,7 @@ def train_fn(config):
 
 # __checkpoint_upload_mode_no_upload_end__
 
-# __validation_fn_torch_trainer_start__
+# __validate_fn_torch_trainer_start__
 import os
 import tempfile
 
@@ -554,9 +554,9 @@ def validate_fn(checkpoint, config):
     return result.metrics
 
 
-# __validation_fn_torch_trainer_end__
+# __validate_fn_torch_trainer_end__
 
-# __validation_fn_map_batches_start__
+# __validate_fn_map_batches_start__
 import os
 import torch
 
@@ -590,9 +590,9 @@ def validate_fn(checkpoint, config):
     }
 
 
-# __validation_fn_map_batches_end__
+# __validate_fn_map_batches_end__
 
-# __validation_fn_report_start__
+# __validate_fn_report_start__
 import os
 import tempfile
 
@@ -625,7 +625,7 @@ def train_func(config):
                     iteration_checkpoint_dir
                 ),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
-                validate_function=validate_fn,
+                validate_fn=validate_fn,
                 validate_config={
                     "dataset": config["validation_dataset"],
                 },
@@ -645,4 +645,4 @@ def run_trainer():
     return trainer.fit()
 
 
-# __validation_fn_report_end__
+# __validate_fn_report_end__
