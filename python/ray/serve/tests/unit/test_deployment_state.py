@@ -2897,6 +2897,23 @@ def test_scale_state_changes(
 
 
 class TestAutoscaling:
+    def set_decision_num_replicas(
+        self,
+        dsm: DeploymentStateManager,
+        asm: AutoscalingStateManager,
+        deployment_ids: List[DeploymentID],
+    ):
+        deployment_to_target_num_replicas = {}
+        for deployment_id in deployment_ids:
+            deployment_to_target_num_replicas[
+                deployment_id
+            ] = dsm.get_deployment_details(deployment_id).target_num_replicas
+        decisions = asm.get_decision_num_replicas(
+            deployment_id.app_name, deployment_to_target_num_replicas
+        )
+        for deployment_id, decision_num_replicas in decisions.items():
+            dsm.set_decision_num_replicas(deployment_id, decision_num_replicas)
+
     @pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
     def test_basic_autoscaling(
         self, mock_deployment_state_manager, target_capacity_direction
@@ -2997,6 +3014,8 @@ class TestAutoscaling:
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
 
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
+
         # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
         dsm.update()
         if target_capacity_direction == "up":
@@ -3048,6 +3067,7 @@ class TestAutoscaling:
                 ],
             )
             # Trigger the second stage of downscaling
+            self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
             dsm.update()
             check_counts(ds, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
 
@@ -3189,6 +3209,7 @@ class TestAutoscaling:
                 asm.record_request_metrics_for_replica(replica_metric_report)
 
         # status=UPSCALING, status_trigger=AUTOSCALE
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(
             ds,
@@ -3286,6 +3307,7 @@ class TestAutoscaling:
                 asm.record_request_metrics_for_replica(replica_metric_report)
 
         # status=DOWNSCALING, status_trigger=AUTOSCALE
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(
             ds,
@@ -3416,6 +3438,7 @@ class TestAutoscaling:
         dsm.deploy(TEST_DEPLOYMENT_ID, info2)
 
         # 3 new replicas should be starting, status should be UPDATING (not upscaling)
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(
             ds,
@@ -3490,6 +3513,7 @@ class TestAutoscaling:
             timestamp=timer.time(),
         )
         asm.record_request_metrics_for_handle(handle_metric_report)
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
 
         # The controller should try to start a new replica. If that replica repeatedly
         # fails to start, the deployment should transition to UNHEALTHY and NOT retry
@@ -3588,6 +3612,7 @@ class TestAutoscaling:
         )
 
         # There are no requests, so the deployment should be downscaled to zero.
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
         ds._replicas.get()[0]._actor.set_done_stopping()
@@ -3607,7 +3632,7 @@ class TestAutoscaling:
             timestamp=timer.time(),
         )
         asm.record_request_metrics_for_handle(handle_metric_report)
-
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         # The controller should try to start a new replica. If that replica repeatedly
         # fails to start, the deployment should transition to UNHEALTHY. Meanwhile
         # the controller should continue retrying after 3 times.
@@ -3693,6 +3718,7 @@ class TestAutoscaling:
         )
         asm.record_request_metrics_for_handle(handle_metric_report)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(
             ds,
@@ -3705,6 +3731,7 @@ class TestAutoscaling:
         assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
         ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
         assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
@@ -3713,6 +3740,7 @@ class TestAutoscaling:
         # the handle fails to push metrics
         timer.advance(10)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
         assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
@@ -3723,6 +3751,7 @@ class TestAutoscaling:
         timer.advance(10)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
         # The first update will trigger the first stage of downscaling to 1
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(
             ds,
@@ -3733,6 +3762,7 @@ class TestAutoscaling:
             ],
         )
         # The second update will trigger the second stage of downscaling from 1 to 0
+        self.set_decision_num_replicas(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
         assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 0
@@ -3801,6 +3831,7 @@ class TestAutoscaling:
         )
         asm.record_request_metrics_for_handle(handle_metric_report)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [d_id1, d_id2])
         dsm.update()
         check_counts(
             ds1,
@@ -3813,6 +3844,7 @@ class TestAutoscaling:
         assert asm.get_total_num_requests(d_id1) == 2
         ds1._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [d_id1, d_id2])
         dsm.update()
         check_counts(ds1, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
         assert asm.get_total_num_requests(d_id1) == 2
@@ -3820,6 +3852,7 @@ class TestAutoscaling:
         # d2 replica died
         ds2._replicas.get()[0]._actor.set_unhealthy()
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [d_id1, d_id2])
         dsm.update()
         check_counts(
             ds2,
@@ -3831,12 +3864,14 @@ class TestAutoscaling:
         )
         ds2._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [d_id1, d_id2])
         dsm.update()
         check_counts(ds2, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
 
         # Now that the d2 replica is dead, its metrics should be dropped.
         # Consequently d1 should scale down to 0 replicas
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
+        self.set_decision_num_replicas(dsm, asm, [d_id1, d_id2])
         dsm.update()
         # Due to two-stage downscaling one of the replicas will still be running
         check_counts(
@@ -3848,6 +3883,7 @@ class TestAutoscaling:
             ],
         )
         # Trigger the second stage of downscaling
+        self.set_decision_num_replicas(dsm, asm, [d_id1, d_id2])
         dsm.update()
         check_counts(ds1, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
 
