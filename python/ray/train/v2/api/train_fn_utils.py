@@ -256,9 +256,6 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         )
         trainer.fit()
 
-    .. testoutput::
-        :hide:
-
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
             specifies which dataset shard to return.

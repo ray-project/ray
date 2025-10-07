@@ -77,9 +77,6 @@ class LightGBMTrainer(DataParallelTrainer):
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
 
-    .. testoutput::
-        :hide:
-
     Args:
         train_loop_per_worker: The training function to execute on each worker.
             This function can either take in zero arguments or a single ``Dict``

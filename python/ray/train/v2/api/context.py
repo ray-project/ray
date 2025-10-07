@@ -83,8 +83,6 @@ class TrainContext(ABC):
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
         """
         pass
 
@@ -107,8 +105,6 @@ class TrainContext(ABC):
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
         """
         pass
 
@@ -131,8 +127,6 @@ class TrainContext(ABC):
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
         """
         pass
 
@@ -156,8 +150,6 @@ class TrainContext(ABC):
                 )
                 trainer.fit()
 
-            .. testoutput::
-                :hide:
         """
         pass
 
@@ -181,8 +173,6 @@ class TrainContext(ABC):
                 )
                 trainer.fit()
 
-            .. testoutput::
-                :hide:
         """
         pass
 

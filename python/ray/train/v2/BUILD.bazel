@@ -7,7 +7,10 @@ doctest(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     files = glob(
         ["**/*.py"],
-        exclude = [],
+        exclude = [
+            "horovod/**",
+            "jax/**",
+        ],
     ),
     tags = ["team:ml"],
 )
