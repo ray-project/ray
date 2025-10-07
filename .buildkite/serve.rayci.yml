@@ -33,7 +33,7 @@ steps:
       - serve
       - default
     env:
-      PYTHON_VERSION: "3.9"
+      PYTHON_VERSION: "3.10"
       EXTRA_DEPENDENCY: "{{matrix}}"
     tags: cibase
 

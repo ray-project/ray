@@ -10,7 +10,7 @@ steps:
     wanda: ci/docker/min.build.wanda.yaml
     depends_on: oss-ci-base_build
     env:
-      PYTHON_VERSION: "3.9"
+      PYTHON_VERSION: "3.10"
       EXTRA_DEPENDENCY: ml
     tags: cibase
 
