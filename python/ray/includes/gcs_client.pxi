@@ -31,6 +31,9 @@ from ray.includes.common cimport (
     CGcsNodeState,
     CNodeSelector,
     CGcsNodeInfo,
+    CAddEventsRequest,
+    CAddEventsReply,
+    CRayStatus,
 )
 from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2, autoscaler_pb2
@@ -683,6 +686,30 @@ cdef class InnerGcsClient:
                 )
             )
 
+     #############################################################
+    # GcsRpcClient methods
+    #############################################################
+    def async_add_events(self, serialized_request: bytes, timeout_s=None) -> Future[None]:
+        """Async AddEvents using native C++ AddEvents with Status callback."""
+        cdef:
+            CAddEventsRequest c_req
+            int64_t timeout_ms
+            fut = incremented_fut()
+        timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+
+        # Parse the protobuf payload
+        cdef c_string payload = serialized_request
+        if not c_req.ParseFromString(payload):
+            # Fail fast on parse error
+            assign_and_decrement_fut((None, ValueError("Invalid AddEventsRequest payload")), fut)
+            return asyncio.wrap_future(fut)
+
+        with nogil:
+            self.inner.get().GetGcsRpcClient().AddEvents(
+                move(c_req),
+                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
+                timeout_ms)
+        return asyncio.wrap_future(fut)
 
 # Util functions for async handling
 

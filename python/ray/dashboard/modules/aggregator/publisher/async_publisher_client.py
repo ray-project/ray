@@ -6,14 +6,13 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import aiohttp
-import grpc
 
 from ray._common.utils import get_or_create_event_loop
 from ray._private.protobuf_compat import message_to_json
+from ray._raylet import GcsClient
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
-    gcs_service_pb2_grpc,
 )
 from ray.dashboard.modules.aggregator.publisher.configs import (
     GCS_EXPOSABLE_EVENT_TYPES,
@@ -176,19 +175,19 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._session = session
 
 
-class AsyncGCSPublisherClient(PublisherClientInterface):
+class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
     """Client for publishing ray event batches to GCS."""
 
     def __init__(
         self,
-        async_gcs_ray_event_export_service_stub: gcs_service_pb2_grpc.RayEventExportGcsServiceStub,
-        timeout: float = PUBLISHER_TIMEOUT_SECONDS,
+        gcs_client: GcsClient,
+        executor: ThreadPoolExecutor,
+        timeout_s: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
         super().__init__()
-        self._async_gcs_ray_event_export_service_stub = (
-            async_gcs_ray_event_export_service_stub
-        )
-        self._timeout = timeout
+        self._gcs_client = gcs_client
+        self._executor = executor
+        self._timeout_s = timeout_s
 
         self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
 
@@ -228,11 +227,15 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
             request = events_event_aggregator_service_pb2.AddEventsRequest(
                 events_data=events_data
             )
-            response = await self._async_gcs_ray_event_export_service_stub.AddEvents(
-                request, timeout=self._timeout
+            serialized_request = await get_or_create_event_loop().run_in_executor(
+                self._executor,
+                lambda: request.SerializeToString(),
             )
-            if response.status.code != 0:
-                logger.error(f"GCS AddEvents failed: {response.status.message}")
+            response_dict = await self._gcs_client.async_add_events(
+                serialized_request, self._timeout_s
+            )
+            if response_dict.get("status", {}).get("code", 0) != 0:
+                logger.error(f"GCS AddEvents failed: {response_dict}")
                 return PublishStats(
                     is_publish_successful=False,
                     num_events_published=0,
@@ -243,7 +246,7 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
                 num_events_published=len(filtered_events),
                 num_events_filtered_out=num_filtered_out,
             )
-        except grpc.RpcError as e:
+        except Exception as e:
             logger.error(f"Failed to send events to GCS: {e}")
             return PublishStats(
                 is_publish_successful=False,

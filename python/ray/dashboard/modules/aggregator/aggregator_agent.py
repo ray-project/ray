@@ -6,21 +6,20 @@ from concurrent.futures import ThreadPoolExecutor
 import ray
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
-from ray._private.gcs_utils import create_gcs_channel
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
+from ray._raylet import GcsClient
 from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
-    gcs_service_pb2_grpc,
 )
 from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
-    AsyncGCSPublisherClient,
+    AsyncGCSTaskEventsPublisherClient,
     AsyncHttpPublisherClient,
 )
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
 # Max number of threads for the thread pool executor handling CPU intensive tasks
 THREAD_POOL_EXECUTOR_MAX_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
+    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 2
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
@@ -125,20 +124,19 @@ class AggregatorAgent(
             )
             self._http_endpoint_publisher = NoopPublisher()
 
-        self._async_gcs_channel = None
+        self._gcs_client = None
         if PUBLISH_EVENTS_TO_GCS:
             logger.info("Publishing events to GCS is enabled")
             self._event_processing_enabled = True
-            self._async_gcs_channel = create_gcs_channel(self.gcs_address, aio=True)
-            _async_gcs_ray_event_export_service_stub = (
-                gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
-                    self._async_gcs_channel,
-                )
+            self._gcs_client = GcsClient(
+                address=self.gcs_address,
+                cluster_id=dashboard_agent.cluster_id_hex,
             )
             self._gcs_publisher = RayEventPublisher(
                 name="ray_gcs",
-                publish_client=AsyncGCSPublisherClient(
-                    async_gcs_ray_event_export_service_stub=_async_gcs_ray_event_export_service_stub
+                publish_client=AsyncGCSTaskEventsPublisherClient(
+                    gcs_client=self._gcs_client,
+                    executor=self._executor,
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,
@@ -211,9 +209,6 @@ class AggregatorAgent(
             )
         finally:
             self._executor.shutdown()
-
-            if self._async_gcs_channel:
-                self._async_gcs_channel.close()
 
     @staticmethod
     def is_minimal_module() -> bool:
