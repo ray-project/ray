@@ -555,9 +555,9 @@ bool RedisDelKeyPrefixSync(const std::string &host,
     std::vector<std::string> scan_result;
     cursor = reply->ReadAsScanArray(&scan_result);
 
-    for (const auto &key : scan_result) {
-      keys.push_back(key);
-    }
+    keys.insert(keys.end(),
+                std::make_move_iterator(scan_result.begin()),
+                std::make_move_iterator(scan_result.end()));
   } while (cursor != 0);
 
   if (keys.empty()) {
