@@ -29,41 +29,10 @@ class TaskConsumerWrapper(ABC):
         pass
 
 
-@PublicAPI(stability="alpha")
-def instantiate_adapter_from_config(
+def _instantiate_adapter(
     task_processor_config: TaskProcessorConfig,
     consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY,
 ) -> TaskProcessorAdapter:
-    """
-    Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
-
-    1. String path: A fully qualified module path to an adapter class
-       Example: "ray.serve.task_processor.CeleryTaskProcessorAdapter"
-
-    2. Class reference: A direct reference to an adapter class
-       Example: CeleryTaskProcessorAdapter
-
-    Args:
-        task_processor_config: Configuration object containing adapter specification.
-        consumer_concurrency: The concurrency of the consumer.
-    Returns:
-        An initialized TaskProcessorAdapter instance ready for use.
-
-    Raises:
-        ValueError: If the adapter string path is malformed or cannot be imported.
-        TypeError: If the adapter is not a string or callable class.
-
-    Example:
-        .. code-block:: python
-
-            config = TaskProcessorConfig(
-                adapter="my.module.CustomAdapter",
-                adapter_config={"param": "value"},
-                queue_name="my_queue"
-            )
-            adapter = instantiate_adapter_from_config(config)
-    """
-
     adapter = task_processor_config.adapter
 
     # Handle string-based adapter specification (module path)
@@ -94,6 +63,42 @@ def instantiate_adapter_from_config(
         raise RuntimeError(f"Failed to initialize {adapter_class.__name__}: {e}")
 
     return adapter_instance
+
+
+@PublicAPI(stability="alpha")
+def instantiate_adapter_from_config(
+    task_processor_config: TaskProcessorConfig,
+) -> TaskProcessorAdapter:
+    """
+    Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
+
+    1. String path: A fully qualified module path to an adapter class
+       Example: "ray.serve.task_processor.CeleryTaskProcessorAdapter"
+
+    2. Class reference: A direct reference to an adapter class
+       Example: CeleryTaskProcessorAdapter
+
+    Args:
+        task_processor_config: Configuration object containing adapter specification.
+    Returns:
+        An initialized TaskProcessorAdapter instance ready for use.
+
+    Raises:
+        ValueError: If the adapter string path is malformed or cannot be imported.
+        TypeError: If the adapter is not a string or callable class.
+
+    Example:
+        .. code-block:: python
+
+            config = TaskProcessorConfig(
+                adapter="my.module.CustomAdapter",
+                adapter_config={"param": "value"},
+                queue_name="my_queue"
+            )
+            adapter = instantiate_adapter_from_config(config)
+    """
+
+    return _instantiate_adapter(task_processor_config)
 
 
 @PublicAPI(stability="alpha")
@@ -135,7 +140,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
                 target_cls.__init__(self, *args, **kwargs)
 
             def initialize_callable(self, consumer_concurrency: int):
-                self._adapter = instantiate_adapter_from_config(
+                self._adapter = _instantiate_adapter(
                     task_processor_config, consumer_concurrency
                 )
 
