@@ -31,7 +31,7 @@ echo "IP Head: $ip_head"
 
 # All nodes (including head and workers) will execute this block.
 # The entrypoint (simple-trainer.py) will only run on the head node.
-srun --nodes=$SLURM_JOB_NUM_NODES --ntasks=$SLURM_JOB_NUM_NODES \
+srun --nodes="$SLURM_JOB_NUM_NODES" --ntasks="$SLURM_JOB_NUM_NODES" \
     ray symmetric-run \
     --address "$ip_head" \
     --min-nodes "$SLURM_JOB_NUM_NODES" \
