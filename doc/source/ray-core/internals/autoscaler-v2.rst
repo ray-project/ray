@@ -88,7 +88,7 @@ It also applies the same scoring logic to each worker group and selects the one 
 1. Whether the node is a GPU node and whether feasible requests require GPUs:
 
    - ``0`` if the node is a GPU node and requests do **not** require GPUs.
-   - ``1`` if the node isn't a GPU node, or if requests do require GPUs.
+   - ``1`` if the node isn't a GPU node or requests do require GPUs.
 2. The number of resource types on the node used by feasible requests.
 3. The minimum `utilization rate <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L481-L489>`__ across all resource types used by feasible requests.
 4. The average `utilization rate <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L481-L489>`__ across all resource types used by feasible requests.
