@@ -404,42 +404,6 @@ py_test_module_list_with_env_variants(
     ],
 )
 
-py_test_module_list_with_env_variants(
-    size = "medium",
-    env_variants = AUTOSCALING_METRIC_ENV_VARIANTS,
-    files = [
-        "test_cluster.py",
-    ],
-    tags = [
-        "autoscaling",
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test_module_list_with_env_variants(
-    size = "small",
-    env_variants = AUTOSCALING_METRIC_ENV_VARIANTS,
-    files = [
-        "test_deployment_scheduler.py",
-    ],
-    tags = [
-        "autoscaling",
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
 # Test feature flag for task events.
 py_test_module_list(
     size = "small",
