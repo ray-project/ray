@@ -147,6 +147,11 @@ A normal transition flow for an instance is:
 - ``RAY_STOPPED -> TERMINATING``: The Reconciler will transition the instance from ``RAY_STOPPED`` to ``TERMINATING``.
 - ``TERMINATING -> TERMINATED``: Once the Reconciler detects that the instance has been terminated by the cloud provider, it will transition the instance to ``TERMINATED``.
 
+.. note::
+
+   The drain request sent by ``RAY_STOP_REQUESTED`` can be rejected if the node is not idle actually. Then the instance will be transitioned back to ``RAY_RUNNING`` instead.
+
+
 You can find all valid transitions in the `get_valid_transitions <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/common.py#L193>`__ method.
 
 Once transitions are triggered by the Reconciler, subscribers perform side effects, such as:
