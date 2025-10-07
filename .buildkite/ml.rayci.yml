@@ -63,7 +63,7 @@ steps:
     tags: cibase
 
   # tests
-  - label: ":train: ml: train tests"
+  - label: ":train: ml: train v1 tests"
     tags: train
     instance_type: large
     parallelism: 2
@@ -104,7 +104,7 @@ steps:
         python: ["3.12"]
         worker_id: ["0", "1", "2", "3"]
 
-  - label: ":train: ml: train gpu tests"
+  - label: ":train: ml: train v1 gpu tests"
     tags:
       - train
       - gpu
