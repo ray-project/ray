@@ -336,7 +336,7 @@ class PDFDatasource(FileBasedDatasource):
         for page_num in range(num_pages):
             try:
                 page = reader.pages[page_num]
-                text = self._extract_text_from_page(page)
+                text = self._extract_text_from_page(page, page_num, pdf_bytes)
                 if text.strip():
                     all_text.append(text)
             except Exception as e:
