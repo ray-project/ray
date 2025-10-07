@@ -1,4 +1,4 @@
-import abc
+from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -7,14 +7,14 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 
-class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
-    @abc.abstractmethod
+class InternalQueueOperatorMixin(PhysicalOperator, ABC):
+    @abstractmethod
     def internal_queue_size(self) -> int:
         """Returns Operator's internal queue size"""
         ...
@@ -47,7 +47,9 @@ class OneToOneOperator(PhysicalOperator):
         return self.input_dependencies[0]
 
 
-class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
+class AllToAllOperator(
+    InternalQueueOperatorMixin, SubProgressBarMixin, PhysicalOperator
+):
     """A blocking operator that executes once its inputs are complete.
 
     This operator implements distributed sort / shuffle operations, etc.
@@ -150,26 +152,14 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
     def progress_str(self) -> str:
         return f"{self.num_output_rows_total() or 0} rows output"
 
-    # TODO (kyuds): remove this function, as progress management is now centralized
-    def initialize_sub_progress_bars(self, position: int) -> int:
-        """Initialize all internal sub progress bars, and return the number of bars."""
-        if self._sub_progress_bar_names is not None:
-            self._sub_progress_bar_dict = {}
-            for name in self._sub_progress_bar_names:
-                bar, position = _create_sub_pb(
-                    name, self.num_output_rows_total(), position
-                )
-                self._sub_progress_bar_dict[name] = bar
-            return len(self._sub_progress_bar_dict)
-        else:
-            return 0
+    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
+        return self._sub_progress_bar_names
 
-    # TODO (kyuds): remove this function, as progress management is now centralized
-    def close_sub_progress_bars(self):
-        """Close all internal sub progress bars."""
-        if self._sub_progress_bar_dict is not None:
-            for sub_bar in self._sub_progress_bar_dict.values():
-                sub_bar.close()
+    def set_sub_progress_bar(self, name, pg):
+        # not type-checking due to circular imports
+        if self._sub_progress_bar_dict is None:
+            self._sub_progress_bar_dict = {}
+        self._sub_progress_bar_dict[name] = pg
 
     def supports_fusion(self):
         return True

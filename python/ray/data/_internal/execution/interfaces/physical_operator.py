@@ -781,6 +781,7 @@ def estimate_total_num_of_blocks(
     return (0, 0, 0)
 
 
+# TODO (kyuds): remove this function, as progress management is now centralized
 def _create_sub_pb(
     name: str, total_output_rows: Optional[int], position: int
 ) -> Tuple[ProgressBar, int]:
