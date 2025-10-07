@@ -37,18 +37,17 @@ class ThreadRunner:
                 result = target()
                 with self._lock:
                     self._ret = result
+                self._exc_queue.put(None)
             except BaseException as e:
                 # Exclude the first 3 frames from the traceback, which are
                 # the `ThreadRunner._run_target`, `construct_train_func`, and
                 # train_fn_with_final_checkpoint_flush calls.
-                with self._lock:
-                    self._exc = construct_user_exception_with_traceback(
-                        e, exclude_frames=3
-                    )
+                self._exc_queue.put(
+                    construct_user_exception_with_traceback(e, exclude_frames=3)
+                )
 
             # Join the monitor thread. This ensures that a queued exception
-            # is processed before the target function returns.
-            self._exc_queue.put(None)
+            # is processed before the target function is considered done.
             self._monitor_thread.join()
 
         self._monitor_thread = threading.Thread(
@@ -68,7 +67,7 @@ class ThreadRunner:
     def _monitor_target(self):
         """Monitor the exception queue and set the exception if an exception is found.
 
-        This thread exits when None is put into the exception queue.
+        This should run as a daemon thread and exit when None is put into the exception queue.
         """
         exc: Optional[UserExceptionWithTraceback] = self._exc_queue.get()
         if exc is None:

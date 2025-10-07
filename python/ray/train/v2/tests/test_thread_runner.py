@@ -50,6 +50,15 @@ def test_error(thread_runner):
     from the user function (train_func) and not the wrapper frames.
     """
 
+    original_monitor_target = thread_runner._monitor_target
+    monitor_event = threading.Event()
+
+    def monitor_target_patch():
+        monitor_event.wait()
+        original_monitor_target()
+
+    thread_runner._monitor_target = monitor_target_patch
+
     def wrapped_train_func():
         def train_fn_with_final_checkpoint_flush():
             def train_func():
@@ -60,8 +69,10 @@ def test_error(thread_runner):
         train_fn_with_final_checkpoint_flush()
 
     thread_runner.run(wrapped_train_func)
-    assert not thread_runner.join()
+    assert thread_runner.is_running() and thread_runner.get_error() is None
+    monitor_event.set()
 
+    assert not thread_runner.join()
     assert thread_runner.get_return_value() is None
     assert not thread_runner.is_running()
 
@@ -86,7 +97,7 @@ def test_nested_thread_error(monkeypatch, thread_runner):
         monitor_event.wait()
         original_monitor_target()
 
-    monkeypatch.setattr(thread_runner, "_monitor_target", monitor_target_patch)
+    thread_runner._monitor_target = monitor_target_patch
 
     target_event = threading.Event()
 
