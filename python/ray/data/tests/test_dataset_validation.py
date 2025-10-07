@@ -88,6 +88,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
     """Tests ExecutionPlan.execute() to ensure a warning is logged
     when no CPU resources are available."""
     # Create one node with no CPUs to trigger the Dataset warning
+    ray.shutdown()
     ray.init(ray_start_cluster.address)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -105,6 +106,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     """Tests ExecutionPlan.execute() to ensure no warning is logged
     when there are available CPU resources."""
     # Create one node with CPUs to avoid triggering the Dataset warning
+    ray.shutdown()
     ray.init(ray_start_cluster.address)
 
     logger = logging.getLogger("ray.data._internal.plan")
