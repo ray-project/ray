@@ -265,8 +265,14 @@ class AnyscaleJobRunner(JobRunner):
         )
         working_dir = "."
         if self.upload_path.startswith("abfss"):
-            upload_dir_to_azure(path=os.getcwd(), upload_path=self.upload_path)
+            logger.info(
+                f"Uploading working directory to Azure Blob Storage: {self.upload_path}"
+            )
+            upload_dir_to_azure(local_path=os.getcwd(), azure_path=self.upload_path)
             working_dir = self.upload_path
+            logger.info(
+                f"Uploaded working directory to Azure Blob Storage: {self.upload_path}"
+            )
 
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
