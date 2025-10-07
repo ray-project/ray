@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_split.h"
+#include "absl/strings/str_format.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -281,13 +281,13 @@ int main(int argc, char *argv[]) {
   AddProcessToCgroupHook add_process_to_application_cgroup_hook =
       [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
         RAY_CHECK_OK(cgroup_mgr.AddProcessToApplicationCgroup(pid)) << absl::StrFormat(
-            "Failed to move process %s into the application cgroup", pid);
+            "Failed to move process %s into the application cgroup.", pid);
       };
 
   AddProcessToCgroupHook add_process_to_system_cgroup_hook =
       [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
         RAY_CHECK_OK(cgroup_mgr.AddProcessToSystemCgroup(pid)) << absl::StrFormat(
-            "Failed to move process %s into the system cgroup with error %s.", pid);
+            "Failed to move process %s into the system cgroup with error.", pid);
       };
 
   // Configuration for the node manager.

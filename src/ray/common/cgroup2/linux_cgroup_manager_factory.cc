@@ -75,7 +75,7 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
 
   for (const auto &pid : system_pids_to_move) {
     RAY_CHECK_OK(cgroup_manager->AddProcessToSystemCgroup(pid))
-        << absl::StrFormat("Failed to move process with pid %s into system cgroup.");
+        << absl::StrFormat("Failed to move process with pid %s into system cgroup.", pid);
   }
 
   return cgroup_manager;
