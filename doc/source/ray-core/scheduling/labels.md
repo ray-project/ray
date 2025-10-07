@@ -27,7 +27,9 @@ The following is a high-level overview of how you use labels to control scheduli
 
 (defaults)=
 ## Default node labels 
-
+```{note}
+Ray reserves all labels under ray.io namespace.
+```
 During cluster initialization or as autoscaling events add nodes to your cluster, Ray assigns the following default labels to each node:
 
 | Label | Description |
