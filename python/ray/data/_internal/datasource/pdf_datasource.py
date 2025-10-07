@@ -82,7 +82,7 @@ class PDFDatasource(FileBasedDatasource):
             include_images: If True, extract images from PDFs and include them in the
                 output. This increases memory usage significantly. Defaults to False.
             ocr: If True, use OCR (Optical Character Recognition) to extract text from
-                image-based PDFs. Requires pytesseract and tesseract to be installed.
+                image-based PDFs. Requires pytesseract, pdf2image, and Pillow to be installed.
                 Defaults to False.
             ocr_config: Configuration options for OCR processing. Only used if ocr=True.
                 See pytesseract documentation for available options. Defaults to None.
@@ -97,7 +97,7 @@ class PDFDatasource(FileBasedDatasource):
 
         Raises:
             ValueError: If invalid configuration options are provided.
-            ImportError: If required dependencies (PyPDF2, pytesseract) are not installed.
+            ImportError: If required dependencies (PyPDF2, pytesseract, pdf2image) are not installed.
         """
         super().__init__(paths, **file_based_datasource_kwargs)
 
@@ -108,6 +108,7 @@ class PDFDatasource(FileBasedDatasource):
             # Check for OCR dependencies if OCR is enabled
             _check_import(self, module="pytesseract", package="pytesseract")
             _check_import(self, module="PIL", package="Pillow")
+            _check_import(self, module="pdf2image", package="pdf2image")
 
         if include_images and not pages:
             raise ValueError(

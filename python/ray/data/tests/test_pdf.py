@@ -5,10 +5,14 @@ import pytest
 
 import ray
 from ray.data._internal.datasource.pdf_datasource import (
+    PDF_ENCODING_RATIO_ESTIMATE_DEFAULT,
     PDFDatasource,
     PDFFileMetadataProvider,
 )
-from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
+    FastFileMetadataProvider,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -333,12 +337,14 @@ class TestPDFDatasource:
         read_tasks = datasource.get_read_tasks(parallelism=1)
         assert len(read_tasks) > 0
 
-    def test_file_metadata_provider(self, tmp_path):
-        """Test PDFFileMetadataProvider."""
+    def test_pdf_file_metadata_provider_initialization(self, tmp_path):
+        """Test PDFFileMetadataProvider initialization."""
         provider = PDFFileMetadataProvider()
         # PDFFileMetadataProvider inherits from DefaultFileMetadataProvider
-        # which returns None for _get_file_extension()
-        assert provider._get_file_extension() is None
+        assert isinstance(provider, DefaultFileMetadataProvider)
+        # Check that encoding ratio is initialized
+        assert hasattr(provider, "_encoding_ratio")
+        assert provider._encoding_ratio == PDF_ENCODING_RATIO_ESTIMATE_DEFAULT
 
     def test_encoding_ratio_estimate(self, tmp_path):
         """Test in-memory data size estimation."""
