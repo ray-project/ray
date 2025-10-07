@@ -16,10 +16,7 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/cgroup2/cgroup_driver_interface.h"
-#include "ray/common/cgroup2/cgroup_manager.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
-#include "ray/common/cgroup2/sysfs_cgroup_driver.h"
 
 namespace ray {
 

@@ -13,8 +13,6 @@
 // limitations under the License.
 #pragma once
 
-#include <sys/types.h>
-
 #include <limits>
 #include <memory>
 #include <string>
