@@ -6,7 +6,7 @@ Dask
 [Dd]atasource(s)?
 [Dd]iscretizer(s)?
 dtype
-[Gg]roup[bB]y
+FLAC
 [Hh]asher(s)?
 [Hh]udi
 [Ii]ndexable
@@ -25,6 +25,7 @@ Predibase('s)?
 [Pp]reprocess
 [Pp]reprocessor(s)?
 [Pp]ushdown
+RGB
 runai
 [Ss]calers
 Spotify('s)?
@@ -32,5 +33,6 @@ TFRecord(s)?
 UDF(s)?
 VLM(s)?
 XGBoost
+YOLO
 [Ss]harding
 [Ss]harded
