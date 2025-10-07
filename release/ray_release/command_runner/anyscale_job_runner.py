@@ -28,7 +28,7 @@ from ray_release.util import (
     get_anyscale_sdk,
     S3_CLOUD_STORAGE,
     AZURE_CLOUD_STORAGE,
-    upload_dir_to_azure,
+    upload_working_dir_to_azure,
 )
 
 if TYPE_CHECKING:
@@ -268,8 +268,8 @@ class AnyscaleJobRunner(JobRunner):
             logger.info(
                 f"Uploading working directory to Azure Blob Storage: {self.upload_path}"
             )
-            azure_path = upload_dir_to_azure(
-                local_path=os.getcwd(), azure_path=self.upload_path
+            azure_path = upload_working_dir_to_azure(
+                working_dir=os.getcwd(), azure_path=self.upload_path
             )
             self.upload_path = azure_path
             working_dir = azure_path

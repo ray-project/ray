@@ -8,6 +8,8 @@ import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from azure.storage.blob import BlobServiceClient
+from azure.identity import DefaultAzureCredential
 from google.cloud import storage
 import requests
 import shutil
@@ -307,7 +309,25 @@ def create_cluster_env_from_image(
     return cluster_env_id
 
 
-def upload_dir_to_azure(local_path: str, azure_path: str) -> str:
+def upload_file_to_azure(local_file_path: str, azure_file_path: str) -> str:
+    """Upload a file to Azure Blob Storage."""
+    try:
+        account, container, path = _parse_abfss_uri(azure_file_path)
+        account_url = f"https://{account}.blob.core.windows.net"
+        credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
+        blob_service_client = BlobServiceClient(account_url, credential)
+        blob_client = blob_service_client.get_blob_client(
+            container=container, blob=path
+        )
+        with open(local_file_path, "rb") as data:
+            blob_client.upload_blob(data)
+        return azure_file_path
+    except Exception as e:
+        logger.exception(f"Failed to upload file to Azure Blob Storage: {e}")
+        raise
+
+
+def upload_working_dir_to_azure(working_dir: str, azure_path: str) -> str:
     """Archive and upload a directory to Azure Blob Storage.
 
     Args:
@@ -317,32 +337,18 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> str:
         Azure Blob Storage path where directory was uploaded.
     """
     try:
-        from azure.storage.blob import BlobServiceClient
-        from azure.identity import DefaultAzureCredential
-
-        account, container, path = _parse_abfss_uri(azure_path)
-        logger.info(
-            f"Uploading directory to Azure Blob Storage: {account}, {container}, {path}"
-        )
-
-        account_url = f"https://{account}.blob.core.windows.net"
-
+        account, container, azure_blob_path = _parse_abfss_uri(azure_path)
         # Create a zip file of the local path
         timestamp = str(int(time.time()))
         archived_filename = f"ray_release_{timestamp}.zip"
+        azure_blob_path += f"/{archived_filename}"
         output_path = os.path.abspath(archived_filename)
-        logger.info(f"Archiving directory {local_path}")
-        zip_file_path = shutil.make_archive(output_path[:-4], "zip", local_path)
+        logger.info(f"Archiving directory {working_dir}")
+        zip_file_path = shutil.make_archive(output_path[:-4], "zip", working_dir)
         logger.info(f"Archived file: {zip_file_path}")
-        # Upload the zip file to the azure path
-        credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
-        blob_service_client = BlobServiceClient(account_url, credential)
-        blob_client = blob_service_client.get_blob_client(
-            container=container, blob=f"{path}/{archived_filename}"
-        )
-        with open(zip_file_path, "rb") as data:
-            blob_client.upload_blob(data)
-        return f"abfss://{container}@{account}.dfs.core.windows.net/{path}/{archived_filename}"
+        # Upload the zip file to Azure
+        azure_file_path = upload_file_to_azure(zip_file_path, azure_blob_path)
+        return azure_file_path
     except Exception as e:
         logger.exception(f"Failed to upload directory to Azure Blob Storage: {e}")
         raise

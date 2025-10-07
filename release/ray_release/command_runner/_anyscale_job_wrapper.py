@@ -18,6 +18,8 @@ import logging
 from urllib.parse import urlparse
 from typing import Optional, List, Tuple
 
+from ray_release.util import upload_file_to_azure
+
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
@@ -88,6 +90,8 @@ def run_storage_cp(source: str, target: str):
             source,
             target,
         ]
+    elif storage_service == "abfss":
+        upload_file_to_azure(source, target)
     else:
         raise Exception(f"Not supporting storage service: {storage_service}")
 
