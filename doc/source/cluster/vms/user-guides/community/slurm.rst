@@ -179,7 +179,6 @@ because it does not currently work in multi-tenant environments:
   python -u your_script.py
 
   # user 2
-  # same as above
   ...
   ray start --head --node-ip-address="$head_node_ip" \
       --port=6379 \
