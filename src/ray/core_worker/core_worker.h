@@ -1745,7 +1745,6 @@ class CoreWorker {
   // Shared raylet client pool.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
-  /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
@@ -1854,10 +1853,10 @@ class CoreWorker {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
-  // Number of in flight argument pinning requests
+  // Number of in flight argument pinning requests used for metric reporting only
   std::atomic<int64_t> num_get_pin_args_in_flight_;
 
-  // Number of failed argument pinning requests
+  // Number of failed argument pinning requests used for metric reporting only
   std::atomic<int64_t> num_failed_get_pin_args_;
 
   /// A map from resource name to the resource IDs that are currently reserved
