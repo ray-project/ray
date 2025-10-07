@@ -842,6 +842,13 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
                 "min_workers": 0,
                 "max_workers": 1,
             },
+            "not_matching_labels": {
+                "resources": {"CPU": 1},
+                "labels": {"unrelated": "labels"},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
             "a100_node": {
                 "resources": {"CPU": 1, "GPU": 1},
                 "node_config": {},
