@@ -339,6 +339,8 @@ class ResourceManager:
             self._op_usages[op] = ExecutionResources.zero()
             self.op_resource_allocator._op_budgets[op] = ExecutionResources.zero()
             self.op_resource_allocator._output_budgets[op] = 0
+
+
 class OpResourceAllocator(ABC):
     """An interface for dynamic operator resource allocation.
 
