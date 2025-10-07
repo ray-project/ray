@@ -44,6 +44,7 @@ def run_test():
     if failed_workloads:
         for workload, e in failed_workloads:
             logger.error(f"Workload {workload} failed with {e}")
+        raise RuntimeError(f"{len(failed_workloads)} workloads failed.")
     else:
         logger.info("All workloads passed!")
 
