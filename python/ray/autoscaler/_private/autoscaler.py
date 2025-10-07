@@ -430,10 +430,12 @@ class StandardAutoscaler:
         self.prom_metrics.running_workers.set(num_workers)
 
         # Remove IPs from LoadMetrics that are not known to the NodeProvider.
-        active_node_ips: List = []
+        active_node_ips: List[str] = []
         for active_node_id in self.non_terminated_nodes.all_node_ids:
             try:
                 active_node_ips.append(self.provider.internal_ip(active_node_id))
+            # Catch generic Exception because different node providers
+            # can raise different types of exceptions
             except Exception:
                 logger.exception(
                     "Failed to get ip of node with id"
@@ -538,6 +540,8 @@ class StandardAutoscaler:
             node_ip: Optional[str] = None
             try:
                 node_ip = self.provider.internal_ip(node_id)
+            # Catch generic Exception because different node providers
+            # can raise different types of exceptions
             except Exception:
                 logger.exception(
                     "Failed to get ip of node with id"
@@ -601,6 +605,8 @@ class StandardAutoscaler:
         node_ip: Optional[str] = None
         try:
             node_ip = self.provider.internal_ip(node_id)
+        # Catch generic Exception because different node providers
+        # can raise different types of exceptions
         except Exception:
             logger.exception(
                 "Failed to get ip of node with id"
@@ -670,6 +676,8 @@ class StandardAutoscaler:
             try:
                 ip = self.provider.internal_ip(provider_node_id)
                 node_ips.add(ip)
+            # Catch generic Exception because different node providers
+            # can raise different types of exceptions
             except Exception:
                 logger.exception(
                     "Failed to get ip of node with id"
@@ -789,6 +797,8 @@ class StandardAutoscaler:
                     node_ip: Optional[str] = None
                     try:
                         node_ip = self.provider.internal_ip(node_id)
+                    # Catch generic Exception because different node providers
+                    # can raise different types of exceptions
                     except Exception:
                         logger.exception(
                             f"Failed to get ip of node with id {node_id} when marking node as active"
@@ -897,6 +907,8 @@ class StandardAutoscaler:
             assert self.provider
             try:
                 node_ip = self.provider.internal_ip(node_id)
+            # Catch generic Exception because different node providers
+            # can raise different types of exceptions
             except Exception:
                 logger.exception(f"Failed to get ip of node with id {node_id}")
                 return least_recently_used
@@ -1219,6 +1231,8 @@ class StandardAutoscaler:
 
         try:
             key = self.provider.internal_ip(node_id)
+        # Catch generic Exception because different node providers
+        # can raise different types of exceptions
         except Exception:
             logger.exception(
                 "Failed to get ip of node with id"
@@ -1227,7 +1241,7 @@ class StandardAutoscaler:
             # Can't figure out if we've received a heartbeat from this node
             # because the IP address is not available.
             # Return True to be safe, so that the node does not get inadvertently
-            # terminated due to intermitten provider.internal_ip() failures.
+            # terminated due to intermittent provider.internal_ip() failures.
             # TODO: Return False if the provider.internal_ip() fails for too long.
             return True
 
@@ -1258,6 +1272,8 @@ class StandardAutoscaler:
             ip: Optional[str] = None
             try:
                 ip = self.provider.internal_ip(node_id)
+            # Catch generic Exception because different node providers
+            # can raise different types of exceptions
             except Exception:
                 logger.exception(
                     f"Failed to get ip of node with id"
