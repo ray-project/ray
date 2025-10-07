@@ -6,7 +6,8 @@
 
 <!-- Briefly describe what this PR accomplishes and why it's needed -->
 
-**Breaking changes:** - [ ] This PR introduces breaking changes ⚠️
+**Breaking changes:**
+- [ ] This PR introduces breaking changes ⚠️
 <!-- If yes, describe what breaks and how users should migrate -->
 
 ## Related issues
@@ -31,7 +32,6 @@
 **Code Quality:**
 - [ ] Signed off every commit (`git commit -s`)
 - [ ] Ran pre-commit hooks ([setup guide](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#lint-and-formatting))
-- [ ] All tests pass locally
 
 **Documentation:**
 - [ ] Updated documentation (if applicable) ([contribution guide](https://docs.ray.io/en/latest/ray-contribute/docs.html))
