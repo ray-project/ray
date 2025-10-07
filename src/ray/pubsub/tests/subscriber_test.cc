@@ -34,7 +34,7 @@ namespace ray {
 class MockWorkerClient : public pubsub::SubscriberClientInterface {
  public:
   void PubsubLongPolling(
-      rpc::PubsubLongPollingRequest &&request,
+      const rpc::PubsubLongPollingRequest &request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) override {
     max_processed_sequence_id_ = request.max_processed_sequence_id();
     publisher_id_ = request.publisher_id();
@@ -42,7 +42,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   }
 
   void PubsubCommandBatch(
-      rpc::PubsubCommandBatchRequest &&request,
+      const rpc::PubsubCommandBatchRequest &request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) override {
     requests_.push(request);
     command_batch_callbacks.push_back(callback);
