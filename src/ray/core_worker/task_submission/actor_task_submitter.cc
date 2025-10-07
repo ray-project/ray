@@ -662,13 +662,13 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
-  if (status.ok() && !is_retryable_exception) {
+  if ((status.ok() && reply.was_cancelled_before_running()) ||
+      status.IsSchedulingCancelled()) {
+    HandleTaskCancelledBeforeExecution(status, reply, task_spec);
+  } else if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_manager_.CompletePendingTask(task_id, reply, addr, reply.is_application_error());
-  } else if ((status.ok() && reply.was_cancelled_before_running()) ||
-             status.IsSchedulingCancelled()) {
-    HandleTaskCancelledBeforeExecution(status, reply, task_spec);
   } else {
     bool is_actor_dead = false;
     bool fail_immediately = false;

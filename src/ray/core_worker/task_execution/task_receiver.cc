@@ -167,14 +167,20 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     if (canceled_task_spec.IsActorTask()) {
       // If task cancelation is due to worker shutdown, propagate that information
       // to the submitter.
+      bool is_worker_exiting = false;
       {
         absl::MutexLock lock(&stop_mu_);
+        is_worker_exiting = stopping_;
         if (stopping_) {
           reply->set_worker_exiting(true);
           reply->set_was_cancelled_before_running(true);
         }
       }
-      canceled_send_reply_callback(Status::OK(), nullptr, nullptr);
+      if (is_worker_exiting) {
+        canceled_send_reply_callback(Status::OK(), nullptr, nullptr);
+      } else {
+        canceled_send_reply_callback(status, nullptr, nullptr);
+      }
     } else {
       reply->set_was_cancelled_before_running(true);
       canceled_send_reply_callback(status, nullptr, nullptr);
