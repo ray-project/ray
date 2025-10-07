@@ -18,7 +18,9 @@ def check_cluster(target_num_nodes: int, target_resources: Dict[str, float]):
     gcs_address = ray.get_runtime_context().gcs_address
     cluster_status = get_cluster_status(gcs_address)
 
-    assert (cluster_status.active_nodes + cluster_status.idle_nodes) == target_num_nodes
+    assert (
+        len(cluster_status.active_nodes) + len(cluster_status.idle_nodes)
+    ) == target_num_nodes
 
     for k, v in target_resources.items():
         assert cluster_status.total_resources().get(k, 0) == v
