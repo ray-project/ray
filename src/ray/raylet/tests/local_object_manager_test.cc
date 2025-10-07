@@ -87,7 +87,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   }
 
   MOCK_METHOD3(Unsubscribe,
-               bool(rpc::ChannelType channel_type,
+               void(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::optional<std::string> &key_id_binary));
 
