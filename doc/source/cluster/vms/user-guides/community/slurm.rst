@@ -140,6 +140,7 @@ One common use of a SLURM cluster is to have multiple users running concurrent
 jobs on the same infrastructure. This can easily conflict with Ray due to the
 way the head node communicates with its workers.
 
+
 Considering 2 users, if they both schedule a SLURM job using Ray
 at the same time, they are both creating a head node. In the backend, Ray will
 assign some internal ports to a few services. The issue is that as soon as the
@@ -158,46 +159,46 @@ adjusted. For an explanation on ports, see :ref:`here <ray-ports>`::
     --ray-client-server-port
     --redis-shard-ports
 
-For instance, again with 2 users, they would have to adapt the instructions
-seen above to:
+For instance, again with 2 users, they would run the following commands. Note that we don't use symmetric-run here
+because it does not currently work in multi-tenant environments:
 
 .. code-block:: bash
 
   # user 1
-  # same as above
   ...
-  srun --nodes=1 --ntasks=1 -w "$head_node" \
-      ray symmetric-run --address "$ip_head" \
-          --node-manager-port=6700 \
-          --object-manager-port=6701 \
-          --ray-client-server-port=10001 \
-          --redis-shard-ports=6702 \
-          --min-worker-port=10002 \
-          --max-worker-port=19999 \
-          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" \
-          -- \
-          python -u your_script.py
+  ray start --head --node-ip-address="$head_node_ip" \
+      --port=6379 \
+      --node-manager-port=6700 \
+      --object-manager-port=6701 \
+      --ray-client-server-port=10001 \
+      --redis-shard-ports=6702 \
+      --min-worker-port=10002 \
+      --max-worker-port=19999 \
+      --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" --block &
+
+  python -u your_script.py
 
   # user 2
   # same as above
   ...
-  srun --nodes=1 --ntasks=1 -w "$head_node" \
-      ray symmetric-run --address "$ip_head" \
-          --node-manager-port=6800 \
-          --object-manager-port=6801 \
-          --ray-client-server-port=20001 \
-          --redis-shard-ports=6802 \
-          --min-worker-port=20002 \
-          --max-worker-port=29999 \
-          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" \
-          -- \
-          python -u your_script.py
+  ray start --head --node-ip-address="$head_node_ip" \
+      --port=6379 \
+      --node-manager-port=6700 \
+      --object-manager-port=6701 \
+      --ray-client-server-port=10001 \
+      --redis-shard-ports=6702 \
+      --min-worker-port=10002 \
+      --max-worker-port=19999 \
+      --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" --block &
+
+  python -u your_script.py
 
 As for the IP binding, on some cluster architecture the network interfaces
 do not allow to use external IPs between nodes. Instead, there are internal
 network interfaces (`eth0`, `eth1`, etc.). Currently, it's difficult to
 set an internal IP
 (see the open `issue <https://github.com/ray-project/ray/issues/22732>`_).
+
 
 Python-interface SLURM scripts
 ------------------------------
