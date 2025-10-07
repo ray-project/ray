@@ -17,16 +17,11 @@
 #include <boost/circular_buffer.hpp>
 
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
-#include "google/protobuf/timestamp.pb.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/rpc/event_aggregator_client.h"
-#include "ray/util/logging.h"
-#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace observability {

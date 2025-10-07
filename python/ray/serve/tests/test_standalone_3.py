@@ -346,9 +346,20 @@ def test_controller_shutdown_gracefully(
     # Setup a cluster with 2 nodes
     cluster = Cluster()
     cluster.add_node()
-    cluster.add_node()
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
+
+    # On Windows, wait for resources to be available before adding second node
+    # to avoid timeout errors when cluster has zero CPU resources
+    if sys.platform == "win32":
+        wait_for_condition(
+            lambda: ray.cluster_resources().get("CPU", 0) > 0,
+            timeout=30,
+            retry_interval_ms=1000,
+        )
+
+    cluster.add_node()
+    cluster.wait_for_nodes()
 
     # Deploy 2 replicas
     @serve.deployment(num_replicas=2)
