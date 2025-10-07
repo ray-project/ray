@@ -565,7 +565,7 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
-  frequency: weekly
+  frequency: "{{frequency}}"
   group: data-batch-inference
 
   matrix:
@@ -573,19 +573,25 @@
       case: []
       cluster_type: []
       args: []
+      frequency: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 40 40
+          frequency: weekly
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 40
+          frequency: weekly
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 40 40 --chaos
+          # This release test is run on a 'manual' frequency because it's expected to
+          # fail.
+          frequency: manual
 
   cluster:
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
