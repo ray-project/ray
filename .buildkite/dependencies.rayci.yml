@@ -38,12 +38,3 @@ steps:
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
     job_env: manylinux
     depends_on: manylinux
-
-  - label: ":tapioca: build: raydepsets: compile release test dependencies"
-    key: raydepsets_compile_base_extra_testdeps_dependencies
-    tags: always
-    instance_type: medium
-    commands:
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/release_base_test.depsets.yaml --check
-    job_env: manylinux
-    depends_on: raydepsets_compile_rayimg_dependencies
