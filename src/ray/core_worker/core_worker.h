@@ -41,18 +41,18 @@
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
@@ -516,6 +516,7 @@ class CoreWorker {
   /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
+  /// \param[in] tensor_transport The tensor transport to use for the object.
   /// \return Status.
   Status CreateOwnedAndIncrementLocalRef(
       bool is_experimental_mutable_object,
@@ -525,7 +526,8 @@ class CoreWorker {
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-      bool inline_small_object = true);
+      bool inline_small_object = true,
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -1262,11 +1264,6 @@ class CoreWorker {
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
 
-  // Free GPU objects from the in-actor GPU object store.
-  void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                             rpc::FreeActorObjectReply *reply,
-                             rpc::SendReplyCallback send_reply_callback);
-
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using async mode.
@@ -1340,9 +1337,7 @@ class CoreWorker {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
-  void TaskManagerRetryTask(TaskSpecification &spec,
-                            bool object_recovery,
-                            uint32_t delay_ms);
+  void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
 
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
@@ -1946,5 +1941,8 @@ class CoreWorker {
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
+
+  /// Callback to free an RDT object when it is out of scope.
+  std::function<void(const ObjectID &)> free_actor_object_callback_;
 };
 }  // namespace ray::core

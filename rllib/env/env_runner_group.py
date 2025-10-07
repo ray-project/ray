@@ -1,4 +1,3 @@
-import functools
 import gymnasium as gym
 import logging
 import importlib.util
@@ -37,8 +36,7 @@ from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.deprecation import (
-    Deprecated,
+from ray._common.deprecation import (
     deprecation_warning,
     DEPRECATED_VALUE,
 )
@@ -361,9 +359,9 @@ class EnvRunnerGroup:
         """Returns the number of all healthy workers, including the local worker."""
         return self.num_healthy_env_runners()
 
-    def num_in_flight_async_reqs(self) -> int:
+    def num_in_flight_async_reqs(self, tag: Optional[str] = None) -> int:
         """Returns the number of in-flight async requests."""
-        return self._worker_manager.num_outstanding_async_reqs()
+        return self._worker_manager.num_outstanding_async_reqs(tag=tag)
 
     def num_remote_worker_restarts(self) -> int:
         """Total number of times managed remote workers have been restarted."""
@@ -566,6 +564,39 @@ class EnvRunnerGroup:
                 local_env_runner=False,
                 timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
+
+    def foreach_env_runner_async_fetch_ready(
+        self,
+        func: Union[
+            Callable[[EnvRunner], T], List[Callable[[EnvRunner], T]], str, List[str]
+        ],
+        kwargs: Optional[Dict[str, Any]] = None,
+        tag: Optional[str] = None,
+        timeout_seconds: Optional[float] = 0.0,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        healthy_only: bool = True,
+        remote_worker_ids: List[int] = None,
+        return_actor_ids: bool = False,
+    ) -> List[Union[Tuple[int, T], T]]:
+        """Calls the given function asynchronously and returns previous results if any.
+
+        This is a convenience function that calls the underlying actor manager's
+        `foreach_actor_async_fetch_ready()` method.
+
+        """
+        return self._worker_manager.foreach_actor_async_fetch_ready(
+            func=func,
+            tag=tag,
+            kwargs=kwargs,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_worker_ids,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
+            return_actor_ids=return_actor_ids,
+        )
 
     def sync_weights(
         self,
@@ -859,84 +890,14 @@ class EnvRunnerGroup:
 
         return local_result + remote_results
 
-    # TODO (sven): Deprecate this API. Users can lookup the "worker index" from the
-    #  EnvRunner object directly through `self.worker_index` (besides many other useful
-    #  properties, like `in_evaluation`, `num_env_runners`, etc..).
-    def foreach_env_runner_with_id(
-        self,
-        func: Union[
-            Callable[[int, EnvRunner], T],
-            List[Callable[[int, EnvRunner], T]],
-            str,
-            List[str],
-        ],
-        *,
-        local_env_runner: bool = True,
-        healthy_only: bool = True,
-        remote_worker_ids: List[int] = None,
-        timeout_seconds: Optional[float] = None,
-        return_obj_refs: bool = False,
-        mark_healthy: bool = False,
-    ) -> List[T]:
-        """Calls the given function with each EnvRunner and its ID as its arguments.
-
-        Args:
-            func: The function to call for each EnvRunners. The call arguments are
-                the EnvRunner's index (int) and the respective EnvRunner instance
-                itself.
-            local_env_runner: Whether to apply `func` to the local EnvRunner, too.
-                Default is True.
-            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
-            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
-            timeout_seconds: Time to wait for results. Default is None.
-            return_obj_refs: Whether to return ObjectRef instead of actual results.
-                Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this EnvRunnerGroup.
-            mark_healthy: Whether to mark all those EnvRunners healthy again that are
-                currently marked unhealthy AND that returned results from the remote
-                call (within the given `timeout_seconds`).
-                Note that workers are NOT set unhealthy, if they simply time out
-                (only if they return a RayActorError).
-                Also note that this setting is ignored if `healthy_only=True` (b/c
-                `mark_healthy` only affects EnvRunners that are currently tagged as
-                unhealthy).
-
-        Returns:
-             The list of return values of all calls to `func([worker, id])`.
-        """
-        local_result = []
-        if local_env_runner and self.local_env_runner is not None:
-            local_result = [func(0, self.local_env_runner)]
-
-        if not remote_worker_ids:
-            remote_worker_ids = self._worker_manager.actor_ids()
-
-        funcs = [functools.partial(func, i) for i in remote_worker_ids]
-
-        remote_results = self._worker_manager.foreach_actor(
-            funcs,
-            healthy_only=healthy_only,
-            remote_actor_ids=remote_worker_ids,
-            timeout_seconds=timeout_seconds,
-            return_obj_refs=return_obj_refs,
-            mark_healthy=mark_healthy,
-        )
-
-        FaultTolerantActorManager.handle_remote_call_result_errors(
-            remote_results,
-            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
-        )
-
-        remote_results = [r.get() for r in remote_results.ignore_errors()]
-
-        return local_result + remote_results
-
     def foreach_env_runner_async(
         self,
         func: Union[
             Callable[[EnvRunner], T], List[Callable[[EnvRunner], T]], str, List[str]
         ],
+        tag: Optional[str] = None,
         *,
+        kwargs=None,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
     ) -> int:
@@ -948,6 +909,9 @@ class EnvRunnerGroup:
         Args:
             func: The function to call for each EnvRunners. The only call argument is
                 the respective EnvRunner instance.
+            tag: A tag to identify the results from this async call when fetching with
+                `fetch_ready_async_reqs()`.
+            kwargs: An optional kwargs dict to be passed to the remote function calls.
             healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
             remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
 
@@ -956,10 +920,13 @@ class EnvRunnerGroup:
              length of `remote_worker_ids` (or self.num_remote_workers()` if
              `remote_worker_ids` is None) minus the number of requests that were NOT
              made b/c a remote EnvRunner already had its
-             `max_remote_requests_in_flight_per_actor` counter reached.
+             `max_remote_requests_in_flight_per_actor` counter reached for this tag.
         """
+
         return self._worker_manager.foreach_actor_async(
             func,
+            tag=tag,
+            kwargs=kwargs,
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
         )
@@ -967,13 +934,17 @@ class EnvRunnerGroup:
     def fetch_ready_async_reqs(
         self,
         *,
+        tags: Optional[Union[str, List[str], Tuple[str]]] = None,
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
     ) -> List[Tuple[int, T]]:
-        """Get esults from outstanding asynchronous requests that are ready.
+        """Get results from outstanding asynchronous requests that are ready.
 
         Args:
+            tags: Tags to identify the results from a specific async call.
+                If None (default), returns results from all ready async requests.
+                If a single string, returns results from all ready async requests with that tag.
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
             return_obj_refs: Whether to return ObjectRef instead of actual results.
@@ -990,7 +961,9 @@ class EnvRunnerGroup:
             A list of results successfully returned from outstanding remote calls,
             paired with the indices of the callee workers.
         """
+        # Get remote results
         remote_results = self._worker_manager.fetch_ready_async_reqs(
+            tags=tags,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
             mark_healthy=mark_healthy,
@@ -1323,44 +1296,3 @@ class EnvRunnerGroup:
                     f"input {class_path}"
                 )
         return False
-
-    @Deprecated(new="EnvRunnerGroup.probe_unhealthy_env_runners", error=False)
-    def probe_unhealthy_workers(self, *args, **kwargs):
-        return self.probe_unhealthy_env_runners(*args, **kwargs)
-
-    @Deprecated(new="EnvRunnerGroup.foreach_env_runner", error=False)
-    def foreach_worker(self, *args, **kwargs):
-        return self.foreach_env_runner(*args, **kwargs)
-
-    @Deprecated(new="EnvRunnerGroup.foreach_env_runner_with_id", error=False)
-    def foreach_worker_with_id(self, *args, **kwargs):
-        return self.foreach_env_runner_with_id(*args, **kwargs)
-
-    @Deprecated(new="EnvRunnerGroup.foreach_env_runner_async", error=False)
-    def foreach_worker_async(self, *args, **kwargs):
-        return self.foreach_env_runner_async(*args, **kwargs)
-
-    @Deprecated(new="EnvRunnerGroup.local_env_runner", error=True)
-    def local_worker(self) -> EnvRunner:
-        pass
-
-    @property
-    @Deprecated(
-        old="_remote_workers",
-        new="Use either the `foreach_env_runner()`, `foreach_env_runner_with_id()`, or "
-        "`foreach_env_runner_async()` APIs of `EnvRunnerGroup`, which all handle fault "
-        "tolerance.",
-        error=True,
-    )
-    def _remote_workers(self):
-        pass
-
-    @Deprecated(
-        old="remote_workers()",
-        new="Use either the `foreach_env_runner()`, `foreach_env_runner_with_id()`, or "
-        "`foreach_env_runner_async()` APIs of `EnvRunnerGroup`, which all handle fault "
-        "tolerance.",
-        error=True,
-    )
-    def remote_workers(self):
-        pass

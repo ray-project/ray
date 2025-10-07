@@ -22,16 +22,18 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/fake_actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 
 namespace ray {
 namespace core {
@@ -91,7 +93,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
                       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
@@ -221,7 +223,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_generator_failed_and_resubmitted = 0;
 };
 
-class MockRayletClient : public FakeRayletClient {
+class MockRayletClient : public rpc::FakeRayletClient {
  public:
   void ReturnWorkerLease(int worker_port,
                          const LeaseID &lease_id,
@@ -404,45 +406,6 @@ class MockRayletClient : public FakeRayletClient {
       get_task_failure_cause_callbacks = {};
 };
 
-class MockActorCreator : public ActorCreatorInterface {
- public:
-  MockActorCreator() {}
-
-  Status RegisterActor(const TaskSpecification &task_spec) const override {
-    return Status::OK();
-  };
-
-  void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          gcs::StatusCallback callback) override {}
-
-  void AsyncRestartActorForLineageReconstruction(
-      const ActorID &actor_id,
-      uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override {}
-
-  void AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                  uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  gcs::StatusCallback callback) override {}
-
-  void AsyncCreateActor(
-      const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
-
-  void AsyncWaitForActorRegisterFinish(const ActorID &,
-                                       gcs::StatusCallback callback) override {
-    callbacks.push_back(callback);
-  }
-
-  [[nodiscard]] bool IsActorInRegistering(const ActorID &actor_id) const override {
-    return actor_pending;
-  }
-
-  ~MockActorCreator() {}
-
-  std::list<gcs::StatusCallback> callbacks;
-  bool actor_pending = false;
-};
-
 class MockLeasePolicy : public LeasePolicyInterface {
  public:
   void SetNodeID(NodeID node_id) { fallback_rpc_address_.set_node_id(node_id.Binary()); }
@@ -484,7 +447,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         client_pool(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &) { return worker_client; })),
         task_manager(std::make_unique<MockTaskManager>()),
-        actor_creator(std::make_shared<MockActorCreator>()),
+        actor_creator(std::make_shared<FakeActorCreator>()),
         lease_policy(std::make_unique<MockLeasePolicy>()),
         lease_policy_ptr(lease_policy.get()) {
     address.set_node_id(local_node_id.Binary());
@@ -542,7 +505,7 @@ class NormalTaskSubmitterTest : public testing::Test {
   std::shared_ptr<CoreWorkerMemoryStore> store;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<MockTaskManager> task_manager;
-  std::shared_ptr<MockActorCreator> actor_creator;
+  std::shared_ptr<FakeActorCreator> actor_creator;
   // Note: Use lease_policy_ptr in tests, not lease_policy since it has to be moved into
   // the submitter.
   std::unique_ptr<MockLeasePolicy> lease_policy;
@@ -1475,7 +1438,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_manager = std::make_unique<MockTaskManager>();
-  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto actor_creator = std::make_shared<FakeActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   lease_policy->SetNodeID(local_node_id);
   instrumented_io_context io_context;

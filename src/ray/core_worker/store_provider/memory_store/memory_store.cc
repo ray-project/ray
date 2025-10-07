@@ -21,7 +21,9 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/stats/metric_defs.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 namespace core {
@@ -347,7 +349,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskBlocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerBlocked());
   }
 
   bool done = false;
@@ -378,7 +380,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
 
   {
@@ -595,9 +597,8 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
 
 void CoreWorkerMemoryStore::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  ray::stats::STATS_object_store_memory.Record(
-      num_local_objects_bytes_,
-      {{ray::stats::LocationKey, ray::stats::kObjectLocWorkerHeap}});
+  stats::STATS_object_store_memory.Record(num_local_objects_bytes_,
+                                          {{stats::LocationKey, "WORKER_HEAP"}});
 }
 
 }  // namespace core

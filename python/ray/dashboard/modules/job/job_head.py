@@ -15,15 +15,15 @@ from aiohttp.web import Request, Response, StreamResponse
 
 import ray
 from ray import NodeID
-from ray._common.utils import get_or_create_event_loop, load_class
+from ray._common.network_utils import build_address
 from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
+from ray._common.utils import get_or_create_event_loop, load_class
 from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
-from ray._common.network_utils import build_address
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,

@@ -1,4 +1,5 @@
 """Prepare Image Stage"""
+
 import asyncio
 import base64
 import importlib
@@ -311,23 +312,49 @@ class PrepareImageUDF(StatefulStageUDF):
         self.image_processor = ImageProcessor()
 
     def extract_image_info(self, messages: List[Dict]) -> List[_ImageType]:
-        """Extract vision information such as image and video from chat messages.
+        """Extract image information from chat messages.
 
         Args:
             messages: List of chat messages.
 
         Returns:
             List of _ImageType.
+
+        Note:
+            The optional 'detail' parameter from the OpenAI schema is not
+            passed forward to downstream templates.
         """
 
         image_info: List[_ImageType] = []
         for message in messages:
-            if not isinstance(message["content"], list):
+            content = message["content"]
+
+            # Convert PyArrow objects to Python objects if needed (like ChatTemplateStage).
+            # This handles the case where unform content types are serialized with PyArrow
+            # instead of pickle- happens when all messages have the same content structure
+            # (e.g., no system prompt + string content mixed with user messages with list content).
+            if hasattr(content, "tolist"):
+                content = content.tolist()
+
+            if not isinstance(content, list):
                 continue
-            for content in message["content"]:
-                if content["type"] not in ("image", "image_url"):
+            for content_item in content:
+                if content_item["type"] not in ("image", "image_url"):
                     continue
-                image = content[content["type"]]
+
+                image_data = content_item[content_item["type"]]
+
+                if content_item["type"] == "image_url" and isinstance(image_data, dict):
+                    # OpenAI nested format: {"image_url": {"url": "..."}}
+                    image = image_data.get("url")
+                    if not isinstance(image, str) or not image:
+                        raise ValueError(
+                            "image_url must be an object with a non-empty 'url' string"
+                        )
+                else:
+                    # Simple format: {"image": "..."} or {"image_url": "..."}
+                    image = image_data
+
                 if not isinstance(image, str) and not isinstance(
                     image, self.Image.Image
                 ):

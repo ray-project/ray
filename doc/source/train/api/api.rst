@@ -72,7 +72,7 @@ Hugging Face Transformers
 More Frameworks
 ---------------
 
-Tensorflow/Keras
+TensorFlow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
@@ -135,6 +135,7 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
+    ~train.CheckpointUploadMode
     ~train.v2.api.context.TrainContext
 
 **Functions**

@@ -1,18 +1,17 @@
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
 import threading
 from collections import defaultdict, deque
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
+from ray.experimental.collective import get_tensor_transport_manager
+from ray.experimental.collective.util import device_match_transport
 from ray.util.collective.types import (
     Backend,
     CommunicatorMetadata,
     TensorTransportMetadata,
 )
-
-from ray.experimental.collective import get_tensor_transport_manager
-from ray.experimental.collective.util import device_match_transport
 
 try:
     import torch
@@ -92,7 +91,7 @@ def __ray_recv__(
     tensors = []
     for meta in tensor_meta:
         shape, dtype = meta
-        tensor = torch.zeros(shape, dtype=dtype, device=device)
+        tensor = torch.empty(shape, dtype=dtype, device=device)
         tensors.append(tensor)
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
@@ -103,6 +102,21 @@ def __ray_recv__(
     )
 
     gpu_object_store.add_object(obj_id, tensors)
+
+
+def __ray_free__(self, obj_id: str):
+    """
+    Called on the primary copy holder. Note that the primary copy holder should always only have one ref
+    in the gpu object store.
+    """
+    try:
+        from ray._private.worker import global_worker
+
+        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+        gpu_object_store.pop_object(obj_id)
+    except AssertionError:
+        # This could fail if this is a retry and it's already been freed.
+        pass
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -254,7 +268,7 @@ class GPUObjectStore:
                 timeout=timeout,
             ):
                 raise TimeoutError(
-                    f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
+                    f"ObjectRef({obj_id}) not found in RDT object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
@@ -284,7 +298,7 @@ class GPUObjectStore:
                 lambda: tensor not in self._tensor_to_object_ids, timeout=timeout
             ):
                 raise TimeoutError(
-                    f"Tensor {tensor} not freed from GPU object store after {timeout}s. The tensor will not be freed until all ObjectRefs containing the tensor have gone out of scope."
+                    f"Tensor {tensor} not freed from RDT object store after {timeout}s. The tensor will not be freed until all ObjectRefs containing the tensor have gone out of scope."
                 )
 
     def get_num_objects(self) -> int:

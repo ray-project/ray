@@ -28,6 +28,9 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.checkpoint.report_handler import (
     ReportCallbackHandler,
 )
+from ray.train.v2._internal.execution.checkpoint.validation_manager import (
+    ValidationManager,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
@@ -131,17 +134,21 @@ class TrainController:
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
+        self._validation_manager = ValidationManager(
+            checkpoint_manager=self._checkpoint_manager,
+        )
         report_handler = ReportCallbackHandler(
             report_callbacks=(
-                [self._checkpoint_manager]
+                [self._checkpoint_manager, self._validation_manager]
                 + [c for c in self._callbacks if isinstance(c, ReportCallback)]
             )
         )
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_callbacks = [self._scaling_policy] + [
-            c for c in self._callbacks if isinstance(c, ControllerCallback)
-        ]
+        self._controller_callbacks = [
+            self._scaling_policy,
+            self._validation_manager,
+        ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
@@ -557,8 +564,8 @@ class TrainController:
         return None
 
     async def get_all_reported_checkpoints(
-        self, expected_num_report_calls: int
+        self, current_report_index: int
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            expected_num_report_calls
+            current_report_index
         )

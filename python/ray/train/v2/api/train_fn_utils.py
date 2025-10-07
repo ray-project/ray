@@ -1,8 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
+from ray.train.v2.api.report_config import CheckpointUploadMode
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -16,6 +17,11 @@ def report(
     metrics: Dict[str, Any],
     checkpoint: Optional["Checkpoint"] = None,
     checkpoint_dir_name: Optional[str] = None,
+    checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+    delete_local_checkpoint_after_upload: Optional[bool] = None,
+    checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
+    validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+    validate_config: Optional[Dict] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -88,10 +94,36 @@ def report(
             If provided, it must be unique across all checkpoints per worker to avoid
             naming collisions. Consider including identifiers such as the epoch or batch
             index in the name.
+        checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+            Defaults to uploading the checkpoint synchronously.
+            This works when no checkpoint is provided but is not useful in that case.
+        delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+        checkpoint_upload_fn: A user defined function that will be called with the
+            checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
+            utility for copying to the destination `storage_path`.
+        validate_fn: If provided, Ray Train will validate the checkpoint using
+            this function.
+        validate_config: Configuration passed to the validate_fn. Can contain info
+            like the validation dataset.
     """
+    if delete_local_checkpoint_after_upload is None:
+        delete_local_checkpoint_after_upload = (
+            checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
+        )
+
+    # TODO: figure out how to validate validate_fn itself
+    if validate_config and not validate_fn:
+        raise ValueError("validate_fn must be provided together with validate_config")
 
     get_train_fn_utils().report(
-        metrics=metrics, checkpoint=checkpoint, checkpoint_dir_name=checkpoint_dir_name
+        metrics=metrics,
+        checkpoint=checkpoint,
+        checkpoint_dir_name=checkpoint_dir_name,
+        checkpoint_upload_mode=checkpoint_upload_mode,
+        delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
+        checkpoint_upload_fn=checkpoint_upload_fn,
+        validate_fn=validate_fn,
+        validate_config=validate_config or {},
     )
 
 
