@@ -6,10 +6,6 @@
 
 <!-- Briefly describe what this PR accomplishes and why it's needed -->
 
-**Breaking changes:**
-- [ ] This PR introduces breaking changes ⚠️
-<!-- If yes, describe what breaks and how users should migrate -->
-
 ## Related issues
 
 <!-- Link related issues: "Fixes #1234", "Closes #1234", or "Related to #1234" -->
@@ -23,6 +19,11 @@
 - [ ] Documentation update 📖
 
 ## Checklist
+
+**Does this PR introduce breaking changes?**
+- [ ] Yes ⚠️
+- [ ] No
+<!-- If yes, describe what breaks and how users should migrate -->
 
 **Testing:**
 - [ ] Added/updated tests for my changes
