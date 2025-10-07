@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-CONFIG_PATH="${1:-ci/raydepsets/rayllm.depsets.yaml}"
+CONFIG_PATH="${1:-ci/raydepsets/configs/rayllm.depsets.yaml}"
 
 mkdir -p /tmp/ray-deps
 
