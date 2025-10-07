@@ -118,7 +118,6 @@ def get_step(
     env = env or {}
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    azure_auth_cmd = "bash release/azure_login.sh"
     cmd = [
         "./release/run_release_test.sh",
         test["name"],
@@ -138,11 +137,7 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
-    step["commands"] = [
-        azure_auth_cmd,
-        " ".join(cmd),
-    ]
-
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
     env_dict.update(env)
