@@ -599,7 +599,9 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
 @pytest.mark.skipif(
     sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
 )
-def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
+def test_read_warning_large_parallelism(
+    ray_start_regular_shared, propagate_logs, caplog
+):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, override_num_blocks=5000).materialize()
     assert (
