@@ -344,7 +344,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             # queue
             self._add_bundled_input(bundled_input)
 
-    def _get_runtime_ray_remote_args(
+    def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
