@@ -16,6 +16,7 @@ setup(
         # Keep this in sync with requirements_buildkite.in
         "aioboto3",
         "anyscale >= 0.26.1",
+        "azure-storage-file-datalake",
         "aws_requests_auth",
         "bazel-runfiles",
         "boto3",
@@ -23,6 +24,7 @@ setup(
         "freezegun",
         "google-cloud-storage",
         "jinja2",
+        "msal",
         "protobuf >= 3.15.3, != 3.19.5",
         "pytest",
         "pyyaml",
