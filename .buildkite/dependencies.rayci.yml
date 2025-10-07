@@ -44,6 +44,6 @@ steps:
     tags: always
     instance_type: medium
     commands:
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/llmexamples.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/llmexamples.depsets.yaml --check
     job_env: manylinux
     depends_on: raydepsets_compile_rayimg_dependencies

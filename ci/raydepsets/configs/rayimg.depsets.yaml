@@ -18,7 +18,7 @@ depsets:
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
     requirements:
-      - release/ray_release/byod/ray_dev.in
+      - release/ray_release/byod/ray_dev_py${PYTHON_VERSION}.in
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
     operation: compile
     append_flags:
