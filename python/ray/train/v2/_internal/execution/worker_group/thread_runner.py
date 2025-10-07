@@ -78,7 +78,7 @@ class ThreadRunner:
 
     def is_running(self) -> bool:
         """Returns whether the target function is still running."""
-        return self._thread and self._thread.is_alive()
+        return self._thread is not None and self._thread.is_alive()
 
     def get_error(self) -> Optional[BaseException]:
         with self._lock:
