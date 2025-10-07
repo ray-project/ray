@@ -645,3 +645,36 @@
   run:
     timeout: 5400
     script: python tpch_q1.py --sf 100
+
+#################################################
+# Cross-AZ RPC fault tolerance test
+#################################################
+
+- name: "map_batches_cross_az_rpc_with_failure_injection"
+  frequency: nightly
+
+  cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_testing_rpc_failure="*=-1:10:10"
+        - RAY_testing_rpc_failure_avoid_intra_node_failures=1
+    cluster_compute: cross_az_250_350_compute.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python map_benchmark.py --api map_batches --batch-format numpy
+      --compute actors --sf 1000 --repeat-inputs 1 --concurrency 2024 2024
+
+- name: "map_batches_cross_az_rpc_without_failure_injection"
+  frequency: nightly
+
+  cluster:
+    cluster_compute: cross_az_250_350_compute.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python map_benchmark.py --api map_batches --batch-format numpy
+      --compute actors --sf 1000 --repeat-inputs 1 --concurrency 2024 2024
