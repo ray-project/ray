@@ -2383,6 +2383,7 @@ class DeploymentState:
             - current_replicas
             - recovering_replicas
         )
+
         if delta_replicas == 0:
             return (upscale, downscale)
 
@@ -3260,7 +3261,14 @@ class DeploymentStateManager:
             self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
             self._record_deployment_usage()
 
-        return self._deployment_states[deployment_id].deploy(deployment_info)
+        target_state_changed = self._deployment_states[deployment_id].deploy(
+            deployment_info
+        )
+        if target_state_changed and deployment_id in self._scaling_decisions:
+            # if the target state changed as a result of deployment config change,
+            # we can remove the scaling decision for this deployment.
+            del self._scaling_decisions[deployment_id]
+        return target_state_changed
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
@@ -3423,7 +3431,7 @@ class DeploymentStateManager:
 
         return any_recovering
 
-    def update_scaling_decision(
+    def set_decision_num_replicas(
         self, deployment_id: DeploymentID, target_num_replicas: int
     ) -> bool:
         if deployment_id not in self._deployment_states:

@@ -1584,21 +1584,21 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
-def app_level_custom_autoscaling_policy(ctxs: Dict[str, AutoscalingContext]):
-    decisions: Dict[str, int] = {}
-    for deployment_name, ctx in ctxs.items():
-        if deployment_name == "A":
+def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingContext]):
+    decisions: Dict[DeploymentID, int] = {}
+    for deployment_id, ctx in ctxs.items():
+        if deployment_id.name == "A":
             if ctx.total_num_requests > 50:
-                decisions[deployment_name] = 4
+                decisions[deployment_id] = 4
             else:
-                decisions[deployment_name] = 2
-        elif deployment_name == "B":
+                decisions[deployment_id] = 2
+        elif deployment_id.name == "B":
             if ctx.total_num_requests > 60:
-                decisions[deployment_name] = 5
+                decisions[deployment_id] = 5
             else:
-                decisions[deployment_name] = 3
+                decisions[deployment_id] = 3
         else:
-            raise RuntimeWarning(f"Unknown deployment: {deployment_name}")
+            raise RuntimeWarning(f"Unknown deployment: {deployment_id}")
 
     return decisions, {}
 
@@ -1624,25 +1624,29 @@ def test_application_autoscaling_policy(serve_instance_with_two_signal, policy):
         "deployments": [
             {
                 "name": "A",
+                "max_ongoing_requests": 1000,
                 "autoscaling_config": {
                     "min_replicas": 1,
                     "max_replicas": 10,
                     "metrics_interval_s": 0.1,
                     "upscale_delay_s": 0.1,
                     "downscale_delay_s": 0.5,
+                    "look_back_period_s": 1,
                 },
-                "graceful_shutdown_timeout_s": 1,
+                "graceful_shutdown_timeout_s": 0.1,
             },
             {
                 "name": "B",
+                "max_ongoing_requests": 1000,
                 "autoscaling_config": {
                     "min_replicas": 1,
                     "max_replicas": 10,
                     "metrics_interval_s": 0.1,
                     "upscale_delay_s": 0.1,
                     "downscale_delay_s": 0.5,
+                    "look_back_period_s": 1,
                 },
-                "graceful_shutdown_timeout_s": 1,
+                "graceful_shutdown_timeout_s": 0.1,
             },
         ],
     }
@@ -1660,27 +1664,32 @@ def verify_scaling_decisions(signal_A, signal_B):
     hB = serve.get_deployment_handle("B", app_name=SERVE_DEFAULT_APP_NAME)
 
     # ---- Deployment A ----
-    print(time.ctime(), "[A] Sending 40 blocked requests. Should scale to 2")
-    signal_A.send.remote(clear=True)
+    ray.get(signal_A.send.remote(clear=True))
     [hA.remote() for _ in range(40)]
+    wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 40)
     wait_for_condition(check_num_replicas_eq, name="A", target=2)
 
     ray.get(signal_A.send.remote(clear=True))
-    print(time.ctime(), "[A] Sending 70 blocked requests. Should scale to 4.")
-    signal_A.send.remote(clear=True)
+    wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 0)
     [hA.remote() for _ in range(70)]
+    wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 70)
     wait_for_condition(check_num_replicas_eq, name="A", target=4)
+    ray.get(signal_A.send.remote())
+    wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 0)
 
     # ---- Deployment B ----
-    print(time.ctime(), "[B] Sending 50 blocked requests. Should scale to 3.")
-    signal_B.send.remote(clear=True)
+    ray.get(signal_B.send.remote(clear=True))
     [hB.remote() for _ in range(50)]
+    wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 50)
     wait_for_condition(check_num_replicas_eq, name="B", target=3)
 
-    print(time.ctime(), "[B] Sending 120 blocked requests. Should scale to 6.")
-    signal_B.send.remote(clear=True)
+    ray.get(signal_B.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 0)
     [hB.remote() for _ in range(120)]
+    wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 120)
     wait_for_condition(check_num_replicas_eq, name="B", target=5)
+    ray.get(signal_B.send.remote())
+    wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 0)
 
 
 if __name__ == "__main__":

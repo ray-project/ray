@@ -441,25 +441,40 @@ class ApplicationState:
     def should_autoscale(self) -> bool:
         """Determine if autoscaling should be enabled for the application."""
 
-        return (
-            self._target_state.config is not None
-            and self._target_state.config.autoscaling_policy is not None
-            and self._build_app_task_info is not None
-            and self._build_app_task_info.finished
-        )
+        return self._autoscaling_state_manager.should_autoscale_application(
+            self._name
+        )  # and len(self._get_live_deployments()) == len(self.target_deployments)
 
-    def update_deployment_scaling_decision(self) -> bool:
-        deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
+    def autoscale(self) -> bool:
+        """
+        Apply the autoscaling decisions for the application.
+        If the application has app-level autoscaling, it will apply the autoscaling decisions for the application.
+        If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
+        """
+        deployment_to_target_num_replicas: Dict[DeploymentID, int] = {}
+        for deployment_name in self._target_state.deployment_infos.keys():
+            deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
+            deployment_details = self._deployment_state_manager.get_deployment_details(
+                deployment_id
+            )
+            if deployment_details is None:
+                continue
+            deployment_to_target_num_replicas[
+                deployment_id
+            ] = deployment_details.target_num_replicas
+
+        if len(deployment_to_target_num_replicas) == 0:
+            return False
         decisions: Dict[
             DeploymentID, int
-        ] = self._autoscaling_state_manager.get_scaling_decisions_for_application(
-            self._name, deployments
+        ] = self._autoscaling_state_manager.get_decision_num_replicas(
+            self._name, deployment_to_target_num_replicas
         )
 
         target_state_changed = False
         for deployment_id, decision_num_replicas in decisions.items():
             target_state_changed = (
-                self._deployment_state_manager.update_scaling_decision(
+                self._deployment_state_manager.set_decision_num_replicas(
                     deployment_id, decision_num_replicas
                 )
                 or target_state_changed
@@ -636,11 +651,13 @@ class ApplicationState:
             )
 
     def _register_autoscaling_if_needed(self):
-        if self.should_autoscale():
+        if (
+            self._target_state.config is not None
+            and self._target_state.config.autoscaling_policy is not None
+        ):
             self._autoscaling_state_manager.register_application(
                 self._name,
                 self._target_state.config,
-                self._target_state.deployment_infos,
             )
 
     def _get_live_deployments(self) -> List[str]:
@@ -891,7 +908,10 @@ class ApplicationState:
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
-            return self.is_deleted(), target_state_changed
+            is_deleted = self.is_deleted()
+            if is_deleted:
+                self._autoscaling_state_manager.deregister_application(self._name)
+            return is_deleted, target_state_changed
         return False, target_state_changed
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
@@ -1179,9 +1199,7 @@ class ApplicationStateManager:
         any_target_state_changed = False
         for name, app in self._application_states.items():
             if app.should_autoscale():
-                any_target_state_changed = (
-                    app.update_deployment_scaling_decision() or any_target_state_changed
-                )
+                any_target_state_changed = app.autoscale() or any_target_state_changed
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
@@ -1192,9 +1210,6 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
-                self._autoscaling_state_manager.deregister_application(
-                    app_name, self.get_deployments(app_name)
-                )
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 

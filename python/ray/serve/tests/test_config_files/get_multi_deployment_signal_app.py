@@ -9,18 +9,20 @@ from ray.serve.handle import DeploymentHandle
 class A:
     def __init__(self, b: DeploymentHandle):
         self.b = b
+        self.signal = ray.get_actor("signal_A", namespace="default_test_namespace")
 
     async def __call__(self):
-        signal = ray.get_actor("signal_A")
-        await signal.wait.remote()
+        await self.signal.wait.remote()
         return os.getpid()
 
 
 @serve.deployment
 class B:
+    def __init__(self):
+        self.signal = ray.get_actor("signal_B", namespace="default_test_namespace")
+
     async def __call__(self):
-        signal = ray.get_actor("signal_B")
-        await signal.wait.remote()
+        await self.signal.wait.remote()
         return os.getpid()
 
 

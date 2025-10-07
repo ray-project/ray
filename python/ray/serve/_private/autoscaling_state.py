@@ -2,7 +2,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from ray.serve._private.common import (
     ONGOING_REQUESTS_KEY,
@@ -26,8 +26,7 @@ from ray.serve._private.metrics_utils import (
     time_weighted_average,
 )
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
-from ray.serve.config import AutoscalingPolicy
-from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -88,7 +87,10 @@ class DeploymentAutoscalingState:
 
         self._deployment_info = None
         self._config = None
-        self._policy = None
+        self._policy: Optional[
+            Callable[[AutoscalingContext], Tuple[int, Optional[Dict[str, Any]]]]
+        ] = None
+        self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
@@ -138,7 +140,6 @@ class DeploymentAutoscalingState:
         self._is_part_of_autoscaling_application = is_part_of_autoscaling_application
         if not is_part_of_autoscaling_application:
             self._policy = self._config.get_policy()
-            self._policy_state = {}
         else:
             logger.warning(
                 f"Deployment '{self._deployment_id}' is part of an autoscaling application. "
@@ -286,6 +287,10 @@ class DeploymentAutoscalingState:
 
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
 
+        assert (
+            type(decision_num_replicas) is int
+        ), "Autoscaling policy must return an integer"
+
         if _skip_bound_check:
             return decision_num_replicas
 
@@ -302,7 +307,9 @@ class DeploymentAutoscalingState:
             total_num_requests=self.get_total_num_requests(),
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
-            policy_state=self._policy_state.copy(),
+            policy_state=self._policy_state.copy()
+            if self._policy_state is not None
+            else {},
             current_time=time.time(),
             config=self._config,
             queued_requests=None,
@@ -642,7 +649,12 @@ class ApplicationAutoscalingState:
     ):
         self._app_name = app_name
         self._config: Optional[ServeApplicationSchema] = None
-        self._policy: Optional[AutoscalingPolicy] = None
+        self._policy: Optional[
+            Callable[
+                [Dict[str, AutoscalingContext]],
+                Tuple[Dict[DeploymentID, int], Optional[Dict[str, Dict]]],
+            ]
+        ] = None
         self._policy_state: Optional[Dict[str, Dict]] = None
         self._deployment_autoscaling_states: Dict[
             DeploymentID, DeploymentAutoscalingState
@@ -689,9 +701,9 @@ class ApplicationAutoscalingState:
             return
         self._deployment_autoscaling_states.pop(deployment_id)
 
-    def get_scaling_decisions(
+    def get_decision_num_replicas(
         self,
-        deployments: Dict[str, DeploymentDetails],
+        deployment_to_target_num_replicas: Dict[DeploymentID, int],
         _skip_bound_check: bool = False,
     ) -> Dict[DeploymentID, int]:
         """
@@ -699,29 +711,28 @@ class ApplicationAutoscalingState:
         - If app-level policy exists, use it.
         - Otherwise, fall back to per-deployment policies.
         """
-        if self._policy:
+        if self.has_policy():
             # Using app-level policy
             autoscaling_contexts: Dict[str, AutoscalingContext] = {}
-            for name, deployment_detail in deployments.items():
-                deployment_id = DeploymentID(name=name, app_name=self._app_name)
-                deployment_autoscaling_state = self._deployment_autoscaling_states[
-                    deployment_id
-                ]
-
+            for (
+                deployment_id,
+                deployment_autoscaling_state,
+            ) in self._deployment_autoscaling_states.items():
                 autoscaling_contexts[
-                    name
+                    deployment_id
                 ] = deployment_autoscaling_state.get_autoscaling_context(
-                    deployment_detail.target_num_replicas
+                    deployment_to_target_num_replicas[deployment_id]
                 )
 
             # Policy returns {deployment_name -> decision}
             decisions, self._policy_state = self._policy(autoscaling_contexts)
 
+            assert (
+                type(decisions) is dict
+            ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
+
             updated_decisions: Dict[DeploymentID, int] = {}
-            for deployment_name, decision_num_replicas in decisions.items():
-                deployment_id = DeploymentID(
-                    name=deployment_name, app_name=self._app_name
-                )
+            for deployment_id, decision_num_replicas in decisions.items():
                 deployment_autoscaling_state = self._deployment_autoscaling_states[
                     deployment_id
                 ]
@@ -738,14 +749,14 @@ class ApplicationAutoscalingState:
         else:
             # Using per-deployment policies
             updated_decisions: Dict[DeploymentID, int] = {}
-            for name, deployment_detail in deployments.items():
-                deployment_id = DeploymentID(name=name, app_name=self._app_name)
-                deployment_autoscaling_state = self._deployment_autoscaling_states[
-                    deployment_id
-                ]
-
+            for (
+                deployment_id,
+                deployment_autoscaling_state,
+            ) in self._deployment_autoscaling_states.items():
                 decision = deployment_autoscaling_state.get_decision_num_replicas(
-                    curr_target_num_replicas=deployment_detail.target_num_replicas,
+                    curr_target_num_replicas=deployment_to_target_num_replicas[
+                        deployment_id
+                    ],
                     _skip_bound_check=_skip_bound_check,
                 )
                 updated_decisions[deployment_id] = decision
@@ -780,13 +791,6 @@ class ApplicationAutoscalingState:
         return self._deployment_autoscaling_states[deployment_id].is_within_bounds(
             num_replicas_running_at_target_version
         )
-
-    def get_scaling_decision_for_deployment(
-        self, deployment_id: DeploymentID, curr_target_num_replicas: int
-    ) -> int:
-        return self._deployment_autoscaling_states[
-            deployment_id
-        ].get_decision_num_replicas(curr_target_num_replicas)
 
     def record_request_metrics_for_replica(
         self, replica_metric_report: ReplicaMetricReport
@@ -865,10 +869,17 @@ class AutoscalingStateManager:
                 f"Cannot deregister autoscaling state for application {app_name} because it is not registered"
             )
 
-    def get_scaling_decisions_for_application(
-        self, app_name: ApplicationName, deployments: Dict[str, DeploymentDetails]
+    def get_decision_num_replicas(
+        self,
+        app_name: ApplicationName,
+        deployment_to_target_num_replicas: Dict[DeploymentID, int],
     ) -> Dict[DeploymentID, int]:
-        return self._app_autoscaling_states[app_name].get_scaling_decisions(deployments)
+        return self._app_autoscaling_states[app_name].get_decision_num_replicas(
+            deployment_to_target_num_replicas
+        )
+
+    def should_autoscale_application(self, app_name: ApplicationName):
+        return app_name in self._app_autoscaling_states
 
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return (
@@ -878,10 +889,6 @@ class AutoscalingStateManager:
                 deployment_id.app_name
             ]._deployment_autoscaling_states
         )
-
-    def has_application_level_autoscaling(self, deployment_id: DeploymentID):
-        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
-        return app_state is not None and app_state.has_policy()
 
     def update_running_replica_ids(
         self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
@@ -910,14 +917,6 @@ class AutoscalingStateManager:
             for app_state in self._app_autoscaling_states.values()
             for dep_id in app_state.deployments
         }
-
-    def get_scaling_decision_for_deployment(
-        self, deployment_id: DeploymentID, curr_target_num_replicas: int
-    ) -> int:
-        app_state = self._app_autoscaling_states[deployment_id.app_name]
-        return app_state.get_scaling_decision_for_deployment(
-            deployment_id, curr_target_num_replicas
-        )
 
     def get_total_num_requests(self, deployment_id: DeploymentID) -> float:
         app_state = self._app_autoscaling_states[deployment_id.app_name]
