@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+import grpc
 import requests
 import yaml
 
@@ -397,23 +398,50 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
+    result = gcs_client.internal_kv_get(
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    )
+    if result:
+        # Returns [ip, http_port, grpc_port]
+        ip, _, grpc_port = json.loads(result)
+        return f"{ip}:{grpc_port}"
+    return None
+
+
 def wait_for_dashboard_agent_available(cluster):
-    wait_for_dashboard_agent_available_for_address(
-        cluster.address, cluster.head_node.node_id
+    gcs_client = GcsClient(address=cluster.address)
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
+        is not None
     )
 
 
-def wait_for_dashboard_agent_available_for_address(address, node_id):
+def wait_for_dashboard_agent_grpc_channel_available(address, node_id, timeout=30):
     gcs_client = GcsClient(address=address)
+    # First wait for the KV entry to exist
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    grpc_address = get_dashboard_agent_address(gcs_client, node_id)
 
-    def get_dashboard_agent_address():
-        return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    # Create a gRPC channel and wait for it to be ready
+    from ray._private.utils import init_grpc_channel
+
+    channel = init_grpc_channel(grpc_address, options=ray_constants.GLOBAL_GRPC_OPTIONS)
+    try:
+        grpc.channel_ready_future(channel).result(timeout=timeout)
+    except grpc.FutureTimeoutError:
+        raise TimeoutError(
+            f"Timed out waiting for dashboard agent gRPC channel at {grpc_address} "
+            f"to be ready after {timeout} seconds. The dashboard agent may not have "
+            "fully started all modules (e.g., aggregator agent)."
         )
-
-    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
+    finally:
+        if hasattr(channel, "close"):
+            channel.close()
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
