@@ -1019,50 +1019,36 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
       NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
 
-      if (force_kill) {
-        RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
-        if (node_it->second.empty()) {
-          created_actors_.erase(node_it);
-        }
-      } else if (graceful_shutdown_timeout_ms > 0) {
+      RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
+      if (node_it->second.empty()) {
+        created_actors_.erase(node_it);
+      }
+
+      if (!force_kill && graceful_shutdown_timeout_ms > 0) {
         auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
         timer->expires_from_now(
             boost::posix_time::milliseconds(graceful_shutdown_timeout_ms));
         graceful_shutdown_timers_[worker_id] = timer;
 
         timer->async_wait(
-            [this,
-             actor_id,
-             worker_id,
-             node_id,
-             death_cause,
-             timer,
-             graceful_shutdown_timeout_ms](const boost::system::error_code &error) {
+            [this, actor_id, worker_id, death_cause, timer, graceful_shutdown_timeout_ms](
+                const boost::system::error_code &error) {
               if (error == boost::asio::error::operation_aborted) {
+                // Timer cancelled - actor exited gracefully before timeout
+                graceful_shutdown_timers_.erase(worker_id);
                 return;
               }
 
-              // Verify this is still the same actor instance before force-killing.
-              auto node_iter = created_actors_.find(node_id);
-              if (node_iter != created_actors_.end()) {
-                auto worker_iter = node_iter->second.find(worker_id);
-                if (worker_iter != node_iter->second.end() &&
-                    worker_iter->second == actor_id) {
-                  RAY_LOG(WARNING).WithField(actor_id).WithField(worker_id)
-                      << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
-                      << "ms) exceeded. Worker still alive. Falling back to force kill.";
+              // Timeout expired - actor didn't exit within timeout. Force kill.
+              RAY_LOG(WARNING).WithField(actor_id).WithField(worker_id)
+                  << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
+                  << "ms) exceeded. Falling back to force kill.";
 
-                  auto actor_iter = registered_actors_.find(actor_id);
-                  if (actor_iter != registered_actors_.end()) {
-                    NotifyCoreWorkerToKillActor(
-                        actor_iter->second, death_cause, /*force_kill=*/true);
-                  }
-
-                  node_iter->second.erase(worker_id);
-                  if (node_iter->second.empty()) {
-                    created_actors_.erase(node_iter);
-                  }
-                }
+              auto actor_iter = registered_actors_.find(actor_id);
+              if (actor_iter != registered_actors_.end() &&
+                  actor_iter->second->GetWorkerID() == worker_id) {
+                NotifyCoreWorkerToKillActor(
+                    actor_iter->second, death_cause, /*force_kill=*/true);
               }
               graceful_shutdown_timers_.erase(worker_id);
             });
