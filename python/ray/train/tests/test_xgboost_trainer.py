@@ -74,6 +74,7 @@ def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
         label_column="target",
         params=params,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+        num_boost_round=1,
     )
     trainer.fit()
 
