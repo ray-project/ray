@@ -258,6 +258,21 @@ class InMemoryMetricsStore:
             return None
         return self.data[key][-1].value
 
+    def aggregate_sum(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Sum the entire set of timeseries values across the specified keys.
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the sum across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the sum.
+            Returns (None, 0) if no valid keys have data.
+        """
+        return self._aggregate_reduce(keys, sum)
+
     def aggregate_avg(
         self,
         keys: Iterable[Hashable],
