@@ -12,7 +12,6 @@ worker_node_types:
     instance_type: g5.4xlarge
     min_workers: 8
     max_workers: 8  
-    
 
 auto_select_worker_config: false
 flags:
