@@ -256,7 +256,7 @@ class StreamingExecutor(Executor, threading.Thread):
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
-                include_parent=False
+                include_parent=False 
             )
             # Reset the scheduling loop duration gauge.
             self._sched_loop_duration_s.set(0, tags={"dataset": self._dataset_id})
