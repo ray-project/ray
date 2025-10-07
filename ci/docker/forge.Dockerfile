@@ -32,8 +32,11 @@ echo \
 # Add NodeJS APT repository
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
-# Install Azure CLI
-curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+# Install Azure CLI 2.77.0
+AZ_DIST=$(lsb_release -cs)
+AZ_VER=2.77.0
+apt-get install azure-cli=${AZ_VER}-1~${AZ_DIST}
+
 # Install packages
 
 apt-get update

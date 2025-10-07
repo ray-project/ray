@@ -23,6 +23,7 @@ echo "RAYCI_BUILD_ID: ${RAYCI_BUILD_ID}"
 
 aws ecr get-login-password --region us-west-2 | \
     docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
+
 bash release/gcloud_docker_login.sh release/aws2gce_iam.json
 export PATH="${PWD}/google-cloud-sdk/bin:$PATH"
 

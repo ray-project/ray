@@ -1,6 +1,7 @@
 from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.container import (
+    _AZURE_REGISTRY_NAME,
     _DOCKER_AZURE_REGISTRY,
     _DOCKER_ECR_REPO,
     _DOCKER_GCP_REGISTRY,
@@ -34,7 +35,7 @@ class AnyscaleDockerContainer(DockerContainer):
             # azure login
             "./release/azure_docker_login.sh",
             # azure cr login
-            "az acr login --name rayreleasetest",
+            f"az acr login --name {_AZURE_REGISTRY_NAME}",
             "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
         ]
         # TODO(can): remove the alias when release test infra uses only the canonical
