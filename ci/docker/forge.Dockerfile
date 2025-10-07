@@ -32,9 +32,29 @@ echo \
 # Add NodeJS APT repository
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
+
 # Install Azure CLI 2.77.0
-AZ_VER=2.77.0
-apt-get install azure-cli=${AZ_VER}-1~jammy
+apt-get update
+apt-get install apt-transport-https ca-certificates curl gnupg lsb-release -y
+AZ_VER=2.72.0
+AZ_DIST=$(lsb_release -cs)
+
+# Download and install Microsoft signing key
+mkdir -p /etc/apt/keyrings
+curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+  gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
+chmod go+r /etc/apt/keyrings/microsoft.gpg
+
+# Add Azure CLI repository
+echo "Types: deb
+URIs: https://packages.microsoft.com/repos/azure-cli/
+Suites: ${AZ_DIST}
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
+
+apt-get update
+apt-get install azure-cli=${AZ_VER}-1~${AZ_DIST} -y
 
 # Install packages
 
