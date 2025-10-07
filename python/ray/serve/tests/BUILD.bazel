@@ -60,6 +60,7 @@ py_test_module_list(
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
         "test_controller.py",
+        "test_deployment_scheduler.py",
         "test_deployment_version.py",
         "test_enable_task_events.py",
         "test_expected_versions.py",
@@ -115,24 +116,6 @@ py_test_module_list(
         "test_streaming_response.py",
         "test_task_processor.py",
         "test_telemetry.py",
-    ],
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Deployment scheduler test that runs faster
-py_test_module_list(
-    size = "small",
-    timeout = "short",
-    files = [
-        "test_deployment_scheduler.py",
     ],
     tags = [
         "exclusive",
@@ -276,7 +259,6 @@ py_test_module_list(
 # API tests that run faster
 py_test_module_list(
     size = "small",
-    timeout = "short",
     files = [
         "test_api_2.py",
     ],
