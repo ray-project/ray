@@ -377,7 +377,7 @@ response = client.chat.completions.create(
 openai_harmony.HarmonyError: error downloading or loading vocab file: failed to download or load vocab
 ```
 
-The `openai_harmony` library needs the *tiktoken* encoding files and tries to fetch them from OpenAI's public host. Common causes includes:
+The `openai_harmony` library needs the *tiktoken* encoding files and tries to fetch them from OpenAI's public host. Common causes include:
 - Corporate firewall or proxy blocks `openaipublic.blob.core.windows.net`. You may need to whitelist this domain.
 - Intermittent network issues.
 - Race conditions when multiple processes try to download to the same cache. This can happen when [deploying multiple models at the same time](https://github.com/openai/harmony/pull/41).
