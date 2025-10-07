@@ -33,7 +33,6 @@
 #include "ray/gcs/gcs_actor_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/event.h"
@@ -176,9 +175,7 @@ class GcsActorManagerTest : public ::testing::Test {
         [](const ActorID &actor_id) {},
         *worker_client_pool_,
         /*ray_event_recorder=*/fake_ray_event_recorder_,
-        /*session_name=*/"",
-        actor_by_state_gauge_,
-        gcs_actor_by_state_gauge_);
+        /*session_name=*/"");
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -277,8 +274,6 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
-  ray::observability::FakeGauge actor_by_state_gauge_;
-  ray::observability::FakeGauge gcs_actor_by_state_gauge_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

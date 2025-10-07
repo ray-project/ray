@@ -42,7 +42,17 @@ def convert_notebook(
             else:
                 # Detect any IPython '!' shell commands in code lines
                 has_bang = any(line.lstrip().startswith("!") for line in lines)
-                if has_bang:
+                # Start with "serve run" "serve shutdown" "curl" or "anyscale service" commands
+                to_ignore_cmd = (
+                    "serve run",
+                    "serve shutdown",
+                    "curl",
+                    "anyscale service",
+                )
+                has_ignored_start = any(
+                    line.lstrip().startswith(to_ignore_cmd) for line in lines
+                )
+                if has_bang or has_ignored_start:
                     if ignore_cmds:
                         continue
                     out.write("import subprocess\n")
