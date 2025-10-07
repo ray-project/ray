@@ -830,7 +830,7 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr="sum(ray_data_iter_blocks_unknown_location{{{global_filters}}}) by (dataset)",
+            expr="sum(ray_data_iter_unknown_location{{{global_filters}}}) by (dataset)",
             legend="Blocks: {{dataset}}",
         )
     ],
