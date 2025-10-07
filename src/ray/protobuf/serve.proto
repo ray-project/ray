@@ -171,6 +171,9 @@ message DeploymentConfig {
 
   // The deployment's routing configuration.
   RequestRouterConfig request_router_config = 19;
+
+  // The maximum number of retries in case the deployment constructor results in failure
+  int32 max_constructor_retry_count = 20;
 }
 
 // Deployment language.
