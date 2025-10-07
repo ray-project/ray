@@ -164,7 +164,7 @@ void CoreWorkerClientPool::RemoveIdleClients() {
   }
 }
 
-void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
+void CoreWorkerClientPool::Disconnect(const WorkerID &id) {
   absl::MutexLock lock(&mu_);
   auto it = worker_client_map_.find(id);
   if (it == worker_client_map_.end()) {
@@ -175,7 +175,7 @@ void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
   worker_client_map_.erase(it);
 }
 
-void CoreWorkerClientPool::Disconnect(ray::NodeID node_id) {
+void CoreWorkerClientPool::Disconnect(const NodeID &node_id) {
   absl::MutexLock lock(&mu_);
   auto node_client_map_it = node_clients_map_.find(node_id);
   if (node_client_map_it == node_clients_map_.end()) {
