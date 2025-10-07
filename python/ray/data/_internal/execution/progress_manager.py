@@ -142,6 +142,18 @@ class SubProgressBar(AbstractProgressBar):
         progress: Optional[Any] = None,
         tid: Optional[Any] = None,
     ):
+        """
+        Initialize sub-progress bar
+
+        Args:
+            name: name of sub-progress bar
+            total: total number of output rows. None for unknown.
+            enabled: whether progress bar is enabled.
+            progress: rich.Progress instance for the corresponding
+                sub-progress bar.
+            tid: rich.TaskId for the corresponding sub-progress bar task.
+        """
+        # progress, tid type Optional[Any] due to conditional rich import.
         assert enabled and progress is not None and tid is not None
         self._total = total
         self._completed = 0
