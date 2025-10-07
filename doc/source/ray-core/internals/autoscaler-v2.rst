@@ -9,7 +9,7 @@ This document explains how the open-source autoscaler v2 works in Ray 2.48 and o
 Overview
 --------
 
-The autoscaler is responsible for resizing the cluster based on resource demand, including tasks, actors, and placement groups.
+The autoscaler is responsible for resizing the cluster based on resource demand including tasks, actors, and placement groups.
 To achieve this, it follows a structured process: evaluating worker group configurations, periodically reconciling cluster state with user constraints, applying bin-packing strategies to pending workload demands, and interacting with cloud providers through the Instance Manager.
 The following sections describe these components in detail.
 
