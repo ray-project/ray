@@ -31,8 +31,7 @@ namespace rpc {
 
 RayletClient::RayletClient(const rpc::Address &address,
                            rpc::ClientCallManager &client_call_manager,
-                           std::function<void()> raylet_unavailable_timeout_callback,
-                           bool server_call_unavailable_timeout_immediately)
+                           std::function<void()> raylet_unavailable_timeout_callback)
     : grpc_client_(std::make_shared<rpc::GrpcClient<rpc::NodeManagerService>>(
           address.ip_address(), address.port(), client_call_manager)),
       retryable_grpc_client_(rpc::RetryableGrpcClient::Create(
@@ -44,8 +43,6 @@ RayletClient::RayletClient(const rpc::Address &address,
               .grpc_client_check_connection_status_interval_milliseconds(),
           /*server_unavailable_timeout_seconds=*/
           ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s(),
-          /*server_call_unavailable_timeout_immediately=*/
-          server_call_unavailable_timeout_immediately,
           /*server_unavailable_timeout_callback=*/
           std::move(raylet_unavailable_timeout_callback),
           /*server_name=*/std::string("Raylet ") + address.ip_address())) {}

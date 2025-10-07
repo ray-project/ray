@@ -719,8 +719,7 @@ int main(int argc, char *argv[]) {
               addr,
               *client_call_manager,
               ray::rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
-                  gcs_client.get(), raylet_client_pool.get(), addr),
-              /*server_call_unavailable_timeout_immediately=*/true);
+                  gcs_client.get(), raylet_client_pool.get(), addr));
         });
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(

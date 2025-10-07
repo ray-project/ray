@@ -86,8 +86,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
               if (!alive_node.has_value()) {
                 this->raylet_client_pool_.Disconnect(node_id);
               }
-            },
-            /*server_call_unavailable_timeout_immediately=*/true);
+            });
       }),
       worker_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(

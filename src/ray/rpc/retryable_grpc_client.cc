@@ -158,9 +158,6 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
                            : now + absl::Milliseconds(request->GetTimeoutMs());
   pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
-    if (server_call_unavailable_timeout_immediately_) {
-      RAY_LOG(ERROR) << "test";
-    }
     // First request to retry.
     server_unavailable_timeout_time_ =
         now + absl::Seconds(server_unavailable_timeout_seconds_);
