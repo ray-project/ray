@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Union
 
+import pyarrow
+
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -100,6 +102,59 @@ class Expr(ABC):
     def structurally_equals(self, other: Any) -> bool:
         """Compare two expression ASTs for structural equality."""
         raise NotImplementedError
+
+    def to_pyarrow(self) -> "pyarrow.compute.Expression":
+        """Convert this Ray Data expression to a PyArrow compute expression.
+
+        Returns:
+            A PyArrow compute expression equivalent to this Ray Data expression.
+
+        Raises:
+            ValueError: If the expression contains operations not supported by PyArrow.
+            TypeError: If the expression type cannot be converted to PyArrow.
+        """
+        import pyarrow.compute as pc
+
+        if isinstance(self, ColumnExpr):
+            return pc.field(self.name)
+        elif isinstance(self, LiteralExpr):
+            return pc.scalar(self.value)
+        elif isinstance(self, BinaryExpr):
+            left = self.left.to_pyarrow()
+            right = self.right.to_pyarrow()
+
+            # Reuse the Arrow operations map from the evaluator
+            # For AST conversion, we can use most operations directly
+            from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
+
+            if self.op in _ARROW_EXPR_OPS_MAP:
+                return _ARROW_EXPR_OPS_MAP[self.op](left, right)
+            else:
+                raise ValueError(f"Unsupported binary operation for PyArrow: {self.op}")
+
+        elif isinstance(self, UnaryExpr):
+            operand = self.operand.to_pyarrow()
+
+            from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
+
+            if self.op in _ARROW_EXPR_OPS_MAP:
+                return _ARROW_EXPR_OPS_MAP[self.op](operand)
+            else:
+                raise ValueError(f"Unsupported unary operation for PyArrow: {self.op}")
+
+        elif isinstance(self, AliasExpr):
+            # For alias expressions, convert the inner expression
+            return self.expr.to_pyarrow()
+
+        elif isinstance(self, UDFExpr):
+            raise TypeError(
+                "UDF expressions cannot be converted to PyArrow expressions"
+            )
+
+        else:
+            raise TypeError(
+                f"Unsupported expression type for PyArrow conversion: {type(self)}"
+            )
 
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
