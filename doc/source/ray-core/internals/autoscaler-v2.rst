@@ -1,15 +1,15 @@
 .. _autoscaler-v2:
 
-Autoscaler V2
+autoscaler v2
 =============
 
-This document explains how the OSS autoscaler V2 works in Ray 2.48, outlining its high-level responsibilities and implementation details.
+This document explains how the open-source autoscaler v2 works in Ray 2.48 and outlines its high-level responsibilities and implementation details.
 
 
 Overview
 --------
 
-The autoscaler is responsible for resizing the cluster based on resource demand including tasks, actors, and placement groups.
+The autoscaler is responsible for resizing the cluster based on resource demand, including tasks, actors, and placement groups.
 To achieve this, it follows a structured process: evaluating worker group configurations, periodically reconciling cluster state with user constraints, applying bin-packing strategies to pending workload demands, and interacting with cloud providers through the Instance Manager.
 The following sections describe these components in detail.
 
@@ -21,14 +21,15 @@ Each worker group represents a logical category of nodes with the same resource 
 
 The autoscaler dynamically adjusts the cluster size by adding or removing nodes within each group as workload demands change. In other words, it scales the cluster by modifying the number of nodes per worker group according to the specified scaling rules and resource requirements.
 
-Worker groups be configured in these ways:
+Worker groups can be configured in these ways:
 
-- The `available_nodes_types <https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#node-types>`__ field in the Cluster YAML file, if you are using the `ray up` cluster launcher.
+- The `available_node_types <https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#node-types>`__ field in the Cluster YAML file, if you are using the ``ray up`` cluster launcher.
 - The `workerGroupSpecs <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#pod-configuration-headgroupspec-and-workergroupspecs>`__ field in the RayCluster CRD, if you are using KubeRay.
 
 The configuration specifies the logical resources each node has in a worker group, along with the minimum and maximum number of nodes that should exist in each group.
 
 .. note::
+
    Although the autoscaler fulfills pending resource demands and releases idle nodes, it doesn't perform the actual scheduling of Ray tasks, actors, or placement groups. Scheduling is handled internally by Ray.
    The autoscaler does its own simulation of scheduling decisions on pending demands periodically to determine which nodes to launch or to stop. See the next sections for details.
 
@@ -36,33 +37,39 @@ The configuration specifies the logical resources each node has in a worker grou
 Periodic Reconciliation
 -----------------------
 
-The entrypoint of the autoscaler is `monitor.py <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L332>`__, which starts a GCS client and does the reconciliation loop.
+The entry point of the autoscaler is `monitor.py <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L332>`__, which starts a GCS client and runs the reconciliation loop.
 
-This process is launched on the head node by the `start_head_processes <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439>`__ function when using the ray up cluster launcher.
-When running under KubeRay, it instead runs as a separate autoscaler container in the Head Pod and Kubernetes will restart the container if it crashes.
+This process is launched on the head node by the `start_head_processes <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439>`__ function when using the ``ray up`` cluster launcher.
+When running under KubeRay, it instead runs as a separate autoscaler container in the Head Pod.
 
-The process periodically `reconciles <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L200-L213>`__ on a snapshot of the following information with the Reconciler:
+.. note::
 
-1. **The Latest Pending Demands** (queried from the `get_cluster_resource_state` GCS RPC): Pending Ray tasks, actors, and placement groups.
-2. **The Latest User Cluster Constraints** (queried from the `get_cluster_resource_state` GCS RPC): The minimum cluster size, if specified by the user `ray.autoscaler.sdk.request_resources` invocation.
-3. **The Latest Total and Available Node Resources** (queried from the `get_cluster_resource_state` GCS RPC): The total and currently available resources of each alive Ray node.
-4. **The Latest Cloud Instances** (queried from the cloud provider's implementation): The list of instances managed by the Cloud Provider implementation.
-5. **The Latest Worker Group Configurations.** (queried from the cluster YAML file or the RayCluster CRD).
+   In the case of cluster launcher, if the autoscaler process crashes, then there is no autoscaling.
+   While in the case of KubeRay, Kubernetes restarts the autoscaler container if it crashes.
 
-The above information is retrieved at the beginning of each reconciliation loop.
+
+The process periodically `reconciles <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L200-L213>`__ against a snapshot of the following information using the Reconciler:
+
+1. **The latest pending demands** (queried from the `get_cluster_resource_state` GCS RPC): Pending Ray tasks, actors, and placement groups.
+2. **The latest user cluster constraints** (queried from the `get_cluster_resource_state` GCS RPC): The minimum cluster size, if specified via the ``ray.autoscaler.sdk.request_resources`` invocation.
+3. **The latest total and available node resources** (queried from the `get_cluster_resource_state` GCS RPC): The total and currently available resources of each alive Ray node.
+4. **The latest cloud instances** (queried from the cloud provider's implementation): The list of instances managed by the cloud provider implementation.
+5. **The latest worker group configurations** (queried from the cluster YAML file or the RayCluster CRD).
+
+The preceding information is retrieved at the beginning of each reconciliation loop.
 The Reconciler uses this information to construct its internal state. This is the `sync phase <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L112-L120>`__.
 
 After the sync phase, the Reconciler performs the `following steps <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L840>`__ with the ``ResourceDemandScheduler``:
 
 1. Enforce configuration constraints, including min/max nodes for each worker group.
 2. Enforce user cluster constraints (if specified by `ray.autoscaler.sdk.request_resources` invocation).
-3. Bin-pack pending demands into available resources on the cluster snapshot. This is the simulation mentioned earlier.
-4. Bin-pack the remaining demands, which are left from the previous step, against worker group configurations to know what nodes to launch.
-5. Terminate idle instances according to the `idle_duration_ms` on each node queried from GCS and the configured idle timeout for each group.
+3. Fit pending demands into available resources on the cluster snapshot. This is the simulation mentioned earlier.
+4. Fit any remaining demands (left over from the previous step) against worker group configurations to determine which nodes to launch.
+5. Terminate idle instances according to each node's ``idle_duration_ms`` (queried from GCS) and the configured idle timeout for each group.
 6. Send accumulated scaling decisions (steps 1–5) to the Instance Manager with `Reconciler._update_instance_manager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L1157-L1193>`__.
-7. `Sleep briefly (5s by default) <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L178>`__, then go back to the sync phase.
+7. `Sleep briefly (5s by default) <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L178>`__, then return to the sync phase.
 
-If any error occurs, such as an error from the cloud provider or a timeout in the sync phase, the current reconciliation is break and jumps to step 7 to wait for the next reconciliation.
+If any error occurs, such as an error from the cloud provider or a timeout in the sync phase, the current reconciliation is aborted and the loop jumps to step 7 to wait for the next reconciliation.
 
 .. note::
 
@@ -73,7 +80,7 @@ If any error occurs, such as an error from the cloud provider or a timeout in th
 Bin Packing and Worker Group Selection
 --------------------------------------
 
-The autoscaler applies the following scoring logic to evaluate each node and selects the one with the highest score for a subset of the demands that are feasible on the selected node.
+The autoscaler applies the following scoring logic to evaluate each node. It selects the node with the highest score and assigns it a subset of feasible demands.
 It also applies the same scoring logic to each worker group and selects the one with the highest score to launch new instances.
 
 `Scoring <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L430>`__ is based on a tuple of four values:
@@ -83,8 +90,13 @@ It also applies the same scoring logic to each worker group and selects the one 
    - ``0`` if the node is a GPU node and requests do **not** require GPUs.
    - ``1`` if the node isn't a GPU node, or if requests do require GPUs.
 2. The number of resource types on the node used by feasible requests.
-3. The minimum utilization rate across all resource types used by feasible requests.
-4. The average utilization rate across all resource types used by feasible requests.
+3. The minimum `utilization rate <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L481-L489>`__ across all resource types used by feasible requests.
+4. The average `utilization rate <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L481-L489>`__ across all resource types used by feasible requests.
+
+.. note::
+
+   Utilization rate used by feasible requests is calculated as the difference between the total and available resources divided by the total resources.
+
 
 In other words:
 
@@ -99,9 +111,9 @@ Example:
   - A: [GPU: 6]
   - B: [GPU: 2, TPU: 1]
 
-Node type **A** should be selected, since node B would leave an unused TPU (it has the utilization rate of 0% on TPU and makes it less favorable in terms of the third scoring criterion).
+Node type **A** should be selected, since node B would leave an unused TPU (with a utilization rate of 0% on TPU), making it less favorable with respect to the third scoring criterion.
 
-This process repeats until all feasible pending demands can be pack or the maximum cluster size is reached.
+This process repeats until all feasible pending demands are packed or the maximum cluster size is reached.
 
 
 Instance Manager and Cloud Provider
@@ -124,16 +136,16 @@ These update events are passed to the Instance Manager, which transitions instan
 
 A normal transition flow for an instance is:
 
-- ``(non-existent) -> QUEUED``: The Reconciler creates an instance with the ``QUEUED`` InstanceUpdateEvent when it decides to launch a new instance.
-- ``QUEUED -> REQUESTED``: The Reconciler considers `max_concurrent_launches` and `upscaling_speed` when selecting an instance from the queue to transition ``REQUESTED`` during each reconciliation iteration.
+- ``(non-existent) -> QUEUED``: The Reconciler creates an instance with the ``QUEUED`` ``InstanceUpdateEvent`` when it decides to launch a new instance.
+- ``QUEUED -> REQUESTED``: The Reconciler considers ``max_concurrent_launches`` and ``upscaling_speed`` when selecting an instance from the queue to transition to ``REQUESTED`` during each reconciliation iteration.
 - ``REQUESTED -> ALLOCATED``: Once the Reconciler detects the instance is allocated from the cloud provider, it will transition the instance to ``ALLOCATED``.
-- ``ALLOCATED -> RAY_INSTALLING`` If the cloud provider is not KubeRayProvider, the Reconciler will transition the instance to ``RAY_INSTALLING`` when the instance is allocated.
-- ``RAY_INSTALLING -> RAY_RUNNING`` Once the Reconciler detects Ray is started on the instance from the GCS, it will transition the instance to ``RAY_RUNNING``.
-- ``RAY_RUNNING -> RAY_STOP_REQUESTED`` If the instance is idle more than the configured timeout, the Reconciler will transition the instance to ``RAY_STOP_REQUESTED`` to start draining the Ray process.
-- ``RAY_STOP_REQUESTED -> RAY_STOPPING`` Once the Reconciler detects the Ray process is draining from the GCS, it will transition the instance to ``RAY_STOPPING``.
-- ``RAY_STOPPING -> RAY_STOPPED`` Once the Reconciler detects the Ray process is stopped from the GCS, it will transition the instance to ``RAY_STOPPED``.
-- ``RAY_STOPPED -> TERMINATING`` Reconciler will transition the instance from ``RAY_STOPPED`` to ``TERMINATING``.
-- ``TERMINATING -> TERMINATED`` Once the Reconciler detects the instance is stopped from the cloud provider, it will transition the instance to ``TERMINATED``.
+- ``ALLOCATED -> RAY_INSTALLING``: If the cloud provider is not ``KubeRayProvider``, the Reconciler will transition the instance to ``RAY_INSTALLING`` when the instance is allocated.
+- ``RAY_INSTALLING -> RAY_RUNNING``: Once the Reconciler detects from GCS that Ray has started on the instance, it will transition the instance to ``RAY_RUNNING``.
+- ``RAY_RUNNING -> RAY_STOP_REQUESTED``: If the instance is idle for longer than the configured timeout, the Reconciler will transition the instance to ``RAY_STOP_REQUESTED`` to start draining the Ray process.
+- ``RAY_STOP_REQUESTED -> RAY_STOPPING``: Once the Reconciler detects from GCS that the Ray process is draining, it will transition the instance to ``RAY_STOPPING``.
+- ``RAY_STOPPING -> RAY_STOPPED``: Once the Reconciler detects from GCS that the Ray process has stopped, it will transition the instance to ``RAY_STOPPED``.
+- ``RAY_STOPPED -> TERMINATING``: The Reconciler will transition the instance from ``RAY_STOPPED`` to ``TERMINATING``.
+- ``TERMINATING -> TERMINATED``: Once the Reconciler detects that the instance has been terminated by the cloud provider, it will transition the instance to ``TERMINATED``.
 
 You can find all valid transitions in the `get_valid_transitions <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/common.py#L193>`__ method.
 
@@ -148,17 +160,17 @@ Once transitions are triggered by the Reconciler, subscribers perform side effec
 .. note::
 
    Status transitions trigger side effects, but side effects don't trigger new transitions directly.
-   Instead, their results are observed from the external states at the beginning, the sync phase, and their new transitions are triggered from the observations.
+   Instead, their results are observed from external state during the sync phase; subsequent transitions are triggered based on those observations.
 
 
 .. note::
 
-   An implementation of the cloud provider interface in autoscaler v2 should provide methods for:
+   Cloud provider implementations in autoscaler v2 must implement:
 
    - **Listing instances**: Return the set of instances currently managed by the provider.
    - **Launching instances**: Create new instances given the requested instance type and tags.
    - **Terminating instances**: Safely remove instances identified by their IDs.
 
-   KubeRayProvider is one of the cloud provider implementations.
+   ``KubeRayProvider`` is one such cloud provider implementation.
 
-   NodeProviderAdapter is an adapter that can wrap a v1 node provider, such as AWSNodeProvider, to be a cloud provider.
+   ``NodeProviderAdapter`` is an adapter that can wrap a v1 node provider (such as ``AWSNodeProvider``) to act as a cloud provider.
