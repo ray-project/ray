@@ -1080,13 +1080,14 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   rpc::WaitForActorRefDeletedReply reply2;
 
   // Since the actor is in the registering state, we store the callbacks and trigger them
-  // when the the actor is done registering. However, each callback then sets the
-  // send_reply_callback in the reference counter which is overwritten each time.
+  // when the the actor is done registering.
   core_worker_->HandleWaitForActorRefDeleted(
       request,
       &reply1,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(false);
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
       });
 
   core_worker_->HandleWaitForActorRefDeleted(
@@ -1108,8 +1109,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
     // Triggers the send_reply_callback which is stored in the reference counter
     reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
     ASSERT_EQ(deleted.size(), 1u);
-    // Only last callback fires due to the first being overwritten
-    ASSERT_EQ(callback_count, 1);
+    ASSERT_EQ(callback_count, 2);
   } else {
     ASSERT_EQ(callback_count, 0);
   }
