@@ -548,6 +548,51 @@ class TestTaskConsumerWithRayServe:
 
         wait_for_condition(check_data_processed_properly, timeout=300)
 
+    def test_task_consumer_with_one_queue_and_multiple_different_tasks(
+        self, temp_queue_directory, serve_instance, create_processor_config
+    ):
+        """Test that task consumers can handle multiple different tasks in the same queue."""
+        processor_config = create_processor_config()
+
+        @serve.deployment
+        @task_consumer(task_processor_config=processor_config)
+        class MyTaskConsumer:
+            def __init__(self):
+                self.message_received = []
+
+            @task_handler(name="process_data")
+            def process_data(self, data):
+                self.message_received.append(data)
+
+            @task_handler(name="process_data2")
+            def process_data2(self, data):
+                self.message_received.append(data)
+
+            def get_message_received(self):
+                return self.message_received
+
+        handle = serve.run(MyTaskConsumer.bind())
+
+        send_request_to_queue.remote(
+            processor_config, "test_data_1", task_name="process_data"
+        )
+        send_request_to_queue.remote(
+            processor_config, "test_data_2", task_name="process_data2"
+        )
+        send_request_to_queue.remote(
+            processor_config, "test_data_3", task_name="process_data"
+        )
+
+        wait_for_condition(
+            lambda: "test_data_1" in handle.get_message_received.remote().result()
+        )
+        wait_for_condition(
+            lambda: "test_data_2" in handle.get_message_received.remote().result()
+        )
+        wait_for_condition(
+            lambda: "test_data_3" in handle.get_message_received.remote().result()
+        )
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithDLQsConfiguration:
