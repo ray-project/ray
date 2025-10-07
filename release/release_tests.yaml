@@ -4239,14 +4239,14 @@
 
 - name: ray_train_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.12"
+  python: "3.11"
   group: ray-examples
   team: train
   working_dir: //doc/source/ray-overview/examples/ray_train_workloads  # use // from repo root
 
   cluster:
     byod:
-      type: cu128  # anyscale/ray:<PR_RAY_VERSION>-py312-cu128
+      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py312-cu128
       post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
