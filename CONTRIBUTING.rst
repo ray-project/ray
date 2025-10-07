@@ -51,5 +51,4 @@ For contributors who are not in the ray-project organization:
 .. _`Getting Involved`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html
 .. _`Setting up your development environment`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#setting-up-your-development-environment
 .. _`Code Style`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#code-style
-.. _`Pre-commit hooks`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#lint-and-formatting
 .. _`Testing guide`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#testing
