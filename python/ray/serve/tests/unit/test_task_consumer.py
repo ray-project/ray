@@ -134,7 +134,7 @@ class TestTaskConsumerDecorator:
 
     def _verify_and_cleanup(self, instance, expected_calls=None):
         """Verify consumer and cleanup instance."""
-        instance.initialize_callable()
+        instance.initialize_callable(5)
         adapter = instance._adapter
         assert adapter._start_consumer_received
 
