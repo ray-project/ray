@@ -8,7 +8,14 @@ from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
 )
+from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+    build_llm_deployment,
+)
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.deployments.routers.router import (
+    OpenAiIngress,
+    make_fastapi_ingress,
+)
 from ray.runtime_context import get_runtime_context
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
@@ -68,15 +75,42 @@ class DPServer(LLMServer):
         await super().__init__(llm_config)
 
     @classmethod
-    def as_deployment(cls, deployment_options: dict) -> serve.Deployment:
-        return serve.deployment(cls).options(**deployment_options)
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        deployment_options = super().get_deployment_options(llm_config)
+
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+        if not (isinstance(dp_size, int) and dp_size > 0):
+            raise ValueError(
+                f"Invalid data_parallel_size: {dp_size}, expecting " "positive integer."
+            )
+        if dp_size != 1:
+            if "num_replicas" in deployment_options:
+                raise ValueError(
+                    "num_replicas should not be specified for DP deployment, "
+                    f"use engine_kwargs.data_parallel_size={dp_size} instead."
+                )
+            if "autoscaling_config" in deployment_options:
+                raise ValueError(
+                    "autoscaling_config is not supported for DP deployment, "
+                    "remove autoscaling_config instead. The `num_replicas` "
+                    "will be set to `data_parallel_size`."
+                )
+            deployment_options["num_replicas"] = dp_size
+            if deployment_options["placement_group_strategy"] != "STRICT_PACK":
+                logger.warning(
+                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
+                    "is not supported. Using STRICT_PACK instead."
+                )
+                deployment_options["placement_group_strategy"] = "STRICT_PACK"
+
+        return deployment_options
 
 
 def build_dp_deployment(
     llm_config: LLMConfig,
     *,
     name_prefix: Optional[str] = None,
-    options_override: Optional[dict] = None,
+    override_serve_options: Optional[dict] = None,
 ) -> Application:
     """Build a data parallel LLM deployment."""
     dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
@@ -93,10 +127,24 @@ def build_dp_deployment(
     dp_rank_assigner = DPRankAssigner.bind(
         dp_size=dp_size, dp_size_per_node=dp_size_per_node
     )
-    deployment_options = llm_config.get_serve_options(name_prefix=name_prefix)
-    if options_override:
-        deployment_options.update(options_override)
 
-    return DPServer.as_deployment(deployment_options).bind(
-        llm_config=llm_config, dp_rank_assigner=dp_rank_assigner
+    return build_llm_deployment(
+        llm_config,
+        name_prefix=name_prefix,
+        bind_kwargs=dict(dp_rank_assigner=dp_rank_assigner),
+        override_serve_options=override_serve_options,
+        deployment_cls=DPServer,
     )
+
+
+def build_openai_dp_app(llm_config: LLMConfig) -> Application:
+
+    dp_deployment = build_dp_deployment(llm_config)
+    ingress_options = OpenAiIngress.get_deployment_options([llm_config])
+
+    ingress_cls = make_fastapi_ingress(OpenAiIngress)
+    ingress_app = serve.deployment(ingress_cls, **ingress_options).bind(
+        llm_deployments=[dp_deployment]
+    )
+
+    return ingress_app

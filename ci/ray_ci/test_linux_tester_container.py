@@ -180,7 +180,7 @@ def test_ray_installation() -> None:
             "--build-arg",
             "BUILDKITE_CACHE_READONLY=",
             "-f",
-            "/ray/ci/ray_ci/tests.env.Dockerfile",
+            "ci/ray_ci/tests.env.Dockerfile",
             "/ray",
         ]
 

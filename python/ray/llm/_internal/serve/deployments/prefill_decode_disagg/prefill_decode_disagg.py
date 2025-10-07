@@ -17,15 +17,18 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingResponse,
     ErrorResponse,
 )
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.deployments.routers.builder_ingress import (
     parse_args as parse_llm_configs,
+)
+from ray.llm._internal.serve.deployments.routers.router import (
+    OpenAiIngress,
+    make_fastapi_ingress,
 )
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import (
     LLMConfig,
-    LLMRouter,
-    LLMServer,
     build_llm_deployment,
 )
 
@@ -84,7 +87,7 @@ class PDProxyServer(LLMServer):
 
         # We pass `llm_config` here to let super() extract the model_id,
         # such that /v1/models endpoint can work correctly.
-        # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router
+        # TODO(lk-chen): refactor OpenAiIngress <-> LLMServer such that router
         # query model_id through API, instead of passing it in as an argument.
         # We can obtain llm_config from prefill_server for obtaining model_id
         # assuming there is no mismatch between prefill and decode server.
@@ -168,11 +171,6 @@ class PDProxyServer(LLMServer):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return self._handle_request(request)
 
-    @classmethod
-    def as_deployment(cls) -> serve.Deployment:
-        """Turns PDProxyServer into a Ray Serve deployment."""
-        return serve.deployment()(cls)
-
 
 def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing prefill/decode disaggregation."""
@@ -200,7 +198,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     )
 
     proxy_server_deployment = (
-        PDProxyServer.as_deployment()
+        serve.deployment(PDProxyServer)
         .options(**pd_config.proxy_deployment_config)
         .bind(
             prefill_server=prefill_deployment,
@@ -208,4 +206,10 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
     )
 
-    return LLMRouter.as_deployment().bind(llm_deployments=[proxy_server_deployment])
+    ingress_options = OpenAiIngress.get_deployment_options(
+        [pd_config.prefill_config, pd_config.decode_config]
+    )
+    ingress_cls = make_fastapi_ingress(OpenAiIngress)
+    return serve.deployment(ingress_cls, **ingress_options).bind(
+        llm_deployments=[proxy_server_deployment]
+    )

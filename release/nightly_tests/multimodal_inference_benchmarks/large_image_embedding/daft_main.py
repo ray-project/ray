@@ -30,7 +30,6 @@ PROCESSOR = ViTImageProcessor(
 
 
 daft.context.set_runner_ray()
-ray.init()
 
 
 @ray.remote

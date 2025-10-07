@@ -5,10 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray.data.llm import SGLangEngineProcessorConfig
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.sglang_engine_proc import (
-    SGLangEngineProcessorConfig,
-)
 
 
 def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):

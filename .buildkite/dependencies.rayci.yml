@@ -24,7 +24,7 @@ steps:
     tags: always
     instance_type: small
     commands:
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayllm.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayllm.depsets.yaml --check
       - chown -R 2000:100 /artifact-mount
       - cp ./python/deplocks/llm/* /artifact-mount/
     job_env: manylinux
@@ -35,6 +35,6 @@ steps:
     tags: always
     instance_type: medium
     commands:
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
     job_env: manylinux
     depends_on: manylinux

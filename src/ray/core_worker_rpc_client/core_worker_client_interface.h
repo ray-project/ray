@@ -120,9 +120,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const AssignObjectOwnerRequest &request,
       const ClientCallback<AssignObjectOwnerReply> &callback) = 0;
 
-  virtual void FreeActorObject(FreeActorObjectRequest &&request,
-                               const ClientCallback<FreeActorObjectReply> &callback) = 0;
-
   virtual std::string DebugString() const = 0;
 };
 

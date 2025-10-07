@@ -83,6 +83,7 @@ const Wrapper =
                 ? "DISABLED"
                 : "http://localhost:3000",
               grafanaOrgId: "1",
+              grafanaClusterFilter: undefined,
               dashboardUids: {
                 default: "rayDefaultDashboard",
                 serve: "rayServeDashboard",
