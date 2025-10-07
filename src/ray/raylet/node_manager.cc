@@ -2204,9 +2204,10 @@ void NodeManager::HandleNotifyWorkerUnblocked(
   // if we don't need to unblock the worker below.
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
-  if (!worker->GetGrantedLeaseId().IsNil() && worker->IsBlocked()) {
-    local_lease_manager_.ReturnCpuResourcesToUnblockedWorker(worker);
-    cluster_lease_manager_.ScheduleAndGrantLeases();
+  if (!worker->GetGrantedLeaseId().IsNil()) {
+    if (local_lease_manager_.ReturnCpuResourcesToUnblockedWorker(worker)) {
+      cluster_lease_manager_.ScheduleAndGrantLeases();
+    }
   }
 }
 
