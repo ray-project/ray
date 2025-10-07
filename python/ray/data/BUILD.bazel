@@ -54,6 +54,19 @@ py_test_module_list(
     ],
 )
 
+py_test_module_list(
+    size = "small",
+    files = glob(["tests/anyscale/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_formats",
     size = "medium",
@@ -650,6 +663,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_json.py"],
     tags = [
+        "data_non_parallel",
         "exclusive",
         "team:data",
     ],
@@ -942,9 +956,51 @@ py_test(
 )
 
 py_test(
-    name = "test_execution_optimizer",
+    name = "test_execution_optimizer_basic",
     size = "medium",
-    srcs = ["tests/test_execution_optimizer.py"],
+    srcs = ["tests/test_execution_optimizer_basic.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_execution_optimizer_advanced",
+    size = "medium",
+    srcs = ["tests/test_execution_optimizer_advanced.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_execution_optimizer_integrations",
+    size = "medium",
+    srcs = ["tests/test_execution_optimizer_integrations.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_execution_optimizer_limit_pushdown",
+    size = "medium",
+    srcs = ["tests/test_execution_optimizer_limit_pushdown.py"],
     tags = [
         "exclusive",
         "team:data",
