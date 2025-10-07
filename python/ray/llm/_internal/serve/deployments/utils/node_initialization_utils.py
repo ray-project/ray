@@ -12,6 +12,7 @@ from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.utils import CallbackCtx
 from ray.util.placement_group import PlacementGroup
 
 torch = try_import("torch")
@@ -72,7 +73,6 @@ async def initialize_worker_nodes(
 class InitializeNodeOutput(NamedTuple):
     placement_group: PlacementGroup
     runtime_env: Dict[str, Any]
-    extra_init_kwargs: Dict[str, Any]
 
 
 async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
@@ -85,31 +85,27 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
     will be run across the placement group bundles.
     """
 
-    # Check if custom initialization is specified
-    if llm_config.initialization_class:
-        if isinstance(llm_config.initialization_class, str):
-            # Import class from string path using try_import utility
-            module_path, class_name = llm_config.initialization_class.rsplit(".", 1)
-            module = try_import(module_path, error=True)
-            initialization_class = getattr(module, class_name)
-        else:
-            # Use the class directly
-            initialization_class = llm_config.initialization_class
-
-        # Create instance with provided kwargs or empty dict
-        init_kwargs = llm_config.initialization_kwargs or {}
-        initialization_instance = initialization_class(**init_kwargs)
-        return await initialization_instance.initialize(llm_config)
-
-    # Default initialization logic
     local_node_download_model = NodeModelDownloadable.TOKENIZER_ONLY
     worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
-    extra_init_kwargs = {}
 
     engine_config = llm_config.get_engine_config()
     assert engine_config is not None
     pg = engine_config.get_or_create_pg()
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    # Get callback instance (if configured)
+    callback = llm_config.get_or_create_callback()
+
+    # Create context object with defaults
+    ctx = CallbackCtx(
+        llm_config=llm_config,
+        local_node_download_model=local_node_download_model,
+        worker_node_download_model=worker_node_download_model,
+        placement_group=pg,
+        runtime_env=runtime_env,
+    )
+
+    await callback.on_before_init(ctx)
 
     if engine_config.placement_strategy == "STRICT_PACK":
         # If the placement strategy is STRICT_PACK, we know that all the
@@ -117,26 +113,28 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         # all initialization steps directly instead of in tasks in the PG.
         # This removes the task launching overhead reducing the initialization
         # time.
-        local_node_download_model = local_node_download_model.union(
-            worker_node_download_model
+        ctx.local_node_download_model = ctx.local_node_download_model.union(
+            ctx.worker_node_download_model
         )
 
         await _initialize_local_node(
             llm_config,
-            download_model=local_node_download_model,
+            download_model=ctx.local_node_download_model,
             download_extra_files=True,
         )
     else:
         await initialize_worker_nodes(
             llm_config,
-            placement_group=pg,
-            runtime_env=runtime_env,
-            download_model=worker_node_download_model,
+            placement_group=ctx.placement_group,
+            runtime_env=ctx.runtime_env,
+            download_model=ctx.worker_node_download_model,
             download_extra_files=True,
         )
 
+    await callback.on_after_init(ctx)
+
     return InitializeNodeOutput(
-        placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
+        placement_group=ctx.placement_group, runtime_env=ctx.runtime_env
     )
 
 

@@ -1,43 +1,52 @@
-from abc import ABC, abstractmethod
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol, runtime_checkable
 
-from ray.llm._internal.serve.configs.server_models import LLMConfig
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    InitializeNodeOutput,
-)
+if TYPE_CHECKING:
+    from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+    from ray.llm._internal.serve.configs.server_models import LLMConfig
 
 
-class CustomInitialization(ABC):
-    """Abstract base class for custom initialization implementations.
+@dataclass
+class CallbackCtx:
+    """Context object passed to all callback hooks.
 
-    This class provides a framework for implementing custom initialization logic
-    for LLMEngine. Subclasses must implement the initialize method to define
-    their specific initialization behavior.
+    This is a centralized place for all state during node initialization.
+    Callbacks can read and modify fields as needed.
+
+    The custom_data dict provides flexibility for callback-specific state.
     """
 
-    def __init__(self, **kwargs: Any) -> None:
-        """Initialize the custom initialization class with keyword arguments.
+    llm_config: "LLMConfig"
+    local_node_download_model: Optional["NodeModelDownloadable"] = None
+    worker_node_download_model: Optional["NodeModelDownloadable"] = None
+    placement_group: Optional[Any] = None
+    runtime_env: Optional[Dict[str, Any]] = None
+    custom_data: Dict[str, Any] = field(default_factory=dict)
+    run_downloads: bool = True
+
+
+@runtime_checkable
+class CustomInitCallback(Protocol):
+    """Protocol for custom initialization implementations.
+
+    This protocol defines the interface for custom initialization logic
+    for LLMEngine to be called in node_initialization.
+    """
+
+    async def on_before_init(self, ctx: CallbackCtx) -> None:
+        """Called before node initialization begins.
 
         Args:
-            **kwargs: Arbitrary keyword arguments that can be used by subclasses
-                     for configuration and setup.
+            ctx: The callback context containing configuration and state
+                 that can be modified to influence initialization.
         """
-        self.kwargs = kwargs
+        pass
 
-    @abstractmethod
-    async def initialize(self, llm_config: LLMConfig) -> InitializeNodeOutput:
-        """Initialize the node with custom logic.
-
-        This method must be implemented by all subclasses to define their
-        specific initialization behavior.
+    async def on_after_init(self, ctx: CallbackCtx) -> None:
+        """Called after node initialization completes.
 
         Args:
-            llm_config: The LLM configuration object containing all necessary
-                       settings for model initialization.
-
-        Returns:
-            InitializeNodeOutput: An object containing the placement group,
-                                 runtime environment, and any extra initialization
-                                 keyword arguments.
+            ctx: The callback context containing the final state after
+                 initialization.
         """
         pass
