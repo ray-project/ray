@@ -80,8 +80,6 @@ class LightGBMTrainer(DataParallelTrainer):
     .. testoutput::
         :hide:
 
-        ...
-
     Args:
         train_loop_per_worker: The training function to execute on each worker.
             This function can either take in zero arguments or a single ``Dict``

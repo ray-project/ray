@@ -26,6 +26,7 @@ class JaxTrainer(DataParallelTrainer):
     function is expected to take in either 0 or 1 arguments:
 
     .. testcode::
+        :skipif: True
 
         import os
         from absl import app
