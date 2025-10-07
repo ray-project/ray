@@ -35,9 +35,6 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/common/cgroup/cgroup_context.h"
-#include "ray/common/cgroup/cgroup_manager.h"
-#include "ray/common/cgroup/constants.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -168,8 +165,10 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
   return options.job_id;
 }
 
-TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_counter)
-    : task_by_state_counter_(task_by_state_counter) {
+TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gauge,
+                         ray::observability::MetricInterface &actor_by_state_gauge)
+    : task_by_state_gauge_(task_by_state_gauge),
+      actor_by_state_gauge_(actor_by_state_gauge) {
   counter_.SetOnChangeCallback(
       [this](const std::tuple<std::string, TaskStatusType, bool>
                  &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
@@ -184,7 +183,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_coun
         const auto is_retry_label = is_retry ? "1" : "0";
         // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
         // them out to avoid double-counting.
-        task_by_state_counter_.Record(
+        task_by_state_gauge_.Record(
             running_total - num_in_get - num_in_wait,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
              {"Name"sv, func_name},
@@ -192,7 +191,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_coun
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
-        task_by_state_counter_.Record(
+        task_by_state_gauge_.Record(
             -running_total,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
              {"Name"sv, func_name},
@@ -200,7 +199,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_coun
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Record sub-state for get.
-        task_by_state_counter_.Record(
+        task_by_state_gauge_.Record(
             num_in_get,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
              {"Name"sv, func_name},
@@ -208,7 +207,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_coun
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Record sub-state for wait.
-        task_by_state_counter_.Record(
+        task_by_state_gauge_.Record(
             num_in_wait,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
              {"Name"sv, func_name},
@@ -229,16 +228,16 @@ void TaskCounter::RecordMetrics() {
     } else {
       running_tasks = 1.0;
     }
-    ray::stats::STATS_actors.Record(idle,
-                                    {{"State", "ALIVE_IDLE"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(running_tasks,
-                                    {{"State", "ALIVE_RUNNING_TASKS"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
+    actor_by_state_gauge_.Record(idle,
+                                 {{"State"sv, "ALIVE_IDLE"},
+                                  {"Name"sv, actor_name_},
+                                  {"Source"sv, "executor"},
+                                  {"JobId"sv, job_id_}});
+    actor_by_state_gauge_.Record(running_tasks,
+                                 {{"State"sv, "ALIVE_RUNNING_TASKS"},
+                                  {"Name"sv, actor_name_},
+                                  {"Source"sv, "executor"},
+                                  {"JobId"sv, job_id_}});
   }
 }
 
@@ -306,7 +305,8 @@ CoreWorker::CoreWorker(
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
-    ray::observability::MetricInterface &task_by_state_counter)
+    ray::observability::MetricInterface &task_by_state_gauge,
+    ray::observability::MetricInterface &actor_by_state_gauge)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -345,11 +345,20 @@ CoreWorker::CoreWorker(
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
-      task_counter_(task_by_state_counter),
+      task_counter_(task_by_state_gauge, actor_by_state_gauge),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
-      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
-      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+      actor_shutdown_callback_(options_.actor_shutdown_callback),
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap),
+      free_actor_object_callback_(
+          [this, free_actor_object_callback = options_.free_actor_object_callback](
+              const ObjectID &object_id) {
+            // Need to post to the io service to prevent deadlock because this submits a
+            // task and therefore needs to acquire the reference counter lock.
+            io_service_.post([free_actor_object_callback,
+                              object_id]() { free_actor_object_callback(object_id); },
+                             "CoreWorker.FreeActorObjectCallback");
+          }) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -1026,8 +1035,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
 
     // Register the callback to free the GPU object when it is out of scope.
     if (tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
-      reference_counter_->AddObjectOutOfScopeOrFreedCallback(
-          *object_id, options_.free_actor_object_callback);
+      reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
+                                                             free_actor_object_callback_);
     }
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
@@ -1311,32 +1320,29 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
-  bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
-  std::ostringstream ids_stream;
 
-  for (size_t i = 0; i < ids.size(); i++) {
-    if (!HasOwner(ids[i])) {
-      ids_stream << ids[i] << " ";
-      got_exception = true;
-    }
+  StatusSet<StatusT::NotFound> objects_have_owners = reference_counter_->HasOwner(ids);
+
+  if (objects_have_owners.has_error()) {
+    return std::visit(
+        overloaded{[](const StatusT::NotFound &not_found) {
+          return Status::ObjectUnknownOwner(absl::StrFormat(
+              "You are trying to access Ray objects whose owner is "
+              "unknown. Please make sure that all Ray objects you are trying to access "
+              "are part of the current Ray session. Note that object IDs generated "
+              "randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because "
+              "Ray does not know which task created them. If this was not how your "
+              "object ID was generated, please file an issue at "
+              "https://github.com/ray-project/ray/issues/. %s",
+              not_found.message()));
+        }},
+        objects_have_owners.error());
   }
 
-  if (got_exception) {
-    std::ostringstream stream;
-    stream << "An application is trying to access Ray objects whose owner is unknown"
-           << "(" << ids_stream.str()
-           << "). "
-              "Please make sure that all Ray objects you are trying to access are part"
-              " of the current Ray session. Note that "
-              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
-              " Ray does not know which task created them. "
-              "If this was not how your object ID was generated, please file an issue "
-              "at https://github.com/ray-project/ray/issues/";
-    return Status::ObjectUnknownOwner(stream.str());
-  }
+  bool got_exception = false;
 
   if (!memory_object_ids.empty()) {
     RAY_RETURN_NOT_OK(memory_store_->Get(
@@ -1508,8 +1514,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
   if (fetch_local) {
     // With fetch_local we want to start fetching plasma_object_ids from other nodes'
-    // plasma stores. We make the request to the plasma store even if we have num_objects
-    // ready since we want to at least make the request to start pulling these objects.
+    // plasma stores. We make the request to the plasma store even if we have
+    // num_objects ready since we want to at least make the request to start pulling
+    // these objects.
     if (!plasma_object_ids.empty()) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
@@ -3661,7 +3668,8 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     const NodeID &spilled_node_id,
     const std::optional<ObjectID> &generator_id) {
   RAY_LOG(DEBUG).WithField(object_id).WithField(spilled_node_id)
-      << "Received object spilled location update for object, which has been spilled to "
+      << "Received object spilled location update for object, which has been spilled "
+         "to "
       << spilled_url << " on node";
   if (generator_id.has_value()) {
     // For dynamically generated return values, the raylet may spill the
@@ -3902,8 +3910,8 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                  caller_worker_id,
                  on_canceled = std::move(on_canceled),
                  is_async_actor]() {
-    // If the task was still queued (not running yet), `CancelQueuedActorTask` will cancel
-    // it. If it is already running, we attempt to cancel it.
+    // If the task was still queued (not running yet), `CancelQueuedActorTask` will
+    // cancel it. If it is already running, we attempt to cancel it.
     bool success = false;
     bool is_running = false;
     bool task_present = task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
@@ -4348,14 +4356,6 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
     // to be ready).
     callback();
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                                       rpc::FreeActorObjectReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  options_.free_actor_object_callback(object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

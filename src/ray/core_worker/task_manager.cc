@@ -307,26 +307,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
     if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
         rpc::TensorTransport::OBJECT_STORE) {
-      reference_counter_.AddObjectOutOfScopeOrFreedCallback(
-          return_object_id, [this](const ObjectID &object_id) {
-            auto actor_id = ObjectID::ToActorID(object_id);
-            auto rpc_client = get_actor_rpc_client_callback_(actor_id);
-            if (!rpc_client.has_value()) {
-              // ActorTaskSubmitter already knows the actor is already dead.
-              return;
-            }
-            rpc::FreeActorObjectRequest request;
-            request.set_object_id(object_id.Binary());
-            rpc_client.value()->FreeActorObject(
-                request,
-                [object_id, actor_id](const Status &status,
-                                      const rpc::FreeActorObjectReply &reply) {
-                  if (!status.ok()) {
-                    RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
-                        << "Failed to free actor object: " << status;
-                  }
-                });
-          });
+      reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_object_id,
+                                                            free_actor_object_callback_);
     }
 
     returned_refs.push_back(std::move(ref));
@@ -792,7 +774,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
-  uint64_t attempt_number = request.attempt_number();
+  int64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;

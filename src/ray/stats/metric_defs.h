@@ -42,17 +42,6 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
-/// Actor stats, broken down by state.
-DECLARE_stats(actors);
-
-/// Job stats.
-DECLARE_stats(running_jobs);
-DECLARE_stats(finished_jobs);
-DECLARE_stats(job_duration_s);
-
-/// Placement group stats, broken down by state.
-DECLARE_stats(placement_groups);
-
 /// ASIO stats
 DECLARE_stats(io_context_event_loop_lag_ms);
 
@@ -108,23 +97,9 @@ DECLARE_stats(spill_manager_objects_bytes);
 DECLARE_stats(spill_manager_request_total);
 DECLARE_stats(spill_manager_throughput_mb);
 
-/// GCS Storage
-DECLARE_stats(gcs_storage_operation_latency_ms);
-DECLARE_stats(gcs_storage_operation_count);
-DECLARE_stats(gcs_task_manager_task_events_dropped);
-DECLARE_stats(gcs_task_manager_task_events_stored);
-DECLARE_stats(gcs_task_manager_task_events_reported);
-
 /// Object Store
 DECLARE_stats(object_store_memory);
 DECLARE_stats(object_store_dist);
-
-/// Placement Group
-DECLARE_stats(gcs_placement_group_creation_latency_ms);
-DECLARE_stats(gcs_placement_group_scheduling_latency_ms);
-DECLARE_stats(gcs_placement_group_count);
-
-DECLARE_stats(gcs_actors_count);
 
 /// Memory Manager
 DECLARE_stats(memory_manager_worker_eviction_total);

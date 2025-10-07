@@ -51,15 +51,19 @@ using JobFinishListenerCallback =
 
 class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
  public:
-  explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
-                         pubsub::GcsPublisher &gcs_publisher,
-                         RuntimeEnvManager &runtime_env_manager,
-                         GCSFunctionManager &function_manager,
-                         InternalKVInterface &internal_kv,
-                         instrumented_io_context &io_context,
-                         rpc::CoreWorkerClientPool &worker_client_pool,
-                         observability::RayEventRecorderInterface &ray_event_recorder,
-                         const std::string &session_name)
+  explicit GcsJobManager(
+      GcsTableStorage &gcs_table_storage,
+      pubsub::GcsPublisher &gcs_publisher,
+      RuntimeEnvManager &runtime_env_manager,
+      GCSFunctionManager &function_manager,
+      InternalKVInterface &internal_kv,
+      instrumented_io_context &io_context,
+      rpc::CoreWorkerClientPool &worker_client_pool,
+      observability::RayEventRecorderInterface &ray_event_recorder,
+      const std::string &session_name,
+      ray::observability::MetricInterface &running_job_gauge,
+      ray::observability::MetricInterface &finished_job_counter,
+      ray::observability::MetricInterface &job_duration_in_seconds_gauge)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
@@ -69,7 +73,10 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         worker_client_pool_(worker_client_pool),
         ray_event_recorder_(ray_event_recorder),
         session_name_(session_name),
-        export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
+        export_event_write_enabled_(IsExportAPIEnabledDriverJob()),
+        running_job_gauge_(running_job_gauge),
+        finished_job_counter_(finished_job_counter),
+        job_duration_in_seconds_gauge_(job_duration_in_seconds_gauge) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -104,7 +111,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   void OnNodeDead(const NodeID &node_id);
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data,
-                                 rpc::events::DriverJobExecutionEvent::State state) const;
+                                 rpc::events::DriverJobLifecycleEvent::State state) const;
 
   // Verify if export events should be written for EXPORT_DRIVER_JOB source types
   bool IsExportAPIEnabledDriverJob() const {
@@ -155,6 +162,10 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;
+
+  ray::observability::MetricInterface &running_job_gauge_;
+  ray::observability::MetricInterface &finished_job_counter_;
+  ray::observability::MetricInterface &job_duration_in_seconds_gauge_;
 };
 
 }  // namespace gcs

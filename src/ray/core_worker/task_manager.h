@@ -57,6 +57,7 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &error_message,
                                                double timestamp)>;
 using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
+using FreeActorObjectCallback = std::function<void(const ObjectID &)>;
 
 /// When the streaming generator tasks are submitted,
 /// the intermediate return objects are streamed
@@ -187,7 +188,8 @@ class TaskManager : public TaskManagerInterface {
       std::function<std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>>(
           const ActorID &)> get_actor_rpc_client_callback,
       std::shared_ptr<gcs::GcsClient> gcs_client,
-      ray::observability::MetricInterface &task_by_state_counter)
+      ray::observability::MetricInterface &task_by_state_counter,
+      FreeActorObjectCallback free_actor_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -198,7 +200,8 @@ class TaskManager : public TaskManagerInterface {
         task_event_buffer_(task_event_buffer),
         get_actor_rpc_client_callback_(std::move(get_actor_rpc_client_callback)),
         gcs_client_(std::move(gcs_client)),
-        task_by_state_counter_(task_by_state_counter) {
+        task_by_state_counter_(task_by_state_counter),
+        free_actor_object_callback_(std::move(free_actor_object_callback)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -810,6 +813,9 @@ class TaskManager : public TaskManagerInterface {
   // - IsRetry: whether the task is a retry
   // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
   observability::MetricInterface &task_by_state_counter_;
+
+  /// Callback to free GPU object from the in-actor object store.
+  FreeActorObjectCallback free_actor_object_callback_;
 
   friend class TaskManagerTest;
 };

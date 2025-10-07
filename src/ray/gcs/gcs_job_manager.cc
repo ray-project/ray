@@ -24,12 +24,14 @@
 #include "absl/strings/match.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/observability/ray_driver_job_definition_event.h"
-#include "ray/observability/ray_driver_job_execution_event.h"
+#include "ray/observability/ray_driver_job_lifecycle_event.h"
 #include "ray/stats/metric.h"
 #include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
+
+using std::literals::operator""sv;
 
 void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &[job_id, job_table_data] : gcs_init_data.Jobs()) {
@@ -45,7 +47,7 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 void GcsJobManager::WriteDriverJobExportEvent(
-    rpc::JobTableData job_data, rpc::events::DriverJobExecutionEvent::State state) const {
+    rpc::JobTableData job_data, rpc::events::DriverJobLifecycleEvent::State state) const {
   /// Write job_data as a export driver job event if
   /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
@@ -56,12 +58,12 @@ void GcsJobManager::WriteDriverJobExportEvent(
   }
   if (RayConfig::instance().enable_ray_event()) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    if (state == rpc::events::DriverJobExecutionEvent::CREATED) {
+    if (state == rpc::events::DriverJobLifecycleEvent::CREATED) {
       // Job definition event is emitted once when the job is created.
       events.push_back(std::make_unique<observability::RayDriverJobDefinitionEvent>(
           job_data, session_name_));
     }
-    events.push_back(std::make_unique<observability::RayDriverJobExecutionEvent>(
+    events.push_back(std::make_unique<observability::RayDriverJobLifecycleEvent>(
         job_data, state, session_name_));
     ray_event_recorder_.AddEvents(std::move(events));
     return;
@@ -123,7 +125,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                   send_reply_callback =
                       std::move(send_reply_callback)](const Status &status) mutable {
     WriteDriverJobExportEvent(job_table_data,
-                              rpc::events::DriverJobExecutionEvent::CREATED);
+                              rpc::events::DriverJobLifecycleEvent::CREATED);
     if (!status.ok()) {
       RAY_LOG(ERROR).WithField(job_id).WithField("driver_pid",
                                                  job_table_data.driver_pid())
@@ -174,7 +176,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     }
     function_manager_.RemoveJobReference(job_id);
     WriteDriverJobExportEvent(job_table_data,
-                              rpc::events::DriverJobExecutionEvent::FINISHED);
+                              rpc::events::DriverJobLifecycleEvent::FINISHED);
 
     // Update running job status.
     // Note: This operation must be idempotent since MarkJobFinished can be called
@@ -182,9 +184,9 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     auto iter = running_job_start_times_.find(job_id);
     if (iter != running_job_start_times_.end()) {
       running_job_start_times_.erase(iter);
-      ray::stats::STATS_job_duration_s.Record(
+      job_duration_in_seconds_gauge_.Record(
           (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
-          {{"JobId", job_id.Hex()}});
+          {{"JobId"sv, job_id.Hex()}});
       ++finished_jobs_count_;
     }
 
@@ -512,12 +514,12 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsJobManager::RecordMetrics() {
-  ray::stats::STATS_running_jobs.Record(running_job_start_times_.size());
-  ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
+  running_job_gauge_.Record(running_job_start_times_.size());
+  finished_job_counter_.Record(finished_jobs_count_);
 
   for (const auto &[job_id, start_time] : running_job_start_times_) {
-    ray::stats::STATS_job_duration_s.Record((current_sys_time_ms() - start_time) / 1000.0,
-                                            {{"JobId", job_id.Hex()}});
+    job_duration_in_seconds_gauge_.Record((current_sys_time_ms() - start_time) / 1000.0,
+                                          {{"JobId"sv, job_id.Hex()}});
   }
 }
 

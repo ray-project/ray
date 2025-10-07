@@ -254,8 +254,9 @@ ray_cc_library(
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:runtime_env",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/observability:metric_interface",
         "//src/ray/observability:ray_driver_job_definition_event",
-        "//src/ray/observability:ray_driver_job_execution_event",
+        "//src/ray/observability:ray_driver_job_lifecycle_event",
         "//src/ray/observability:ray_event_recorder_interface",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/stats:stats_metric",
@@ -510,6 +511,7 @@ ray_cc_library(
         ":gcs_worker_manager",
         ":grpc_service_interfaces",
         ":grpc_services",
+        ":metrics",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/store_client",
@@ -546,6 +548,7 @@ ray_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":gcs_server_lib",
+        "//src/ray/common:metrics",
         "//src/ray/observability:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
@@ -553,5 +556,14 @@ ray_cc_binary(
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/observability:metrics",
+        "//src/ray/stats:stats_lib",
     ],
 )
