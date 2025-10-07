@@ -2,7 +2,6 @@ import logging
 import os
 import sys
 import time
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -10,7 +9,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data import Schema
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
@@ -18,7 +16,6 @@ from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.tests.conftest import *  # noqa
@@ -292,21 +289,22 @@ def test_empty_dataset(ray_start_regular_shared):
     assert ds.count() == 0
 
 
-def test_cache_dataset(ray_start_regular_shared):
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.i = 0
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.value = 0
 
-        def inc(self):
-            print("INC")
-            self.i += 1
-            return self.i
+    def increment(self):
+        self.value += 1
+        return self.value
+
+
+def test_cache_dataset(ray_start_regular_shared):
 
     c = Counter.remote()
 
     def inc(x):
-        ray.get(c.inc.remote())
+        ray.get(c.increment.remote())
         return x
 
     ds = ray.data.range(1)
@@ -320,13 +318,13 @@ def test_cache_dataset(ray_start_regular_shared):
     for _ in range(10):
         ds2.take_all()
 
-    assert ray.get(c.inc.remote()) == 2
+    assert ray.get(c.increment.remote()) == 2
 
     # Tests streaming iteration uses the materialized blocks.
     for _ in range(10):
         list(ds2.streaming_split(1)[0].iter_batches())
 
-    assert ray.get(c.inc.remote()) == 3
+    assert ray.get(c.increment.remote()) == 3
 
 
 def test_columns(ray_start_regular_shared):
@@ -501,57 +499,6 @@ def test_convert_types(ray_start_regular_shared):
     assert arrow_ds.map(lambda x: {"a": (x["id"],)}).take() == [{"a": [0]}]
 
 
-@pytest.mark.parametrize(
-    "input_blocks",
-    [
-        [pd.DataFrame({"column": ["spam"]}), pd.DataFrame({"column": ["ham", "eggs"]})],
-        [
-            pa.Table.from_pydict({"column": ["spam"]}),
-            pa.Table.from_pydict({"column": ["ham", "eggs"]}),
-        ],
-    ],
-)
-def test_from_blocks(input_blocks, ray_start_regular_shared):
-    ds = ray.data.from_blocks(input_blocks)
-
-    bundles = ds.iter_internal_ref_bundles()
-    output_blocks = ray.get(_ref_bundles_iterator_to_block_refs_list(bundles))
-    assert len(input_blocks) == len(output_blocks)
-    assert all(
-        input_block.equals(output_block)
-        for input_block, output_block in zip(input_blocks, output_blocks)
-    )
-
-
-def test_from_items(ray_start_regular_shared):
-    ds = ray.data.from_items(["hello", "world"])
-    assert extract_values("item", ds.take()) == ["hello", "world"]
-    assert isinstance(next(iter(ds.iter_batches(batch_format=None))), pa.Table)
-
-
-@pytest.mark.parametrize("parallelism", list(range(1, 21)))
-def test_from_items_parallelism(ray_start_regular_shared, parallelism):
-    # Test that specifying parallelism yields the expected number of blocks.
-    n = 20
-    records = [{"a": i} for i in range(n)]
-    ds = ray.data.from_items(records, override_num_blocks=parallelism)
-    out = ds.take_all()
-    assert out == records
-    assert ds._plan.initial_num_blocks() == parallelism
-
-
-def test_from_items_parallelism_truncated(ray_start_regular_shared):
-    # Test that specifying parallelism greater than the number of items is truncated to
-    # the number of items.
-    n = 10
-    parallelism = 20
-    records = [{"a": i} for i in range(n)]
-    ds = ray.data.from_items(records, override_num_blocks=parallelism)
-    out = ds.take_all()
-    assert out == records
-    assert ds._plan.initial_num_blocks() == n
-
-
 def test_take_batch(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=2)
     assert ds.take_batch(3)["id"].tolist() == [0, 1, 2]
@@ -602,17 +549,6 @@ def test_block_builder_for_block(ray_start_regular_shared):
         BlockBuilder.for_block(str())
 
 
-def test_column_name_type_check(ray_start_regular_shared):
-    df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
-    ds = ray.data.from_pandas(df)
-    assert ds.schema() == Schema(pa.schema([("1", pa.float64()), ("a", pa.float64())]))
-    assert ds.count() == 10
-
-    df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
-    with pytest.raises(ValueError):
-        ray.data.from_pandas(df)
-
-
 def test_len(ray_start_regular_shared):
     ds = ray.data.range(1)
     with pytest.raises(AttributeError):
@@ -635,53 +571,6 @@ def test_pandas_block_select():
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
-
-
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
-)
-def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
-    ray.shutdown()
-
-    # Test that unsupported pyarrow versions cause an error to be raised upon the
-    # initial pyarrow use.
-    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
-
-    @ray.remote
-    def should_error():
-        _check_pyarrow_version()
-
-    with pytest.raises(ImportError):
-        ray.get(should_error.remote())
-
-
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
-)
-def test_unsupported_pyarrow_versions_check_disabled(
-    shutdown_only,
-    unsupported_pyarrow_version,
-    disable_pyarrow_version_check,
-):
-    ray.shutdown()
-
-    # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
-    # initial pyarrow use when the version check is disabled.
-    ray.init(
-        runtime_env={
-            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
-            "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
-        },
-    )
-
-    @ray.remote
-    def should_pass():
-        _check_pyarrow_version()
-
-    try:
-        ray.get(should_pass.remote())
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
 
 def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
@@ -795,16 +684,6 @@ def test_read_write_local_node(ray_start_cluster):
         ds = ray.data.read_parquet(
             ["example://iris.parquet", local_path + "/test1.parquet"]
         ).materialize()
-
-
-@ray.remote
-class Counter:
-    def __init__(self):
-        self.value = 0
-
-    def increment(self):
-        self.value += 1
-        return self.value
 
 
 class FlakyCSVDatasource(CSVDatasource):
@@ -961,50 +840,6 @@ def test_dataset_plan_as_string(ray_start_cluster):
         "                  }\n"
         "               )"
     )
-
-
-class LoggerWarningCalled(Exception):
-    """Custom exception used in test_warning_execute_with_no_cpu() and
-    test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
-    is called, so that we can kick out of `plan.execute()` by catching this Exception
-    and check logging was done properly."""
-
-    pass
-
-
-def test_warning_execute_with_no_cpu(ray_start_cluster):
-    """Tests ExecutionPlan.execute() to ensure a warning is logged
-    when no CPU resources are available."""
-    # Create one node with no CPUs to trigger the Dataset warning
-    ray.init(ray_start_cluster.address)
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)
-
-    try:
-        ds = ray.data.range(10)
-        ds = ds.map_batches(lambda x: x)
-        ds.take()
-    except Exception as e:
-        assert isinstance(e, ValueError)
-        assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(e)
-
-
-def test_nowarning_execute_with_cpu(ray_start_cluster):
-    """Tests ExecutionPlan.execute() to ensure no warning is logged
-    when there are available CPU resources."""
-    # Create one node with CPUs to avoid triggering the Dataset warning
-    ray.init(ray_start_cluster.address)
-
-    logger = logging.getLogger("ray.data._internal.plan")
-    with patch.object(
-        logger,
-        "warning",
-        side_effect=LoggerWarningCalled,
-    ) as mock_logger:
-        ds = ray.data.range(10)
-        ds = ds.map_batches(lambda x: x)
-        ds.take()
-        mock_logger.assert_not_called()
 
 
 if __name__ == "__main__":
