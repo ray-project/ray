@@ -9,7 +9,7 @@ This document explains how the open-source autoscaler v2 works in Ray 2.48 and o
 Overview
 --------
 
-The autoscaler is responsible for resizing the cluster based on resource demand including tasks, actors, and placement groups.
+The autoscaler is responsible for resizing the cluster based on resource demand from tasks, actors, and placement groups.
 To achieve this, it follows a structured process: evaluating worker group configurations, periodically reconciling cluster state with user constraints, applying bin-packing strategies to pending workload demands, and interacting with cloud providers through the Instance Manager.
 The following sections describe these components in detail.
 
@@ -23,8 +23,8 @@ The autoscaler dynamically adjusts the cluster size by adding or removing nodes 
 
 Worker groups can be configured in these ways:
 
-- The `available_node_types <https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#node-types>`__ field in the Cluster YAML file, if you are using the ``ray up`` cluster launcher.
-- The `workerGroupSpecs <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#pod-configuration-headgroupspec-and-workergroupspecs>`__ field in the RayCluster CRD, if you are using KubeRay.
+- The `available_node_types <https://docs.ray.io/en/releases-2.48.0/cluster/vms/references/ray-cluster-configuration.html#node-types>`__ field in the Cluster YAML file, if you are using the ``ray up`` cluster launcher.
+- The `workerGroupSpecs <https://docs.ray.io/en/releases-2.48.0/cluster/kubernetes/user-guides/config.html#pod-configuration-headgroupspec-and-workergroupspecs>`__ field in the RayCluster CRD, if you are using KubeRay.
 
 The configuration specifies the logical resources each node has in a worker group, along with the minimum and maximum number of nodes that should exist in each group.
 
@@ -40,32 +40,32 @@ Periodic Reconciliation
 The entry point of the autoscaler is `monitor.py <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L332>`__, which starts a GCS client and runs the reconciliation loop.
 
 This process is launched on the head node by the `start_head_processes <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439>`__ function when using the ``ray up`` cluster launcher.
-When running under KubeRay, it instead runs as a separate autoscaler container in the Head Pod.
+When running under KubeRay, it instead runs as a `separate autoscaler container <https://github.com/ray-project/kuberay/blob/94fa7d3eb793aa1278142f8e585cbe568fec3ae3/ray-operator/controllers/ray/common/pod.go#L191-L194>`__ in the Head Pod.
 
 .. warning::
 
    In the case of the cluster launcher, if the autoscaler process crashes, then there is no autoscaling.
-   While in the case of KubeRay, Kubernetes restarts the autoscaler container if it crashes.
+   While in the case of KubeRay, Kubernetes restarts the autoscaler container if it crashes by the default container restart policy.
 
 
 The process periodically `reconciles <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L200-L213>`__ against a snapshot of the following information using the Reconciler:
 
-1. **The latest pending demands** (queried from the `get_cluster_resource_state` GCS RPC): Pending Ray tasks, actors, and placement groups.
-2. **The latest user cluster constraints** (queried from the `get_cluster_resource_state` GCS RPC): The minimum cluster size, if specified via the ``ray.autoscaler.sdk.request_resources`` invocation.
-3. **The latest total and available node resources** (queried from the `get_cluster_resource_state` GCS RPC): The total and currently available resources of each alive Ray node.
-4. **The latest cloud instances** (queried from the cloud provider's implementation): The list of instances managed by the cloud provider implementation.
+1. **The latest pending demands** (queried from the `get_cluster_resource_state <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/autoscaler.proto#L392-L394>`__ GCS RPC): Pending Ray tasks, actors, and placement groups.
+2. **The latest user cluster constraints** (queried from the `get_cluster_resource_state <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/autoscaler.proto#L392-L394>`__ GCS RPC): The minimum cluster size, if specified via the ``ray.autoscaler.sdk.request_resources`` invocation.
+3. **The latest total and available node resources** (queried from the `get_cluster_resource_state <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/autoscaler.proto#L392-L394>`__ GCS RPC): The total and currently available resources of each alive Ray node.
+4. **The latest cloud instances** (`queried from the cloud provider's implementation <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L205-L207>`__): The list of instances managed by the cloud provider implementation.
 5. **The latest worker group configurations** (queried from the cluster YAML file or the RayCluster CRD).
 
 The preceding information is retrieved at the beginning of each reconciliation loop.
 The Reconciler uses this information to construct its internal state. This is the `sync phase <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L112-L120>`__.
 
-After the sync phase, the Reconciler performs the `following steps <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L840>`__ with the ``ResourceDemandScheduler``:
+After the sync phase, the Reconciler performs the `following steps <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L840>`__ in order with the ``ResourceDemandScheduler``:
 
 1. Enforce configuration constraints, including min/max nodes for each worker group.
-2. Enforce user cluster constraints (if specified by `ray.autoscaler.sdk.request_resources` invocation).
+2. Enforce user cluster constraints (if specified by `ray.autoscaler.sdk.request_resources <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/_private/commands.py#L186>`__ invocation).
 3. Fit pending demands into available resources on the cluster snapshot. This is the simulation mentioned earlier.
 4. Fit any remaining demands (left over from the previous step) against worker group configurations to determine which nodes to launch.
-5. Terminate idle instances according to each node's ``idle_duration_ms`` (queried from GCS) and the configured idle timeout for each group.
+5. Terminate idle instances (nodes that are needed by the previous 1-4 steps aren't considered idle) according to each node's ``idle_duration_ms`` (queried from GCS) and the configured idle timeout for each group.
 6. Send accumulated scaling decisions (steps 1–5) to the Instance Manager with `Reconciler._update_instance_manager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L1157-L1193>`__.
 7. `Sleep briefly (5s by default) <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L178>`__, then return to the sync phase.
 
