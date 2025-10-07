@@ -41,7 +41,7 @@ static const ReferenceCounterInterface::ReferenceTableProto empty_refs;
 
 class ReferenceCountTest : public ::testing::Test {
  protected:
-  std::unique_ptr<ReferenceCounter> rc;
+  std::unique_ptr<ReferenceCounterInterface> rc;
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
@@ -67,7 +67,7 @@ class ReferenceCountTest : public ::testing::Test {
 
 class ReferenceCountLineageEnabledTest : public ::testing::Test {
  protected:
-  std::unique_ptr<ReferenceCounter> rc;
+  std::unique_ptr<ReferenceCounterInterface> rc;
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();

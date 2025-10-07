@@ -286,7 +286,7 @@ class CoreWorkerTest : public ::testing::Test {
   boost::thread io_thread_;
 
   rpc::Address rpc_address_;
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
   pubsub::Publisher *object_info_publisher_;
@@ -537,9 +537,10 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
 
 namespace {
 
-ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(CoreWorkerMemoryStore &memory_store,
-                                                      ReferenceCounter &reference_counter,
-                                                      rpc::Address &rpc_address) {
+ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
+    CoreWorkerMemoryStore &memory_store,
+    ReferenceCounterInterface &reference_counter,
+    rpc::Address &rpc_address) {
   auto inlined_dependency_id = ObjectID::FromRandom();
   std::string data = "hello";
   auto data_ptr = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data.data()));
