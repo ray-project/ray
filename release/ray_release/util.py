@@ -8,8 +8,6 @@ import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from azure.storage.blob import BlobServiceClient
-from azure.identity import DefaultAzureCredential
 from google.cloud import storage
 import requests
 import shutil
@@ -312,6 +310,10 @@ def create_cluster_env_from_image(
 def upload_file_to_azure(local_file_path: str, azure_file_path: str) -> str:
     """Upload a file to Azure Blob Storage."""
     try:
+        # Import here because not every jobs that use ray_release/util need azure
+        from azure.storage.blob import BlobServiceClient
+        from azure.identity import DefaultAzureCredential
+
         account, container, path = _parse_abfss_uri(azure_file_path)
         account_url = f"https://{account}.blob.core.windows.net"
         credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
