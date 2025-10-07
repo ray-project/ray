@@ -432,9 +432,6 @@ You can generate embeddings by selecting the embed task in the engine arguments.
 Models supporting this use case are listed at
 `vLLM text embedding models <https://docs.vllm.ai/en/stable/models/supported_models.html#text-embedding-task-embed>`_.
 
-
-Note: You need to set the `VLLM_USE_V1` environment variable to `0`, since the VLLM V1 still does not fully support the embedding endpoints.
-
 .. tab-set::
 
     .. tab-item:: Server
@@ -455,7 +452,7 @@ Note: You need to set the `VLLM_USE_V1` environment variable to `0`, since the V
                 ),
                 runtime_env=dict(
                     env_vars={
-                        "VLLM_USE_V1": "0",
+                        "VLLM_USE_V1": "1",
                     }
                 ),
             )
@@ -497,6 +494,78 @@ Note: You need to set the `VLLM_USE_V1` environment variable to `0`, since the V
                        "input": ["A text to embed", "Another text to embed"],
                        "encoding_format": "float"
                      }'
+
+
+Transcriptions
+~~~~~~~~~~~~~~~~~~~~~
+
+You can generate audio transcriptions for STT models trained specifically for Automatic Speech Recognition(ASR) tasks.
+Models supporting this use case are listed at
+`vLLM transcription models <https://docs.vllm.ai/en/v0.9.2/models/supported_models.html#transcription>`_.
+
+
+.. tab-set::
+
+    .. tab-item:: Server
+        :sync: server
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_openai_app
+
+            llm_config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="whisper-large",
+                    model_source="openai/whisper-large-v3",
+                ),
+                runtime_env=dict(
+                    env_vars={
+                        "VLLM_USE_V1": "1",
+                    }
+                ),
+            )
+
+            app = build_openai_app({"llm_configs": [llm_config]})
+            serve.run(app, blocking=True)
+
+
+    .. tab-item:: Python Client
+        :sync: client
+
+        .. code-block:: python
+
+            from openai import OpenAI
+
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+            # Open audio file
+            file = open(file_path, "rb")
+
+            # Make a request to the desired lora checkpoint
+            response = client.audio.transcriptions.create(
+                model="whisper-large",
+                file=file,
+                temperature=0.0,
+                language="en",
+            )
+
+            print(response.text)
+
+
+    .. tab-item:: cURL
+        :sync: curl
+
+        .. code-block:: bash
+
+            curl http://localhost:8000/v1/audio/transcriptions \
+                 -X POST \
+                 -H "Authorization: Bearer fake-key" \
+                 -F "file=@/path/to/audio.wav" \
+                 -F "model=whisper-large" \
+                 -F "temperature=0.0" \
+                 -F "language=en"
 
 
 Structured Output
