@@ -327,10 +327,9 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
 
         # Create a zip file of the local path
         logger.info(f"Creating zip file of {local_path}")
-        zip_file = f"{local_path}.zip"
-        shutil.make_archive(zip_file, "zip", local_path)
-        logger.info(f"Zipped file: {zip_file}")
-        time.sleep(10000)
+        zip_file_path = shutil.make_archive(local_path, "zip", local_path)
+        logger.info(f"Zipped file: {zip_file_path}")
+        # time.sleep(10000)
         # Upload the zip file to the azure path
         credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
         blob_service_client = BlobServiceClient(account_url, credential)
@@ -338,7 +337,7 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
         blob_client = blob_service_client.get_blob_client(
             container=container, blob=path
         )
-        with open(zip_file, "rb") as data:
+        with open(zip_file_path, "rb") as data:
             blob_client.upload_blob(data)
     except Exception as e:
         logger.exception(f"Failed to upload directory to Azure Blob Storage: {e}")
