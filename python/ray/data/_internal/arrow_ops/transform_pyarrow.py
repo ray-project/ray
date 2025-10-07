@@ -668,7 +668,12 @@ def _concat_cols_with_native_pyarrow_types(
     # to vary b/w blocks
 
     # NOTE: Type promotions aren't available in Arrow < 14.0
-    subset_blocks = [block.select(col_names) for block in blocks]
+    subset_blocks = []
+    for block in blocks:
+        cols_to_select = [
+            col_name for col_name in col_names if col_name in block.schema.names
+        ]
+        subset_blocks.append(block.select(cols_to_select))
     if get_pyarrow_version() < parse_version("14.0.0"):
         table = pa.concat_tables(subset_blocks, promote=True)
     else:
@@ -734,7 +739,10 @@ def concat(
 
         col_chunked_arrays = []
         for block in blocks:
-            col_chunked_arrays.append(block.column(col_name))
+            if col_name in block.schema.names:
+                col_chunked_arrays.append(block.column(col_name))
+            else:
+                col_chunked_arrays.append(pa.nulls(block.num_rows, type=col_type))
 
         if col_name in cols_with_null_list:
             concatenated_cols[col_name] = _concat_cols_with_null_list(
