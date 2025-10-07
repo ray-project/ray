@@ -1,3 +1,5 @@
+import os
+
 from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _DOCKER_GCP_REGISTRY
@@ -40,6 +42,12 @@ class AnyscaleDockerContainer(DockerContainer):
                     f"docker tag {anyscale_image} {gcp_alias_image}",
                     f"docker push {gcp_alias_image}",
                 ]
+
+        if os.environ.get("BUILDKITE"):
+            cmds += [
+                f"buildkite-agent annotate --style=info --context={self.image_type}-images --append {aws_alias_image}",
+                f"buildkite-agent annotate --style=info --context={self.image_type}-images --append {gcp_alias_image}",
+            ]
 
         self.run_script(cmds)
 
