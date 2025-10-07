@@ -3,6 +3,7 @@ from typing import (
     Any,
     Dict,
     Optional,
+    Type,
     TypeVar,
     Union,
 )
@@ -32,6 +33,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
     SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.utils.custom_initialization import CustomInitialization
 from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
@@ -206,6 +208,16 @@ class LLMConfig(BaseModelExtended):
     log_engine_metrics: Optional[bool] = Field(
         default=False,
         description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
+    )
+
+    initialization_class: Optional[Union[str, Type[CustomInitialization]]] = Field(
+        default=None,
+        description="Custom initialization class to use for model initialization. Can be a string path to a class or a CustomInitialization subclass.",
+    )
+
+    initialization_kwargs: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional keyword arguments to pass to the custom initialization class constructor.",
     )
 
     _supports_vision: bool = PrivateAttr(False)

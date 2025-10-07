@@ -84,6 +84,24 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
     (as all of the workers must be colocated with this process). Else, the initialization
     will be run across the placement group bundles.
     """
+
+    # Check if custom initialization is specified
+    if llm_config.initialization_class:
+        if isinstance(llm_config.initialization_class, str):
+            # Import class from string path using try_import utility
+            module_path, class_name = llm_config.initialization_class.rsplit(".", 1)
+            module = try_import(module_path, error=True)
+            initialization_class = getattr(module, class_name)
+        else:
+            # Use the class directly
+            initialization_class = llm_config.initialization_class
+
+        # Create instance with provided kwargs or empty dict
+        init_kwargs = llm_config.initialization_kwargs or {}
+        initialization_instance = initialization_class(**init_kwargs)
+        return await initialization_instance.initialize(llm_config)
+
+    # Default initialization logic
     local_node_download_model = NodeModelDownloadable.TOKENIZER_ONLY
     worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
     extra_init_kwargs = {}
