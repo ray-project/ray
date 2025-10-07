@@ -87,7 +87,7 @@ def test_error(thread_runner):
     assert "train_func" in error._traceback_str
 
 
-def test_nested_thread_error(monkeypatch, thread_runner):
+def test_nested_thread_error(thread_runner):
     """Checks that we capture exceptions from threads kicked off by target function."""
 
     original_monitor_target = thread_runner._monitor_target
