@@ -58,10 +58,31 @@ using work_guard_type =
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
 
 RaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
+  auto inner_msg = InnerRaySyncMessage();
+  inner_msg.set_version(version);
+  inner_msg.set_message_type(cid);
+  inner_msg.set_node_id(id.Binary());
+
   auto msg = RaySyncMessage();
-  msg.set_version(version);
   msg.set_message_type(cid);
-  msg.set_node_id(id.Binary());
+  (*msg.mutable_batched_messages())[id.Hex()] = std::move(inner_msg);
+
+  return msg;
+}
+
+RaySyncMessage MakeMessageWithMultipleInnerMessages(
+    MessageType cid, const std::vector<std::pair<NodeID, int64_t>> &node_versions) {
+  auto msg = RaySyncMessage();
+  msg.set_message_type(cid);
+
+  for (const auto &[node_id, version] : node_versions) {
+    auto inner_msg = InnerRaySyncMessage();
+    inner_msg.set_version(version);
+    inner_msg.set_message_type(cid);
+    inner_msg.set_node_id(node_id.Binary());
+    (*msg.mutable_batched_messages())[node_id.Hex()] = std::move(inner_msg);
+  }
+
   return msg;
 }
 
@@ -79,9 +100,12 @@ class RaySyncerTest : public ::testing::Test {
         if (curr_version >= local_versions_[cid]) {
           return std::nullopt;
         } else {
+          auto inner_msg = InnerRaySyncMessage();
+          inner_msg.set_message_type(static_cast<MessageType>(cid));
+          inner_msg.set_version(++local_versions_[cid]);
           auto msg = RaySyncMessage();
           msg.set_message_type(static_cast<MessageType>(cid));
-          msg.set_version(++local_versions_[cid]);
+          (*msg.mutable_batched_messages())[local_id_.Hex()] = std::move(inner_msg);
           return std::make_optional(std::move(msg));
         }
       };
@@ -136,7 +160,8 @@ TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
 
   // Take a snapshot
   auto msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
-  ASSERT_EQ(LocalVersion(MessageType::RESOURCE_VIEW), msg->version());
+  ASSERT_EQ(LocalVersion(MessageType::RESOURCE_VIEW),
+            msg->batched_messages().begin()->second.version());
   // Revert one version back.
   LocalVersion(MessageType::RESOURCE_VIEW) -= 1;
   msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
@@ -148,14 +173,79 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   node_status->SetComponent(
       MessageType::RESOURCE_VIEW, nullptr, GetReceiver(MessageType::RESOURCE_VIEW));
   auto from_node_id = NodeID::FromRandom();
-  // The first time receiver the message
+  // The first time receive the message
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 
-  msg.set_version(1);
+  msg.mutable_batched_messages()->begin()->second.set_version(1);
   ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+}
+
+TEST_F(RaySyncerTest, NodeStateConsumeMultipleInnerMessages) {
+  auto node_status = std::make_unique<NodeState>();
+  node_status->SetComponent(
+      MessageType::RESOURCE_VIEW, nullptr, GetReceiver(MessageType::RESOURCE_VIEW));
+
+  // Create multiple node IDs for testing
+  auto from_node_id_1 = NodeID::FromRandom();
+  auto from_node_id_2 = NodeID::FromRandom();
+  auto from_node_id_3 = NodeID::FromRandom();
+
+  // Test 1: Consume sync message with multiple inner messages, all with version 0
+  auto msg = MakeMessageWithMultipleInnerMessages(
+      MessageType::RESOURCE_VIEW,
+      {{from_node_id_1, 0}, {from_node_id_2, 0}, {from_node_id_3, 0}});
+
+  // First time receiving the message - should consume all inner messages
+  ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+
+  // Second time receiving the same message - should not consume any
+  ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+
+  // Test 2: Partially consume inner messages with higher versions
+  // Create a message where only some inner messages have higher versions
+  auto msg_partial = MakeMessageWithMultipleInnerMessages(
+      MessageType::RESOURCE_VIEW,
+      {
+          {from_node_id_1, 1},  // Higher version - should be consumed
+          {from_node_id_2, 0},  // Same version - should not be consumed
+          {from_node_id_3, 2}   // Higher version - should be consumed
+      });
+
+  // Should consume only the inner messages with higher versions (node_id_1 and node_id_3)
+  ASSERT_TRUE(
+      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_partial)));
+
+  // Test 3: Try to consume the same partial message again - should not consume any
+  ASSERT_FALSE(
+      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_partial)));
+
+  // Test 4: Create a message with mixed versions (some higher, some lower, some same)
+  auto msg_mixed = MakeMessageWithMultipleInnerMessages(
+      MessageType::RESOURCE_VIEW,
+      {
+          {from_node_id_1, 0},  // Lower version - should not be consumed
+          {from_node_id_2, 1},  // Higher version - should be consumed
+          {from_node_id_3, 2}   // Same version - should not be consumed
+      });
+
+  // Should consume only node_id_2 with version 1
+  ASSERT_TRUE(
+      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_mixed)));
+
+  // Test 5: All inner messages with lower or same versions - should not consume any
+  auto msg_no_consume =
+      MakeMessageWithMultipleInnerMessages(MessageType::RESOURCE_VIEW,
+                                           {
+                                               {from_node_id_1, 0},  // Lower version
+                                               {from_node_id_2, 1},  // Same version
+                                               {from_node_id_3, 1}   // Lower version
+                                           });
+
+  ASSERT_FALSE(
+      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_no_consume)));
 }
 
 struct MockReactor {
@@ -183,9 +273,9 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
-  msg.set_version(2);
+  msg.mutable_batched_messages()->begin()->second.set_version(2);
   auto msg_ptr2 = std::make_shared<RaySyncMessage>(msg);
-  msg.set_version(3);
+  msg.mutable_batched_messages()->begin()->second.set_version(3);
   auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg);
 
   // First push will succeed and the second one will be deduplicated.
@@ -196,27 +286,171 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
-  ASSERT_EQ(2, sync_reactor.sending_buffer_.begin()->second->version());
+  ASSERT_EQ(
+      2,
+      sync_reactor.sending_buffer_.front()->batched_messages().begin()->second.version());
   ASSERT_EQ(
       2, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
+  // RaySyncMessage that is in the sending_buffer_ will not be deduplicated,
+  // since it is a batch of InnerRaySyncMessage from different nodes.
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
-  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+  ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
-  ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
+  ASSERT_EQ(
+      2,
+      sync_reactor.sending_buffer_.front()->batched_messages().begin()->second.version());
+  ASSERT_EQ(
+      3,
+      sync_reactor.sending_buffer_.at(1)->batched_messages().begin()->second.version());
   ASSERT_EQ(
       3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 }
 
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseMultipleInnerMessages) {
+  auto local_node_id = NodeID::FromRandom();
+
+  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+      io_context_,
+      local_node_id.Binary(),
+      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {});
+
+  // Create multiple different node IDs for testing
+  auto from_node_id_1 = NodeID::FromRandom();
+  auto from_node_id_2 = NodeID::FromRandom();
+  auto from_node_id_3 = NodeID::FromRandom();
+
+  // Test 1: Create sync message with multiple inner messages from different nodes
+  auto msg_multi = MakeMessageWithMultipleInnerMessages(
+      MessageType::RESOURCE_VIEW,
+      {{from_node_id_1, 1}, {from_node_id_2, 2}, {from_node_id_3, 3}});
+  auto msg_multi_ptr = std::make_shared<RaySyncMessage>(msg_multi);
+
+  // First push should succeed
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_multi_ptr));
+  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
+  ASSERT_EQ(3, sync_reactor.node_versions_.size());
+
+  // Verify all three nodes are tracked with correct versions
+  ASSERT_EQ(
+      1,
+      sync_reactor.node_versions_[from_node_id_1.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      2,
+      sync_reactor.node_versions_[from_node_id_2.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      3,
+      sync_reactor.node_versions_[from_node_id_3.Binary()][MessageType::RESOURCE_VIEW]);
+
+  // Test 2: Push the same multi-message again - should be deduplicated
+  ASSERT_FALSE(sync_reactor.PushToSendingQueue(msg_multi_ptr));
+  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
+
+  // Test 3: Create a new message with some updated versions and some duplicates
+  auto msg_partial_update = MakeMessageWithMultipleInnerMessages(
+      MessageType::RESOURCE_VIEW,
+      {
+          {from_node_id_1, 1},  // Same version - should be deduplicated
+          {from_node_id_2, 4},  // Higher version - should be included
+          {from_node_id_3, 2}   // Lower version - should be deduplicated
+      });
+  auto msg_partial_ptr = std::make_shared<RaySyncMessage>(msg_partial_update);
+
+  // Should succeed because node_id_2 has a higher version
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_partial_ptr));
+  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+
+  // Verify that only node_id_2 is updated, others remain the same
+  ASSERT_EQ(
+      1,
+      sync_reactor.node_versions_[from_node_id_1.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      4,
+      sync_reactor.node_versions_[from_node_id_2.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      3,
+      sync_reactor.node_versions_[from_node_id_3.Binary()][MessageType::RESOURCE_VIEW]);
+
+  // Verify the message in sending buffer contains only the updated inner message
+  auto &batched_messages = sync_reactor.sending_buffer_.front()->batched_messages();
+  ASSERT_EQ(1, batched_messages.size());
+  ASSERT_TRUE(batched_messages.find(from_node_id_2.Hex()) != batched_messages.end());
+  ASSERT_EQ(4, batched_messages.at(from_node_id_2.Hex()).version());
+
+  // Test 4: Create a message with all new nodes
+  auto from_node_id_4 = NodeID::FromRandom();
+  auto from_node_id_5 = NodeID::FromRandom();
+  auto msg_new_nodes = MakeMessageWithMultipleInnerMessages(
+      MessageType::RESOURCE_VIEW, {{from_node_id_4, 1}, {from_node_id_5, 2}});
+  auto msg_new_ptr = std::make_shared<RaySyncMessage>(msg_new_nodes);
+
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_new_ptr));
+  ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
+  ASSERT_EQ(5, sync_reactor.node_versions_.size());
+
+  // Verify new nodes are tracked
+  ASSERT_EQ(
+      1,
+      sync_reactor.node_versions_[from_node_id_4.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      2,
+      sync_reactor.node_versions_[from_node_id_5.Binary()][MessageType::RESOURCE_VIEW]);
+
+  // Test 5: Create a message with mixed scenarios - some duplicates, some updates, some
+  // new
+  auto from_node_id_6 = NodeID::FromRandom();
+  auto msg_mixed = MakeMessageWithMultipleInnerMessages(
+      MessageType::RESOURCE_VIEW,
+      {
+          {from_node_id_1, 1},  // Duplicate - should be dropped
+          {from_node_id_2, 5},  // Update - should be included
+          {from_node_id_4, 1},  // Duplicate - should be dropped
+          {from_node_id_6, 1}   // New - should be included
+      });
+  auto msg_mixed_ptr = std::make_shared<RaySyncMessage>(msg_mixed);
+
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_mixed_ptr));
+  ASSERT_EQ(3, sync_reactor.sending_buffer_.size());
+  ASSERT_EQ(6, sync_reactor.node_versions_.size());
+
+  // Verify the latest message contains only non-duplicate inner messages
+  auto &latest_batched_messages = sync_reactor.sending_buffer_.back()->batched_messages();
+  ASSERT_EQ(2, latest_batched_messages.size());
+  ASSERT_TRUE(latest_batched_messages.find(from_node_id_2.Hex()) !=
+              latest_batched_messages.end());
+  ASSERT_TRUE(latest_batched_messages.find(from_node_id_6.Hex()) !=
+              latest_batched_messages.end());
+  ASSERT_EQ(5, latest_batched_messages.at(from_node_id_2.Hex()).version());
+  ASSERT_EQ(1, latest_batched_messages.at(from_node_id_6.Hex()).version());
+
+  // Verify node versions are correctly updated
+  ASSERT_EQ(
+      1,
+      sync_reactor.node_versions_[from_node_id_1.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      5,
+      sync_reactor.node_versions_[from_node_id_2.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      1,
+      sync_reactor.node_versions_[from_node_id_4.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(
+      1,
+      sync_reactor.node_versions_[from_node_id_6.Binary()][MessageType::RESOURCE_VIEW]);
+}
+
 struct SyncerServerTest {
-  explicit SyncerServerTest(std::string port)
-      : SyncerServerTest(
-            std::move(port), /*node_id=*/NodeID::FromRandom(), /*ray_sync_observer=*/{}) {
-  }
+  SyncerServerTest(std::string port) : SyncerServerTest(port, false) {}
+
+  explicit SyncerServerTest(std::string port, bool enable_batching)
+      : SyncerServerTest(std::move(port),
+                         /*node_id=*/NodeID::FromRandom(),
+                         /*ray_sync_observer=*/{},
+                         enable_batching) {}
 
   SyncerServerTest(std::string port,
                    NodeID node_id,
-                   RpcCompletionCallback ray_sync_observer)
+                   RpcCompletionCallback ray_sync_observer,
+                   bool enable_batching = false)
       : work_guard(io_context.get_executor()) {
     this->server_port = port;
     // Setup io context
@@ -225,7 +459,7 @@ struct SyncerServerTest {
     }
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(
-        io_context, node_id.Binary(), std::move(ray_sync_observer));
+        io_context, node_id.Binary(), std::move(ray_sync_observer), enable_batching);
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = BuildAddress("0.0.0.0", port);
@@ -238,22 +472,25 @@ struct SyncerServerTest {
     for (size_t cid = 0; cid < reporters.size(); ++cid) {
       auto snapshot_received = [this,
                                 node_id](std::shared_ptr<const RaySyncMessage> message) {
-        RAY_LOG(DEBUG) << "Message received: from "
-                       << NodeID::FromBinary(message->node_id()) << " to " << node_id;
-        auto iter = received_versions.find(message->node_id());
-        if (iter == received_versions.end()) {
-          for (auto &v : received_versions[message->node_id()]) {
-            v = 0;
+        for (auto &[_, inner_message] : message->batched_messages()) {
+          RAY_LOG(DEBUG) << "Message received: from "
+                         << NodeID::FromBinary(inner_message.node_id()) << " to "
+                         << node_id;
+          auto iter = received_versions.find(inner_message.node_id());
+          if (iter == received_versions.end()) {
+            for (auto &v : received_versions[inner_message.node_id()]) {
+              v = 0;
+            }
+            iter = received_versions.find(inner_message.node_id());
           }
-          iter = received_versions.find(message->node_id());
-        }
 
-        received_versions[message->node_id()][message->message_type()] =
-            message->version();
-        message_consumed[message->node_id()]++;
-        RAY_LOG(DEBUG) << "Message consumed from "
-                       << NodeID::FromBinary(message->node_id())
-                       << ", local_id=" << node_id;
+          received_versions[inner_message.node_id()][inner_message.message_type()] =
+              inner_message.version();
+          message_consumed[inner_message.node_id()]++;
+          RAY_LOG(DEBUG) << "Message consumed from "
+                         << NodeID::FromBinary(inner_message.node_id())
+                         << ", local_id=" << node_id;
+        }
       };
       receivers[cid] = std::make_unique<MockReceiverInterface>();
       EXPECT_CALL(*receivers[cid], ConsumeSyncMessage(_))
@@ -264,10 +501,14 @@ struct SyncerServerTest {
         if (local_versions[cid] <= version_after) {
           return std::nullopt;
         } else {
+          auto inner_msg = InnerRaySyncMessage();
+          inner_msg.set_message_type(static_cast<MessageType>(cid));
+          inner_msg.set_version(local_versions[cid]);
+          inner_msg.set_node_id(syncer->GetLocalNodeID());
           auto msg = RaySyncMessage();
           msg.set_message_type(static_cast<MessageType>(cid));
-          msg.set_version(local_versions[cid]);
-          msg.set_node_id(syncer->GetLocalNodeID());
+          (*msg.mutable_batched_messages())[NodeID::FromBinary(syncer->GetLocalNodeID())
+                                                .Hex()] = std::move(inner_msg);
           snapshot_taken++;
           return std::make_optional(std::move(msg));
         }
@@ -428,20 +669,21 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
 
 using TClusterView = absl::flat_hash_map<
     std::string,
-    std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>;
+    std::array<std::shared_ptr<const InnerRaySyncMessage>, kComponentArraySize>>;
 
-class SyncerTest : public ::testing::Test {
+class SyncerTest : public ::testing::TestWithParam<bool> {
  public:
   SyncerServerTest &MakeServer(std::string port) {
-    servers.emplace_back(std::make_unique<SyncerServerTest>(port));
+    servers.emplace_back(std::make_unique<SyncerServerTest>(port, GetParam()));
     return *servers.back();
   }
 
   SyncerServerTest &MakeServer(std::string port,
                                NodeID node_id,
-                               RpcCompletionCallback on_rpc_completion) {
+                               RpcCompletionCallback on_rpc_completion,
+                               bool enable_batching = false) {
     servers.emplace_back(std::make_unique<SyncerServerTest>(
-        port, std::move(node_id), std::move(on_rpc_completion)));
+        port, std::move(node_id), std::move(on_rpc_completion), enable_batching));
     return *servers.back();
   }
 
@@ -457,7 +699,7 @@ class SyncerTest : public ::testing::Test {
   std::vector<std::unique_ptr<SyncerServerTest>> servers;
 };
 
-TEST_F(SyncerTest, Test1To1) {
+TEST_P(SyncerTest, Test1To1) {
   // Generate node ids for checking.
   NodeID node_id1 = NodeID::FromRandom();
   NodeID node_id2 = NodeID::FromRandom();
@@ -584,7 +826,7 @@ TEST_F(SyncerTest, Test1To1) {
   ASSERT_GT(s2_observer_cb_call_cnt, 0);
 }
 
-TEST_F(SyncerTest, Reconnect) {
+TEST_P(SyncerTest, Reconnect) {
   // This test is to check reconnect works.
   auto &s1 = MakeServer("19990");
   auto &s2 = MakeServer("19991");
@@ -613,7 +855,7 @@ TEST_F(SyncerTest, Reconnect) {
       5));
 }
 
-TEST_F(SyncerTest, Broadcast) {
+TEST_P(SyncerTest, Broadcast) {
   // This test covers the broadcast feature of ray syncer.
   auto &s1 = MakeServer("19990");
   auto &s2 = MakeServer("19991");
@@ -651,7 +893,9 @@ TEST_F(SyncerTest, Broadcast) {
   ASSERT_EQ(
       0,
       s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)
-          ->version());
+          ->batched_messages()
+          .begin()
+          ->second.version());
   ASSERT_EQ(nullptr,
             s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(),
                                       MessageType::RESOURCE_VIEW));
@@ -773,7 +1017,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
   return check();
 }
 
-TEST_F(SyncerTest, Test1ToN) {
+TEST_P(SyncerTest, Test1ToN) {
   size_t base_port = 18990;
   std::vector<SyncerServerTest *> servers;
   for (int i = 0; i < 20; ++i) {
@@ -798,7 +1042,7 @@ TEST_F(SyncerTest, Test1ToN) {
   ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
 }
 
-TEST_F(SyncerTest, TestMToN) {
+TEST_P(SyncerTest, TestMToN) {
   size_t base_port = 18990;
   std::vector<SyncerServerTest *> servers;
   for (int i = 0; i < 20; ++i) {
@@ -945,25 +1189,29 @@ TEST_F(SyncerReactorTest, TestReactor) {
   ASSERT_TRUE(s != nullptr);
   ASSERT_TRUE(c != nullptr);
 
+  auto inner_msg_s = std::make_shared<InnerRaySyncMessage>();
+  inner_msg_s->set_version(1);
+  inner_msg_s->set_node_id(node_s);
   auto msg_s = std::make_shared<RaySyncMessage>();
-  msg_s->set_version(1);
-  msg_s->set_node_id(node_s);
+  (*msg_s->mutable_batched_messages())[NodeID::FromBinary(node_s).Hex()] = *inner_msg_s;
 
   s->PushToSendingQueue(msg_s);
 
+  auto inner_msg_c = std::make_shared<InnerRaySyncMessage>();
+  inner_msg_c->set_version(2);
+  inner_msg_c->set_node_id(node_c);
   auto msg_c = std::make_shared<RaySyncMessage>();
-  msg_c->set_version(2);
-  msg_c->set_node_id(node_c);
+  (*msg_c->mutable_batched_messages())[NodeID::FromBinary(node_c).Hex()] = *inner_msg_c;
 
   c->PushToSendingQueue(msg_c);
   // Make sure sending is working
   auto server_received = server_received_message.get_future().get();
   auto client_received = client_received_message.get_future().get();
   ResetPromise();
-  ASSERT_EQ(server_received->version(), 2);
-  ASSERT_EQ(server_received->node_id(), node_c);
-  ASSERT_EQ(client_received->version(), 1);
-  ASSERT_EQ(client_received->node_id(), node_s);
+  ASSERT_EQ(server_received->batched_messages().begin()->second.version(), 2);
+  ASSERT_EQ(server_received->batched_messages().begin()->second.node_id(), node_c);
+  ASSERT_EQ(client_received->batched_messages().begin()->second.version(), 1);
+  ASSERT_EQ(client_received->batched_messages().begin()->second.node_id(), node_s);
 
   s->Disconnect();
   auto c_cleanup = client_cleanup.get_future().get();
@@ -982,6 +1230,13 @@ TEST_F(SyncerReactorTest, TestReactorFailure) {
   ASSERT_EQ(node_s, c_cleanup.first);
   ASSERT_EQ(true, c_cleanup.second);
 }
+
+INSTANTIATE_TEST_SUITE_P(BatchingModes,
+                         SyncerTest,
+                         ::testing::Values(false, true),
+                         [](const ::testing::TestParamInfo<bool> &info) {
+                           return info.param ? "WithBatching" : "WithoutBatching";
+                         });
 
 }  // namespace syncer
 }  // namespace ray

@@ -95,7 +95,7 @@ class RaySyncer {
   RaySyncer(instrumented_io_context &io_context,
             const std::string &node_id,
             RpcCompletionCallback on_rpc_completion = {},
-            bool receiver_batching_enabled);
+            bool batching_enabled = false);
   ~RaySyncer();
 
   /// Connect to a node.
@@ -116,7 +116,7 @@ class RaySyncer {
   /// \return The latest sync message sent from the node. If the node doesn't
   /// have one, nullptr will be returned.
   std::shared_ptr<RaySyncMessage> GetSyncMessage(const std::string &node_id,
-                                                       MessageType message_type) const;
+                                                 MessageType message_type) const;
 
   /// Register the components to the syncer module. Syncer will make sure eventually
   /// it'll have a global view of the cluster.
@@ -181,14 +181,39 @@ class RaySyncer {
   /// [RaySyncerBidiReactor], so should be passed to each of them.
   RpcCompletionCallback on_rpc_completion_;
 
+  // Whether batching of resource view messages is enabled.
   bool batching_enabled_;
+
+  // Buffer for batching resource view messages before sending.
   absl::flat_hash_map<std::string, std::shared_ptr<const InnerRaySyncMessage>>
       resource_view_batch_buffer_;
+
+  // Timer for flushing batched resource view messages.
   std::unique_ptr<boost::asio::steady_timer> resource_view_batch_timer_;
+
+  // Whether the resource view batch timer is active.
   bool resource_view_batch_timer_active_ = false;
+
+  // The maximum batch size for resource view messages.
   size_t batch_size_ = static_cast<size_t>(RayConfig::instance().syncer_batch_size());
+
+  // The maximum timeout for batching resource view messages.
   std::chrono::milliseconds batch_timeout_{
       static_cast<int64_t>(RayConfig::instance().syncer_batch_timeout_ms())};
+
+  // Resource view message batching support
+  void BatchResourceViewMessage(std::shared_ptr<RaySyncMessage> message);
+
+  /// Flush the batched resource view messages if any.
+  void FlushResourceViewBatch();
+
+  /// Internal method to flush the batched resource view messages if any.
+  void FlushResourceViewBatchInternal();
+
+  /// Merge multiple resource view messages (flat_hash_map) into one.
+  std::shared_ptr<RaySyncMessage> MergeResourceViewMessages(
+      absl::flat_hash_map<std::string, std::shared_ptr<const InnerRaySyncMessage>>
+          &messages) const;
 
   friend class RaySyncerService;
   /// Test purpose

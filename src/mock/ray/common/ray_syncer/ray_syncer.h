@@ -39,7 +39,7 @@ class MockReceiverInterface : public ReceiverInterface {
  public:
   MOCK_METHOD(void,
               ConsumeSyncMessage,
-              (std::shared_ptr<const RaySyncMessage> message),
+              (std::shared_ptr<RaySyncMessage> message),
               (override));
 };
 
@@ -55,10 +55,7 @@ class MockRaySyncerBidiReactor : public RaySyncerBidiReactor {
 
   MOCK_METHOD(void, DoDisconnect, (), (override));
 
-  MOCK_METHOD(bool,
-              PushToSendingQueue,
-              (std::shared_ptr<const RaySyncMessage>),
-              (override));
+  MOCK_METHOD(bool, PushToSendingQueue, (std::shared_ptr<RaySyncMessage>), (override));
 };
 
 template <typename T>

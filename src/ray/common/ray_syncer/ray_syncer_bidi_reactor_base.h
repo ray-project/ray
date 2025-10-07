@@ -160,20 +160,20 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         ++it;
       } else {
         RAY_LOG_EVERY_MS(WARNING, 1000)
-                       << "Drop inner batched message received from "
-                       << NodeID::FromBinary(inner_message.node_id())
-                       << " because the message version " << inner_message.version()
-                       << " is older than the local version "
-                       << node_versions[inner_message.message_type()]
-                       << ", message_type=" << inner_message.message_type();
+            << "Drop inner batched message received from "
+            << NodeID::FromBinary(inner_message.node_id())
+            << " because the message version " << inner_message.version()
+            << " is older than the local version "
+            << node_versions[inner_message.message_type()]
+            << ", message_type=" << inner_message.message_type();
         it = mutable_batched_messages->erase(it);
       }
     }
 
     if (message->batched_messages_size() == 0) {
       RAY_LOG_EVERY_MS(WARNING, 1000)
-                       << "Drop the whole batched message received because all inner "
-                       "messages are filtered out";
+          << "Drop the whole batched message received because all inner "
+             "messages are filtered out";
       return;
     }
     message_processor_(std::move(message));

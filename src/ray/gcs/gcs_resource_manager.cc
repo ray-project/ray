@@ -62,12 +62,12 @@ void GcsResourceManager::ProcessBatchedResourceViewMessage(
     std::shared_ptr<syncer::RaySyncMessage> message) {
   RAY_CHECK_EQ(message->message_type(), syncer::MessageType::RESOURCE_VIEW);
 
-  RAY_LOG(INFO) << "Processing batched RESOURCE_VIEW message with "
-                << message->batched_messages_size() << " inner messages";
+  RAY_LOG(DEBUG) << "Processing batched RESOURCE_VIEW message with "
+                 << message->batched_messages_size() << " inner messages";
 
   for (const auto &[_, inner_message] : message->batched_messages()) {
-    RAY_LOG(INFO) << "Processing inner RESOURCE_VIEW message from node "
-                  << NodeID::FromBinary(inner_message.node_id());
+    RAY_LOG(DEBUG) << "Processing inner RESOURCE_VIEW message from node "
+                   << NodeID::FromBinary(inner_message.node_id());
 
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(inner_message.sync_message());
@@ -80,12 +80,12 @@ void GcsResourceManager::ProcessBatchedCommandsMessage(
     std::shared_ptr<syncer::RaySyncMessage> message) {
   RAY_CHECK_EQ(message->message_type(), syncer::MessageType::COMMANDS);
 
-  RAY_LOG(INFO) << "Processing batched COMMANDS message with "
-                << message->batched_messages_size() << " inner messages";
+  RAY_LOG(DEBUG) << "Processing batched COMMANDS message with "
+                 << message->batched_messages_size() << " inner messages";
 
   for (const auto &[_, inner_message] : message->batched_messages()) {
-    RAY_LOG(INFO) << "Processing inner COMMANDS message from node "
-                  << NodeID::FromBinary(inner_message.node_id());
+    RAY_LOG(DEBUG) << "Processing inner COMMANDS message from node "
+                   << NodeID::FromBinary(inner_message.node_id());
 
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.ParseFromString(inner_message.sync_message());

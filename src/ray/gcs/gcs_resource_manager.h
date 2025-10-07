@@ -66,8 +66,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   virtual ~GcsResourceManager() = default;
 
   /// Handle the resource update.
-  void ConsumeSyncMessage(
-      std::shared_ptr<rpc::syncer::RaySyncMessage> message) override;
+  void ConsumeSyncMessage(std::shared_ptr<rpc::syncer::RaySyncMessage> message) override;
 
   /// Process batched resource view messages
   void ProcessBatchedResourceViewMessage(std::shared_ptr<syncer::RaySyncMessage> message);

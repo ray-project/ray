@@ -37,8 +37,9 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
       node_state_(std::make_unique<NodeState>()),
       timer_(PeriodicalRunner::Create(io_context)),
       on_rpc_completion_(std::move(on_rpc_completion)),
-      batching_enabled_(batching_enabled)  {
+      batching_enabled_(batching_enabled) {
   stopped_ = std::make_shared<bool>(false);
+  resource_view_batch_timer_ = std::make_unique<boost::asio::steady_timer>(io_context);
   if (batching_enabled_) {
     batch_size_ = static_cast<size_t>(RayConfig::instance().syncer_batch_size());
     batch_timeout_ =
@@ -54,6 +55,7 @@ RaySyncer::~RaySyncer() {
 
   // Cancel batch timer and flush any pending messages
   FlushResourceViewBatch();
+
   boost::asio::dispatch(io_context_.get_executor(), [reactors = sync_reactors_]() {
     for (auto &[_, reactor] : reactors) {
       reactor->Disconnect();

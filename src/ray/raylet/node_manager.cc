@@ -188,7 +188,7 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
-      ray_syncer_(io_service_, self_node_id_.Binary(), false),
+      ray_syncer_(io_service_, self_node_id_.Binary()),
       worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
@@ -2856,20 +2856,29 @@ void NodeManager::ProcessBatchedResourceViewMessage(
     RAY_CHECK_EQ(inner_message.message_type(), syncer::MessageType::RESOURCE_VIEW);
 
     syncer::ResourceViewSyncMessage resource_view_sync_message;
-    if (resource_view_sync_message.ParseFromString(inner_message.sync_message())) {
-      RAY_LOG(DEBUG) << "Processing resource view message from node "
-                     << NodeID::FromBinary(inner_message.node_id()) << " with version "
-                     << inner_message.version();
-      NodeID node_id = NodeID::FromBinary(inner_message.node_id());
-      if (UpdateResourceUsage(node_id, resource_view_sync_message)) {
-        should_schedule = true;
-      }
+    resource_view_sync_message.ParseFromString(inner_message.sync_message());
+    NodeID node_id = NodeID::FromBinary(inner_message.node_id());
+    // Set node labels when node added.
+    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
+    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
+        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
+    ResourceRequest resources;
+    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
+      resources.Set(scheduling::ResourceID(resource_entry.first),
+                    FixedPoint(resource_entry.second));
+    }
+
+    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
+    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
+
+    if (capacity_updated || usage_update) {
+      should_schedule = true;
     }
   }
 
   // Schedule tasks only once after processing all messages in the batch
   if (should_schedule) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+    cluster_lease_manager_.ScheduleAndGrantLeases();
   }
 }
 

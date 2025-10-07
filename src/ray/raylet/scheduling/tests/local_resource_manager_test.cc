@@ -52,11 +52,13 @@ class LocalResourceManagerTest : public ::testing::Test {
   syncer::ResourceViewSyncMessage GetSyncMessageForResourceReport() {
     auto msg = manager->CreateSyncMessage(0, syncer::MessageType::RESOURCE_VIEW);
     syncer::ResourceViewSyncMessage resource_view_sync_messge;
-    resource_view_sync_messge.ParseFromString(msg->sync_message());
+    resource_view_sync_messge.ParseFromString(
+        msg->batched_messages().begin()->second.sync_message());
     return resource_view_sync_messge;
   }
 
-  scheduling::NodeID local_node_id = scheduling::NodeID(0);
+  NodeID node_id = NodeID::FromRandom();
+  scheduling::NodeID local_node_id = scheduling::NodeID(node_id.Binary());
   std::unique_ptr<LocalResourceManager> manager;
 };
 
