@@ -279,6 +279,15 @@ def _get_autoscaling_config_with_top_level_resources() -> dict:
     return config
 
 
+def _get_ray_cr_with_top_level_tpu_resource() -> dict:
+    """CR with a top-level `resources` field for the TPU custom resource."""
+    cr = _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource()
+
+    # The top-level field should take priority.
+    cr["spec"]["workerGroupSpecs"][2]["resources"] = {"TPU": "8"}
+    return cr
+
+
 def _get_ray_cr_with_no_tpus() -> dict:
     cr = get_basic_ray_cr()
     # remove TPU worker group
@@ -686,6 +695,11 @@ TPU_TEST_DATA = (
             0,
             id="no-tpus-requested",
         ),
+        pytest.param(
+            _get_ray_cr_with_top_level_tpu_resource(),
+            8,
+            id="tpu-top-level-resource",
+        ),
     ]
 )
 
@@ -695,13 +709,14 @@ TPU_TEST_DATA = (
 def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
     """Verify that _get_num_tpus correctly returns the number of requested TPUs."""
     for worker_group in ray_cr_in["spec"]["workerGroupSpecs"]:
+        group_resources = worker_group.get("resources", {})
         ray_start_params = worker_group["rayStartParams"]
         custom_resources = _get_custom_resources(
-            {}, ray_start_params, worker_group["groupName"]
+            group_resources, ray_start_params, worker_group["groupName"]
         )
         k8s_resources = worker_group["template"]["spec"]["containers"][0]["resources"]
 
-        num_tpus = _get_num_tpus({}, custom_resources, k8s_resources)
+        num_tpus = _get_num_tpus(group_resources, custom_resources, k8s_resources)
 
         if worker_group["groupName"] == "tpu-group":
             assert num_tpus == expected_num_tpus
