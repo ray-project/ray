@@ -326,8 +326,10 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
         account_url = f"https://{account}.blob.core.windows.net"
 
         # Create a zip file of the local path
+        logger.info(f"Creating zip file of {local_path}")
         zip_file = f"{local_path}.zip"
         shutil.make_archive(zip_file, "zip", local_path)
+        logger.info(f"Zipped file: {zip_file}")
 
         # Upload the zip file to the azure path
         credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
