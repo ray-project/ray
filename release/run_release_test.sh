@@ -54,6 +54,8 @@ if [ -z "${NO_INSTALL}" ]; then
   grep '==' ./requirements_buildkite.txt > /tmp/requirements_buildkite_nohash.txt
   sed -i 's/ \\//' /tmp/requirements_buildkite_nohash.txt  # Remove ending slashes.
   sed -i 's/\[.*\]//g' /tmp/requirements_buildkite_nohash.txt  # Remove extras.
+  echo "Installing requirements from /tmp/requirements_buildkite_nohash.txt"
+  cat /tmp/requirements_buildkite_nohash.txt
   pip install -c /tmp/requirements_buildkite_nohash.txt -e .
 fi
 
