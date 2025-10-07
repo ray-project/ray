@@ -651,7 +651,7 @@ class ApplicationAutoscalingState:
         self._config: Optional[ServeApplicationSchema] = None
         self._policy: Optional[
             Callable[
-                [Dict[str, AutoscalingContext]],
+                [Dict[DeploymentID, AutoscalingContext]],
                 Tuple[Dict[DeploymentID, int], Optional[Dict[str, Dict]]],
             ]
         ] = None

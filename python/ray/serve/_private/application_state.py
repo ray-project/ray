@@ -451,6 +451,9 @@ class ApplicationState:
         If the application has app-level autoscaling, it will apply the autoscaling decisions for the application.
         If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
         """
+        if self._target_state.deployment_infos is None:
+            return False
+
         deployment_to_target_num_replicas: Dict[DeploymentID, int] = {}
         for deployment_name in self._target_state.deployment_infos.keys():
             deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
@@ -544,6 +547,9 @@ class ApplicationState:
             RayServeException: If there is more than one route prefix or docs path.
         """
 
+        # TODO (abrar): handle passing application autoscaling policy to the application.
+        # Currently, this is only supported through the declarative API.
+
         # Check routes are unique in deployment infos
         self._route_prefix = self._check_routes(deployment_infos)
 
@@ -555,8 +561,6 @@ class ApplicationState:
             target_capacity=None,
             target_capacity_direction=None,
         )
-
-        self._register_autoscaling_if_needed()
 
     def apply_app_config(
         self,
@@ -655,6 +659,7 @@ class ApplicationState:
             self._target_state.config is not None
             and self._target_state.config.autoscaling_policy is not None
         ):
+            print("registering application autoscaling policy")
             self._autoscaling_state_manager.register_application(
                 self._name,
                 self._target_state.config,
@@ -892,7 +897,12 @@ class ApplicationState:
                         self._build_app_task_info.target_capacity_direction
                     ),
                 )
-                self._register_autoscaling_if_needed()
+                # Handling the case where the user turns off/turns on app-level autoscaling policy,
+                # between app deployment.
+                if self._target_state.config.autoscaling_policy is not None:
+                    self._register_autoscaling_if_needed()
+                else:
+                    self._autoscaling_state_manager.deregister_application(self._name)
             elif task_status == BuildAppStatus.FAILED:
                 self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 

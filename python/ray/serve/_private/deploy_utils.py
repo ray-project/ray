@@ -103,6 +103,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
+            "autoscaling_policy": str(app_config.autoscaling_policy),
         },
         sort_keys=True,
     ).encode("utf-8")
