@@ -44,7 +44,11 @@ def test_successful_return(thread_runner):
 
 
 def test_error(thread_runner):
-    """Checks that an exception can be captured from the target function."""
+    """Checks that an exception can be captured from the target function.
+
+    This test also checks that the traceback string only includes the frames
+    from the user function (train_func) and not the wrapper frames.
+    """
 
     def wrapped_train_func():
         def train_fn_with_final_checkpoint_flush():
@@ -72,8 +76,19 @@ def test_error(thread_runner):
     assert "train_func" in error._traceback_str
 
 
-def test_nested_thread_error(thread_runner):
+def test_nested_thread_error(monkeypatch, thread_runner):
     """Checks that we capture exceptions from threads kicked off by target function."""
+
+    original_monitor_target = thread_runner._monitor_target
+    monitor_event = threading.Event()
+
+    def monitor_target_patch():
+        monitor_event.wait()
+        original_monitor_target()
+
+    monkeypatch.setattr(thread_runner, "_monitor_target", monitor_target_patch)
+
+    target_event = threading.Event()
 
     def target():
         def nested():
@@ -87,10 +102,18 @@ def test_nested_thread_error(thread_runner):
         thread = threading.Thread(target=nested)
         thread.start()
         thread.join()
+        target_event.set()
 
     thread_runner.run(target)
-    assert not thread_runner.join()
+    target_event.wait()
+    # While the monitor thread is processing the exception,
+    # the thread runner is still considered running.
+    assert thread_runner.is_running() and thread_runner.get_error() is None
 
+    # Unblock the monitor thread.
+    monitor_event.set()
+
+    assert not thread_runner.join()
     assert thread_runner.get_return_value() is None
     assert not thread_runner.is_running()
 

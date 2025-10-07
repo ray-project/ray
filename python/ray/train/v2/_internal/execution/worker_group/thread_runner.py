@@ -28,16 +28,11 @@ class ThreadRunner:
         self._lock = threading.Lock()
         self._exc_queue: queue.SimpleQueue[Optional[Exception]] = queue.SimpleQueue()
 
-        self._is_running = False
-
     def run(self, target: Callable[[], T]) -> None:
         if self._thread is not None:
             raise RuntimeError("Thread is already running.")
 
         def _run_target():
-            with self._lock:
-                self._is_running = True
-
             try:
                 result = target()
                 with self._lock:
@@ -51,18 +46,10 @@ class ThreadRunner:
                         e, exclude_frames=3
                     )
 
-            # Turn off the exception monitor thread.
+            # Join the monitor thread. This ensures that a queued exception
+            # is processed before the target function returns.
             self._exc_queue.put(None)
-
-            with self._lock:
-                self._is_running = False
-
-        self._thread = threading.Thread(
-            target=_run_target,
-            daemon=True,
-            name=f"TrainingThread({get_callable_name(target)})",
-        )
-        self._thread.start()
+            self._monitor_thread.join()
 
         self._monitor_thread = threading.Thread(
             target=self._monitor_target,
@@ -70,6 +57,13 @@ class ThreadRunner:
             name=f"MonitoringThread({get_callable_name(target)})",
         )
         self._monitor_thread.start()
+
+        self._thread = threading.Thread(
+            target=_run_target,
+            daemon=True,
+            name=f"TrainingThread({get_callable_name(target)})",
+        )
+        self._thread.start()
 
     def _monitor_target(self):
         """Monitor the exception queue and set the exception if an exception is found.
@@ -85,8 +79,7 @@ class ThreadRunner:
 
     def is_running(self) -> bool:
         """Returns whether the target function is still running."""
-        with self._lock:
-            return self._is_running
+        return self._thread and self._thread.is_alive()
 
     def get_error(self) -> Optional[BaseException]:
         with self._lock:
