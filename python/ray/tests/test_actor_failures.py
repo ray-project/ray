@@ -32,6 +32,13 @@ def ray_init_with_task_retry_delay():
 
 
 @pytest.fixture
+def ray_init_with_actor_graceful_shutdown_timeout():
+    address = ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 1000})
+    yield address
+    ray.shutdown()
+
+
+@pytest.fixture
 def tempfile_factory() -> Generator[Callable[[], str], None, None]:
     """Yields a factory function to generate tempfiles that will be deleted after the test run."""
     files = []
@@ -1526,12 +1533,12 @@ def test_actor_ray_shutdown_called_on_scope_exit(
         assert f.read() == "shutdown_called_on_scope_exit"
 
 
-def test_actor_graceful_shutdown_timeout_fallback(shutdown_only, tempfile_factory):
+def test_actor_graceful_shutdown_timeout_fallback(
+    ray_init_with_actor_graceful_shutdown_timeout, tempfile_factory
+):
     """Test that actor is force killed if __ray_shutdown__ exceeds timeout."""
     shutdown_started_file = tempfile_factory()
     shutdown_completed_file = tempfile_factory()
-
-    ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 1000})
 
     @ray.remote
     class HangingShutdownActor:
