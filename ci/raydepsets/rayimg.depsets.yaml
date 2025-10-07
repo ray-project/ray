@@ -17,15 +17,14 @@ build_arg_sets:
 
 depsets:
   - name: ray_img_depset_py${PYTHON_SHORT}
-    packages:
-      - ray[all]==100.0.0.dev0
+    requirements:
+      - release/ray_release/byod/ray_dev_py${PYTHON_VERSION}.in
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
     operation: compile
     append_flags:
       - --python-version=${PYTHON_VERSION}
-      - --find-links=.whl
       - --python-platform=linux
       - --unsafe-package ray
     build_arg_sets:
@@ -33,6 +32,6 @@ depsets:
       - py310
       - py311
       - py312
-    pre_hooks:
-      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
+    # pre_hooks:
+    #   - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
+    #   - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
