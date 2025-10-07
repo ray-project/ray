@@ -1,3 +1,5 @@
+from ray.air.util.tensor_extensions.arrow import concat_tensor_arrays
+
 try:
     import pyarrow
 except ImportError:
@@ -25,7 +27,6 @@ def _concatenate_extension_column(
         ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
     """
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorArray,
         get_arrow_extension_tensor_types,
     )
 
@@ -37,12 +38,12 @@ def _concatenate_extension_column(
     if ca.num_chunks == 0:
         # Create empty storage array.
         storage = pyarrow.array([], type=ca.type.storage_type)
-    elif isinstance(ca.type, tensor_extension_types):
-        return ArrowTensorArray._concat_same_type(ca.chunks, ensure_copy)
     elif not ensure_copy and len(ca.chunks) == 1:
         # Skip copying
         return ca.chunks[0]
+    elif isinstance(ca.type, tensor_extension_types):
+        return concat_tensor_arrays(ca.chunks, ensure_copy)
     else:
         storage = pyarrow.concat_arrays([c.storage for c in ca.chunks])
 
-    return ca.type.__arrow_ext_class__().from_storage(ca.type, storage)
+    return ca.type.wrap_array(storage)

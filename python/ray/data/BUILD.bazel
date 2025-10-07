@@ -466,7 +466,7 @@ py_test(
 
 py_test(
     name = "test_consumption",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_consumption.py"],
     tags = [
         "exclusive",
@@ -536,6 +536,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_ecosystem_dask.py"],
     tags = [
+        "custom_setup",
         "dask",
         "exclusive",
         "team:data",
@@ -688,8 +689,22 @@ py_test(
 
 py_test(
     name = "test_map",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_map.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_filter",
+    size = "medium",
+    srcs = ["tests/test_filter.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1182,7 +1197,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_stats.py"],
     tags = [
         "exclusive",
@@ -1616,7 +1631,7 @@ py_test(
 
 py_test(
     name = "test_custom_agg",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_custom_agg.py"],
     tags = [
         "exclusive",
