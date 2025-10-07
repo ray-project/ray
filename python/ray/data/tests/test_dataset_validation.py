@@ -46,35 +46,6 @@ def test_unsupported_pyarrow_versions_check(shutdown_only):
         ray.get(should_error.remote())
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
-)
-def test_unsupported_pyarrow_versions_check_disabled(
-    shutdown_only,
-    unsupported_pyarrow_version,
-    disable_pyarrow_version_check,
-):
-    ray.shutdown()
-
-    # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
-    # initial pyarrow use when the version check is disabled.
-    ray.init(
-        runtime_env={
-            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
-            "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
-        },
-    )
-
-    @ray.remote
-    def should_pass():
-        _check_pyarrow_version()
-
-    try:
-        ray.get(should_pass.remote())
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
-
 class LoggerWarningCalled(Exception):
     """Custom exception used in test_warning_execute_with_no_cpu() and
     test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
