@@ -28,6 +28,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -97,7 +98,10 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
                        public rpc::events::RayEventExportGcsServiceHandler {
  public:
   /// Create a GcsTaskManager.
-  explicit GcsTaskManager(instrumented_io_context &io_service);
+  explicit GcsTaskManager(instrumented_io_context &io_service,
+                          ray::observability::MetricInterface &task_events_reported_gauge,
+                          ray::observability::MetricInterface &task_events_dropped_gauge,
+                          ray::observability::MetricInterface &task_events_stored_gauge);
 
   /// Handles a AddTaskEventData request.
   ///
@@ -527,6 +531,11 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
 
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+
+  /// Metric interfaces for task manager metrics
+  ray::observability::MetricInterface &task_events_reported_gauge_;
+  ray::observability::MetricInterface &task_events_dropped_gauge_;
+  ray::observability::MetricInterface &task_events_stored_gauge_;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);

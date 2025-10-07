@@ -14,7 +14,7 @@ import ray
 
 
 NUM_GPU_NODES = 8
-INPUT_PATH = "s3://anonymous@s3://ray-example-data/imagenet/metadata_file"
+INPUT_PATH = "s3://anonymous@ray-example-data/imagenet/metadata_file"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BATCH_SIZE = 100
 

@@ -107,7 +107,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
-      const std::string &session_name);
+      const std::string &session_name,
+      ray::observability::MetricInterface &actor_by_state_gauge,
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
   ~GcsActorManager() override = default;
 
@@ -209,7 +211,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param node The specified node id.
   /// \param node_ip_address The ip address of the dead node.
   void OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
-                  const std::string node_ip_address);
+                  const std::string &node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -501,6 +503,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+  ray::observability::MetricInterface &actor_by_state_gauge_;
+  ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
