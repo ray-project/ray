@@ -16,7 +16,6 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
@@ -26,10 +25,10 @@ class NoopCgroupManager : public CgroupManagerInterface {
  public:
   // Uncopyable type.
   NoopCgroupManager() = default;
-  explicit NoopCgroupManager(const CgroupManager &) = delete;
-  NoopCgroupManager &operator=(const CgroupManager &) = delete;
-  explicit NoopCgroupManager(CgroupManager &&);
-  NoopCgroupManager &operator=(CgroupManager &&);
+  explicit NoopCgroupManager(const NoopCgroupManager &) = delete;
+  NoopCgroupManager &operator=(const NoopCgroupManager &) = delete;
+  explicit NoopCgroupManager(NoopCgroupManager &&);
+  NoopCgroupManager &operator=(NoopCgroupManager &&);
   ~NoopCgroupManager() = default;
 
   Status AddProcessToApplicationCgroup(const std::string &pid) override {
