@@ -2462,6 +2462,10 @@ cdef CRayStatus task_execution_handler(
                 if hasattr(e, "unexpected_error_traceback"):
                     msg += (f" {e.unexpected_error_traceback}")
                 return CRayStatus.UnexpectedSystemExit(msg)
+        except Exception as e:
+            msg = "Unexpected exception raised in task execution handler: {}".format(e)
+            logger.error(msg)
+            return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
