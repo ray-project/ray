@@ -3,7 +3,7 @@ set -exuo pipefail
 
 ls -a
 
-uv pip sync "$HOME"/python_depset.lock --system --index-strategy unsafe-best-match --find-links "$HOME"/.whl
+uv pip install -r "$HOME"/python_depset.lock --system --no-deps --index-strategy unsafe-best-match
 
 python ci/nb2py.py README.ipynb README.py  # convert notebook to py script
 python README.py  # be sure to use ipython to ensure even non-python cells are executed properly
