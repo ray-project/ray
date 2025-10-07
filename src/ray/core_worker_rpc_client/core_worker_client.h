@@ -56,7 +56,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   bool IsIdleAfterRPCs() const override {
     return grpc_client_->IsChannelIdleAfterRPCs() &&
-           (retryable_grpc_client_->NumPendingRequests() == 0);
+           retryable_grpc_client_->NumActiveRequests() == 0;
   }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
@@ -192,13 +192,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
-
-  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
-                                   CoreWorkerService,
-                                   FreeActorObject,
-                                   grpc_client_,
-                                   /*method_timeout_ms*/ -1,
-                                   override)
 
   void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                      bool skip_queue,
