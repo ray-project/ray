@@ -1,24 +1,25 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Generic, List, Optional, TypeVar, Union
 
 import numpy as np
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
 from ray.data.block import (
-    AggType,
     Block,
     BlockAccessor,
     BlockColumnAccessor,
     KeyType,
-    T,
-    U,
 )
 from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
+
+T = TypeVar("T")
+U = TypeVar("U")
+AggType = TypeVar("AggType")
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -113,7 +114,7 @@ class AggregateFn:
 
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn, abc.ABC):
+class AggregateFnV2(AggregateFn, abc.ABC, Generic[AggType, U]):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
@@ -254,7 +255,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
 
 @PublicAPI
-class Count(AggregateFnV2):
+class Count(AggregateFnV2[int, int]):
     """Defines count aggregation.
 
     Example:
@@ -303,7 +304,7 @@ class Count(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> int:
         block_accessor = BlockAccessor.for_block(block)
 
         if self._target_col_name is None:
@@ -314,12 +315,12 @@ class Count(AggregateFnV2):
             self._target_col_name, ignore_nulls=self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(self, current_accumulator: int, new: int) -> int:
         return current_accumulator + new
 
 
 @PublicAPI
-class Sum(AggregateFnV2):
+class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
     """Defines sum aggregation.
 
     Example:
@@ -359,17 +360,19 @@ class Sum(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> Union[int, float]:
         return BlockAccessor.for_block(block).sum(
             self._target_col_name, self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: Union[int, float], new: Union[int, float]
+    ) -> Union[int, float]:
         return current_accumulator + new
 
 
 @PublicAPI
-class Min(AggregateFnV2):
+class Min(AggregateFnV2[Union[int, float], Union[int, float]]):
     """Defines min aggregation.
 
     Example:
@@ -412,17 +415,19 @@ class Min(AggregateFnV2):
             zero_factory=lambda: float("+inf"),
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> Union[int, float]:
         return BlockAccessor.for_block(block).min(
             self._target_col_name, self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: Union[int, float], new: Union[int, float]
+    ) -> Union[int, float]:
         return min(current_accumulator, new)
 
 
 @PublicAPI
-class Max(AggregateFnV2):
+class Max(AggregateFnV2[Union[int, float], Union[int, float]]):
     """Defines max aggregation.
 
     Example:
@@ -458,7 +463,6 @@ class Max(AggregateFnV2):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-
         super().__init__(
             alias_name if alias_name else f"max({str(on)})",
             on=on,
@@ -466,17 +470,19 @@ class Max(AggregateFnV2):
             zero_factory=lambda: float("-inf"),
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> Union[int, float]:
         return BlockAccessor.for_block(block).max(
             self._target_col_name, self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: Union[int, float], new: Union[int, float]
+    ) -> Union[int, float]:
         return max(current_accumulator, new)
 
 
 @PublicAPI
-class Mean(AggregateFnV2):
+class Mean(AggregateFnV2[List[int], float]):
     """Defines mean (average) aggregation.
 
     Example:
@@ -521,7 +527,7 @@ class Mean(AggregateFnV2):
             zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> List[int]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
@@ -539,10 +545,10 @@ class Mean(AggregateFnV2):
 
         return [sum_, count]
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
-    def finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: List[int]) -> Optional[float]:
         # The final accumulator for a group is [total_sum, total_count].
         if accumulator[1] == 0:
             # If total_count is 0 (e.g., group was empty or all nulls ignored),
@@ -553,7 +559,7 @@ class Mean(AggregateFnV2):
 
 
 @PublicAPI
-class Std(AggregateFnV2):
+class Std(AggregateFnV2[List[float], float]):
     """Defines standard deviation aggregation.
 
     Uses Welford's online algorithm for numerical stability. This method computes
@@ -610,7 +616,7 @@ class Std(AggregateFnV2):
 
         self._ddof = ddof
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> List[float]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, ignore_nulls=self._ignore_nulls)
         if count == 0 or count is None:
@@ -627,7 +633,9 @@ class Std(AggregateFnV2):
         )
         return [M2, mean, count]
 
-    def combine(self, current_accumulator: List[float], new: List[float]) -> AggType:
+    def combine(
+        self, current_accumulator: List[float], new: List[float]
+    ) -> List[float]:
         # Merges two accumulators [M2, mean, count] using a parallel algorithm.
         # See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
         M2_a, mean_a, count_a = current_accumulator
@@ -643,7 +651,7 @@ class Std(AggregateFnV2):
         M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
         return [M2, mean, count]
 
-    def finalize(self, accumulator: List[float]) -> Optional[U]:
+    def finalize(self, accumulator: List[float]) -> Optional[float]:
         # Compute the final standard deviation from the accumulated
         # sum of squared differences from current mean and the count.
         # Final accumulator: [M2, mean, count]
@@ -658,7 +666,7 @@ class Std(AggregateFnV2):
 
 
 @PublicAPI
-class AbsMax(AggregateFnV2):
+class AbsMax(AggregateFnV2[Union[int, float], Union[int, float]]):
     """Defines absolute max aggregation.
 
     Example:
@@ -701,7 +709,7 @@ class AbsMax(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> Union[int, float]:
         block_accessor = BlockAccessor.for_block(block)
 
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
@@ -715,12 +723,14 @@ class AbsMax(AggregateFnV2):
             abs(min_),
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: Union[int, float], new: Union[int, float]
+    ) -> Union[int, float]:
         return max(current_accumulator, new)
 
 
 @PublicAPI
-class Quantile(AggregateFnV2):
+class Quantile(AggregateFnV2[List[Any], List[Any]]):
     """Defines Quantile aggregation.
 
     Example:
@@ -790,7 +800,7 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> List[Any]:
         block_acc = BlockAccessor.for_block(block)
         ls = []
 
@@ -799,7 +809,7 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def finalize(self, accumulator: List[Any]) -> Optional[U]:
+    def finalize(self, accumulator: List[Any]) -> Optional[Any]:
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
@@ -831,7 +841,7 @@ class Quantile(AggregateFnV2):
 
 
 @PublicAPI
-class Unique(AggregateFnV2):
+class Unique(AggregateFnV2[set, set]):
     """Defines unique aggregation.
 
     Example:
@@ -870,10 +880,10 @@ class Unique(AggregateFnV2):
             zero_factory=set,
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(self, current_accumulator: set, new: set) -> set:
         return self._to_set(current_accumulator) | self._to_set(new)
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> set:
         import pyarrow.compute as pac
 
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
@@ -988,7 +998,6 @@ def _null_safe_combine(
         def _safe_combine(
             cur: Optional[AggType], new: Optional[AggType]
         ) -> Optional[AggType]:
-
             if is_null(cur):
                 return new
             elif is_null(new):
@@ -1001,7 +1010,6 @@ def _null_safe_combine(
         def _safe_combine(
             cur: Optional[AggType], new: Optional[AggType]
         ) -> Optional[AggType]:
-
             if is_null(new):
                 return new
             elif is_null(cur):
@@ -1013,7 +1021,7 @@ def _null_safe_combine(
 
 
 @PublicAPI(stability="alpha")
-class MissingValuePercentage(AggregateFnV2):
+class MissingValuePercentage(AggregateFnV2[List[int], float]):
     """Calculates the percentage of null values in a column.
 
     This aggregation computes the percentage of null (missing) values in a dataset column.
@@ -1094,7 +1102,7 @@ class MissingValuePercentage(AggregateFnV2):
 
 
 @PublicAPI(stability="alpha")
-class ZeroPercentage(AggregateFnV2):
+class ZeroPercentage(AggregateFnV2[List[int], float]):
     """Calculates the percentage of zero values in a numeric column.
 
     This aggregation computes the percentage of zero values in a numeric dataset column.
