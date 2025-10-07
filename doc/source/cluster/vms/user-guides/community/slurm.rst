@@ -183,13 +183,13 @@ because it does not currently work in multi-tenant environments:
   ...
   srun --nodes=1 --ntasks=1 -w "$head_node" \
       ray start --head --node-ip-address="$head_node_ip" \
-          --port=6379 \
-          --node-manager-port=6700 \
-          --object-manager-port=6701 \
-          --ray-client-server-port=10001 \
-          --redis-shard-ports=6702 \
-          --min-worker-port=10002 \
-          --max-worker-port=19999 \
+          --port=6380 \
+          --node-manager-port=6800 \
+          --object-manager-port=6801 \
+          --ray-client-server-port=20001 \
+          --redis-shard-ports=6802 \
+          --min-worker-port=20002 \
+          --max-worker-port=29999 \
           --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" --block &
 
     python -u your_script.py
