@@ -38,7 +38,7 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
@@ -185,7 +185,8 @@ class CoreWorkerTest : public ::testing::Test {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
         mock_gcs_client,
-        fake_task_by_state_counter_);
+        fake_task_by_state_gauge_,
+        /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -229,7 +230,7 @@ class CoreWorkerTest : public ::testing::Test {
         *actor_creator,
         /*tensor_transport_getter=*/
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        [](const ActorID &actor_id, uint64_t num_queued) { return Status::OK(); },
+        [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
         reference_counter_);
     actor_task_submitter_ = actor_task_submitter.get();
@@ -271,7 +272,8 @@ class CoreWorkerTest : public ::testing::Test {
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
                                                 getpid(),
-                                                fake_task_by_state_counter_);
+                                                fake_task_by_state_gauge_,
+                                                fake_actor_by_state_gauge_);
   }
 
  protected:
@@ -290,7 +292,8 @@ class CoreWorkerTest : public ::testing::Test {
   pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
-  ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_gauge_;
+  ray::observability::FakeGauge fake_actor_by_state_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts
@@ -316,7 +319,7 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
   ASSERT_TRUE(status.ok());
   // disconnect to trigger metric recording
   core_worker_->Disconnect(rpc::WorkerExitType::SYSTEM_ERROR, "test", nullptr);
-  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  auto tag_to_value = fake_task_by_state_gauge_.GetTagToValue();
   // 4 states: RUNNING, SUBMITTED_TO_WORKER, RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT
   ASSERT_EQ(tag_to_value.size(), 4);
   for (auto &[key, value] : tag_to_value) {

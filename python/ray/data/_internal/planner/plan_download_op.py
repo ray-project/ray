@@ -244,15 +244,16 @@ class PartitionActor:
         return file_sizes
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
+        if not isinstance(block, pa.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+
+        # Perform the arrow conversion before calling column_names
         if self._uri_column_name not in block.column_names:
             raise ValueError(
                 "Ray Data tried to download URIs from a column named "
                 f"{self._uri_column_name!r}, but a column with that name doesn't "
                 "exist. Is the specified download column correct?"
             )
-
-        if not isinstance(block, pa.Table):
-            block = BlockAccessor.for_block(block).to_arrow()
 
         if self._batch_size_estimate is None:
             # Extract URIs from PyArrow table for sampling

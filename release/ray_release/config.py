@@ -41,6 +41,7 @@ RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
 RELEASE_TEST_CONFIG_FILES = [
     "release/release_tests.yaml",
     "release/release_data_tests.yaml",
+    "release/release_multimodal_inference_benchmarks_tests.yaml",
 ]
 
 ALLOWED_BYOD_TYPES = ["gpu", "cpu", "cu123", "llm-cu128"]

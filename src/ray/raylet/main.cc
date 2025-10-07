@@ -388,7 +388,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
-  ray::stats::Gauge task_by_state_counter = ray::core::GetTaskMetric();
+  ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
   std::unique_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
