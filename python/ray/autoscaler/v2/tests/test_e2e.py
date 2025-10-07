@@ -536,20 +536,27 @@ while True:
 # Helper function to vaidate that a node's labels satisfy a `label_selector`.
 def _verify_node_labels_for_selector(
     node_labels: Dict[str, str], selector: Dict[str, str]
-):
+) -> bool:
     for key, value in selector.items():
+        node_val = node_labels.get(key)
+
         if "!in(" in value:
             options_str = value.replace("!in(", "").replace(")", "")
             options = {opt.strip() for opt in options_str.split(",")}
-            assert node_labels.get(key) not in options
+            if node_val in options:
+                return False
         elif "in(" in value:
             options_str = value.replace("in(", "").replace(")", "")
             options = {opt.strip() for opt in options_str.split(",")}
-            assert node_labels.get(key) in options
+            if node_val not in options:
+                return False
         elif value.startswith("!"):
-            assert node_labels.get(key) != value[1:]
+            if node_val == value[1:]:
+                return False
         else:
-            assert node_labels.get(key) == value
+            if node_val != value:
+                return False
+    # If all checks pass for all key-value pairs in the selector, return True.
     return True
 
 
