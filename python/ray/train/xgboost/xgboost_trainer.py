@@ -232,8 +232,8 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         elif train_kwargs:
             _log_deprecation_warning(
                 "Passing `xgboost.train` kwargs to `XGBoostTrainer` is deprecated. "
-                "Please pass in a training function instead, "
-                "which has full flexibility on the call to `xgboost.train(**kwargs)`. "
+                "In your training function, you can call `xgboost.train(**kwargs)` "
+                "with arbitrary arguments. "
                 f"{LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE}"
             )
 
