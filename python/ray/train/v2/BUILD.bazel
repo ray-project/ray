@@ -3,7 +3,7 @@ load("//bazel:python.bzl", "doctest")
 
 doctest(
     name = "py_doctest[train_v2]",
-    size = "large",
+    size = "medium",
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     files = glob(
         ["**/*.py"],
