@@ -1,13 +1,8 @@
 import json
-import logging
-import os
 from typing import Dict, Optional
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 from packaging.version import Version, parse as parse_version
-
-_RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
-
 
 _PYARROW_INSTALLED: Optional[bool] = None
 _PYARROW_VERSION: Optional[Version] = None
