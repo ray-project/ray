@@ -187,6 +187,7 @@ class Processor:
 
     Args:
         config: The processor config.
+        stages: List of processing stages.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.
