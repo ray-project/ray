@@ -686,8 +686,9 @@ cdef increase_recursion_limit():
 
     0x30C0000 is Python 3.12
         On 3.12, when recursion depth increases, c_recursion_remaining will decrease,
-        and that's what's acutally compared to raise a RecursionError. So increasing
+        and that's what's actually compared to raise a RecursionError. So increasing
         it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
+        https://github.com/python/cpython/blob/bfb9e2f4a4e690099ec2ec53c08b90f4d64fde36/Python/pystate.c#L1353
     0x30B00A4 is Python 3.11
         On 3.11, the recursion depth can be calculated with recursion_limit - recursion_remaining.
         We can get the current limit with Py_GetRecursionLimit and set it with Py_SetRecursionLimit.
