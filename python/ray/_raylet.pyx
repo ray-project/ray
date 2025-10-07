@@ -679,25 +679,56 @@ def compute_task_id(ObjectRef object_ref):
 
 
 cdef increase_recursion_limit():
-    """Double the recusion limit if current depth is close to the limit"""
+    """
+    Ray does some weird things with asio fibers and asyncio to run asyncio actors.
+    This results in the Python interpreter thinking there's a lot of recursion depth,
+    so we need to increase the limit when we start getting close.
+
+    0x30C0000 is Python 3.12
+        On 3.12, when recursion depth increases, c_recursion_remaining will decrease
+        and this is what's acutally compared to raise a RecursionError. So increasing
+        it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
+        DoOrGetRecursionMadness will return false (so we don't set with Py_SetRecursionLimit)
+        + the current recursion remaining.
+    0x30B00A4 is Python 3.11
+        On 3.11, the recursion depth can be calculated with recursion_limit - recursion_remaining.
+        We can get the current limit with Py_GetRecursionLimit and set it with Py_SetRecursionLimit.
+        DoOrGetRecursionMadness will return true + the current recursion depth.
+    On older versions
+        There's simply a recursion_depth variable and we can increase the max the same
+        way we do for 3.11.
+        DoOrGetRecursionMadness will return true + the current recursion depth.
+    """
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
         int current_limit = Py_GetRecursionLimit()
-        int new_limit = current_limit * 2
+        int new_limit = current_limit * 2 # Only for versions less than 3.12
         cdef extern from *:
             """
 #if PY_VERSION_HEX >= 0x30C0000
-    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+    std::pair<bool, int> DoOrGetRecursionMadness(PyThreadState *x) {
+        if (x->c_recursion_remaining < 1000) {
+            x->c_recursion_remaining += 1000;
+        }
+        return std::make_pair(false, x->c_recursion_remaining);
+    }
 #elif PY_VERSION_HEX >= 0x30B00A4
-    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+    std::pair<bool, int> DoOrGetRecursionMadness(PyThreadState *x) {
+        return std::make_pair(true, x->recursion_limit - x->recursion_remaining);
+    }
 #else
-    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+    std::pair<bool, int> DoOrGetRecursionMadness(PyThreadState *x) {
+        return std::make_pair(true, x->recursion_depth);
+    }
 #endif
             """
-            int CURRENT_DEPTH(CPyThreadState *x)
+            c_pair[c_bool, int] DoOrGetRecursionMadness(CPyThreadState *x)
 
-        int current_depth = CURRENT_DEPTH(s)
-    if current_limit - current_depth < 500:
+        c_pair[c_bool, int] result = DoOrGetRecursionMadness(s)
+        c_bool need_to_increase = result.first
+        int current_depth = result.second
+
+    if need_to_increase and current_limit - current_depth < 500:
         Py_SetRecursionLimit(new_limit)
         logger.debug("Increasing Python recursion limit to {} "
                      "current recursion depth is {}.".format(
@@ -1841,6 +1872,8 @@ cdef void execute_task(
 
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
+
+    # increase_recursion_limit()
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
