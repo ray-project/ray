@@ -44,7 +44,7 @@ When running under KubeRay, it instead runs as a separate autoscaler container i
 
 .. note::
 
-   In the case of cluster launcher, if the autoscaler process crashes, then there is no autoscaling.
+   In the case of the cluster launcher, if the autoscaler process crashes, then there is no autoscaling.
    While in the case of KubeRay, Kubernetes restarts the autoscaler container if it crashes.
 
 
@@ -164,7 +164,7 @@ Once transitions are triggered by the Reconciler, subscribers perform side effec
 
 .. note::
 
-   Status transitions trigger side effects, but side effects don't trigger new transitions directly.
+   These transitions trigger side effects, but side effects don't trigger new transitions directly.
    Instead, their results are observed from external state during the sync phase; subsequent transitions are triggered based on those observations.
 
 
