@@ -515,8 +515,8 @@ cdef class InnerGcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: c_vector[unordered_map[c_string, cython.double]],
+            label_selectors: c_vector[unordered_map[c_string, c_string]],
             count_array: c_vector[int64_t],
-            label_selectors: c_vector[unordered_map[c_string, c_string]] = {},
             timeout_s=None):
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
@@ -524,7 +524,7 @@ cdef class InnerGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .Autoscaler()
-                .RequestClusterResourceConstraint(timeout_ms, bundles, count_array, label_selectors)
+                .RequestClusterResourceConstraint(timeout_ms, bundles, label_selectors, count_array)
             )
 
     def get_cluster_resource_state(

@@ -215,10 +215,10 @@ def request_resources(
     to_request = []
     for _ in range(num_cpus or 0):
         to_request.append({"resources": {"CPU": 1}, "label_selector": {}})
+    assert not bundle_label_selectors or (
+        bundles and len(bundles) == len(bundle_label_selectors)
+    ), "If bundle_label_selectors is provided, bundles must also be provided and have the same length."
     if bundles:
-        assert not bundle_label_selectors or len(bundles) == len(
-            bundle_label_selectors
-        ), "If provided, bundle_label_selectors must have the same length as bundles."
         for i, bundle in enumerate(bundles):
             selector = bundle_label_selectors[i] if bundle_label_selectors else {}
             to_request.append({"resources": bundle, "label_selector": selector})

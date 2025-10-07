@@ -46,12 +46,13 @@ def request_cluster_resources(
     # Convert bundle dicts to ResourceRequest tuples.
     normalized: List[ResourceRequest] = []
     for r in to_request:
-        if isinstance(r, dict):
-            resources = r.get("resources", {})
-            selector = r.get("label_selector", {})
-            normalized.append(ResourceRequest(resources, selector))
-        else:
-            raise TypeError("Each element must be a dict")
+        assert isinstance(
+            r, dict
+        ), f"Internal Error: Expected a dict, but got {type(r)}"
+        resources = r.get("resources", {})
+        selector = r.get("label_selector", {})
+        normalized.append(ResourceRequest(resources, selector))
+
     to_request = normalized
 
     # Aggregate bundle by shape
