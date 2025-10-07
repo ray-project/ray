@@ -1,6 +1,6 @@
 .. _autoscaler-v2:
 
-autoscaler v2
+Autoscaler v2
 =============
 
 This document explains how the open-source autoscaler v2 works in Ray 2.48 and outlines its high-level responsibilities and implementation details.
@@ -42,7 +42,7 @@ The entry point of the autoscaler is `monitor.py <https://github.com/ray-project
 This process is launched on the head node by the `start_head_processes <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439>`__ function when using the ``ray up`` cluster launcher.
 When running under KubeRay, it instead runs as a separate autoscaler container in the Head Pod.
 
-.. note::
+.. warning::
 
    In the case of the cluster launcher, if the autoscaler process crashes, then there is no autoscaling.
    While in the case of KubeRay, Kubernetes restarts the autoscaler container if it crashes.
@@ -69,7 +69,10 @@ After the sync phase, the Reconciler performs the `following steps <https://gith
 6. Send accumulated scaling decisions (steps 1–5) to the Instance Manager with `Reconciler._update_instance_manager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L1157-L1193>`__.
 7. `Sleep briefly (5s by default) <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L178>`__, then return to the sync phase.
 
-If any error occurs, such as an error from the cloud provider or a timeout in the sync phase, the current reconciliation is aborted and the loop jumps to step 7 to wait for the next reconciliation.
+.. warning::
+
+   If any error occurs, such as an error from the cloud provider or a timeout in the sync phase, the current reconciliation is aborted and the loop jumps to step 7 to wait for the next reconciliation.
+
 
 .. note::
 
