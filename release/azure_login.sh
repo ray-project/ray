@@ -3,6 +3,14 @@
 
 set -euo pipefail
 
+# Install aws cli
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install -i /usr/local/aws-cli -b /usr/local/bin
+
+# Install azure cli
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
 # Retrieve credentials from Secrets Manager
 SECRET=$(aws secretsmanager get-secret-value \
   --secret-id azure-service-principal-oss-release \
