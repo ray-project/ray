@@ -194,7 +194,7 @@ def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
 
             import tempfile
 
-            from ray.train
+            import ray.train
             from ray.train.torch import TorchTrainer
 
 
