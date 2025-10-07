@@ -2331,7 +2331,7 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.free_object_primary_copy(object_id)
+        gpu_object_manager.free_object_primary_copy(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2462,6 +2462,10 @@ cdef CRayStatus task_execution_handler(
                 if hasattr(e, "unexpected_error_traceback"):
                     msg += (f" {e.unexpected_error_traceback}")
                 return CRayStatus.UnexpectedSystemExit(msg)
+        except Exception as e:
+            msg = "Unexpected exception raised in task execution handler: {}".format(e)
+            logger.error(msg)
+            return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
@@ -4218,6 +4222,8 @@ cdef class CoreWorker:
                            shared_ptr[CRayObject] *return_ptr):
         """Store a task return value in plasma or as an inlined object."""
         with nogil:
+            # For objects that can't be inlined, return_ptr will only be set if
+            # the object doesn't already exist in plasma.
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                     return_id, data_size, metadata, contained_id, caller_address,
@@ -4242,6 +4248,8 @@ cdef class CoreWorker:
             return True
         else:
             with nogil:
+                # Pins the object, succeeds if the object exists in plasma and is
+                # sealed.
                 success = (
                     CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
                         return_id, return_ptr, generator_id, caller_address))
@@ -4357,7 +4365,16 @@ cdef class CoreWorker:
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
-            if not self.store_task_output(
+            # It's possible for store_task_output to fail when the object already
+            # exists, but we fail to pin it. We can fail to pin the object if
+            # 1. it exists but isn't sealed yet because it's being written to by
+            #    another worker. We'll keep looping until it's sealed.
+            # 2. it existed during the allocation attempt but was evicted before
+            #    the pin attempt. We'll allocate and write the second time.
+            base_backoff_s = 1
+            attempt = 1
+            max_attempts = 6 # 6 attempts =~ 60 seconds of total backoff time
+            while not self.store_task_output(
                     serialized_object,
                     return_id,
                     c_ref_generator_id,
@@ -4367,19 +4384,15 @@ cdef class CoreWorker:
                     caller_address,
                     &task_output_inlined_bytes,
                     return_ptr):
-                # If the object already exists, but we fail to pin the copy, it
-                # means the existing copy might've gotten evicted. Try to
-                # create another copy.
-                self.store_task_output(
-                        serialized_object,
-                        return_id,
-                        c_ref_generator_id,
-                        data_size,
-                        metadata,
-                        contained_id,
-                        caller_address,
-                        &task_output_inlined_bytes,
-                        return_ptr)
+                if (attempt > max_attempts):
+                    raise RaySystemError(
+                        "Failed to store task output with object id {} after {} attempts.".format(
+                            return_id.Hex().decode("ascii"),
+                            max_attempts))
+                time.sleep(base_backoff_s * (2 ** (attempt-1)))
+                attempt += 1
+                continue
+
             num_outputs_stored += 1
 
         i += 1
