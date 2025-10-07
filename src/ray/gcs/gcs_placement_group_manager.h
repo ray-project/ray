@@ -32,6 +32,7 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -55,11 +56,18 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
-  GcsPlacementGroupManager(instrumented_io_context &io_context,
-                           GcsPlacementGroupSchedulerInterface *scheduler,
-                           gcs::GcsTableStorage *gcs_table_storage,
-                           GcsResourceManager &gcs_resource_manager,
-                           std::function<std::string(const JobID &)> get_ray_namespace);
+  GcsPlacementGroupManager(
+      instrumented_io_context &io_context,
+      GcsPlacementGroupSchedulerInterface *scheduler,
+      gcs::GcsTableStorage *gcs_table_storage,
+      GcsResourceManager &gcs_resource_manager,
+      std::function<std::string(const JobID &)> get_ray_namespace,
+      ray::observability::MetricInterface &placement_group_gauge,
+      ray::observability::MetricInterface
+          &placement_group_creation_latency_in_ms_histogram,
+      ray::observability::MetricInterface
+          &placement_group_scheduling_latency_in_ms_histogram,
+      ray::observability::MetricInterface &placement_group_count_gauge);
 
   ~GcsPlacementGroupManager() override = default;
 
@@ -214,8 +222,15 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
 
  protected:
   /// For testing/mocking only.
-  explicit GcsPlacementGroupManager(instrumented_io_context &io_context,
-                                    GcsResourceManager &gcs_resource_manager);
+  explicit GcsPlacementGroupManager(
+      instrumented_io_context &io_context,
+      GcsResourceManager &gcs_resource_manager,
+      ray::observability::MetricInterface &placement_group_gauge,
+      ray::observability::MetricInterface
+          &placement_group_creation_latency_in_ms_histogram,
+      ray::observability::MetricInterface
+          &placement_group_scheduling_latency_in_ms_histogram,
+      ray::observability::MetricInterface &placement_group_count_gauge);
 
  private:
   /// Push a placement group to pending queue.
@@ -342,6 +357,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  ray::observability::MetricInterface &placement_group_gauge_;
+  ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram_;
+  ray::observability::MetricInterface
+      &placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::MetricInterface &placement_group_count_gauge_;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
