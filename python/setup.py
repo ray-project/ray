@@ -382,6 +382,7 @@ if setup_spec.type == SetupType.RAY:
                 "async-timeout; python_version < '3.11'",
                 "typer",
                 "hf_transfer",
+                "flashinfer-python",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]

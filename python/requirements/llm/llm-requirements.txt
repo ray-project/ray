@@ -13,6 +13,6 @@ typer
 meson
 pybind11
 hf_transfer
-
+flashinfer-python
 # nixl version Needs to be in sync with the one in ray-llm/Dockerfile
 nixl==0.4.1
