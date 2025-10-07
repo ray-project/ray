@@ -349,7 +349,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
 
-        # Remove max_calls from the dynamic options.
+        # Pop `max_calls` as it's a `@ray.remote` argument, not a `.options()` argument.
         ray_remote_args.pop("max_calls", None)
 
         # Override parameters from user provided remote args function.
