@@ -176,3 +176,7 @@ class CollectiveTensorTransport(TensorTransportManager):
                 communicator_metadata.dst_rank,
                 communicator_metadata.communicator_name,
             )
+
+    @staticmethod
+    def garbage_collect(tensor_transport_meta: CollectiveTransportMetadata):
+        pass

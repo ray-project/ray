@@ -1,5 +1,5 @@
 import time
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, Any, List, Tuple
 
 from nixl._api import nixl_agent, nixl_agent_config
 
@@ -87,9 +87,11 @@ class NixlBackend:
                 break
 
         nixl_agent.release_xfer_handle(xfer_handle)
-        nixl_agent.deregister_memory(local_descs)
+        nixl_agent.remove_remote_agent(remote_name)
 
-    def get_nixl_metadata(self, tensors: List["torch.Tensor"]) -> Tuple[bytes, bytes]:
+    def get_nixl_metadata(
+        self, tensors: List["torch.Tensor"]
+    ) -> Tuple[Any, bytes, bytes]:
         """Get NIXL metadata for a set of tensors.
 
         Args:
@@ -104,6 +106,10 @@ class NixlBackend:
         reg_descs = nixl_agent.register_memory(tensors)
         xfer_descs = reg_descs.trim()
         return (
+            reg_descs,
             nixl_agent.get_serialized_descs(xfer_descs),
             nixl_agent.get_agent_metadata(),
         )
+
+    def deregister_memory(self, descs: Any):
+        self._nixl_agent.deregister_memory(descs)
