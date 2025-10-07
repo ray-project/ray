@@ -8,6 +8,7 @@ import ray
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-workers", type=int, required=True)
+    parser.add_argument("--equal-split", type=bool, required=True)
     parser.add_argument(
         "--equal-split",
         action="store_true",
