@@ -331,6 +331,9 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
         logger.info(f"Zipped file: {zip_file_path}")
         # time.sleep(10000)
         # Upload the zip file to the azure path
+        print(os.environ.get("AZURE_CLIENT_ID"))
+        print(os.environ.get("AZURE_CLIENT_SECRET"))
+        print(os.environ.get("AZURE_TENANT_ID"))
         credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
         blob_service_client = BlobServiceClient(account_url, credential)
 
