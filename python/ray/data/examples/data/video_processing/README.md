@@ -66,8 +66,9 @@ asyncio.run(main())
 
 2) Dataset pipeline (decode → VLM)
   - Start from a small in-memory dataset with items like `{ "video_url": EXAMPLE_VIDEO_PATH, "prompt": DEFAULT_PROMPT }`.
-  - The first stage returns PyArrow batches with frames encoded as JPEG bytes.
+  - The first stage returns PyArrow batches whose rows contain base64-encoded JPEG frames (list of strings) under `frames_b64` (the `data:image/jpeg;base64,` prefix is added later during preprocess before sending to the model).
   - The second stage runs vLLM on GPU to produce a text summary per item.
+  - A minimal postprocess keeps only `video_url` and `generated_text` columns in the final dataset for clarity.
 
 Where it’s useful
 - Batch/offline summarization, highlight generation, safety/QA scanning.
