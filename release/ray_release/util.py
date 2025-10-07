@@ -308,11 +308,11 @@ def create_cluster_env_from_image(
 
 
 def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
-    """Upload a directory to Azure Blob Storage.
+    """Archive and upload a directory to Azure Blob Storage.
 
     Args:
         local_path: Path to directory to upload.
-        azure_path: Path to directory in Azure Blob Storage.
+        azure_path: Path to archived directory in Azure Blob Storage.
     """
     try:
         from azure.storage.blob import BlobServiceClient
@@ -326,19 +326,17 @@ def upload_dir_to_azure(local_path: str, azure_path: str) -> None:
         account_url = f"https://{account}.blob.core.windows.net"
 
         # Create a zip file of the local path
-        logger.info(f"Creating zip file of {local_path}")
-        zip_file_path = shutil.make_archive(local_path, "zip", local_path)
-        logger.info(f"Zipped file: {zip_file_path}")
-        # time.sleep(10000)
+        timestamp = str(int(time.time()))
+        archived_filename = f"ray_release_{timestamp}.zip"
+        output_path = os.path.abspath(archived_filename)
+        logger.info(f"Archiving directory {local_path}")
+        zip_file_path = shutil.make_archive(output_path[:-4], "zip", local_path)
+        logger.info(f"Archived file: {zip_file_path}")
         # Upload the zip file to the azure path
-        print(os.environ.get("AZURE_CLIENT_ID"))
-        print(os.environ.get("AZURE_CLIENT_SECRET"))
-        print(os.environ.get("AZURE_TENANT_ID"))
         credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
         blob_service_client = BlobServiceClient(account_url, credential)
-
         blob_client = blob_service_client.get_blob_client(
-            container=container, blob=path
+            container=container, blob=f"{path}/{archived_filename}"
         )
         with open(zip_file_path, "rb") as data:
             blob_client.upload_blob(data)
