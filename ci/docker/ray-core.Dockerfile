@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
-FROM cr.ray.io/rayproject/manylinux AS builder
+ARG ARCH_SUFFIX=
+FROM cr.ray.io/rayproject/manylinux$ARCH_SUFFIX AS builder
 
 ARG PYTHON_VERSION=3.9
 ARG BUILDKITE_BAZEL_CACHE_URL

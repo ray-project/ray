@@ -181,7 +181,8 @@ class TaskManagerTest : public ::testing::Test {
               return nullptr;
             },
             mock_gcs_client_,
-            fake_task_by_state_counter_) {}
+            fake_task_by_state_counter_,
+            /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -1401,7 +1402,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
         return nullptr;
       },
       mock_gcs_client_,
-      fake_task_by_state_counter_);
+      fake_task_by_state_counter_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1463,7 +1465,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
         return nullptr;
       },
       mock_gcs_client_,
-      fake_task_by_state_counter_);
+      fake_task_by_state_counter_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1523,7 +1526,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
         return nullptr;
       },
       mock_gcs_client_,
-      fake_task_by_state_counter_);
+      fake_task_by_state_counter_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
@@ -3009,7 +3013,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
-      fake_task_by_state_counter_);
+      fake_task_by_state_counter_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task with retries enabled
   rpc::Address caller_address;
@@ -3088,7 +3093,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
-      fake_task_by_state_counter_);
+      fake_task_by_state_counter_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task that will be retried
   rpc::Address caller_address;
