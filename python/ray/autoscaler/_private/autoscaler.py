@@ -430,12 +430,16 @@ class StandardAutoscaler:
         self.prom_metrics.running_workers.set(num_workers)
 
         # Remove IPs from LoadMetrics that are not known to the NodeProvider.
-        self.load_metrics.prune_active_ips(
-            active_ips=[
-                self.provider.internal_ip(node_id)
-                for node_id in self.non_terminated_nodes.all_node_ids
-            ]
-        )
+        active_node_ips: List = []
+        for active_node_id in self.non_terminated_nodes.all_node_ids:
+            try:
+                active_node_ips.append(self.provider.internal_ip(active_node_id))
+            except Exception:
+                logger.exception(
+                    "Failed to get ip of node with id"
+                    f" {active_node_id} when pruning IPs from LoadMetrics."
+                )
+        self.load_metrics.prune_active_ips(active_ips=active_node_ips)
 
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -531,10 +535,20 @@ class StandardAutoscaler:
             ) and self.launch_config_ok(node_id):
                 keep_node(node_id)
                 continue
+            node_ip: Optional[str] = None
+            try:
+                node_ip = self.provider.internal_ip(node_id)
+            except Exception:
+                logger.exception(
+                    "Failed to get ip of node with id"
+                    f" {node_id} when finding nodes to terminate."
+                )
 
-            node_ip = self.provider.internal_ip(node_id)
-
-            if node_ip in last_used and last_used[node_ip] < last_used_cutoff:
+            if (
+                node_ip
+                and node_ip in last_used
+                and last_used[node_ip] < last_used_cutoff
+            ):
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
                 formatted_last_used_time = time.asctime(
@@ -584,7 +598,14 @@ class StandardAutoscaler:
         if reason_opt is None:
             raise Exception("reason should be not None.")
         reason: str = reason_opt
-        node_ip = self.provider.internal_ip(node_id)
+        node_ip: Optional[str] = None
+        try:
+            node_ip = self.provider.internal_ip(node_id)
+        except Exception:
+            logger.exception(
+                "Failed to get ip of node with id"
+                f" {node_id} when scheduling node termination."
+            )
         # Log, record an event, and add node_id to nodes_to_terminate.
         logger_method(
             "StandardAutoscaler: "
@@ -765,7 +786,15 @@ class StandardAutoscaler:
                         )
                     # Mark the node as active to prevent the node recovery
                     # logic immediately trying to restart Ray on the new node.
-                    self.load_metrics.mark_active(self.provider.internal_ip(node_id))
+                    node_ip: Optional[str] = None
+                    try:
+                        node_ip = self.provider.internal_ip(node_id)
+                    except Exception:
+                        logger.exception(
+                            f"Failed to get ip of node with id {node_id} when marking node as active"
+                        )
+                    if node_ip:
+                        self.load_metrics.mark_active(node_ip)
                 else:
                     failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
@@ -866,7 +895,11 @@ class StandardAutoscaler:
 
         def last_time_used(node_id: NodeID):
             assert self.provider
-            node_ip = self.provider.internal_ip(node_id)
+            try:
+                node_ip = self.provider.internal_ip(node_id)
+            except Exception:
+                logger.exception(f"Failed to get ip of node with id {node_id}")
+                return least_recently_used
             if node_ip not in last_used_copy:
                 return least_recently_used
             else:
@@ -1184,7 +1217,19 @@ class StandardAutoscaler:
         # For type checking, assert that this object has been instantitiated.
         assert self.provider
 
-        key = self.provider.internal_ip(node_id)
+        try:
+            key = self.provider.internal_ip(node_id)
+        except Exception:
+            logger.exception(
+                "Failed to get ip of node with id"
+                f" {node_id} when checking if heartbeat is on time"
+            )
+            # Can't figure out if we've received a heartbeat from this node
+            # because the IP address is not available.
+            # Return True to be safe, so that the node does not get inadvertently
+            # terminated due to intermitten provider.internal_ip() failures.
+            # TODO: Return False if the provider.internal_ip() fails for too long.
+            return True
 
         if key in self.load_metrics.last_heartbeat_time_by_ip:
             last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
@@ -1210,8 +1255,15 @@ class StandardAutoscaler:
             # This node is up-to-date. If it hasn't had the chance to produce
             # a heartbeat, fake the heartbeat now (see logic for completed node
             # updaters).
-            ip = self.provider.internal_ip(node_id)
-            if ip not in self.load_metrics.last_heartbeat_time_by_ip:
+            ip: Optional[str] = None
+            try:
+                ip = self.provider.internal_ip(node_id)
+            except Exception:
+                logger.exception(
+                    f"Failed to get ip of node with id"
+                    f" {node_id} when marking node as active."
+                )
+            if ip and ip not in self.load_metrics.last_heartbeat_time_by_ip:
                 self.load_metrics.mark_active(ip)
             # Heartbeat indicates node is healthy:
             if self.heartbeat_on_time(node_id, now):
