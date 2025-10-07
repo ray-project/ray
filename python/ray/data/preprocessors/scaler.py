@@ -1,12 +1,14 @@
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
-from ray.data import Dataset
 from ray.data.aggregate import AbsMax, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
@@ -84,7 +86,7 @@ class StandardScaler(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         mean_aggregates = [Mean(col) for col in self.columns]
         std_aggregates = [Std(col, ddof=0) for col in self.columns]
         self.stats_ = dataset.aggregate(*mean_aggregates, *std_aggregates)
@@ -184,7 +186,7 @@ class MinMaxScaler(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
@@ -276,7 +278,7 @@ class MaxAbsScaler(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         aggregates = [AbsMax(col) for col in self.columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
@@ -382,7 +384,7 @@ class RobustScaler(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         low = self.quantile_range[0]
         med = 0.50
         high = self.quantile_range[1]
@@ -403,7 +405,7 @@ class RobustScaler(Preprocessor):
             sorted_dataset = filtered_dataset.sort(col)
             _, low, med, high = sorted_dataset.split_at_indices(split_indices)
 
-            def _get_first_value(ds: Dataset, c: str):
+            def _get_first_value(ds: "Dataset", c: str):
                 return ds.take(1)[0][c]
 
             low_val = _get_first_value(low, col)

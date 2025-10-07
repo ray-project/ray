@@ -1,3 +1,6 @@
 evaluate==0.4.3
 mosaicml; python_version < "3.12"
 sentencepiece==0.1.96
+jax==0.4.25
+jaxlib==0.4.25
+s3torchconnector==1.4.3

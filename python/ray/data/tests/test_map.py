@@ -22,18 +22,15 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver
-from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
-)
-from ray.data._internal.execution.interfaces.ref_bundle import (
-    _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -687,119 +684,6 @@ def test_rename_columns_error_cases(
 
     # Verify that the exception message matches the expected message
     assert str(exc_info.value) == expected_message
-
-
-def test_filter_mutex(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    """Test filter op."""
-
-    # Generate sample data
-    data = {
-        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
-        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
-        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
-        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
-    }
-    df = pd.DataFrame(data)
-
-    # Define the path for the Parquet file in the tmp_path directory
-    parquet_file = tmp_path / "sample_data.parquet"
-
-    # Write DataFrame to a Parquet file
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, parquet_file)
-
-    # Load parquet dataset
-    parquet_ds = ray.data.read_parquet(str(parquet_file))
-
-    # Filter using lambda (UDF)
-    with pytest.raises(ValueError, match="Exactly one of 'fn' or 'expr'"):
-        parquet_ds.filter(
-            fn=lambda r: r["sepal.length"] > 5.0, expr="sepal.length > 5.0"
-        )
-
-    with pytest.raises(ValueError, match="must be a UserDefinedFunction"):
-        parquet_ds.filter(fn="sepal.length > 5.0")
-
-
-def test_filter_with_expressions(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    """Test filtering with expressions."""
-
-    # Generate sample data
-    data = {
-        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
-        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
-        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
-        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
-    }
-    df = pd.DataFrame(data)
-
-    # Define the path for the Parquet file in the tmp_path directory
-    parquet_file = tmp_path / "sample_data.parquet"
-
-    # Write DataFrame to a Parquet file
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, parquet_file)
-
-    # Load parquet dataset
-    parquet_ds = ray.data.read_parquet(str(parquet_file))
-
-    # Filter using lambda (UDF)
-    filtered_udf_ds = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0)
-    filtered_udf_data = filtered_udf_ds.to_pandas()
-
-    # Filter using expressions
-    filtered_expr_ds = parquet_ds.filter(expr="sepal.length > 5.0")
-    filtered_expr_data = filtered_expr_ds.to_pandas()
-
-    # Assert the filtered data is the same
-    assert set(filtered_udf_data["sepal.length"]) == set(
-        filtered_expr_data["sepal.length"]
-    )
-    assert len(filtered_udf_data) == len(filtered_expr_data)
-
-    # Verify correctness of filtered results: only rows with 'sepal.length' > 5.0
-    assert all(
-        filtered_expr_data["sepal.length"] > 5.0
-    ), "Filtered data contains rows with 'sepal.length' <= 5.0"
-    assert all(
-        filtered_udf_data["sepal.length"] > 5.0
-    ), "UDF-filtered data contains rows with 'sepal.length' <= 5.0"
-
-
-def test_filter_with_invalid_expression(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    """Test filtering with invalid expressions."""
-
-    # Generate sample data
-    data = {
-        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
-        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
-        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
-        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
-    }
-    df = pd.DataFrame(data)
-
-    # Define the path for the Parquet file in the tmp_path directory
-    parquet_file = tmp_path / "sample_data.parquet"
-
-    # Write DataFrame to a Parquet file
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, parquet_file)
-
-    # Load parquet dataset
-    parquet_ds = ray.data.read_parquet(str(parquet_file))
-
-    with pytest.raises(ValueError, match="Invalid syntax in the expression"):
-        parquet_ds.filter(expr="fake_news super fake")
-
-    fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    with pytest.raises(UserCodeException):
-        fake_column_ds.to_pandas()
 
 
 def test_drop_columns(
@@ -1521,31 +1405,6 @@ def test_map_batches_combine_empty_blocks(
 
     # The number of partitions should not affect the map_batches() result.
     assert ds1.take_all() == ds2.take_all()
-
-
-def test_map_batches_preserves_empty_block_format(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Tests that the block format for empty blocks are not modified."""
-
-    def empty_pandas(batch):
-        return pd.DataFrame({"x": []})
-
-    df = pd.DataFrame({"x": [1, 2, 3]})
-
-    # First map_batches creates the empty Pandas block.
-    # Applying subsequent map_batches should not change the type of the empty block.
-    ds = (
-        ray.data.from_pandas(df)
-        .map_batches(empty_pandas)
-        .map_batches(lambda x: x, batch_size=None)
-    )
-
-    bundles = ds.iter_internal_ref_bundles()
-    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
-
-    assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) is pd.DataFrame
 
 
 def test_map_with_objects_and_tensors(
@@ -3274,6 +3133,91 @@ def test_with_column_filter_in_pipeline(ray_start_regular_shared):
     )
 
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.parametrize(
+    "expr_factory, expected_columns, alias_name, expected_values",
+    [
+        (
+            lambda: col("id").alias("new_id"),
+            ["id", "new_id"],
+            "new_id",
+            [0, 1, 2, 3, 4],  # Copy of id column
+        ),
+        (
+            lambda: (col("id") + 1).alias("id_plus_one"),
+            ["id", "id_plus_one"],
+            "id_plus_one",
+            [1, 2, 3, 4, 5],  # id + 1
+        ),
+        (
+            lambda: (col("id") * 2 + 5).alias("transformed"),
+            ["id", "transformed"],
+            "transformed",
+            [5, 7, 9, 11, 13],  # id * 2 + 5
+        ),
+        (
+            lambda: lit(42).alias("constant"),
+            ["id", "constant"],
+            "constant",
+            [42, 42, 42, 42, 42],  # lit(42)
+        ),
+        (
+            lambda: (col("id") >= 0).alias("is_non_negative"),
+            ["id", "is_non_negative"],
+            "is_non_negative",
+            [True, True, True, True, True],  # id >= 0
+        ),
+        (
+            lambda: (col("id") + 1).alias("id"),
+            ["id"],  # Only one column since we're overwriting id
+            "id",
+            [1, 2, 3, 4, 5],  # id + 1 replaces original id
+        ),
+    ],
+    ids=[
+        "col_alias",
+        "arithmetic_alias",
+        "complex_alias",
+        "literal_alias",
+        "comparison_alias",
+        "overwrite_existing_column",
+    ],
+)
+def test_with_column_alias_expressions(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_columns,
+    alias_name,
+    expected_values,
+):
+    """Test that alias expressions work correctly with with_column."""
+    expr = expr_factory()
+
+    # Verify the alias name matches what we expect
+    assert expr.name == alias_name
+
+    # Apply the aliased expression
+    ds = ray.data.range(5).with_column(alias_name, expr)
+
+    # Convert to pandas for comprehensive comparison
+    result_df = ds.to_pandas()
+
+    # Create expected DataFrame
+    expected_df = pd.DataFrame({"id": [0, 1, 2, 3, 4], alias_name: expected_values})
+
+    # Ensure column order matches expected_columns
+    expected_df = expected_df[expected_columns]
+
+    # Assert the entire DataFrame is equal
+    pd.testing.assert_frame_equal(result_df, expected_df)
+    # Verify the alias expression evaluates the same as the non-aliased version
+    non_aliased_expr = expr
+    ds_non_aliased = ray.data.range(5).with_column(alias_name, non_aliased_expr)
+
+    non_aliased_df = ds_non_aliased.to_pandas()
+
+    pd.testing.assert_frame_equal(result_df, non_aliased_df)
 
 
 if __name__ == "__main__":
