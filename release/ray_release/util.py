@@ -339,11 +339,10 @@ def upload_working_dir_to_azure(working_dir: str, azure_path: str) -> str:
         Azure Blob Storage path where directory was uploaded.
     """
     try:
-        account, container, azure_blob_path = _parse_abfss_uri(azure_path)
         # Create a zip file of the local path
         timestamp = str(int(time.time()))
         archived_filename = f"ray_release_{timestamp}.zip"
-        azure_blob_path += f"/{archived_filename}"
+        azure_blob_path = f"{azure_path}/{archived_filename}"
         output_path = os.path.abspath(archived_filename)
         logger.info(f"Archiving directory {working_dir}")
         zip_file_path = shutil.make_archive(output_path[:-4], "zip", working_dir)
