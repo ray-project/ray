@@ -4207,7 +4207,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 
-- name: ray_data_etl_tpch  # do not use dashes (regex sensitive)
+- name: etl_ray_data  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.11"
   group: ray-examples
@@ -4217,7 +4217,7 @@
   cluster:
     byod:
       type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
-      post_build_script: byod_ray_data_etl_tpch.sh  # release/ray_release/byod/
+      post_build_script: byod_etl_ray_data.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
