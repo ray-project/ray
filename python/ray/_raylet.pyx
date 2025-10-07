@@ -688,15 +688,15 @@ cdef increase_recursion_limit():
         On 3.12, when recursion depth increases, c_recursion_remaining will decrease
         and this is what's acutally compared to raise a RecursionError. So increasing
         it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
-        DoOrGetRecursionMadness will return false (so we don't set with Py_SetRecursionLimit).
+        DoOrGetRecursionMadness will return (false, 0), so we don't set with Py_SetRecursionLimit.
     0x30B00A4 is Python 3.11
         On 3.11, the recursion depth can be calculated with recursion_limit - recursion_remaining.
         We can get the current limit with Py_GetRecursionLimit and set it with Py_SetRecursionLimit.
-        DoOrGetRecursionMadness will return true + the current recursion depth.
+        DoOrGetRecursionMadness will return (true, current_depth)
     On older versions
         There's simply a recursion_depth variable and we can increase the max the same
         way we do for 3.11.
-        DoOrGetRecursionMadness will return true + the current recursion depth.
+        DoOrGetRecursionMadness will return (true, current_depth)
     """
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
