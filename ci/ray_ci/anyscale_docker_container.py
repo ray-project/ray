@@ -50,7 +50,7 @@ class AnyscaleDockerContainer(DockerContainer):
                     "buildkite-agent",
                     "annotate",
                     "--style=info",
-                    "--context=anyscale-images",
+                    f"--context={self.image_type}-images",
                     "--append",
                     f"{aws_alias_image}",
                     f"{gcp_alias_image}",
