@@ -64,7 +64,7 @@ Custom Resources
 
 You can specify custom resources for a Ray node and reference them to control scheduling for your tasks or actors.
 
-Use custom resources when you need to manage scheduling using numeric values. If you need simple label-based scheduling, use labels instead. See :doc:`./labels.md`.
+Use custom resources when you need to manage scheduling using numeric values. If you need simple label-based scheduling, use labels instead. See :doc:`labels`.
 
 .. _specify-node-resources:
 
