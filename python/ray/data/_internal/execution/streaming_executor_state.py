@@ -302,6 +302,37 @@ class OpState:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
 
+    def summary_str(self, resource_manager: ResourceManager) -> str:
+        # Active tasks
+        active = self.op.num_active_tasks()
+        desc = f"- {self.op.name}: Tasks: {active}"
+        if (
+            self.op._in_task_submission_backpressure
+            or self.op._in_task_output_backpressure
+        ):
+            backpressure_types = []
+            if self.op._in_task_submission_backpressure:
+                # The op is backpressured from submitting new tasks.
+                backpressure_types.append("tasks")
+            if self.op._in_task_output_backpressure:
+                # The op is backpressured from producing new outputs.
+                backpressure_types.append("outputs")
+            desc += f" [backpressured:{','.join(backpressure_types)}]"
+
+        # Actors info
+        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
+
+        # Queued blocks
+        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
+        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+
+        # Any additional operator specific information.
+        suffix = self.op.progress_str()
+        if suffix:
+            desc += f"; {suffix}"
+
+        return desc
+
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.input_queues):
