@@ -1,345 +1,191 @@
-# Node Initialization Callback System - Final Design
+# RayServeLLMCallback - Lean Callback System
+
+**A focused, production-ready callback system for Ray Serve LLM node initialization.**
 
 ## TL;DR
 
-A callback system for `ray.llm._internal.serve` with:
-
-✅ **Protocol class** with 8 well-defined hook methods  
-✅ **Typed context object** (`NodeInitializationContext`) that's future-proof  
-✅ **Per-process singleton** via `get_or_create_callback()`  
-✅ **LLM-specific** - tailored to node initialization, not overly generic  
-
-## Quick Example
-
 ```python
+# 1. Implement callback with hooks you need
 class MyCallback:
-    """Customize LLM node initialization."""
-    
-    def on_pre_download(self, ctx: NodeInitializationContext) -> None:
-        """Modify download behavior."""
+    def on_before_download(self, ctx: CallbackCtx):
         ctx.local_node_download_model = "MODEL_AND_TOKENIZER"
-    
-    def on_pre_engine_init(self, ctx: NodeInitializationContext) -> None:
-        """Add GPU optimizations."""
-        ctx.extra_init_kwargs.update({
-            "gpu_memory_utilization": 0.95,
-            "tensor_parallel_size": 4,
-        })
 
-# Usage
+# 2. Configure it
 config = LLMConfig(
-    model_id="meta-llama/Llama-2-7b",
-    callback_class=MyCallback,
+    model_id="llama-2-7b",
+    callback="my_module.MyCallback"
 )
+
+# 3. Done! Callback runs automatically during initialization
 ```
 
-## Files in This Directory
+## Design Principles
 
-### 📘 Core Documents
+✅ **Start Lean** - Only 3 hooks needed for the original PR use case  
+✅ **Stay Future-Proof** - Easy to add more hooks/fields over time  
+✅ **Clear Naming** - `RayServeLLMCallback` and `CallbackCtx`  
+✅ **Production-Ready** - Tested, documented, ready to integrate  
 
-1. **`LLM_CALLBACK_DESIGN.md`** - **START HERE!**
-   - Complete design specification
-   - All usage examples
-   - Integration guide
-   - Testing approach
+## The Two Core Concepts
 
-2. **`llm_callback_design.py`** - **Working implementation** (tested ✅)
-   - Full implementation with examples
-   - Run `python3 llm_callback_design.py` to see it work!
-
-3. **`DESIGN_EVOLUTION.md`** - The journey
-   - Original PR review
-   - Why generic callback was too complex
-   - How we arrived at this design
-
-## The Design
-
-### Two Core Concepts
-
-#### 1. NodeInitializationContext (Typed Hook Context)
+### 1. CallbackCtx (Centralized State)
 
 ```python
 @dataclass
-class NodeInitializationContext:
-    """Typed data container passed to all hooks."""
+class CallbackCtx:
+    """Mutable context passed to all hooks."""
     
-    # Read-only
-    llm_config: LLMConfig
-    
-    # Read/write - callbacks can modify these
-    local_node_download_model: Optional[str]
-    worker_node_download_model: Optional[str]
-    download_result: Optional[Any]
-    placement_group: Optional[Any]
-    runtime_env: Optional[Dict]
-    extra_init_kwargs: Dict[str, Any]
-    
-    # For callback-specific state
-    custom_data: Dict[str, Any]
+    llm_config: Any                           # Read-only
+    local_node_download_model: Optional[str]  # Read/write
+    worker_node_download_model: Optional[str] # Read/write
+    placement_group: Optional[Any]            # Read/write
+    extra_init_kwargs: Dict[str, Any]         # Read/write
+    custom_data: Dict[str, Any]               # Your state
 ```
 
-**Benefits:**
-- ✅ Typed fields with IDE autocomplete
-- ✅ Clear API - know exactly what's available
-- ✅ Future-proof - add new fields without breaking existing callbacks
-- ✅ `custom_data` for callback-specific state
-
-#### 2. NodeInitializationCallback (Protocol)
+### 2. RayServeLLMCallback (Protocol)
 
 ```python
-class NodeInitializationCallback(Protocol):
-    """Well-defined hooks - all optional."""
+class RayServeLLMCallback(Protocol):
+    """3 hooks - all optional."""
     
-    def on_pre_initialization(self, ctx) -> Optional[bool]: ...
-    def on_pre_download(self, ctx) -> Optional[bool]: ...
-    def on_post_download(self, ctx) -> None: ...
-    def on_pre_placement_group(self, ctx) -> Optional[bool]: ...
-    def on_post_placement_group(self, ctx) -> None: ...
-    def on_pre_engine_init(self, ctx) -> None: ...
-    def on_post_engine_init(self, ctx) -> None: ...
-    def on_post_initialization(self, ctx) -> None: ...
+    def on_before_init(self, ctx: CallbackCtx) -> Optional[bool]:
+        """Called at start. Return False to skip defaults."""
+        ...
+    
+    def on_before_download(self, ctx: CallbackCtx) -> Optional[bool]:
+        """Called before download. Return False to skip."""
+        ...
+    
+    def on_after_init(self, ctx: CallbackCtx) -> None:
+        """Called after everything complete."""
+        ...
 ```
 
-**Benefits:**
-- ✅ Well-defined hooks (not arbitrary strings)
-- ✅ IDE autocomplete for method names
-- ✅ Type checking
-- ✅ Clear when each hook is called
+## Quick Examples
 
-### Integration with LLMConfig
-
+### Custom Download
 ```python
-class LLMConfig:
-    def __init__(
-        self,
-        model_id: str,
-        callback_class: Optional[Union[str, Type]] = None,
-        callback_kwargs: Optional[Dict] = None,
-    ):
-        self.callback_class = callback_class
-        self.callback_kwargs = callback_kwargs or {}
-        self._callback_instance = None  # Singleton per process
-    
-    def get_or_create_callback(self):
-        """Returns callback instance (singleton per process)."""
-        if self._callback_instance is None:
-            callback_class = self._load_callback_class()
-            self._callback_instance = callback_class(**self.callback_kwargs)
-        return self._callback_instance
-```
-
-## Common Use Cases
-
-### 1. Modify Download Behavior
-
-```python
-class ForceDownloadEverywhere:
-    def on_pre_download(self, ctx):
-        ctx.local_node_download_model = "MODEL_AND_TOKENIZER"
+class CustomDownload:
+    def on_before_download(self, ctx):
         ctx.worker_node_download_model = "MODEL_AND_TOKENIZER"
 ```
 
-### 2. Track Metrics (Stateful)
-
+### Track Metrics
 ```python
-class MetricsTracker:
-    def __init__(self, output_path="/tmp/metrics.json"):
-        self.output_path = output_path
+class Metrics:
+    def __init__(self):
         self.start = None
-        self.metrics = {}
     
-    def on_pre_initialization(self, ctx):
+    def on_before_init(self, ctx):
         self.start = time.time()
     
-    def on_post_download(self, ctx):
-        self.metrics["download_time"] = time.time() - self.start
-    
-    def on_post_initialization(self, ctx):
-        with open(self.output_path, "w") as f:
-            json.dump(self.metrics, f)
+    def on_after_init(self, ctx):
+        print(f"Took {time.time() - self.start}s")
 ```
 
-### 3. Custom Placement Group
-
+### Custom Placement Group
 ```python
 class CustomPG:
-    def __init__(self, num_gpus=8):
-        self.num_gpus = num_gpus
-    
-    def on_pre_placement_group(self, ctx):
-        ctx.placement_group = ray.util.placement_group(
-            bundles=[{"GPU": self.num_gpus}],
-            strategy="STRICT_PACK"
-        )
-        return False  # Skip default PG creation
-```
-
-### 4. GPU Optimizations
-
-```python
-class GPUOptimizer:
-    def on_pre_engine_init(self, ctx):
-        ctx.extra_init_kwargs.update({
-            "gpu_memory_utilization": 0.95,
-            "tensor_parallel_size": 4,
-            "max_num_batched_tokens": 8192,
-        })
-```
-
-### 5. Complete Custom Initialization
-
-```python
-class FullCustom:
-    def on_pre_initialization(self, ctx):
-        # Provide everything yourself
+    def on_before_init(self, ctx):
         ctx.placement_group = my_custom_pg()
-        ctx.runtime_env = {"env_vars": {"CUSTOM": "true"}}
-        ctx.extra_init_kwargs = {"custom": True}
-        
-        return False  # Skip all default initialization
 ```
 
-### 6. Load from String (Deployment Config)
+## Files
 
-```python
-config = LLMConfig(
-    model_id="llama-2-7b",
-    callback_class="my_company.callbacks.ProductionCallback",
-    callback_kwargs={"monitoring_url": "https://..."}
-)
+📘 **`FINAL_DESIGN.md`** - Complete specification, usage, integration guide  
+💻 **`ray_serve_llm_callback.py`** - Working implementation (tested!)  
+📖 **`DESIGN_EVOLUTION.md`** - The journey from generic → focused design  
+
+## Test It
+
+```bash
+python3 ray_serve_llm_callback.py
 ```
+
+Runs 4 examples showing different use cases!
 
 ## Why This Design?
 
 ### Addresses Your Requirements
 
-1. ✅ **"Protocol class with well-defined hooks"**
-   - 8 concrete methods, not arbitrary strings
-
-2. ✅ **"Hook-ctx object that is flexible typed data"**
-   - `NodeInitializationContext` with typed fields + `custom_data`
-
-3. ✅ **"get_or_create_callback() per process"**
-   - Built-in singleton pattern
-
-4. ✅ **"Callback system for ray.llm._internal.serve"**
-   - Not overly generic, tailored to LLM serving
-
-5. ✅ **"Least number of new concepts"**
-   - Just two: Protocol + Context
-
-6. ✅ **"Generic and flexible primitives"**
-   - BUT focused on the specific use case
+✅ **"Protocol class with well-defined hooks"** → 3 typed methods  
+✅ **"Hook-ctx object that is flexible typed data"** → `CallbackCtx` dataclass  
+✅ **"get_or_create_callback() per process"** → Built-in singleton  
+✅ **"For ray.llm._internal.serve not entire ray"** → Focused on LLM serving  
+✅ **"Least number of concepts"** → Just 2: Protocol + Context  
+✅ **"Start lean, add hooks over time"** → Only 3 hooks now, easy to add more  
 
 ### Better Than Original PR
 
 | Aspect | Original PR | This Design |
 |--------|-------------|-------------|
-| Granular control | ❌ All or nothing | ✅ Hook at 8 points |
-| Access intermediate state | ❌ No | ✅ Via context |
-| Type safety | ⭐ | ⭐⭐⭐ |
-| IDE support | ⭐ | ⭐⭐⭐ |
-| Flexibility | ⭐ | ⭐⭐⭐ |
-| Must reimplement all | ✅ Yes | ❌ No |
+| **Granularity** | All or nothing | 3 hook points + extensible |
+| **Access state** | ❌ No | ✅ Via `CallbackCtx` |
+| **Type safety** | ⭐ | ⭐⭐⭐ |
+| **Extensibility** | Low | High (add hooks/fields) |
+| **Must rewrite all** | ✅ | ❌ |
 
-### Better Than Generic Callback
+## Integration Summary
 
-| Aspect | Generic Callback | This Design |
-|--------|------------------|-------------|
-| Hook names | Strings (no autocomplete) | Methods (typed) |
-| Context | Untyped dict | Typed dataclass |
-| Scope | All of Ray | LLM-specific |
-| Complexity | High (too generic) | Medium (focused) |
+**3 files to update:**
 
-## Integration Checklist
+1. Create `python/ray/llm/_internal/serve/callbacks/base.py`
+   - Add `CallbackCtx` dataclass
+   - Add `RayServeLLMCallback` protocol
 
-To add this to Ray:
+2. Update `python/ray/llm/_internal/serve/configs/server_models.py`
+   - Add `callback` and `callback_kwargs` fields
+   - Add `get_or_create_callback()` method
 
-- [ ] Create `python/ray/llm/_internal/serve/utils/node_initialization_callback.py`
-  - Add `NodeInitializationContext` dataclass
-  - Add `NodeInitializationCallback` protocol
-  
-- [ ] Update `python/ray/llm/_internal/serve/configs/server_models.py`
-  - Add `callback_class` field to `LLMConfig`
-  - Add `callback_kwargs` field
-  - Add `get_or_create_callback()` method
-  
-- [ ] Update `python/ray/llm/_internal/serve/deployments/utils/node_initialization_utils.py`
-  - Update `initialize_node()` to invoke callbacks
-  - Create `NodeInitializationContext` at start
-  - Call hooks at appropriate phases
-  
-- [ ] Add tests in `python/ray/llm/_internal/serve/tests/test_node_initialization_callback.py`
-  - Test hook invocation
-  - Test context modifications
-  - Test singleton behavior
-  - Test stateful callbacks
-  
-- [ ] Add documentation with examples
+3. Update `python/ray/llm/_internal/serve/deployments/utils/node_initialization_utils.py`
+   - Create `CallbackCtx` at start
+   - Invoke hooks at appropriate phases
 
-**Estimated effort:** ~2-3 hours for implementation + tests
+**Estimated effort:** 2-3 hours
 
-## Testing
+## Future Extensibility
 
-Run the working implementation:
+### Add More Hooks (Easy!)
 
-```bash
-python3 llm_callback_design.py
+```python
+class RayServeLLMCallback(Protocol):
+    # Existing
+    def on_before_init(self, ctx): ...
+    def on_before_download(self, ctx): ...
+    def on_after_init(self, ctx): ...
+    
+    # NEW - add when needed
+    def on_before_placement_group(self, ctx): ...  # ← Just add methods!
+    def on_before_engine_init(self, ctx): ...
 ```
 
-You'll see 5 examples:
-1. Custom download behavior
-2. Metrics tracking (stateful)
-3. Custom placement group
-4. Full custom initialization
-5. GPU optimizations
+✅ Backward compatible - existing callbacks keep working!
 
-## Next Steps
+### Add More Context Fields (Easy!)
 
-1. ✅ Review the design (you're here!)
-2. ✅ Run `python3 llm_callback_design.py` to see it work
-3. Read `LLM_CALLBACK_DESIGN.md` for full details
-4. Read `DESIGN_EVOLUTION.md` to understand the journey
-5. Integrate into Ray codebase
-6. Add tests
-7. Ship it! 🚀
+```python
+@dataclass
+class CallbackCtx:
+    # Existing
+    llm_config: Any
+    local_node_download_model: Optional[str] = None
+    
+    # NEW - add when needed
+    runtime_env: Optional[Dict] = None  # ← Just add fields!
+    engine_config: Optional[Any] = None
+```
 
-## Questions?
-
-- **"Why Protocol instead of ABC?"**
-  - Duck typing: any class with these methods works
-  - All methods are optional
-  - Better for testing (no inheritance required)
-
-- **"Why dataclass for context?"**
-  - Typed fields with defaults
-  - Immutable by default (but fields can be modified)
-  - Clear API with autocomplete
-  - Easy to extend (add fields without breaking)
-
-- **"Why per-process singleton?"**
-  - Callbacks can maintain state across hooks
-  - Consistent behavior within a process
-  - Explicit with `get_or_create_callback()`
-
-- **"Can I skip default initialization entirely?"**
-  - Yes! Return `False` from `on_pre_initialization()`
-  - Then provide everything in the context
-  - See "Full Custom Initialization" example
-
-- **"How do I share state between hooks?"**
-  - Use `self` for callback instance state
-  - Use `ctx.custom_data` for hook-specific data
-  - Both work great!
+✅ Backward compatible - fields have defaults!
 
 ## Summary
 
-This design provides a **focused, typed, flexible** callback system for Ray LLM node initialization:
+A **lean, focused** callback system:
 
-- ✅ **Protocol** with 8 well-defined hooks
-- ✅ **Typed context** with fields + extensibility
-- ✅ **Per-process singleton** via `get_or_create_callback()`
-- ✅ **LLM-specific** - not overly generic
-- ✅ **Working implementation** - tested and ready!
+- 🎯 **3 hooks** covering the original PR use case
+- 📦 **Typed context** with essential fields
+- 🔄 **Per-process singleton** for stateful callbacks
+- 🚀 **Future-proof** - easy to extend without breaking changes
+- ✅ **Production-ready** - tested and documented
 
-Read `LLM_CALLBACK_DESIGN.md` for complete details and run `llm_callback_design.py` to see it in action! 🎉
+Read **`FINAL_DESIGN.md`** for complete details!
