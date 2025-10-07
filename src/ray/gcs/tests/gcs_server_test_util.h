@@ -33,7 +33,8 @@
 #include "ray/gcs/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 
@@ -75,7 +76,7 @@ struct GcsServerMocker {
     absl::Mutex mutex_;
   };
 
-  class MockRayletClient : public FakeRayletClient {
+  class MockRayletClient : public rpc::FakeRayletClient {
    public:
     void ReturnWorkerLease(int worker_port,
                            const LeaseID &lease_id,

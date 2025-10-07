@@ -21,7 +21,7 @@
 #include <utility>
 
 #include "ray/common/id.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -72,8 +72,7 @@ class SubscriberInterface {
   /// \param publisher_address The publisher address that it will unsubscribe from.
   /// \param key_id The entity id to unsubscribe. Unsubscribes from all entities if
   /// nullopt.
-  /// \return Returns whether the entity key_id has been subscribed before.
-  virtual bool Unsubscribe(rpc::ChannelType channel_type,
+  virtual void Unsubscribe(rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
                            const std::optional<std::string> &key_id) = 0;
 

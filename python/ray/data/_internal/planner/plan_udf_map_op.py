@@ -51,7 +51,6 @@ from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
-    BatchFormat,
     Block,
     BlockAccessor,
     CallableClass,
@@ -130,10 +129,14 @@ def plan_project_op(
                 # Add/update with expression results
                 result_block = block
                 for name, expr in exprs.items():
+                    # Use expr.name if available, otherwise fall back to the dict key name
+                    actual_name = expr.name if expr.name is not None else name
                     result = eval_expr(expr, result_block)
                     result_block_accessor = BlockAccessor.for_block(result_block)
-                    result_block = result_block_accessor.upsert_column(name, result)
-
+                    # fill_column handles both scalars and arrays
+                    result_block = result_block_accessor.fill_column(
+                        actual_name, result
+                    )
                 block = result_block
 
             # 2. (optional) column projection
@@ -214,26 +217,24 @@ def plan_filter_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    expression = op._filter_expr
+    predicate_expr = op._predicate_expr
     compute = get_compute(op._compute)
-    if expression is not None:
+    if predicate_expr is not None:
 
-        def filter_batch_fn(block: "pa.Table") -> "pa.Table":
-            try:
-                return block.filter(expression)
-            except Exception as e:
-                _try_wrap_udf_exception(e)
+        def filter_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                filtered_block = block_accessor.filter(predicate_expr)
+                yield filtered_block
 
         init_fn = None
-        transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(filter_batch_fn),
-            batch_size=None,
-            batch_format=BatchFormat.ARROW,
-            zero_copy_batch=True,
+        transform_fn = BlockMapTransformFn(
+            filter_block_fn,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
-
     else:
         udf_is_callable_class = isinstance(op._fn, CallableClass)
         filter_fn, init_fn = _get_udf(
@@ -325,6 +326,7 @@ def plan_udf_map_op(
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
+        per_block_limit=op._per_block_limit,
     )
 
 

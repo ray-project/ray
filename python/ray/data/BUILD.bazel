@@ -54,6 +54,19 @@ py_test_module_list(
     ],
 )
 
+py_test_module_list(
+    size = "small",
+    files = glob(["tests/anyscale/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_formats",
     size = "medium",
@@ -466,7 +479,7 @@ py_test(
 
 py_test(
     name = "test_consumption",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_consumption.py"],
     tags = [
         "exclusive",
@@ -536,6 +549,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_ecosystem_dask.py"],
     tags = [
+        "custom_setup",
         "dask",
         "exclusive",
         "team:data",
@@ -578,6 +592,20 @@ py_test(
     name = "test_filename_provider",
     size = "small",
     srcs = ["tests/test_filename_provider.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -635,6 +663,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_json.py"],
     tags = [
+        "data_non_parallel",
         "exclusive",
         "team:data",
     ],
@@ -674,8 +703,22 @@ py_test(
 
 py_test(
     name = "test_map",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_map.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_filter",
+    size = "medium",
+    srcs = ["tests/test_filter.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -913,9 +956,51 @@ py_test(
 )
 
 py_test(
-    name = "test_execution_optimizer",
+    name = "test_execution_optimizer_basic",
     size = "medium",
-    srcs = ["tests/test_execution_optimizer.py"],
+    srcs = ["tests/test_execution_optimizer_basic.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_execution_optimizer_advanced",
+    size = "medium",
+    srcs = ["tests/test_execution_optimizer_advanced.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_execution_optimizer_integrations",
+    size = "medium",
+    srcs = ["tests/test_execution_optimizer_integrations.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_execution_optimizer_limit_pushdown",
+    size = "medium",
+    srcs = ["tests/test_execution_optimizer_limit_pushdown.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1168,7 +1253,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_stats.py"],
     tags = [
         "exclusive",
@@ -1590,6 +1675,34 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_custom_agg",
+    size = "medium",
+    srcs = ["tests/test_custom_agg.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_stats",
+    size = "small",
+    srcs = ["tests/test_dataset_stats.py"],
     tags = [
         "exclusive",
         "team:data",

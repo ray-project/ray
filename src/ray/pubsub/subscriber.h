@@ -28,7 +28,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/pubsub/subscriber_interface.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -85,7 +85,7 @@ class SubscriberChannel {
   /// \param publisher_address The publisher address that it will unsubscribe to.
   /// \param key_id The entity id to unsubscribe.
   /// \return True if the publisher is unsubscribed.
-  bool Unsubscribe(const rpc::Address &publisher_address,
+  void Unsubscribe(const rpc::Address &publisher_address,
                    const std::optional<std::string> &key_id);
 
   /// Test only.
@@ -238,7 +238,7 @@ class Subscriber : public SubscriberInterface {
                  SubscriptionItemCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
-  bool Unsubscribe(rpc::ChannelType channel_type,
+  void Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
                    const std::optional<std::string> &key_id) override;
 
