@@ -71,14 +71,15 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      TaskManagerInterface &task_manager,
                      ActorCreatorInterface &actor_creator,
                      const TensorTransportGetter &tensor_transport_getter,
-                     std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
+                     std::function<void(const ActorID &, const std::string &, int64_t)>
+                         on_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
         resolver_(store, task_manager, actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
-        warn_excess_queueing_(std::move(warn_excess_queueing)),
+        on_excess_queueing_(std::move(on_excess_queueing)),
         next_queueing_warn_threshold_(
             ::RayConfig::instance().actor_excess_queueing_warn_threshold()),
         io_service_(io_service),
@@ -422,7 +423,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   TaskManagerInterface &task_manager_;
 
   /// Used to warn of excessive queueing.
-  std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;
+  std::function<void(const ActorID &, const std::string &, uint64_t num_queued)>
+      on_excess_queueing_;
 
   /// Warn the next time the number of queued task submissions to an actor
   /// exceeds this quantity. This threshold is doubled each time it is hit.

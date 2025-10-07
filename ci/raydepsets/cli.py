@@ -33,7 +33,7 @@ def cli():
 
 
 @cli.command()
-@click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
+@click.argument("config_path", default="ci/raydepsets/configs/ray.depsets.yaml")
 @click.option(
     "--workspace-dir",
     default=None,
@@ -62,7 +62,7 @@ def build(
     """
     Build dependency sets from a config file.
     Args:
-        config_path: The path to the config file. If not specified, ci/raydepsets/ray.depsets.yaml will be used.
+        config_path: The path to the config file. If not specified, ci/raydepsets/configs/ray.depsets.yaml will be used.
     """
     manager = DependencySetManager(
         config_path=config_path,
