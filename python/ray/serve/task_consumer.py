@@ -22,9 +22,7 @@ class TaskConsumerWrapper(ABC):
     def __init__(self, *args, **kwargs):
         pass
 
-    def initialize_callable(
-        self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
-    ):
+    def initialize_callable(self, consumer_concurrency: int):
         pass
 
     def __del__(self):
@@ -136,9 +134,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
             def __init__(self, *args, **kwargs):
                 target_cls.__init__(self, *args, **kwargs)
 
-            def initialize_callable(
-                self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY
-            ):
+            def initialize_callable(self, consumer_concurrency: int):
                 self._adapter = instantiate_adapter_from_config(
                     task_processor_config, consumer_concurrency
                 )

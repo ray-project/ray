@@ -108,6 +108,7 @@ from ray.serve.exceptions import (
     RayServeException,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
+from ray.serve.task_consumer import TaskConsumerWrapper
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1613,8 +1614,6 @@ class UserCallableWrapper:
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._initialize_asgi_callable()
-
-            from ray.serve.task_consumer import TaskConsumerWrapper
 
             if isinstance(self._callable, TaskConsumerWrapper):
                 self._callable.initialize_callable(
