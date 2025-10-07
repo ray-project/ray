@@ -28,8 +28,8 @@ class NoopCgroupManager : public CgroupManagerInterface {
   NoopCgroupManager() = default;
   explicit NoopCgroupManager(const CgroupManager &) = delete;
   NoopCgroupManager &operator=(const CgroupManager &) = delete;
-  explicit NoopCgroupManager(CgroupManager &&);
-  NoopCgroupManager &operator=(CgroupManager &&);
+  explicit NoopCgroupManager(CgroupManager &&) {}
+  NoopCgroupManager &operator=(CgroupManager &&) { return *this; }
   ~NoopCgroupManager() = default;
 
   Status AddProcessToApplicationCgroup(const std::string &pid) override {
@@ -39,5 +39,5 @@ class NoopCgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &pid) override {
     return Status::OK();
   }
-};
+};  // namespace ray
 }  // namespace ray
