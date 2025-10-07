@@ -46,4 +46,4 @@ examples:
       - pandas
     use_cases:
       - ETL
-    link: examples/ray-data-etl-tpch/README
+    link: examples/etl-ray-data/README

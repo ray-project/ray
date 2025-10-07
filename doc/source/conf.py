@@ -230,7 +230,7 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
-    "data/examples/ray-data-etl-tpch/notebook.ipynb",
+    "data/examples/etl-ray-data/notebook.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.

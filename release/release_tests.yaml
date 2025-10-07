@@ -4212,7 +4212,7 @@
   python: "3.11"
   group: ray-examples
   team: data
-  working_dir: //doc/source/data/examples/ray-data-etl-tpch  # use // to access from repo's root
+  working_dir: //doc/source/data/examples/etl-ray-data  # use // to access from repo's root
 
   cluster:
     byod:
