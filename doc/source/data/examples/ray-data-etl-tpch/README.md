@@ -8,28 +8,24 @@ Modify notebook.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 -->
 
-# Ray Data for ETL: A Comprehensive Beginner's Guide
+# Ray Data for ETL: a comprehensive beginner's guide
 
-This notebook provides a complete introduction to Ray Data for Extract, Transform, Load (ETL) workflows. It also covers both the practical aspects of building ETL pipelines and the underlying architecture that makes Ray Data powerful for distributed data processing.
+This notebook provides a complete introduction to Ray Data for Extract, Transform, Load (ETL) workflows. You'll learn both the practical aspects of building ETL pipelines and the underlying architecture that makes Ray Data powerful for distributed data processing.
 
-<div class="alert alert-block alert-info">
-<b> Learning Roadmap:</b>
-<ul>
-    <li><b>Part 1:</b> What is Ray Data and ETL?</li>
-    <li><b>Part 2:</b> Ray Data Architecture & Concepts</li>
-    <li><b>Part 3:</b> Extract - Reading Data</li>
-    <li><b>Part 4:</b> Transform - Processing Data</li>
-    <li><b>Part 5:</b> Load - Writing Data</li>
-    <li><b>Part 6:</b> Advanced ETL Patterns</li>
-    <li><b>Part 7:</b> Performance & Best Practices</li>
-    <li><b>Part 8:</b> Troubleshooting Common Issues</li>
-</ul>
-</div>
+Learning roadmap:
 
+- **Part 1**: What is Ray Data and ETL?
+- **Part 2**: Ray Data architecture and concepts
+- **Part 3**: Extract - reading data
+- **Part 4**: Transform - processing data
+- **Part 5**: Load - writing data
+- **Part 6**: Advanced ETL patterns
+- **Part 7**: Performance and best practices
+- **Part 8**: Troubleshooting common issues
 
-## Setup and Imports
+## Setup and imports
 
-Start by importing the necessary libraries and setting up your environment.
+Import the necessary libraries and set up your environment.
 
 
 
@@ -66,65 +62,61 @@ print(f"Ray cluster resources: {ray.cluster_resources()}")
 
 ### What is Ray Data?
 
-Ray Data is a distributed data processing library built on top of Ray that has recently reached **General Availability (GA)**. As the fastest-growing use case for Ray, it's designed to handle **both traditional ETL/ML workloads and next-generation AI applications**, providing a unified platform that scales from CPU clusters to heterogeneous GPU environments.
+Ray Data is a distributed data processing library built on top of Ray that is a **General Availability (GA)** library. As the fastest-growing use case for Ray, it's designed to handle **both traditional ETL/ML workloads and next-generation AI applications**, providing a unified platform that scales from CPU clusters to heterogeneous GPU environments.
 
-<div class="alert alert-block alert-success">
-<b> Ray Data: One Platform for All Data Workloads</b><br>
-Ray Data is part of Ray, the AI Compute Engine that now orchestrates <b>over 1 million clusters per month</b>. Whether you're running traditional ETL on CPU clusters or cutting-edge multimodal AI pipelines, Ray Data provides a unified solution that evolves with your needs.
-</div>
+**Tip: Ray Data - One platform for all data workloads**
 
-<div class="alert alert-block alert-info">
-<b> Ray Data: From Traditional to Transformational:</b>
-<ul>
-    <li><b>Traditional ETL:</b> Excellent for structured data processing, business intelligence, and reporting</li>
-    <li><b>ML Workflows:</b> Perfect for feature engineering, model training pipelines, and batch scoring</li>
-    <li><b>Scalable Processing:</b> Automatically scales from single machines to thousands of CPU cores</li>
-    <li><b>Future-Ready:</b> Seamlessly extends to GPU workloads and multimodal data when needed</li>
-    <li><b>Python-Native:</b> No JVM overhead - pure Python performance at scale</li>
-    <li><b>Streaming Architecture:</b> Handle datasets larger than memory with ease</li>
-</ul>
-</div>
+Ray Data is part of Ray, the AI Compute Engine that orchestrates **over 1 million clusters per month**. Whether you're running traditional ETL on CPU clusters or cutting-edge multimodal AI pipelines, Ray Data provides a unified solution that evolves with your needs.
 
-### Today's Workloads, Tomorrow's Possibilities
+**Note: Ray Data - From traditional to transformational**
+
+- **Traditional ETL**: Excellent for structured data processing, business intelligence, and reporting
+- **ML workflows**: Well-suited for feature engineering, model training pipelines, and batch scoring
+- **Scalable processing**: Automatically scales from single machines to thousands of CPU cores
+- **Future-ready**: Seamlessly extends to GPU workloads and multimodal data when needed
+- **Python-native**: No JVM overhead - pure Python performance at scale
+- **Streaming architecture**: Handle datasets larger than memory with ease
+
+### Today's workloads, tomorrow's possibilities
 
 Ray Data excels across the entire spectrum of data processing needs:
 
-**Traditional & Current Workloads:**
+**Traditional and current workloads:**
 - **Business ETL**: Customer analytics, financial reporting, operational dashboards
 - **Classical ML**: Recommendation systems, fraud detection, predictive analytics
-- **Data Engineering**: Large-scale data cleaning, transformation, and aggregation
+- **Data engineering**: Large-scale data cleaning, transformation, and aggregation
 
-**Next-Generation Workloads:**
+**Next-generation workloads:**
 - **Multimodal AI**: Processing text, images, video, and audio together
-- **LLM Pipelines**: Fine-tuning, embedding generation, and batch inference
-- **Computer Vision**: Image preprocessing and model inference at scale
-- **Compound AI Systems**: Orchestrating multiple models and traditional ML
+- **LLM pipelines**: Fine-tuning, embedding generation, and batch inference
+- **Computer vision**: Image preprocessing and model inference at scale
+- **Compound AI systems**: Orchestrating multiple models and traditional ML
 
-### Ray Data vs Traditional Tools
+### Ray Data versus traditional tools
 
 See the table below to understand how Ray Data compares to other data processing tools across traditional and modern workloads:
 
 | Feature | Ray Data | Pandas | Spark | Dask |
 |---------|----------|--------|-------|------|
 | **Scale** | Multi-machine | Single-machine | Multi-machine | Multi-machine |
-| **Memory Strategy** | Streaming | In-memory | Mixed | In-Memory |
-| **Python Performance** | Native (no JVM) | Native | JVM overhead | Native |
-| **CPU Clusters** | Excellent | Single-node | Excellent | Good |
-| **GPU Support** | Native | None | Limited | Limited |
+| **Memory strategy** | Streaming | In-memory | Mixed | In-Memory |
+| **Python performance** | Native (no JVM) | Native | JVM overhead | Native |
+| **CPU clusters** | Excellent | Single-node | Excellent | Good |
+| **GPU support** | Native | None | Limited | Limited |
 | **Classical ML** | Excellent | Limited | Limited | Good |
-| **Multimodal Data** | Optimized | Limited | Limited | Limited |
-| **Fault Tolerance** | Built-in | None | Built-in | Limited |
+| **Multimodal data** | Optimized | Limited | Limited | Limited |
+| **Fault tolerance** | Built-in | None | Built-in | Limited |
 
-### Real-World Impact Across All Workloads
+### Real-world impact across all workloads
 
 Organizations worldwide are seeing dramatic results with Ray Data for both traditional and advanced workloads:
 
-**Traditional ETL & Analytics:**
+**Traditional ETL and analytics:**
 - **Amazon**: Migrated an exabyte-scale workload from Spark to Ray Data, cutting costs by **82%** and saving **$120 million annually**
 - **Instacart**: Processing **100x more data** for recommendation systems and business analytics
-- **Financial Services**: Major banks using Ray Data for fraud detection and risk analytics at scale
+- **Financial services**: Major banks using Ray Data for fraud detection and risk analytics at scale
 
-**Modern AI & ML:**
+**Modern AI and ML:**
 - **Niantic**: Reduced code complexity by **85%** while scaling AR/VR data pipelines
 - **Canva**: Cut cloud costs in **half** while processing design assets and user data
 - **Pinterest**: Boosted GPU utilization to **90%+** for image processing and recommendations
@@ -132,46 +124,41 @@ Organizations worldwide are seeing dramatic results with Ray Data for both tradi
 Ray Data provides a unified platform that excels at traditional ETL, classical ML, and next-generation AI workloads - eliminating the need for multiple specialized systems.
 
 
-## Part 2: Ray Data Architecture & Concepts
+## Part 2: Ray Data architecture and concepts
 
-### Ray Data Architecture
+### Ray Data architecture
 
 Ray Data's architecture addresses the core challenges of modern AI infrastructure:
 
-<div class="alert alert-block alert-success">
-<b> Ray: Built for the Modern Era of Computing</b><br>
-Unlike traditional distributed systems, Ray was purpose-built for:<br>
-<ul>
-    <li><b>Python-Native:</b> No JVM overhead or serialization bottlenecks</li>
-    <li><b>Heterogeneous Compute:</b> Seamlessly orchestrates CPUs, GPUs, and other accelerators</li>
-    <li><b>Dynamic Workloads:</b> Adapts to varying compute needs in real-time</li>
-    <li><b>Fault Tolerance:</b> Handles failures gracefully at massive scale</li>
-</ul>
-</div>
+** Tip: Ray is built for the modern era of computing**
+
+Unlike traditional distributed systems, Ray was purpose-built for:
+
+- **Python-native**: No JVM overhead or serialization bottlenecks
+- **Heterogeneous compute**: Seamlessly orchestrates CPUs, GPUs, and other accelerators
+- **Dynamic workloads**: Adapts to varying compute needs in real-time
+- **Fault tolerance**: Handles failures gracefully at massive scale
 
 ![Ray Data Architecture](https://docs.ray.io/en/latest/_images/dataset-arch.svg)
 
-### Core Concepts
+### Core concepts
 
 This section explains fundamental concepts that power Ray Data.
 
-#### 1. Datasets and Blocks
+#### 1. Datasets and blocks
 
 A **Dataset** in Ray Data is a distributed collection of data that's divided into **blocks**. Think of blocks as chunks of your data that can be processed independently.
 
-<div class="alert alert-block alert-info">
-<b> Understanding Blocks:</b>
-<ul>
-    <li>Each block contains a subset of your data (typically 1-128 MB)</li>
-    <li>Blocks are stored in Ray's distributed object store</li>
-    <li>Operations are applied to blocks in parallel across the cluster</li>
-    <li>Block size affects performance - too small causes overhead, too large causes memory issues</li>
-</ul>
-</div>
+**Note: Understanding blocks**
+
+- Each block contains a subset of your data (typically 1-128 MB).
+- Ray Data stores blocks in Ray's distributed object store.
+- Ray Data applies operations to blocks in parallel across the cluster.
+- Block size affects performance—too small causes overhead, too large causes memory issues.
 
 
 ```python
-# Let's create a simple dataset to understand blocks
+# Create a simple dataset to understand blocks
 # Create sample data
 import numpy as np
 
@@ -188,17 +175,17 @@ for i, row in enumerate(ds.take(3)):
 
 ```
 
-#### 2. Execution Model
+#### 2. Execution model
 
-Ray Data uses **lazy execution** by default, meaning operations aren't executed immediately but are planned and optimized before execution.
+Ray Data uses **lazy execution** by default, meaning it doesn't execute operations immediately but plans and optimizes before execution.
 
-**Lazy Execution Benefits:**
+**Lazy execution benefits:**
 - **Optimization**: Ray Data can optimize the entire pipeline before execution
-- **Memory efficiency**: Only necessary data is loaded into memory
+- **Memory efficiency**: Only loads necessary data into memory
 - **Fault tolerance**: Can restart from intermediate points if failures occur
 
 <div class="alert alert-block alert-warning">
-<b> Understanding Execution:</b><br>
+<b> Understanding execution:</b><br>
 <b>Lazy:</b> Build a plan first, then execute (default)<br>
 <b>Eager:</b> Execute operations immediately as they're called<br><br>
 Lazy execution allows Ray Data to optimize your entire pipeline for better performance.
@@ -229,72 +216,66 @@ result = ds_lazy.take(5)
 
 ```
 
-## Part 3: Extract - Reading Data
+## Part 3: Extract: reading data
 
 The **Extract** phase involves reading data from various sources. Ray Data provides built-in connectors for many common data sources and makes it easy to scale data reading across a distributed cluster, especially for the **multimodal data** that powers modern AI applications.
 
-### The Multimodal Data Revolution
+### The multimodal data revolution
 
 Today's AI applications process vastly more complex data than traditional ETL pipelines:
 
-<div class="alert alert-block alert-success">
-<b> The Scale of Modern Data:</b>
-<ul>
-    <li><b>Unstructured Data Growth:</b> Now outpaces structured data by 10x+ in most organizations</li>
-    <li><b>Video Processing:</b> Companies like OpenAI (Sora), Pinterest, and Apple process petabytes of multimodal data daily</li>
-    <li><b>Foundation Models:</b> Require processing millions of images, videos, and documents</li>
-    <li><b>AI-Powered Processing:</b> Every aspect of data processing is becoming AI-enhanced</li>
-</ul>
-</div>
+** Tip: The scale of modern data**
 
-### How Ray Data Reads Data Under the Hood
+- **Unstructured data growth**: Outpaces structured data by 10x+ in most organizations.
+- **Video processing**: Companies like OpenAI (Sora), Pinterest, and Apple process petabytes of multimodal data daily.
+- **Foundation models**: Require processing millions of images, videos, and documents.
+- **AI-powered processing**: Every aspect of data processing is becoming AI-enhanced.
 
-When you read data with Ray Data, here's what happens:
+### How Ray Data reads data under the hood
 
-1. **File Discovery**: Ray Data discovers all files matching your path pattern
-2. **Task Creation**: Files are distributed across Ray tasks (typically one file per task)
-3. **Parallel Reading**: Multiple tasks read files simultaneously across the cluster
-4. **Block Creation**: Each task creates data blocks stored in Ray's object store
-5. **Lazy Planning**: The dataset is created but data isn't loaded until needed
+When you read data with Ray Data, the following happens:
+
+1. **File discovery**: Ray Data discovers all files matching your path pattern.
+2. **Task creation**: Ray Data distributes files across Ray tasks (typically one file per task).
+3. **Parallel reading**: Multiple tasks read files simultaneously across the cluster.
+4. **Block creation**: Each task creates data blocks stored in Ray's object store.
+5. **Lazy planning**: Ray Data creates the dataset but doesn't load the data until needed.
 
 This architecture enables Ray Data to efficiently handle both traditional structured data and modern unstructured formats that power AI applications.
 
-<div class="alert alert-block alert-info">
-<b> Built-in Data Sources:</b>
-<ul>
-    <li><b>Structured:</b> Parquet, CSV, JSON, Arrow</li>
-    <li><b>Unstructured:</b> Images, Videos, Audio, Binary files</li>
-    <li><b>Databases:</b> MongoDB, MySQL, PostgreSQL, Snowflake</li>
-    <li><b>Cloud Storage:</b> S3, GCS, Azure Blob Storage</li>
-    <li><b>Data Lakes:</b> Delta Lake, Iceberg (with RayTurbo)</li>
-    <li><b>ML Formats:</b> TensorFlow Records, PyTorch datasets</li>
-    <li><b>Memory:</b> Python lists, NumPy arrays, Pandas DataFrames</li>
-</ul>
-</div>
+**Note: Built-in data sources**
 
-### Enterprise-Grade Data Connectivity
+- **Structured**: Parquet, CSV, JSON, Arrow
+- **Unstructured**: Images, videos, audio, binary files
+- **Databases**: MongoDB, MySQL, PostgreSQL, Snowflake
+- **Cloud storage**: S3, GCS, Azure Blob Storage
+- **Data lakes**: Delta Lake, Iceberg (with RayTurbo)
+- **ML formats**: TensorFlow Records, PyTorch datasets
+- **Memory**: Python lists, NumPy arrays, Pandas DataFrames
+
+### Enterprise-grade data connectivity
 
 For enterprise environments, **Anyscale** provides additional connectors and optimizations:
-- **Enhanced Security**: Integration with enterprise identity systems
-- **Governance Controls**: Data lineage and access controls
-- **Performance Optimization**: RayTurbo's streaming metadata fetching provides up to **4.5x faster** data loading
-- **Hybrid Deployment**: Support for Kubernetes, on-premises, and multi-cloud environments
+- **Enhanced security**: Integration with enterprise identity systems
+- **Governance controls**: Data lineage and access controls
+- **Performance optimization**: RayTurbo's streaming metadata fetching provides up to **4.5x faster** data loading
+- **Hybrid deployment**: Support for Kubernetes, on-premises, and multi-cloud environments
 
 
-### Accessing TPC-H Benchmark Data
+### Accessing TPC-H benchmark data
 
 This example uses the industry-standard TPC-H benchmark dataset. This provides realistic enterprise-scale data that's used by companies worldwide to evaluate data processing systems and represents real business scenarios with complex relationships between customers, orders, suppliers, and products.
 
 
 
 ```python
-# Using TPC-H Benchmark Dataset - Industry Standard for Data Processing
+# Using TPC-H benchmark dataset - industry standard for data processing
 # TPC-H is the gold standard benchmark for decision support systems and analytics
 
 # TPC-H S3 data location
 TPCH_S3_PATH = "s3://ray-benchmark-data/tpch/parquet/sf10"
 
-# TPC-H Schema Overview
+# TPC-H schema overview
 tpch_tables = {
     "customer": "Customer master data with demographics and market segments",
     "orders": "\tOrder header information with dates, priorities, and status",
@@ -314,7 +295,7 @@ for table, description in tpch_tables.items():
 
 
 ```python
-# Read TPC-H Customer Master Data (Traditional Structured Data Processing)
+# Read TPC-H customer master data (traditional structured data processing)
 customers_ds = ray.data.read_parquet(f"{TPCH_S3_PATH}/customer")
 
 customers_ds = customers_ds.drop_columns(["column8"])
@@ -353,7 +334,7 @@ segment_analysis.show(5)
 
 
 ```python
-# Geographic Reference Data - Nations Table
+# Geographic reference data - nations table
 print("TPC-H Nations Reference Data:")
 print("Loading geographic data for customer demographics...")
 
@@ -374,7 +355,7 @@ nation_ds.limit(25).to_pandas()
 
 
 ```python
-# Customer Demographics by Nation - Join Analysis
+# Customer demographics by nation - join analysis
 print(" Customer Demographics by Nation:")
 print("   Joining customer and nation data for geographic analysis...")
 
@@ -397,9 +378,9 @@ customer_nation_analysis.sort("customer_count", descending=True).limit(10).to_pa
 
 
 ```python
-# Read TPC-H High-Volume Transactional Data (Orders + Line Items)
+# Read TPC-H high-volume transactional data (orders and line items)
 
-# Read Orders table (header information)
+# Read orders table (header information)
 orders_ds = ray.data.read_parquet(f"{TPCH_S3_PATH}/orders")
 
 orders_ds = (orders_ds
@@ -424,7 +405,7 @@ orders_ds.limit(10).to_pandas()
 
 
 ```python
-# Read Line Items table (detailed transaction data - largest table in TPC-H)
+# Read line items table (detailed transaction data - largest table in TPC-H)
 lineitem_ds = ray.data.read_parquet(f"{TPCH_S3_PATH}/lineitem")
 
 lineitem_cols = [f"column{str(i).zfill(2)}" for i in range(16)]
@@ -490,74 +471,64 @@ yearly_revenue = (orders_with_year
 
 ```
 
-## Part 4: Transform - Processing Data
+## Part 4: Transform - processing data
 
-The **Transform** phase is where the real data processing happens. Ray Data provides several transformation operations that can be applied to datasets, and understanding how they work under the hood is key to building efficient ETL pipelines that power modern AI applications.
+The **Transform** phase is where the real data processing happens. Ray Data provides several transformation operations that you can apply to datasets, and understanding how they work under the hood is key to building efficient ETL pipelines that power modern AI applications.
 
-### Transformations for the AI Era
+### Transformations for the AI era
 
 Modern AI workloads require more than traditional data transformations. Ray Data is designed for the era of **compound AI systems** and **agentic workflows** where:
 
-<div class="alert alert-block alert-success">
-<b> AI-Powered Transformations:</b>
-<ul>
-    <li><b>Multimodal Processing:</b> Simultaneously process text, images, video, and audio</li>
-    <li><b>Model Inference:</b> Embed ML models directly into transformation pipelines</li>
-    <li><b>GPU Acceleration:</b> Seamlessly utilize both CPU and GPU resources</li>
-    <li><b>Compound AI:</b> Orchestrate multiple models and traditional ML within single workflows</li>
-    <li><b>AI-Enhanced ETL:</b> Use AI to optimize every aspect of data processing</li>
-</ul>
-</div>
+**Tip: AI-powered transformations**
 
-### How Ray Data Processes Transformations
+- **Multimodal processing**: Simultaneously process text, images, video, and audio.
+- **Model inference**: Embed ML models directly into transformation pipelines.
+- **GPU acceleration**: Seamlessly utilize both CPU and GPU resources.
+- **Compound AI**: Orchestrate multiple models and traditional ML within single workflows.
+- **AI-enhanced ETL**: Use AI to optimize every aspect of data processing.
+
+### How Ray Data processes transformations
 
 When you apply transformations with Ray Data:
 
-1. **Task Distribution**: Transformations are distributed across Ray tasks/actors
-2. **Block-level Processing**: Each task processes one or more blocks independently  
-3. **Streaming Execution**: Blocks flow through the pipeline without waiting for all data
-4. **Operator Fusion**: Compatible operations are automatically combined for efficiency
-5. **Heterogeneous Compute**: Intelligently schedules CPU and GPU work
-6. **Fault Tolerance**: Failed tasks are automatically retried
+1. **Task distribution**: Ray Data distributes transformations across Ray tasks/actors.
+2. **Block-level processing**: Each task processes one or more blocks independently.
+3. **Streaming execution**: Blocks flow through the pipeline without waiting for all data.
+4. **Operator fusion**: Compatible operations are automatically combined for efficiency.
+5. **Heterogeneous compute**: Intelligently schedules CPU and GPU work.
+6. **Fault tolerance**: Ray Data automatically retries failed tasks.
 
 This architecture enables Ray Data to handle everything from traditional business logic to cutting-edge AI inference within the same pipeline.
 
-<div class="alert alert-block alert-info">
-<b> Transformation Categories:</b>
-<ul>
-    <li><b>Row-wise operations:</b> <code>map()</code> - Transform individual rows</li>
-    <li><b>Batch operations:</b> <code>map_batches()</code> - Transform groups of rows (ideal for ML inference)</li>
-    <li><b>Filtering:</b> <code>filter()</code> - Remove rows based on conditions</li>
-    <li><b>Aggregations:</b> <code>groupby()</code> - Group and aggregate data</li>
-    <li><b>Joins:</b> <code>join()</code> - Combine datasets</li>
-    <li><b>AI Operations:</b> Embed models for inference, embeddings, and feature extraction</li>
-    <li><b>Shuffling:</b> <code>random_shuffle()</code>, <code>sort()</code> - Reorder data</li>
-</ul>
-</div>
+**Note: Transformation categories**
 
-While most other data frameworks support similar map operations through UDFs, with Ray Data, these are treated as first-class supported features. Instead of just arbitrary operations sent to partitions, Ray Data has several key advantages:
-- Each task can have task-level concurrency and hardware allocation set instead of just global settings for all UDFs.
+- **Row-wise operations**: `map()` - Transform individual rows
+- **Batch operations**: `map_batches()` - Transform groups of rows (ideal for ML inference)
+- **Filtering**: `filter()` - Remove rows based on conditions
+- **Aggregations**: `groupby()` - Group and aggregate data
+- **Joins**: `join()` - Combine datasets
+- **AI operations**: Embed models for inference, embeddings, and feature extraction
+- **Shuffling**: `random_shuffle()`, `sort()` - Reorder data
+
+While most other data frameworks support similar map operations through UDFs, with Ray Data, these are treated as first-class supported features. Instead of sending arbitrary operations to partitions, Ray Data has several key advantages:
+- Each task can have task-level concurrency and hardware allocation set instead of global settings for all UDFs.
 - These tasks support PyArrow, pandas, and NumPy format, which provides easy integrations to the rest of the Python ecosystem.
 - These tasks support stateful actors, which supports initializing expensive steps like downloading an AI model, only once per replica instead of per-invocation.
-- For more advanced use cases, Ray Core can be run inside of the task, supporting nested parallelism algorithms. This is useful for HPC-style applications with complicated compute tasks on top of big data.
+- For more advanced use cases, you can run Ray Core inside of the task, supporting nested parallelism algorithms. This is useful for HPC-style applications with complicated compute tasks on top of big data.
 
+**Tip: GPU optimizations**
 
-<div class="alert alert-block alert-success">
-<b> GPU Optimizations:</b>
-<ul>
-    <li><b>Nvidia RAPIDS:</b> <code>map_batches()</code> - Pandas ETL operations can be sped up using the Nvidia cuDF library to run the slower sections of ETL logic onto GPUs.</li>
-    <li><b>Batch Inference:</b> <code>map_batches()</code> - GPU AI batch inference can be used for unstructured data ingestion or LLM processing, amongst many other use cases</li>
-    <li><b>AI Training:</b> - Many data pipelines, such as time series analysis, train many small models over sections of the data. These smaller ML models, such as XGBoost models, can be trained using GPUs for faster performance</li>
-</ul>
-</div>
+- **Nvidia RAPIDS**: `map_batches()` - You can speed up pandas ETL operations using the Nvidia cuDF library to run the slower sections of ETL logic onto GPUs.
+- **Batch inference**: `map_batches()` - You can use GPU AI batch inference for unstructured data ingestion or LLM processing, amongst many other use cases.
+- **AI training**: Many data pipelines, such as time series analysis, train many small models over sections of the data. You can train these smaller ML models, such as XGBoost models, using GPUs for faster performance.
 
-This tutorial focuses on traditional CPU-based ETL workloads, but there are other templates available for batch inference using GPUs if you are interested in learning further.
+This tutorial focuses on traditional CPU-based ETL workloads, but there are other templates available for batch inference using GPUs if you're interested in learning more.
 
-### Practical ETL Transformations
+### Practical ETL transformations
 
 This section implements common ETL transformations using the e-commerce data:
 
-#### 1. Data Enrichment with Business Logic
+#### 1. Data enrichment with business logic
 
 
 
@@ -657,7 +628,7 @@ traditional_enriched.limit(25).to_pandas()
 
 
 ```python
-# ML-Ready Feature Engineering (Preparing enterprise data for model training/inference)
+# ML-ready feature engineering (preparing enterprise data for model training/inference)
 print("ML-Ready Feature Engineering (Next-Generation Capabilities):")
 print("Adding ML features for predictive analytics on enterprise transaction data...")
 
@@ -669,19 +640,17 @@ enriched_orders = traditional_enriched.map_batches(
 enriched_orders.limit(25).to_pandas()
 ```
 
-#### 2. Aggregations and Analytics
+#### 2. Aggregations and analytics
 
 Aggregations are essential for creating summary statistics and business metrics. Ray Data's `groupby()` operations distribute the computation across the cluster.
 
-<div class="alert alert-block alert-warning">
-<b> Under the Hood - GroupBy Operations:</b><br>
-When you perform a GroupBy operation, Ray Data:<br>
-<ol>
-    <li><b>Shuffle Phase:</b> Data is redistributed so all records with the same key end up on the same node</li>
-    <li><b>Local Aggregation:</b> Each node performs aggregation on its subset of data</li>
-    <li><b>Result Collection:</b> Final aggregated results are collected</li>
-</ol>
-</div>
+**Caution: Under the hood - GroupBy operations**
+
+When you perform a GroupBy operation, Ray Data:
+
+1. **Shuffle phase**: Redistributes data so all records with the same key end up on the same node.
+2. **Local aggregation**: Each node performs aggregation on its subset of data.
+3. **Result collection**: Collects final aggregated results.
 
 You can make several new datasets by aggregating data together.
 
@@ -690,7 +659,7 @@ You can make several new datasets by aggregating data together.
 ```python
 from ray.data.aggregate import Count, Mean, Sum, Max
 
-#Executive Summary Dashboard - typical BI metrics on enterprise data
+#Executive summary dashboard - typical BI metrics on enterprise data
 print("Executive Dashboard (Traditional BI on TPC-H):")
 executive_summary = (enriched_orders
     .groupby("order_quarter")
@@ -718,7 +687,7 @@ executive_summary.limit(25).to_pandas()
 
 ```python
 
-#Operational Analytics - business process optimization
+#Operational analytics - business process optimization
 print("Operational Analytics (Enterprise Process Optimization):")
 operational_metrics = (enriched_orders
     .groupby("revenue_tier")
@@ -747,7 +716,7 @@ operational_metrics.limit(25).to_pandas()
 
 ```python
 
-#Priority-Based Analysis - enterprise order management
+#Priority-based analysis - enterprise order management
 print("\n Priority-Based Analysis (Order Management Insights):")
 priority_performance = (enriched_orders
     .groupby("o_orderpriority")
@@ -775,7 +744,7 @@ priority_performance.sort("priority_revenue", descending=True).limit(25).to_pand
 
 
 ```python
-#Temporal Business Analysis - time-series insights
+#Temporal business analysis - time-series insights
 print("Temporal Analysis (Time-Series Business Intelligence):")
 temporal_intelligence = (enriched_orders
     .groupby("order_year")
@@ -801,29 +770,26 @@ print("Year-over-Year Performance:")
 temporal_intelligence.sort("order_year").limit(25).to_pandas()
 ```
 
-## Part 5: Load - Writing Data
+## Part 5: Load - writing data
 
 The **Load** phase involves writing the processed data to destination systems. Ray Data supports writing to various formats and destinations, and understanding how this works helps you optimize for your use case.
 
-### How Ray Data Writes Data
+### How Ray Data writes data
 
 When you write data with Ray Data:
 
-1. **Parallel Writing**: Multiple tasks write data simultaneously across the cluster
-2. **Partitioned Output**: Data is written as multiple files (one per block typically)
-3. **Format Optimization**: Ray Data optimizes the writing process for each format
-4. **Streaming Writes**: Large datasets can be written without loading everything into memory
+1. **Parallel writing**: Multiple tasks write data simultaneously across the cluster.
+2. **Partitioned output**: Ray Data writes data as multiple files (one per block typically).
+3. **Format optimization**: Ray Data optimizes the writing process for each format.
+4. **Streaming writes**: Ray Data can write large datasets without loading everything into memory.
 
-<div class="alert alert-block alert-info">
-<b> Supported Output Formats:</b>
-<ul>
-    <li><b>Files:</b> Parquet, CSV, JSON</li>
-    <li><b>Databases:</b> MongoDB, MySQL, PostgreSQL</li>
-    <li><b>Cloud Storage:</b> S3, GCS, Azure Blob Storage</li>
-    <li><b>Lakehouse Formats:</b> Delta Lake (coming soon), Iceberg, Hudi</li>
-    <li><b>Custom:</b> Implement your own writers using <code>FileBasedDatasource</code></li>
-</ul>
-</div>
+**Note: Supported output formats**
+
+- **Files**: Parquet, CSV, JSON
+- **Databases**: MongoDB, MySQL, PostgreSQL
+- **Cloud storage**: S3, GCS, Azure Blob Storage
+- **Lakehouse formats**: Delta Lake (coming soon), Iceberg, Hudi
+- **Custom**: Implement your own writers using `FileBasedDatasource`
 
 
 
@@ -845,41 +811,38 @@ priority_performance.write_parquet(f"{OUTPUT_PATH}/priority_performance")
 temporal_intelligence.write_parquet(f"{OUTPUT_PATH}/temporal_intelligence")
 ```
 
-## Summary: Your Journey with Ray Data ETL
+## Summary: Your journey with Ray Data ETL
 
-You've completed a comprehensive journey through Ray Data for ETL. This section summarizes what you've learned and explore how to take your AI data pipelines to production.
+You've completed a comprehensive journey through Ray Data for ETL. This section summarizes what you've learned and explores how to take your AI data pipelines to production.
 
-<div class="alert alert-block alert-success">
-<b> What You've Mastered:</b>
-<ul>
-    <li><b>Ray Data Fundamentals:</b> Blocks, lazy execution, streaming processing</li>
-    <li><b>Extract Phase:</b> Reading from multiple data sources efficiently, including multimodal data</li>
-    <li><b>Transform Phase:</b> Distributed data processing and feature engineering</li>
-    <li><b>Load Phase:</b> Writing to various destinations with optimization</li>
-    <li><b>Production Patterns:</b> Error handling, monitoring, and data quality</li>
-    <li><b>Performance Optimization:</b> Understanding bottlenecks and solutions</li>
-</ul>
-</div>
+**Tip: What you've mastered**
 
-### When to Use Ray Data
+- **Ray Data fundamentals**: Blocks, lazy execution, streaming processing
+- **Extract phase**: Reading from multiple data sources efficiently, including multimodal data
+- **Transform phase**: Distributed data processing and feature engineering
+- **Load phase**: Writing to various destinations with optimization
+- **Production patterns**: Error handling, monitoring, and data quality
+- **Performance optimization**: Understanding bottlenecks and solutions
+
+### When to use Ray Data
 
 **Ray Data excels across the full spectrum of data workloads:**
 
-**Traditional ETL & Business Intelligence:**
+**Traditional ETL and business intelligence:**
 - **High-volume transaction processing** for e-commerce, finance, and operations
 - **Business intelligence** and executive reporting at scale
 - **Data warehouse** loading and transformation pipelines
 - **CPU cluster optimization** with pure Python performance (no JVM overhead)
 - **Traditional analytics** that need to scale beyond single-node tools
 
-**Modern ML & AI Workloads:**
+**Modern ML and AI workloads:**
 - **Feature engineering** for machine learning at scale
 - **Batch inference** on foundation models and LLMs
 - **Multimodal data processing** (text, images, video, audio)
 - **GPU-accelerated pipelines** for AI applications
 - **Real-time model serving** and inference workloads
 
-**Ray Data's Unified Platform Advantage:**
+**Ray Data's unified platform advantage:**
 - **One system** for both traditional ETL and cutting-edge AI
 - **Seamless evolution** from CPU-based analytics to GPU-powered AI
 - **No migration** required as your data needs grow and change
@@ -891,67 +854,59 @@ You've completed a comprehensive journey through Ray Data for ETL. This section 
 - **$120M annual savings** achieved by leading enterprises
 - **Traditional workloads** running alongside **next-generation AI** on the same platform
 
-### From Open Source to Enterprise: Anyscale Platform
+### From open source to enterprise: Anyscale platform
 
 While Ray Data open source provides powerful capabilities, **Anyscale** offers a unified AI platform for production deployments:
 
-<div class="alert alert-block alert-info">
-<b> Anyscale: The Unified AI Platform</b>
-<ul>
-    <li><b>RayTurbo Runtime:</b> Up to 5.1x performance improvements over open source</li>
-    <li><b>Enterprise Governance:</b> Resource quotas, usage tracking, and advanced observability</li>
-    <li><b>AI Anywhere:</b> Deploy on Kubernetes, hybrid cloud, or any infrastructure</li>
-    <li><b>LLM Suite:</b> Complete capabilities for embeddings, fine-tuning, and serving</li>
-    <li><b>Marketplace Ready:</b> Available on AWS and GCP Marketplaces</li>
-</ul>
-</div>
+**Note: Anyscale - The unified AI platform**
 
-### Production Deployment Options
+- **RayTurbo runtime**: Up to 5.1x performance improvements over open source
+- **Enterprise governance**: Resource quotas, usage tracking, and advanced observability
+- **AI anywhere**: Deploy on Kubernetes, hybrid cloud, or any infrastructure
+- **LLM suite**: Complete capabilities for embeddings, fine-tuning, and serving
+- **Marketplace ready**: Available on AWS and GCP Marketplaces
 
-**Getting Started:**
-1. **Ray Open Source**: Perfect for development and smaller workloads
-2. **Anyscale Platform**: Enterprise features with RayTurbo optimizations
-3. **Marketplace Deployment**: One-click setup with AWS or GCP Marketplace
+### Production deployment options
 
-### Key Architectural Insights
+**Getting started:**
+1. **Ray open source**: Perfect for development and smaller workloads
+2. **Anyscale platform**: Enterprise features with RayTurbo optimizations
+3. **Marketplace deployment**: One-click setup with AWS or GCP Marketplace
+
+### Key architectural insights
 
 Understanding how Ray Data works under the hood helps you build better pipelines:
 
-1. **AI-Native Architecture**: Purpose-built for Python, GPUs, and multimodal data
-2. **Streaming Execution**: Process datasets larger than cluster memory
-3. **Heterogeneous Compute**: Seamlessly orchestrate CPUs, GPUs, and other accelerators
-4. **Operator Fusion**: Combines compatible operations for efficiency
-5. **Enterprise Scalability**: Proven to scale to 8,000+ nodes
+1. **AI-native architecture**: Purpose-built for Python, GPUs, and multimodal data
+2. **Streaming execution**: Process datasets larger than cluster memory
+3. **Heterogeneous compute**: Seamlessly orchestrate CPUs, GPUs, and other accelerators
+4. **Operator fusion**: Combines compatible operations for efficiency
+5. **Enterprise scalability**: Proven to scale to 8,000+ nodes
 
-### Production Readiness Checklist
+### Production readiness checklist
 
 Before deploying Ray Data pipelines to production:
 
--  **Architecture**: Choose between Ray OSS and Anyscale based on your needs
--  **Performance**: Consider RayTurbo for production workloads requiring maximum efficiency
--  **Governance**: Implement enterprise controls for AI sprawl and cost management
--  **Security**: Leverage enterprise identity integration and access controls
--  **Monitoring**: Use advanced observability tools for optimization insights
--  **Scalability**: Test with realistic data volumes and cluster sizes
+- **Architecture**: Choose between Ray OSS and Anyscale based on your needs
+- **Performance**: Consider RayTurbo for production workloads requiring maximum efficiency
+- **Governance**: Implement enterprise controls for AI sprawl and cost management
+- **Security**: Leverage enterprise identity integration and access controls
+- **Monitoring**: Use advanced observability tools for optimization insights
+- **Scalability**: Test with realistic data volumes and cluster sizes
 
-### Join the Ray Ecosystem
+### Join the Ray ecosystem
 
 The Ray community is thriving with **1,000+ contributors** and growing:
 
 1. **Community**: Join the Ray Slack community for support and discussions
 2. **Learning**: Access Ray Summit sessions and technical deep-dives
 3. **Contributing**: Contribute to the fastest-growing AI infrastructure project
-4. **Enterprise Support**: Explore Anyscale for production deployments
+4. **Enterprise support**: Explore Anyscale for production deployments
 
-<div class="alert alert-block alert-success">
-<b> One Platform for All Your Data Workloads</b><br>
-You now have the knowledge to build production-ready, scalable data pipelines that handle everything from traditional business ETL to cutting-edge AI applications. Whether you're processing millions of e-commerce transactions for business intelligence or preparing multimodal data for foundation models, Ray Data provides a unified platform that scales with your needs.<br><br>
-<b>Start with traditional ETL today, evolve to AI tomorrow - all on the same platform.</b> Ray Data and Anyscale eliminate the complexity of managing multiple systems as your data requirements grow.
-</div>
+**Tip: One platform for all your data workloads**
 
+You now have the knowledge to build production-ready, scalable data pipelines that handle everything from traditional business ETL to cutting-edge AI applications. Whether you're processing millions of e-commerce transactions for business intelligence or preparing multimodal data for foundation models, Ray Data provides a unified platform that scales with your needs.
 
+**Start with traditional ETL today, evolve to AI tomorrow - all on the same platform.** Ray Data and Anyscale eliminate the complexity of managing multiple systems as your data requirements grow.
 
 
-```python
-
-```
