@@ -17,7 +17,7 @@ setup(
         "aioboto3",
         "anyscale >= 0.26.1",
         "azure-storage-file-datalake",
-        "aws_requests_auth",
+        "azure-identity" "aws_requests_auth",
         "bazel-runfiles",
         "boto3",
         "click",
