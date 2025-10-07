@@ -573,6 +573,7 @@
       case: []
       cluster_type: []
       args: []
+      frequency: []
     adjustments:
       - with:
           case: fixed_size
@@ -588,7 +589,8 @@
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 40 40 --chaos
-          # This release test is run on a 'manual' frequency because it fails.
+          # This release test is run on a 'manual' frequency because it's expected to
+          # fail.
           frequency: manual
 
   cluster:
