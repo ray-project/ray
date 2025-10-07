@@ -418,18 +418,6 @@ class NodeInfoAccessor {
       std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
       StatusCallback done);
 
-  /// Get only critical information of all nodes from an RPC to GCS synchronously with
-  /// optional filters. Works similarly to GetAllNodeInfoNoCache but only transmits
-  /// address and liveness information.
-  ///
-  /// \return All nodes that match the given filters from the gcs without the cache.
-  virtual StatusOr<std::vector<rpc::GcsNodeAddressAndLiveness>>
-  GetAllNodeAddressAndLivenessNoCache(
-      int64_t timeout_ms,
-      std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
-      std::optional<rpc::GetAllNodeAddressAndLivenessRequest::NodeSelector>
-          node_selector = std::nullopt);
-
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
   /// \param raylet_addresses The addresses of the nodes to check, each like "ip:port".

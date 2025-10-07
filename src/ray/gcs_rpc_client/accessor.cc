@@ -609,7 +609,7 @@ void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
     const std::vector<NodeID> &node_ids) {
   rpc::GetAllNodeAddressAndLivenessRequest request;
   for (const auto &node_id : node_ids) {
-    request.add_node_selectors()->set_node_id(node_id.Binary());
+    *request.add_node_ids() = node_id.Binary();
   }
   client_impl_->GetGcsRpcClient().GetAllNodeAddressAndLiveness(
       std::move(request),
@@ -785,24 +785,6 @@ StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
   }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(
-      std::move(request), &reply, timeout_ms));
-  return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
-}
-
-StatusOr<std::vector<rpc::GcsNodeAddressAndLiveness>>
-NodeInfoAccessor::GetAllNodeAddressAndLivenessNoCache(
-    int64_t timeout_ms,
-    std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
-    std::optional<rpc::GetAllNodeAddressAndLivenessRequest::NodeSelector> node_selector) {
-  rpc::GetAllNodeAddressAndLivenessRequest request;
-  if (state_filter.has_value()) {
-    request.set_state_filter(state_filter.value());
-  }
-  if (node_selector.has_value()) {
-    *request.add_node_selectors() = std::move(node_selector.value());
-  }
-  rpc::GetAllNodeAddressAndLivenessReply reply;
-  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetAllNodeAddressAndLiveness(
       std::move(request), &reply, timeout_ms));
   return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
 }

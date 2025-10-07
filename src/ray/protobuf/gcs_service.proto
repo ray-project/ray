@@ -257,15 +257,8 @@ message GetAllNodeInfoReply {
 
 // Request for getting node address and liveness info
 message GetAllNodeAddressAndLivenessRequest {
-  message NodeSelector {
-    oneof node_selector {
-      bytes node_id = 1;
-      string node_name = 2;
-      string node_ip_address = 3;
-    }
-  }
   // If not specified, get all nodes.
-  repeated NodeSelector node_selectors = 1;
+  repeated bytes node_ids = 1;
 
   // Maximum number of entries to return.
   // If not specified, return all entries without truncation.
@@ -279,10 +272,6 @@ message GetAllNodeAddressAndLivenessRequest {
 message GetAllNodeAddressAndLivenessReply {
   GcsStatus status = 1;
   repeated GcsNodeAddressAndLiveness node_info_list = 2;
-  // Length of the corresponding resource without truncation.
-  int64 total = 3;
-  // Number of results filtered out from the source.
-  int64 num_filtered = 4;
 }
 
 message CheckAliveRequest {

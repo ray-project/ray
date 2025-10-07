@@ -339,6 +339,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
+namespace {
 // Utility function to convert GcsNodeInfo to GcsNodeAddressAndLiveness
 rpc::GcsNodeAddressAndLiveness ConvertToGcsNodeAddressAndLiveness(
     const rpc::GcsNodeInfo &source) {
@@ -351,6 +352,7 @@ rpc::GcsNodeAddressAndLiveness ConvertToGcsNodeAddressAndLiveness(
   destination.mutable_death_info()->CopyFrom(source.death_info());
   return destination;
 }
+}  // namespace
 
 void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
     rpc::GetAllNodeAddressAndLivenessRequest request,
@@ -360,30 +362,12 @@ void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
   int64_t limit =
       (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
   absl::flat_hash_set<NodeID> node_ids;
-  absl::flat_hash_set<std::string> node_names;
-  absl::flat_hash_set<std::string> node_ip_addresses;
-  bool only_node_id_filters = true;
-  for (auto &selector : *request.mutable_node_selectors()) {
-    switch (selector.node_selector_case()) {
-    case rpc::GetAllNodeAddressAndLivenessRequest_NodeSelector::kNodeId:
-      node_ids.insert(NodeID::FromBinary(selector.node_id()));
-      break;
-    case rpc::GetAllNodeAddressAndLivenessRequest_NodeSelector::kNodeName:
-      node_names.insert(std::move(*selector.mutable_node_name()));
-      only_node_id_filters = false;
-      break;
-    case rpc::GetAllNodeAddressAndLivenessRequest_NodeSelector::kNodeIpAddress:
-      node_ip_addresses.insert(std::move(*selector.mutable_node_ip_address()));
-      only_node_id_filters = false;
-      break;
-    case rpc::GetAllNodeAddressAndLivenessRequest_NodeSelector::NODE_SELECTOR_NOT_SET:
-      continue;
-    }
+  for (auto &selector : *request.mutable_node_ids()) {
+    node_ids.insert(NodeID::FromBinary(selector));
   }
-  const size_t total_num_nodes = alive_nodes_.size() + dead_nodes_.size();
   int64_t num_added = 0;
 
-  if (request.node_selectors_size() > 0 && only_node_id_filters) {
+  if (!node_ids.empty()) {
     // optimized path if request only wants specific node ids
     for (const auto &node_id : node_ids) {
       if (!request.has_state_filter() ||
@@ -405,14 +389,11 @@ void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
         }
       }
     }
-    reply->set_total(total_num_nodes);
-    reply->set_num_filtered(total_num_nodes - num_added);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
     return;
   }
 
-  const bool has_node_selectors = request.node_selectors_size() > 0;
   auto add_to_response =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
               &nodes) {
@@ -420,28 +401,20 @@ void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
           if (num_added >= limit) {
             break;
           }
-          if (!has_node_selectors || node_ids.contains(node_id) ||
-              node_names.contains(node_info_ptr->node_name()) ||
-              node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
-            *reply->add_node_info_list() =
-                ConvertToGcsNodeAddressAndLiveness(*node_info_ptr);
-            num_added += 1;
-          }
+          *reply->add_node_info_list() =
+              ConvertToGcsNodeAddressAndLiveness(*node_info_ptr);
+          num_added += 1;
         }
       };
 
   if (request.has_state_filter()) {
     switch (request.state_filter()) {
     case rpc::GcsNodeInfo::ALIVE:
-      if (!has_node_selectors) {
-        reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
-      }
+      reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
       add_to_response(alive_nodes_);
       break;
     case rpc::GcsNodeInfo::DEAD:
-      if (!has_node_selectors) {
-        reply->mutable_node_info_list()->Reserve(dead_nodes_.size());
-      }
+      reply->mutable_node_info_list()->Reserve(dead_nodes_.size());
       add_to_response(dead_nodes_);
       break;
     default:
@@ -449,15 +422,10 @@ void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
       break;
     }
   } else {
-    if (!has_node_selectors) {
-      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
-    }
+    reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
     add_to_response(alive_nodes_);
     add_to_response(dead_nodes_);
   }
-
-  reply->set_total(total_num_nodes);
-  reply->set_num_filtered(total_num_nodes - reply->node_info_list_size());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
