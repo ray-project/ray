@@ -209,7 +209,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param node The specified node id.
   /// \param node_ip_address The ip address of the dead node.
   void OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
-                  const std::string node_ip_address);
+                  const std::string &node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other

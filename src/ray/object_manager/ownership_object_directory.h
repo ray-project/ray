@@ -49,12 +49,13 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const rpc::Address &owner_address,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
+  void SubscribeObjectLocations(const UniqueID &callback_id,
+                                const ObjectID &object_id,
+                                const rpc::Address &owner_address,
+                                const OnLocationsFound &callback) override;
+
+  void UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                  const ObjectID &object_id) override;
 
   /// Report to the owner that the given object is added to the current node.
   /// This method guarantees ordering and batches requests.
