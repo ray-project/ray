@@ -16,7 +16,6 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"

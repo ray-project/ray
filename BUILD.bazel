@@ -119,7 +119,6 @@ ray_cc_library(
         ],
     ),
     deps = [
-        "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
     ],
 )
