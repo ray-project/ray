@@ -17,6 +17,8 @@
 - [ ] Enhancement 🚀
 - [ ] Code refactoring 🔧
 - [ ] Documentation update 📖
+- [ ] Chore 🧹
+- [ ] Style 🎨
 
 ## Checklist
 
