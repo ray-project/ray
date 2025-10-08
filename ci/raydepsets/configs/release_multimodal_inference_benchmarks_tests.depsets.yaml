@@ -1,3 +1,6 @@
+# This file is used to generate the depsets for the multimodal inference benchmark release tests
+# Depends on: ci/raydepsets/release_base_test.depsets.yaml
+
 build_arg_sets:
   py39:
     PYTHON_VERSION: "3.9"
