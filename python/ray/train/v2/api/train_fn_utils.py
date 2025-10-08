@@ -204,7 +204,7 @@ def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
                 for epoch in range(start_epoch, config.get("num_epochs", 2)):
                     # Do training...
 
-                    metrics = {"loss": ...}
+                    metrics = {"loss": 0.1}
 
                     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                        # Save the checkpoint...
