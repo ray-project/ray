@@ -53,7 +53,7 @@ apt-get update
 apt-get install -y \
   awscli docker-ce-cli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
-  azure-cli=${AZ_VER}-1~${AZ_DIST}
+  azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
