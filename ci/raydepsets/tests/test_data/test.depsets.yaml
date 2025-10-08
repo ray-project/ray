@@ -57,4 +57,11 @@ depsets:
       - requirements_test.txt
     output: requirements_compiled_pre_hook.txt
     pre_hooks:
-      - pre-hook-test.sh test
+      - pre-hook-test.sh
+  - name: pre_hook_invalid_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    pre_hooks:
+      - pre-hook-error-test.sh

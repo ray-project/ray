@@ -24,7 +24,7 @@
 #include "absl/strings/match.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/observability/ray_driver_job_definition_event.h"
-#include "ray/observability/ray_driver_job_execution_event.h"
+#include "ray/observability/ray_driver_job_lifecycle_event.h"
 #include "ray/stats/metric.h"
 #include "ray/util/time.h"
 
@@ -45,7 +45,7 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 void GcsJobManager::WriteDriverJobExportEvent(
-    rpc::JobTableData job_data, rpc::events::DriverJobExecutionEvent::State state) const {
+    rpc::JobTableData job_data, rpc::events::DriverJobLifecycleEvent::State state) const {
   /// Write job_data as a export driver job event if
   /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
@@ -56,12 +56,12 @@ void GcsJobManager::WriteDriverJobExportEvent(
   }
   if (RayConfig::instance().enable_ray_event()) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    if (state == rpc::events::DriverJobExecutionEvent::CREATED) {
+    if (state == rpc::events::DriverJobLifecycleEvent::CREATED) {
       // Job definition event is emitted once when the job is created.
       events.push_back(std::make_unique<observability::RayDriverJobDefinitionEvent>(
           job_data, session_name_));
     }
-    events.push_back(std::make_unique<observability::RayDriverJobExecutionEvent>(
+    events.push_back(std::make_unique<observability::RayDriverJobLifecycleEvent>(
         job_data, state, session_name_));
     ray_event_recorder_.AddEvents(std::move(events));
     return;
@@ -123,7 +123,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                   send_reply_callback =
                       std::move(send_reply_callback)](const Status &status) mutable {
     WriteDriverJobExportEvent(job_table_data,
-                              rpc::events::DriverJobExecutionEvent::CREATED);
+                              rpc::events::DriverJobLifecycleEvent::CREATED);
     if (!status.ok()) {
       RAY_LOG(ERROR).WithField(job_id).WithField("driver_pid",
                                                  job_table_data.driver_pid())
@@ -174,7 +174,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     }
     function_manager_.RemoveJobReference(job_id);
     WriteDriverJobExportEvent(job_table_data,
-                              rpc::events::DriverJobExecutionEvent::FINISHED);
+                              rpc::events::DriverJobLifecycleEvent::FINISHED);
 
     // Update running job status.
     // Note: This operation must be idempotent since MarkJobFinished can be called

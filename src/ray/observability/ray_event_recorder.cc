@@ -14,7 +14,9 @@
 
 #include "ray/observability/ray_event_recorder.h"
 
-#include "src/ray/protobuf/gcs.pb.h"
+#include "ray/common/ray_config.h"
+#include "ray/util/logging.h"
+#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace observability {

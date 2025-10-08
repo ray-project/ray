@@ -5,10 +5,10 @@ import sys
 import pytest
 
 import ray
-import ray.dashboard.consts as dashboard_consts
-from ray._private import ray_constants
-from ray._private.test_utils import wait_for_condition
-from ray._raylet import GcsClient
+from ray._private.test_utils import (
+    wait_for_condition,
+    wait_for_dashboard_agent_available,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 
 _RAY_EVENT_PORT = 12345
@@ -17,19 +17,6 @@ _RAY_EVENT_PORT = 12345
 @pytest.fixture(scope="session")
 def httpserver_listen_address():
     return ("127.0.0.1", _RAY_EVENT_PORT)
-
-
-def wait_for_dashboard_agent_available(cluster):
-    gcs_client = GcsClient(address=cluster.address)
-
-    def get_dashboard_agent_address():
-        return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-        )
-
-    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
 
 
 def test_ray_node_events(ray_start_cluster, httpserver):

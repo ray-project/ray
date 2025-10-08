@@ -1,0 +1,71 @@
+build_arg_sets:
+  cpu:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cpu
+  cu121:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cu121
+  cu128:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cu128
+
+
+.common_settings: &common_settings
+  append_flags:
+    - --python-version=3.11
+    - --unsafe-package ray
+    - --python-platform=linux
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  build_arg_sets:
+    - cpu
+    - cu121
+    - cu128
+
+depsets:
+# First, extract base test dependencies from the current compiled mono repo one.
+# This also expands to the indirect dependencies for this Python version & platform.
+  - name: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: compile
+    <<: *common_settings
+    requirements:
+      - python/requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/base-test-requirements.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    output: python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
+
+# Second, expand it into LLM test dependencies.
+  - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    operation: expand
+    requirements:
+      - python/requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/base-test-requirements.txt
+      - python/requirements/llm/llm-requirements.txt
+      - python/requirements/llm/llm-test-requirements.txt
+    constraints:
+      - python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    output: python/deplocks/llm/rayllm_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
+
+# Third, subset the base test dependencies into Ray dependencies.
+  - name: compiled_ray_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    operation: subset
+    source_depset: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    requirements:
+      - python/requirements.txt
+    output: python/deplocks/llm/ray_${PYTHON_VERSION}_${CUDA_CODE}.lock
+
+# Fourth, subset the LLM test dependencies into RayLLM dependencies.
+  - name: compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    operation: subset
+    source_depset: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    requirements:
+      - python/requirements.txt
+      - python/requirements/llm/llm-requirements.txt
+    output: python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
