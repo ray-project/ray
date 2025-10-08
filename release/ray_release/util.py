@@ -356,7 +356,7 @@ def upload_working_dir_to_azure(working_dir: str, azure_path: str) -> str:
         raise
 
 
-def _parse_abfss_uri(uri: str) -> tuple:
+def _parse_abfss_uri(uri: str) -> Tuple[str, str, str]:
     """Parse ABFSS URI to extract account, container, and path.
     ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
     Returns: (account_name, container_name, path)
