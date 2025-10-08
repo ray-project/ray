@@ -346,7 +346,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     Panel(
         id=2,
         title="Node CPU utilization",
-        description="",
+        description="The physical (hardware) CPU usage for each node.",
         unit="cores",
         targets=[
             Target(
@@ -361,8 +361,8 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     ),
     Panel(
         id=54,
-        title="Node CPU % utilization",
-        description="",
+        title="Node CPU utilization %",
+        description="The percentage of physical (hardware) CPU usage for each node.",
         unit="%",
         targets=[
             Target(
@@ -380,7 +380,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} / 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * ray_node_gpus_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} / 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
                 legend="GPU Usage: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
@@ -396,7 +396,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} / 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
                 legend="GPU Usage: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
@@ -426,7 +426,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * 100) by (instance, RayNodeType)',
+                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / sum(ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
                 legend="Memory Used: {{instance}} ({{RayNodeType}})",
             ),
         ],
@@ -456,7 +456,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * 1024 * 1024 / (sum(ray_node_gram_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})) * 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                expr='sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) * 100 / (sum(ray_node_gram_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) + sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName))',
                 legend="Used GRAM: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
@@ -486,7 +486,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}/(ray_node_disk_free{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} + ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) * 100) by (instance, RayNodeType)',
+                expr='sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / (sum(ray_node_disk_free{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) + sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType))',
                 legend="Disk Used: {{instance}} ({{RayNodeType}})",
             ),
         ],
