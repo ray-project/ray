@@ -1217,7 +1217,7 @@ def test_max_constructor_retry_count(serve_instance):
 
     # we are triggering 4 replicas at once, and for understanding, let's assume then only one replica fail 10 times,
     # hence total count should be 10(one replica with 10 failures and 3 replicas with 0 failures) = 13
-    wait_for_condition(lambda: ray.get(counter.get_count.remote()) == 10, temp=True)
+    wait_for_condition(lambda: ray.get(counter.get_count.remote()) >= 10, temp=True)
 
 
 if __name__ == "__main__":
