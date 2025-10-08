@@ -57,6 +57,7 @@ py_test(
     name = "test_api",
     size = "small",
     srcs = ["tests/test_api.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
