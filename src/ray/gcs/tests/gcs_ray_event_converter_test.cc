@@ -14,8 +14,6 @@
 
 #include "ray/gcs/gcs_ray_event_converter.h"
 
-#include <vector>
-
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -26,26 +24,18 @@
 namespace ray {
 namespace gcs {
 
-class GcsRayEventConverterTest : public ::testing::Test {
- public:
-  GcsRayEventConverterTest() = default;
-};
-
-TEST_F(GcsRayEventConverterTest, TestConvertToTaskEventData) {
+TEST(GcsRayEventConverterTest, TestConvertToTaskEventData) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Convert empty request
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Test empty request
   EXPECT_EQ(task_event_data_requests.size(), 0);
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
+TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create a task definition event
   auto *event = request.mutable_events_data()->add_events();
@@ -78,8 +68,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   task_def_event->set_serialized_runtime_env("test_env");
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify conversion
   ASSERT_EQ(task_event_data_requests.size(), 1);
@@ -107,9 +96,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   EXPECT_EQ(task_info.required_resources().at("memory"), 1024.0);
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
+TEST(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create a proper TaskID for testing
   const auto job_id = JobID::FromInt(100);
@@ -125,8 +113,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   dropped_attempt->set_attempt_number(2);
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify dropped task attempts are copied
   ASSERT_FALSE(task_event_data_requests.empty());
@@ -137,9 +124,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   EXPECT_EQ(converted_dropped.attempt_number(), 2);
 }
 
-TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
+TEST(GcsRayEventConverterTest, TestMultipleJobIds) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create events with different job IDs
   const auto job_id_1 = JobID::FromInt(100);
@@ -189,8 +175,7 @@ TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
   dropped_attempt_2->set_attempt_number(4);
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify that we get two separate requests (one for each job ID)
   ASSERT_EQ(task_event_data_requests.size(), 2);
@@ -224,9 +209,8 @@ TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
   EXPECT_TRUE(found_job_2);
 }
 
-TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
+TEST(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create multiple events with the same job ID
   const auto job_id = JobID::FromInt(100);
@@ -254,8 +238,7 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   task_def_event2->set_task_name("task_2_name");
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify that we get one request with both events grouped together
   ASSERT_EQ(task_event_data_requests.size(), 1);
@@ -268,9 +251,8 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   EXPECT_EQ(events[1].job_id(), job_id.Binary());
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
+TEST(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create a task profile event
   auto *event = request.mutable_events_data()->add_events();
@@ -295,16 +277,15 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   auto *ProfileEventEntry = profile_events->add_events();
   ProfileEventEntry->set_start_time(123456789);
   ProfileEventEntry->set_end_time(123456799);
-  ProfileEventEntry->set_extra_data("{\"foo\": \"bar\"}");
+  ProfileEventEntry->set_extra_data(R"({"foo": "bar"})");
   ProfileEventEntry->set_event_name("test_event");
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify conversion
   EXPECT_EQ(task_event_data_requests.size(), 1);
-  auto task_event_data = task_event_data_requests[0];
+  auto &task_event_data = task_event_data_requests[0];
   EXPECT_EQ(task_event_data.data().events_by_task_size(), 1);
   const auto &converted_task = task_event_data.data().events_by_task(0);
 
@@ -326,13 +307,15 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   const auto &entry = profile_event.events(0);
   EXPECT_EQ(entry.start_time(), 123456789);
   EXPECT_EQ(entry.end_time(), 123456799);
-  EXPECT_EQ(entry.extra_data(), "{\"foo\": \"bar\"}");
+  EXPECT_EQ(entry.extra_data(), R"({"foo": "bar"})");
   EXPECT_EQ(entry.event_name(), "test_event");
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
-  GcsRayEventConverter converter;
-  rpc::events::TaskExecutionEvent exec_event;
+TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
+  rpc::events::AddEventsRequest request;
+  rpc::events::RayEvent &event = *request.mutable_events_data()->mutable_events()->Add();
+  event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
+  rpc::events::TaskExecutionEvent &exec_event = *event.mutable_task_execution_event();
 
   // Set basic fields
   exec_event.set_task_id("test_task_id");
@@ -351,7 +334,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   (*exec_event.mutable_task_state())[rpc::TaskStatus::SUBMITTED_TO_WORKER] = ts;
 
   // Call the converter
-  rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(exec_event));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
+  rpc::TaskEvents task_event = task_event_data_requests[0].data().events_by_task()[0];
 
   // Check basic fields
   EXPECT_EQ(task_event.attempt_number(), 3);
@@ -369,9 +353,12 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   EXPECT_EQ(state_updates.state_ts_ns().at(5), expected_ns);
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
-  GcsRayEventConverter converter;
-  rpc::events::ActorTaskDefinitionEvent actor_def_event;
+TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
+  rpc::events::AddEventsRequest request;
+  rpc::events::RayEvent &event = *request.mutable_events_data()->mutable_events()->Add();
+  event.set_event_type(rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT);
+  rpc::events::ActorTaskDefinitionEvent &actor_def_event =
+      *event.mutable_actor_task_definition_event();
 
   // Set basic fields
   actor_def_event.set_task_id("test_actor_task_id");
@@ -397,7 +384,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   (*actor_def_event.mutable_required_resources())["GPU"] = 1.0;
 
   // Call the converter
-  rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(actor_def_event));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
+  rpc::TaskEvents task_event = task_event_data_requests[0].data().events_by_task()[0];
 
   // Check basic fields
   EXPECT_EQ(task_event.task_id(), "test_actor_task_id");
