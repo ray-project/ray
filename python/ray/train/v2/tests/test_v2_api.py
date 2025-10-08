@@ -146,6 +146,23 @@ def test_exceptions_are_picklable(error):
     assert type(unpickled_error) is type(error)
 
 
+def test_v1_config_validation(monkeypatch):
+    """Test that V1 configs raise an error when V2 is enabled."""
+    import ray.air
+
+    with pytest.raises(ValueError, match="ray.train.ScalingConfig"):
+        DataParallelTrainer(lambda: None, scaling_config=ray.air.ScalingConfig())
+
+    with pytest.raises(ValueError, match="ray.train.RunConfig"):
+        DataParallelTrainer(lambda: None, run_config=ray.air.RunConfig())
+
+    with pytest.raises(ValueError, match="ray.train.FailureConfig"):
+        DataParallelTrainer(
+            lambda: None,
+            run_config=ray.train.RunConfig(failure_config=ray.air.FailureConfig()),
+        )
+
+
 if __name__ == "__main__":
     import sys
 

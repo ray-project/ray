@@ -246,6 +246,7 @@ class RunConfig:
                 "https://github.com/ray-project/ray/issues/49454"
             )
 
+        # TODO: Create a separate V2 CheckpointConfig class.
         if not isinstance(self.checkpoint_config, CheckpointConfig):
             raise ValueError(
                 f"Invalid `CheckpointConfig` type: {self.checkpoint_config.__class__}. "
