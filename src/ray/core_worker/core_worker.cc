@@ -111,7 +111,7 @@ ObjectLocation CreateObjectLocation(
 }
 
 std::optional<ObjectLocation> TryGetLocalObjectLocation(
-    ReferenceCounter &reference_counter, const ObjectID &object_id) {
+    ReferenceCounterInterface &reference_counter, const ObjectID &object_id) {
   if (!reference_counter.HasReference(object_id)) {
     return std::nullopt;
   }
@@ -165,10 +165,8 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
   return options.job_id;
 }
 
-TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gauge,
-                         ray::observability::MetricInterface &actor_by_state_gauge)
-    : task_by_state_gauge_(task_by_state_gauge),
-      actor_by_state_gauge_(actor_by_state_gauge) {
+TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_counter)
+    : task_by_state_counter_(task_by_state_counter) {
   counter_.SetOnChangeCallback(
       [this](const std::tuple<std::string, TaskStatusType, bool>
                  &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
@@ -183,7 +181,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
         const auto is_retry_label = is_retry ? "1" : "0";
         // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
         // them out to avoid double-counting.
-        task_by_state_gauge_.Record(
+        task_by_state_counter_.Record(
             running_total - num_in_get - num_in_wait,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
              {"Name"sv, func_name},
@@ -191,7 +189,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
-        task_by_state_gauge_.Record(
+        task_by_state_counter_.Record(
             -running_total,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
              {"Name"sv, func_name},
@@ -199,7 +197,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Record sub-state for get.
-        task_by_state_gauge_.Record(
+        task_by_state_counter_.Record(
             num_in_get,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
              {"Name"sv, func_name},
@@ -207,7 +205,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Record sub-state for wait.
-        task_by_state_gauge_.Record(
+        task_by_state_counter_.Record(
             num_in_wait,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
              {"Name"sv, func_name},
@@ -228,16 +226,16 @@ void TaskCounter::RecordMetrics() {
     } else {
       running_tasks = 1.0;
     }
-    actor_by_state_gauge_.Record(idle,
-                                 {{"State"sv, "ALIVE_IDLE"},
-                                  {"Name"sv, actor_name_},
-                                  {"Source"sv, "executor"},
-                                  {"JobId"sv, job_id_}});
-    actor_by_state_gauge_.Record(running_tasks,
-                                 {{"State"sv, "ALIVE_RUNNING_TASKS"},
-                                  {"Name"sv, actor_name_},
-                                  {"Source"sv, "executor"},
-                                  {"JobId"sv, job_id_}});
+    ray::stats::STATS_actors.Record(idle,
+                                    {{"State", "ALIVE_IDLE"},
+                                     {"Name", actor_name_},
+                                     {"Source", "executor"},
+                                     {"JobId", job_id_}});
+    ray::stats::STATS_actors.Record(running_tasks,
+                                    {{"State", "ALIVE_RUNNING_TASKS"},
+                                     {"Name", actor_name_},
+                                     {"Source", "executor"},
+                                     {"JobId", job_id_}});
   }
 }
 
@@ -287,7 +285,7 @@ CoreWorker::CoreWorker(
     std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::shared_ptr<RayletClientInterface> local_raylet_rpc_client,
     boost::thread &io_thread,
-    std::shared_ptr<ReferenceCounter> reference_counter,
+    std::shared_ptr<ReferenceCounterInterface> reference_counter,
     std::shared_ptr<CoreWorkerMemoryStore> memory_store,
     std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
     std::shared_ptr<experimental::MutableObjectProviderInterface>
@@ -305,8 +303,7 @@ CoreWorker::CoreWorker(
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
-    ray::observability::MetricInterface &task_by_state_gauge,
-    ray::observability::MetricInterface &actor_by_state_gauge)
+    ray::observability::MetricInterface &task_by_state_counter)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -345,7 +342,7 @@ CoreWorker::CoreWorker(
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
-      task_counter_(task_by_state_gauge, actor_by_state_gauge),
+      task_counter_(task_by_state_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       actor_shutdown_callback_(options_.actor_shutdown_callback),
@@ -1983,7 +1980,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*include_job_config=*/true,
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_event=*/task_options.enable_task_events,
+                      /*enable_task_events=*/task_options.enable_task_events,
                       task_options.labels,
                       task_options.label_selector);
   ActorID root_detached_actor_id;
@@ -2713,7 +2710,7 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-    ReferenceCounter::ReferenceTableProto *borrowed_refs,
+    ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
@@ -3088,7 +3085,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     // we borrow the object. When the object value is allocatd, the
     // memory store is updated. We should clear borrowers and memory store
     // here.
-    ReferenceCounter::ReferenceTableProto borrowed_refs;
+    ReferenceCounterInterface::ReferenceTableProto borrowed_refs;
     reference_counter_->PopAndClearLocalBorrowers(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
@@ -3158,7 +3155,7 @@ void CoreWorker::HandleReportGeneratorItemReturns(
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
   auto return_objects = std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>();
-  auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
+  auto borrowed_refs = ReferenceCounterInterface::ReferenceTableProto();
 
   std::vector<rpc::ObjectReference> returned_refs;
   size_t num_returns = task_spec.NumReturns();

@@ -58,11 +58,11 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
   }
 }
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     const ray::gcs::GcsServerMetrics &metrics,
-                     instrumented_io_context &main_service)
-    : metrics_(metrics),
-      io_context_provider_(main_service),
+GcsServer::GcsServer(
+    const ray::gcs::GcsServerConfig &config,
+    instrumented_io_context &main_service,
+    ray::observability::MetricInterface &event_recorder_dropped_events_counter)
+    : io_context_provider_(main_service),
       config_(config),
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
@@ -137,7 +137,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
-          metrics_.event_recorder_dropped_events_counter)),
+          event_recorder_dropped_events_counter)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
@@ -151,10 +151,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   std::shared_ptr<StoreClient> store_client;
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    store_client = std::make_shared<ObservableStoreClient>(
-        std::make_unique<InMemoryStoreClient>(),
-        metrics_.storage_operation_latency_in_ms_histogram,
-        metrics_.storage_operation_count_counter);
+    store_client =
+        std::make_shared<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_store_client =
@@ -273,22 +271,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitFunctionManager();
   InitPubSubHandler();
   InitRuntimeEnvManager();
-  InitGcsJobManager(gcs_init_data,
-                    metrics_.running_job_gauge,
-                    metrics_.finished_job_counter,
-                    metrics_.job_duration_in_seconds_gauge);
-  InitGcsPlacementGroupManager(
-      gcs_init_data,
-      metrics_.placement_group_gauge,
-      metrics_.placement_group_creation_latency_in_ms_histogram,
-      metrics_.placement_group_scheduling_latency_in_ms_histogram,
-      metrics_.placement_group_count_gauge);
-  InitGcsActorManager(
-      gcs_init_data, metrics_.actor_by_state_gauge, metrics_.gcs_actor_by_state_gauge);
+  InitGcsJobManager(gcs_init_data);
+  InitGcsPlacementGroupManager(gcs_init_data);
+  InitGcsActorManager(gcs_init_data);
   InitGcsWorkerManager();
-  InitGcsTaskManager(metrics_.task_events_reported_gauge,
-                     metrics_.task_events_dropped_gauge,
-                     metrics_.task_events_stored_gauge);
+  InitGcsTaskManager();
   InstallEventListeners();
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
@@ -460,11 +447,7 @@ void GcsServer::InitClusterLeaseManager() {
       /*local_lease_manager=*/local_lease_manager_);
 }
 
-void GcsServer::InitGcsJobManager(
-    const GcsInitData &gcs_init_data,
-    ray::observability::MetricInterface &running_job_gauge,
-    ray::observability::MetricInterface &finished_job_counter,
-    ray::observability::MetricInterface &job_duration_in_seconds_gauge) {
+void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_job_manager_ =
       std::make_unique<GcsJobManager>(*gcs_table_storage_,
@@ -475,10 +458,7 @@ void GcsServer::InitGcsJobManager(
                                       io_context_provider_.GetDefaultIOContext(),
                                       worker_client_pool_,
                                       *ray_event_recorder_,
-                                      config_.session_name,
-                                      running_job_gauge,
-                                      finished_job_counter,
-                                      job_duration_in_seconds_gauge);
+                                      config_.session_name);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
@@ -487,10 +467,7 @@ void GcsServer::InitGcsJobManager(
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
-void GcsServer::InitGcsActorManager(
-    const GcsInitData &gcs_init_data,
-    ray::observability::MetricInterface &actor_by_state_gauge,
-    ray::observability::MetricInterface &gcs_actor_by_state_gauge) {
+void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler =
@@ -535,9 +512,7 @@ void GcsServer::InitGcsActorManager(
       },
       worker_client_pool_,
       *ray_event_recorder_,
-      config_.session_name,
-      actor_by_state_gauge,
-      gcs_actor_by_state_gauge);
+      config_.session_name);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
@@ -546,13 +521,7 @@ void GcsServer::InitGcsActorManager(
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
-void GcsServer::InitGcsPlacementGroupManager(
-    const GcsInitData &gcs_init_data,
-    ray::observability::MetricInterface &placement_group_gauge,
-    ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
-    ray::observability::MetricInterface
-        &placement_group_scheduling_latency_in_ms_histogram,
-    ray::observability::MetricInterface &placement_group_count_gauge) {
+void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
   gcs_placement_group_scheduler_ = std::make_unique<GcsPlacementGroupScheduler>(
       io_context_provider_.GetDefaultIOContext(),
@@ -568,11 +537,7 @@ void GcsServer::InitGcsPlacementGroupManager(
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
-      },
-      placement_group_gauge,
-      placement_group_creation_latency_in_ms_histogram,
-      placement_group_scheduling_latency_in_ms_histogram,
-      placement_group_count_gauge);
+      });
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
@@ -637,10 +602,8 @@ void GcsServer::InitKVManager() {
         std::make_unique<RedisStoreClient>(io_context, GetRedisClientOptions());
     break;
   case (StorageType::IN_MEMORY):
-    store_client = std::make_unique<ObservableStoreClient>(
-        std::make_unique<InMemoryStoreClient>(),
-        metrics_.storage_operation_latency_in_ms_histogram,
-        metrics_.storage_operation_count_counter);
+    store_client =
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -788,15 +751,9 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
           RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
-void GcsServer::InitGcsTaskManager(
-    ray::observability::MetricInterface &task_events_reported_gauge,
-    ray::observability::MetricInterface &task_events_dropped_gauge,
-    ray::observability::MetricInterface &task_events_stored_gauge) {
+void GcsServer::InitGcsTaskManager() {
   auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
-  gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context,
-                                                       task_events_reported_gauge,
-                                                       task_events_dropped_gauge,
-                                                       task_events_stored_gauge);
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context);
   // Register service.
   rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
       io_context,

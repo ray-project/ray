@@ -18,7 +18,7 @@
 
 namespace ray {
 
-inline ray::stats::Count GetRayEventRecorderDroppedEventsCounterMetric() {
+inline ray::stats::Count GetRayEventRecorderDroppedEventsMetric() {
   return ray::stats::Count{
       /*name=*/"ray_event_recorder_dropped_events",
       /*description=*/"Number of events dropped by the ray event recorder.",
