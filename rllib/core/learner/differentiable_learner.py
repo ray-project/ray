@@ -752,13 +752,13 @@ class DifferentiableLearner(Checkpointable):
         # Log module steps (sum of all modules).
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
-            value=module_batch_size,
+            value=total_module_steps,
             reduce="sum",
             clear_on_reduce=True,
         )
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
-            value=module_batch_size,
+            value=total_module_steps,
             reduce="sum",
         )
         # Log env steps (all modules).
