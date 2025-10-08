@@ -193,19 +193,22 @@ class HTMLDatasource(FileBasedDatasource):
                 # Create empty soup for consistent behavior
                 content_soup = BeautifulSoup("", parser)
             else:
-                # Create wrapper to preserve DOM structure and relationships
+                # Create new soup with selected elements while preserving structure
                 import copy
 
-                from bs4 import Tag
+                from bs4 import BeautifulSoup as BS
 
-                wrapper = Tag(name="div")
-                # Clone and append selected elements to preserve structure
+                # Create minimal HTML document structure
+                new_soup = BS("<html><body></body></html>", parser)
+                body = new_soup.body
+
+                # Clone and append selected elements directly to preserve context
                 for elem in elements:
-                    # Use deepcopy to preserve nested structure
+                    # Use deepcopy to preserve nested structure and attributes
                     elem_copy = copy.deepcopy(elem)
-                    wrapper.append(elem_copy)
-                # Create new soup with wrapper preserving DOM context
-                content_soup = BeautifulSoup(str(wrapper), parser)
+                    body.append(elem_copy)
+
+                content_soup = new_soup
 
         # Extract metadata from content_soup (after applying selector for consistency)
         metadata = self._extract_metadata(content_soup) if self.extract_metadata else None
