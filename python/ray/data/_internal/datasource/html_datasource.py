@@ -217,11 +217,20 @@ class HTMLDatasource(FileBasedDatasource):
                 content_soup = new_soup
 
         # Extract content-specific metadata (headers) from selected content
-        content_metadata = None
+        # and combine with document metadata
         if self.extract_metadata:
             content_metadata = self._extract_content_metadata(content_soup)
-            # Combine document and content metadata
-            metadata = {**doc_metadata, **content_metadata}
+            # Merge metadata: start with document metadata, then add content metadata
+            # Document metadata (title, description, keywords) takes precedence over
+            # any potential conflicts with content metadata (headers)
+            metadata = {}
+            if doc_metadata:
+                metadata.update(doc_metadata)
+            if content_metadata:
+                # Only add content metadata keys that don't conflict with document metadata
+                for key, value in content_metadata.items():
+                    if key not in metadata:
+                        metadata[key] = value
         else:
             metadata = None
 
