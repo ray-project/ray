@@ -96,7 +96,7 @@ def test_serialized_imports(ray_start_4_cpus):
     ray.get(dummy_task.remote())
 
 
-def test_v1_config_validation(monkeypatch):
+def test_v1_config_validation():
     """Test that V1 configs raise an error when V2 is enabled."""
     import ray.air
 
