@@ -93,7 +93,7 @@ class JobFileManager(FileManager):
                 container=AZURE_CONTAINER, blob=key
             )
             with open(target, "wb") as f:
-                download_stream = blob_client.download_stream()
+                download_stream = blob_client.download_blob()
                 f.write(download_stream.readall())
         if delete_after_download:
             self.delete(key)
