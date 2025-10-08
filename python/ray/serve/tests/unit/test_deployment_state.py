@@ -2784,13 +2784,18 @@ class TestAutoscaling:
         asm: AutoscalingStateManager,
         deployment_ids: List[DeploymentID],
     ):
-        deployment_to_target_num_replicas = {}
-        for deployment_id in deployment_ids:
-            deployment_to_target_num_replicas[
-                deployment_id
-            ] = dsm.get_deployment_details(deployment_id).target_num_replicas
+        if not deployment_ids:
+            return
+
+        app_name = deployment_ids[0].app_name
+        assert all(dep_id.app_name == app_name for dep_id in deployment_ids)
+
+        deployment_to_target_num_replicas = {
+            dep_id: dsm.get_deployment_details(dep_id).target_num_replicas
+            for dep_id in deployment_ids
+        }
         decisions = asm.get_decision_num_replicas(
-            deployment_id.app_name, deployment_to_target_num_replicas
+            app_name, deployment_to_target_num_replicas
         )
         for deployment_id, decision_num_replicas in decisions.items():
             dsm.set_decision_num_replicas(deployment_id, decision_num_replicas)

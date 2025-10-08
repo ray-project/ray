@@ -651,25 +651,18 @@ class ApplicationAutoscalingState:
         _skip_bound_check: bool = False,
     ) -> Dict[DeploymentID, int]:
         """
-        Decide scaling for all deployments in this application.
-        - If app-level policy exists, use it.
-        - Otherwise, fall back to per-deployment policies.
+        Decide scaling for all deployments in this application by calling
+        each deployment's autoscaling policy.
         """
-        # Using per-deployment policies
-        updated_decisions: Dict[DeploymentID, int] = {}
-        for (
-            deployment_id,
-            deployment_autoscaling_state,
-        ) in self._deployment_autoscaling_states.items():
-            decision = deployment_autoscaling_state.get_decision_num_replicas(
+        return {
+            deployment_id: deployment_autoscaling_state.get_decision_num_replicas(
                 curr_target_num_replicas=deployment_to_target_num_replicas[
                     deployment_id
                 ],
                 _skip_bound_check=_skip_bound_check,
             )
-            updated_decisions[deployment_id] = decision
-
-        return updated_decisions
+            for deployment_id, deployment_autoscaling_state in self._deployment_autoscaling_states.items()
+        }
 
     def update_running_replica_ids(
         self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
