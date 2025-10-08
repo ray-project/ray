@@ -62,16 +62,9 @@ The fact that resources are logical has several implications:
 Custom Resources
 ----------------
 
-Besides pre-defined resources, you can also specify a Ray node's custom resources and request them in your tasks or actors.
-Some use cases for custom resources:
+You can specify custom resources for a Ray node and reference them to control scheduling for your tasks or actors.
 
-- Your node has special hardware and you can represent it as a custom resource.
-  Then your tasks or actors can request the custom resource via ``@ray.remote(resources={"special_hardware": 1})``
-  and Ray will schedule the tasks or actors to the node that has the custom resource.
-- You can use custom resources as labels to tag nodes and you can achieve label based affinity scheduling.
-  For example, you can do ``ray.remote(resources={"custom_label": 0.001})`` to schedule tasks or actors to nodes with ``custom_label`` custom resource.
-  For this use case, the actual quantity doesn't matter, and the convention is to specify a tiny number so that the label resource is
-  not the limiting factor for parallelism.
+Use custom resources when you need to manage scheduling using numeric values. If you need simple label-based scheduling, use labels instead. See :doc:`labels`.
 
 .. _specify-node-resources:
 

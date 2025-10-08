@@ -118,9 +118,10 @@ class VLLMEngine(LLMEngine):
             )
         from vllm import envs as vllm_envs
 
+        # TODO (Kourosh): Remove this after a few releases.
         if not vllm_envs.VLLM_USE_V1:
-            logger.warning(
-                "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
+            logger.error(
+                "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
             )
 
         self.llm_config.setup_engine_backend()
@@ -275,28 +276,6 @@ class VLLMEngine(LLMEngine):
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
-    def _start_async_llm_engine_v0(
-        self,
-        engine_args: "AsyncEngineArgs",
-        vllm_config: "VllmConfig",
-        placement_group: PlacementGroup,
-    ) -> "EngineClient":
-
-        from vllm.engine.async_llm_engine import AsyncLLMEngine
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
-
-        vllm_config.parallel_config.placement_group = placement_group
-
-        _clear_current_platform_cache()
-
-        engine_client = AsyncLLMEngine(
-            vllm_config=vllm_config,
-            executor_class=RayDistributedExecutor,
-            log_stats=not engine_args.disable_log_stats,
-        )
-
-        return engine_client
-
     def _start_async_llm_engine(
         self,
         vllm_engine_args: "AsyncEngineArgs",
@@ -304,13 +283,6 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        from vllm import envs as vllm_envs
-
-        # NOTE: This is a temporary solution until vLLM v1 supports embeddings.
-        if not vllm_envs.VLLM_USE_V1:
-            return self._start_async_llm_engine_v0(
-                vllm_engine_args, vllm_engine_config, placement_group
-            )
 
         from vllm.v1.engine.async_llm import AsyncLLM
         from vllm.v1.executor.abstract import Executor
