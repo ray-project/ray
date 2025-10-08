@@ -49,7 +49,7 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(
-    f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "http://127.0.0.1:8365"
+    f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "http://127.0.0.1:11111"
 )
 # Event filtering configurations
 # Comma-separated list of event types that are allowed to be exposed to external services
