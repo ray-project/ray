@@ -145,7 +145,7 @@ export const Metrics = () => {
       {grafanaHost === undefined || !prometheusHealth ? (
         <GrafanaNotRunningAlert sx={{ marginTop: "30px" }} />
       ) : (
-        <>
+        <React.Fragment>
           <Paper
             sx={{
               position: "sticky",
@@ -205,7 +205,7 @@ export const Metrics = () => {
               }}
             />
           </Box>
-        </>
+        </React.Fragment>
       )}
     </Box>
   );
