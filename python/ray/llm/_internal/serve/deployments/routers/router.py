@@ -112,9 +112,7 @@ def _sanitize_chat_completion_request(
 
 
 StreamResponseType = Union[
-    ChatCompletionStreamResponse,
-    CompletionStreamResponse,
-    TranscriptionStreamResponse
+    ChatCompletionStreamResponse, CompletionStreamResponse, TranscriptionStreamResponse
 ]
 BatchedStreamResponseType = List[StreamResponseType]
 
@@ -232,7 +230,7 @@ def make_fastapi_ingress(
 
 
 def _apply_openai_json_format(
-    response: Union[StreamResponseType, BatchedStreamResponseType]
+    response: Union[StreamResponseType, BatchedStreamResponseType],
 ) -> str:
     """Converts the stream response to OpenAI format.
 
@@ -261,7 +259,7 @@ def _apply_openai_json_format(
 
 
 async def _peek_at_generator(
-    gen: AsyncGenerator[T, None]
+    gen: AsyncGenerator[T, None],
 ) -> Tuple[T, AsyncGenerator[T, None]]:
     # Peek at the first element
     first_item = await gen.__anext__()
@@ -408,7 +406,11 @@ class OpenAiIngress(DeploymentProtocol):
         self,
         *,
         body: Union[
-            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, TranscriptionRequest, ScoreRequest
+            CompletionRequest,
+            ChatCompletionRequest,
+            EmbeddingRequest,
+            TranscriptionRequest,
+            ScoreRequest,
         ],
         call_method: str,
     ) -> AsyncGenerator[
@@ -503,9 +505,11 @@ class OpenAiIngress(DeploymentProtocol):
         return model_data
 
     async def _process_llm_request(
-        self, body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest], call_method: str
+        self,
+        body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest],
+        call_method: str,
     ) -> Response:
-        
+
         if call_method == "chat":
             NoneStreamingResponseType = ChatCompletionResponse
         elif call_method == "completions":
@@ -589,7 +593,7 @@ class OpenAiIngress(DeploymentProtocol):
 
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
-    
+
     @fastapi_router_app.post("/v1/audio/transcriptions")
     async def transcriptions(self, body: TranscriptionRequest) -> Response:
         """Create transcription for the provided audio input.

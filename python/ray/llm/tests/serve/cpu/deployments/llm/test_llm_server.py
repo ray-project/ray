@@ -155,7 +155,7 @@ class TestLLMServer:
 
         # Validate embedding response
         LLMResponseValidator.validate_embedding_response(chunks[0], dimensions)
-    
+
     @pytest.mark.parametrize("stream", [False, True])
     @pytest.mark.parametrize("temperature", [0.0])
     @pytest.mark.parametrize("language", ["en", "hi"])
