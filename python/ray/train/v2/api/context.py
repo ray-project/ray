@@ -69,26 +69,20 @@ class TrainContext(ABC):
 
         .. testcode::
 
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.tensorflow import TensorflowTrainer
+            import ray.train
+            from ray.train.torch import TorchTrainer
 
             NUM_WORKERS = 2
 
-            def train_loop_per_worker(config):
-                assert train.get_context().get_world_size() == NUM_WORKERS
+            def train_fn_per_worker(config):
+                assert ray.train.get_context().get_world_size() == NUM_WORKERS
 
-            trainer = TensorflowTrainer(
-                train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
+            trainer = TorchTrainer(
+                train_fn_per_worker,
+                scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
-
-            ...
         """
         pass
 
@@ -98,25 +92,19 @@ class TrainContext(ABC):
 
         .. testcode::
 
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.tensorflow import TensorflowTrainer
+            import ray.train
+            from ray.train.torch import TorchTrainer
 
-            def train_loop_per_worker(config):
-                if train.get_context().get_world_rank() == 0:
+            def train_fn_per_worker(config):
+                if ray.train.get_context().get_world_rank() == 0:
                     print("Worker 0")
 
-            trainer = TensorflowTrainer(
-                train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=2),
+            trainer = TorchTrainer(
+                train_fn_per_worker,
+                scaling_config=ray.train.ScalingConfig(num_workers=2),
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
-
-            ...
         """
         pass
 
@@ -126,28 +114,19 @@ class TrainContext(ABC):
 
         .. testcode::
 
-            import torch
-
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
+            import ray.train
             from ray.train.torch import TorchTrainer
 
-            def train_loop_per_worker(config):
-                if torch.cuda.is_available():
-                    torch.cuda.set_device(train.get_context().get_local_rank())
-                ...
+            def train_fn_per_worker(config):
+                if ray.train.get_context().get_local_rank() == 0:
+                    print("Local rank 0 worker")
 
             trainer = TorchTrainer(
-                train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+                train_fn_per_worker,
+                scaling_config=ray.train.ScalingConfig(num_workers=2),
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
-
-            ...
         """
         pass
 
@@ -159,24 +138,18 @@ class TrainContext(ABC):
 
             .. testcode::
 
-                import ray
-                from ray import train
-                from ray.train import ScalingConfig
+                import ray.train
                 from ray.train.torch import TorchTrainer
 
-                def train_loop_per_worker():
-                    print(train.get_context().get_local_world_size())
+                def train_fn_per_worker():
+                    print(ray.train.get_context().get_local_world_size())
 
                 trainer = TorchTrainer(
-                    train_loop_per_worker,
-                    scaling_config=ScalingConfig(num_workers=1),
+                    train_fn_per_worker,
+                    scaling_config=ray.train.ScalingConfig(num_workers=2),
                 )
                 trainer.fit()
 
-            .. testoutput::
-                :hide:
-
-                ...
         """
         pass
 
@@ -188,24 +161,18 @@ class TrainContext(ABC):
 
             .. testcode::
 
-                import ray
-                from ray import train
-                from ray.train import ScalingConfig
+                import ray.train
                 from ray.train.torch import TorchTrainer
 
-                def train_loop_per_worker():
-                    print(train.get_context().get_node_rank())
+                def train_fn_per_worker():
+                    print(ray.train.get_context().get_node_rank())
 
                 trainer = TorchTrainer(
-                    train_loop_per_worker,
-                    scaling_config=ScalingConfig(num_workers=1),
+                    train_fn_per_worker,
+                    scaling_config=ray.train.ScalingConfig(num_workers=1),
                 )
                 trainer.fit()
 
-            .. testoutput::
-                :hide:
-
-                ...
         """
         pass
 
@@ -216,7 +183,7 @@ class TrainContext(ABC):
         context which gives advanced access to the filesystem and paths
         configured through `RunConfig`.
 
-        NOTE: This is a developer API, and the `StorageContext` interface may change
+        NOTE: This is a DeveloperAPI, and the `StorageContext` interface may change
         without notice between minor versions.
         """
         pass
