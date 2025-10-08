@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +15,9 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     MapOperator,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.issue_detection.detectors.hanging_detector import (
+    HangingExecutionIssueDetectorConfig,
+)
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueType,
@@ -95,6 +99,63 @@ def test_report_issues():
         IssueType.HIGH_MEMORY
     )
     assert data[1]["event_data"]["message"] == "High memory usage detected"
+
+
+def test_hanging_detector_detects_issues():
+    """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
+    import io
+    import logging
+
+    ctx = DataContext.get_current()
+    # Configure hanging detector with extreme std_factor values
+    ctx.issue_detectors_config.hanging_detector_config = (
+        HangingExecutionIssueDetectorConfig(
+            op_task_stats_min_count=1,
+            op_task_stats_std_factor=1,
+            detection_time_interval_s=0,
+        )
+    )
+
+    # Set up logging capture to detect hanging warnings
+    log_capture = io.StringIO()
+    handler = logging.StreamHandler(log_capture)
+    handler.setLevel(logging.WARNING)
+
+    # Get the issue detector manager logger
+    logger = logging.getLogger(
+        "ray.data._internal.issue_detection.issue_detector_manager"
+    )
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    original_propagate = logger.propagate
+    logger.propagate = False
+
+    try:
+        # Create a pipeline with many small blocks to ensure concurrent tasks
+        def sleep_task(x):
+            if x["id"] == 2:
+                # Issue detection is based on the mean + stdev. One of the tasks must take
+                # awhile, so doing it just for one of the rows.
+                time.sleep(1)
+            return x
+
+        ray.data.range(3, override_num_blocks=3).map(
+            sleep_task, concurrency=1
+        ).materialize()
+
+        # Check if hanging detection occurred
+        log_output = log_capture.getvalue()
+        hanging_detected = (
+            "has been running for" in log_output
+            and "longer than the average task duration" in log_output
+        )
+
+        assert hanging_detected, log_output
+
+    finally:
+        # Clean up logging
+        logger.removeHandler(handler)
+        logger.propagate = original_propagate
 
 
 if __name__ == "__main__":
