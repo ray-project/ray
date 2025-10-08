@@ -68,7 +68,7 @@ import os
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"  # Ensure Ray Train v2 APIs
 
 # ---- Training constants (edit these) ----
-MODEL_NAME = "MiniLLM/MiniPLM-Qwen-500M"
+MODEL_NAME = "gpt2"
 DATASET_NAME = "ag_news"
 BATCH_SIZE = 1
 NUM_EPOCHS = 1

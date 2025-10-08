@@ -272,7 +272,7 @@ def main():
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default="MiniLLM/MiniPLM-Qwen-500M")
+    parser.add_argument("--model_name", type=str, default="gpt2")
     parser.add_argument("--dataset_name", type=str, default="ag_news")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_epochs", type=int, default=1)
