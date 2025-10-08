@@ -26,7 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -96,7 +96,7 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-      ReferenceCounter &reference_counter,
+      ReferenceCounterInterface &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
       std::shared_ptr<plasma::PlasmaClientInterface> store_client,
@@ -239,7 +239,7 @@ class CoreWorkerPlasmaStoreProvider {
   const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
   std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
   /// Used to look up a plasma object's owner.
-  ReferenceCounter &reference_counter_;
+  ReferenceCounterInterface &reference_counter_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
   uint32_t object_store_full_delay_ms_;

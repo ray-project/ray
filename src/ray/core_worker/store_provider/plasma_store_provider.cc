@@ -64,7 +64,7 @@ BufferTracker::UsedObjects() const {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-    ReferenceCounter &reference_counter,
+    ReferenceCounterInterface &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
