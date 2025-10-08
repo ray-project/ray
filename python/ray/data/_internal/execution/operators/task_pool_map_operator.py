@@ -87,7 +87,7 @@ class TaskPoolMapOperator(MapOperator):
             target_max_block_size_override=self.target_max_block_size_override,
         )
 
-        dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
+        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
 
         if (
