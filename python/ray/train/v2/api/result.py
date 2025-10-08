@@ -59,12 +59,12 @@ class Result(ResultV1):
         )
 
         latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
-        latest_metrics = (
-            latest_checkpoint_result.metrics if latest_checkpoint_result else None
-        )
-        latest_checkpoint = (
-            latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
-        )
+        if latest_checkpoint_result:
+            latest_metrics = latest_checkpoint_result.metrics
+            latest_checkpoint = latest_checkpoint_result.checkpoint
+        else:
+            latest_metrics = None
+            latest_checkpoint = None
         best_checkpoints = [
             (r.checkpoint, r.metrics)
             for r in checkpoint_manager.best_checkpoint_results
