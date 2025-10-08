@@ -335,7 +335,7 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
-  frequency: weekly
+  frequency: manual
   team: ml
   cluster:
     byod:
@@ -345,13 +345,13 @@
 
   run:
     timeout: 4500
-    script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-  frequency: weekly
+  frequency: manual
   team: ml
   cluster:
     byod:
@@ -361,7 +361,7 @@
 
   run:
     timeout: 4700
-    script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
+    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
 
   # variations: TODO(jungong): add GCP variation.
 
