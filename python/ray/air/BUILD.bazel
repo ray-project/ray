@@ -9,7 +9,7 @@ doctest(
             "tests/**/*",
             "callbacks/*.py",
         ]) + ["integrations/wandb.py"],
-    ),  # TODO: Add note for callbacks
+    ),
     tags = ["team:ml"],
 )
 
@@ -171,12 +171,14 @@ py_test(
 # Tests from the python/ray/air/tests/execution directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
+# TODO: Move this to Tune.
 # --------------------------------------------------------------------
 
 py_test(
     name = "test_barrier",
     size = "small",
     srcs = ["tests/execution/test_barrier.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -188,6 +190,7 @@ py_test(
     name = "test_e2e_train_flow",
     size = "medium",
     srcs = ["tests/execution/test_e2e_train_flow.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -199,6 +202,7 @@ py_test(
     name = "test_e2e_tune_flow",
     size = "medium",
     srcs = ["tests/execution/test_e2e_tune_flow.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -210,6 +214,7 @@ py_test(
     name = "test_event_manager",
     size = "medium",
     srcs = ["tests/execution/test_event_manager.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -221,6 +226,7 @@ py_test(
     name = "test_resource_manager_fixed",
     size = "small",
     srcs = ["tests/execution/test_resource_manager_fixed.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -232,6 +238,7 @@ py_test(
     name = "test_resource_manager_placement_group",
     size = "medium",
     srcs = ["tests/execution/test_resource_manager_placement_group.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -243,6 +250,7 @@ py_test(
     name = "test_resource_request",
     size = "small",
     srcs = ["tests/execution/test_resource_request.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -254,6 +262,7 @@ py_test(
     name = "test_tracked_actor",
     size = "small",
     srcs = ["tests/execution/test_tracked_actor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -265,6 +274,7 @@ py_test(
     name = "test_tracked_actor_task",
     size = "small",
     srcs = ["tests/execution/test_tracked_actor_task.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
