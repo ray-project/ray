@@ -253,7 +253,10 @@ class LLMServer(LLMServerProtocol):
     async def _maybe_add_request_id_to_request(
         self,
         request: Union[
-            "ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest", "TranscriptionRequest"
+            "ChatCompletionRequest",
+            "CompletionRequest",
+            "EmbeddingRequest",
+            "TranscriptionRequest",
         ],
     ):
         """Add the request id to the request."""
