@@ -44,7 +44,7 @@ void RetryableGrpcClient::SetupCheckTimer() {
   std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
   timer_.async_wait([weak_self](boost::system::error_code error) {
     if (auto self = weak_self.lock(); self && (error == boost::system::errc::success)) {
-      self->CheckChannelStatus(true);
+      self->CheckChannelStatus();
     }
   });
 }
@@ -83,23 +83,21 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   case GRPC_CHANNEL_CONNECTING: {
     if (server_unavailable_timeout_time_ < now) {
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
-                       << (attempt_number_ > 0
-                               ? ExponentialBackoff::GetBackoffMs(
-                                     attempt_number_ - 1,
-                                     server_unavailable_base_timeout_seconds_ * 1000,
-                                     server_unavailable_max_timeout_seconds_ * 1000) /
-                                     1000
-                               : 0)
+                       << ExponentialBackoff::GetBackoffMs(
+                              attempt_number_,
+                              server_unavailable_base_timeout_seconds_ * 1000,
+                              server_unavailable_max_timeout_seconds_ * 1000) /
+                              1000
                        << " seconds";
       server_unavailable_timeout_callback_();
       // Reset the unavailable timeout.
+      attempt_number_++;
       server_unavailable_timeout_time_ =
           now + absl::Seconds(ExponentialBackoff::GetBackoffMs(
                                   attempt_number_,
                                   server_unavailable_base_timeout_seconds_ * 1000,
                                   server_unavailable_max_timeout_seconds_ * 1000) /
                               1000);
-      attempt_number_++;
     }
 
     if (reset_timer) {
@@ -170,7 +168,6 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
     // First request to retry.
     server_unavailable_timeout_time_ =
         now + absl::Seconds(server_unavailable_base_timeout_seconds_);
-    attempt_number_++;
     SetupCheckTimer();
   }
 }

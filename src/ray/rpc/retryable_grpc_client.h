@@ -135,8 +135,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       instrumented_io_context &io_context,
       uint64_t max_pending_requests_bytes,
       uint64_t check_channel_status_interval_milliseconds,
-      uint64_t server_unavailable_base_timeout_seconds,
-      int64_t server_unavailable_max_timeout_seconds,
+      uint32_t server_unavailable_base_timeout_seconds,
+      uint32_t server_unavailable_max_timeout_seconds,
       std::function<void()> server_unavailable_timeout_callback,
       std::string server_name) {
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
@@ -175,8 +175,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                       instrumented_io_context &io_context,
                       uint64_t max_pending_requests_bytes,
                       uint64_t check_channel_status_interval_milliseconds,
-                      uint64_t server_unavailable_base_timeout_seconds,
-                      int64_t server_unavailable_max_timeout_seconds,
+                      uint32_t server_unavailable_base_timeout_seconds,
+                      uint32_t server_unavailable_max_timeout_seconds,
                       std::function<void()> server_unavailable_timeout_callback,
                       std::string server_name)
       : io_context_(io_context),
@@ -194,7 +194,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // Set up the timer to run CheckChannelStatus.
   void SetupCheckTimer();
 
-  void CheckChannelStatus(bool reset_timer);
+  void CheckChannelStatus(bool reset_timer = true);
 
   instrumented_io_context &io_context_;
   boost::asio::deadline_timer timer_;
@@ -206,8 +206,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // to prevent OOM.
   const uint64_t max_pending_requests_bytes_;
   const uint64_t check_channel_status_interval_milliseconds_;
-  const uint64_t server_unavailable_base_timeout_seconds_;
-  const int64_t server_unavailable_max_timeout_seconds_;
+  const uint32_t server_unavailable_base_timeout_seconds_;
+  const uint32_t server_unavailable_max_timeout_seconds_;
   // This callback will be called periodically while the server has been unavailable. The
   // period between checking the status of the channel and calling this callback increases
   // with exponential backoff.
