@@ -185,13 +185,6 @@ class vLLMEngineWrapper:
         self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
-        # Determine the generate function based on vLLM v0 or v1.
-        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
-        if self.vllm_use_v1:
-            self._generate_async = self.generate_async_v1
-        else:
-            self._generate_async = self.generate_async_v0
-
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
         self.max_pending_requests = max_pending_requests
@@ -330,53 +323,7 @@ class vLLMEngineWrapper:
         output_data = vLLMOutputData.from_vllm_engine_output(output)
         return request, output_data.model_dump(), time_taken
 
-    async def generate_async_v0(self, request: vLLMEngineRequest) -> Any:
-        """Process a single request.
-
-        Args:
-            request: The request.
-
-        Returns:
-            The output of the request.
-        """
-
-        import vllm
-
-        if request.images:
-            # FIXME: The latest vLLM does not support multi-modal inputs
-            # with tokenized prompt.
-            assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
-                prompt=request.prompt, multi_modal_data={"image": request.images}
-            )
-        else:
-            if request.prompt_token_ids is not None:
-                llm_prompt = vllm.inputs.data.TokensPrompt(
-                    prompt_token_ids=request.prompt_token_ids
-                )
-            else:
-                assert request.prompt
-                llm_prompt = vllm.inputs.data.TextPrompt(prompt=request.prompt)
-
-        # Send the request to the LLM engine.
-        stream = await self.engine.add_request(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            params=request.params,
-            lora_request=request.lora_request,
-        )
-        # Consume the stream until the request is finished.
-        async for request_output in stream:
-            if request_output.finished:
-                # Bypass the original full prompt.
-                request_output.prompt = request.prompt
-                return request_output
-
-        raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
-        )
-
-    async def generate_async_v1(self, request: vLLMEngineRequest) -> Any:
+    async def _generate_async(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
 
         Args:
