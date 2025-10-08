@@ -2,6 +2,7 @@ import json
 import os
 import re
 import tempfile
+import copy
 import shlex
 from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
@@ -244,7 +245,7 @@ class AnyscaleJobRunner(JobRunner):
         output_cloud_storage_uri = join_cloud_storage_paths(
             self.upload_path, self.output_json
         )
-        upload_cloud_storage_uri = self.upload_path
+        upload_cloud_storage_uri = copy.copy(self.upload_path)
         if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
             results_cloud_storage_uri = convert_abfss_uri_to_https(
                 results_cloud_storage_uri
