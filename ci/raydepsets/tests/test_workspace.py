@@ -18,15 +18,14 @@ def test_parse_build_arg_sets():
     with tempfile.TemporaryDirectory() as tmpdir:
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
-        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
-        assert config.build_arg_sets["py311_cpu"].build_args == {
-            "CUDA_VERSION": "cpu",
-            "PYTHON_VERSION": "py311",
-        }
-        assert config.build_arg_sets["py311_cuda128"].build_args == {
-            "CUDA_VERSION": 128,
-            "PYTHON_VERSION": "py311",
-        }
+        config = workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
+        assert "general_depset__py311_cpu" in [depset.name for depset in config.depsets]
+        assert "build_args_test_depset__py311_cpu" in [
+            depset.name for depset in config.depsets
+        ]
+        assert "expanded_depset__py311_cpu" in [
+            depset.name for depset in config.depsets
+        ]
 
 
 def test_substitute_build_args():
@@ -65,14 +64,14 @@ depsets:
             )
         with pytest.raises(KeyError):
             workspace = Workspace(dir=tmpdir)
-            workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+            workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
 
 
 def test_parse_pre_hooks():
     with tempfile.TemporaryDirectory() as tmpdir:
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
-        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+        config = workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
         pre_hook_depset = get_depset_by_name(config.depsets, "pre_hook_test_depset")
         assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh"]
 
