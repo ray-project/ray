@@ -25,6 +25,8 @@
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
@@ -181,7 +183,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockRayletClient> raylet_client_;
   std::shared_ptr<MockTaskManager> task_manager_;
-  std::shared_ptr<ReferenceCounter> ref_counter_;
+  std::shared_ptr<ReferenceCounterInterface> ref_counter_;
   ObjectRecoveryManager manager_;
 };
 
