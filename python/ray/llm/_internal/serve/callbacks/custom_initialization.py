@@ -19,9 +19,6 @@ class CallbackCtx:
 
     llm_config: "LLMConfig"
     """The LLM configuration object containing model settings and parameters."""
-    local_node_download_model: Optional["NodeModelDownloadable"] = None
-    """Model download configuration for the local node. Used to specify how
-    models should be downloaded and cached on the current node."""
     worker_node_download_model: Optional["NodeModelDownloadable"] = None
     """Model download configuration for worker nodes. Used to specify how
     models should be downloaded and cached on worker nodes in distributed

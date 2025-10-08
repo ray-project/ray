@@ -83,9 +83,6 @@ async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
     will be run across the placement group bundles.
     """
 
-    local_node_download_model = NodeModelDownloadable.TOKENIZER_ONLY
-    worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
-
     engine_config = llm_config.get_engine_config()
     assert engine_config is not None
     pg = engine_config.get_or_create_pg()
@@ -97,8 +94,7 @@ async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
     # Create context object with defaults
     ctx = CallbackCtx(
         llm_config=llm_config,
-        local_node_download_model=local_node_download_model,
-        worker_node_download_model=worker_node_download_model,
+        worker_node_download_model=NodeModelDownloadable.MODEL_AND_TOKENIZER,
         placement_group=pg,
         runtime_env=runtime_env,
     )
@@ -112,13 +108,10 @@ async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
             # all initialization steps directly instead of in tasks in the PG.
             # This removes the task launching overhead reducing the initialization
             # time.
-            ctx.local_node_download_model = ctx.local_node_download_model.union(
-                ctx.worker_node_download_model
-            )
 
             await _initialize_local_node(
                 llm_config,
-                download_model=ctx.local_node_download_model,
+                download_model=ctx.worker_node_download_model,
                 download_extra_files=True,
             )
         else:

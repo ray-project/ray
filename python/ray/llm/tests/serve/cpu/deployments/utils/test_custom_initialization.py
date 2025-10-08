@@ -15,31 +15,28 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
 
 
 class TestingCallback(Callback):
-    def __init__(self, **kwargs):
+    def __init__(self, raise_error_on_callback: bool = True, **kwargs):
+        super().__init__(raise_error_on_callback, **kwargs)
         self.before_init_called = False
         self.after_init_called = False
         self.before_init_ctx = None
         self.after_init_ctx = None
-        assert "test_key" in kwargs and kwargs["test_key"] == "test_value"
+        assert kwargs["kwargs_test_key"] == "kwargs_test_value"
 
     async def on_before_node_init(self, ctx: CallbackCtx) -> None:
-        assert ctx.local_node_download_model == NodeModelDownloadable.TOKENIZER_ONLY
         assert (
             ctx.worker_node_download_model == NodeModelDownloadable.MODEL_AND_TOKENIZER
         )
-
-        ctx.local_node_download_model = NodeModelDownloadable.NONE
         ctx.worker_node_download_model = NodeModelDownloadable.NONE
 
-        ctx.custom_data["test_key"] = "test_value"
+        ctx.custom_data["ctx_test_key"] = "ctx_test_value"
         self.before_init_called = True
 
     async def on_after_node_init(self, ctx: CallbackCtx) -> None:
-        assert ctx.local_node_download_model == NodeModelDownloadable.NONE
         assert ctx.worker_node_download_model == NodeModelDownloadable.NONE
 
         self.after_init_called = True
-        assert ctx.custom_data["test_key"] == "test_value"
+        assert ctx.custom_data["ctx_test_key"] == "ctx_test_value"
 
 
 class TestCustomInitialization:
@@ -50,7 +47,7 @@ class TestCustomInitialization:
             llm_engine="vLLM",
             callback_config={
                 "callback_class": "test_custom_initialization.TestingCallback",
-                "callback_kwargs": {"test_key": "test_value"},
+                "callback_kwargs": {"kwargs_test_key": "kwargs_test_value"},
             },
         )
         return config
