@@ -137,6 +137,9 @@ def test_metrics_folder_with_dashboard_override(
                     # Row panels don't have targets
                     continue
                 for target in panel["targets"]:
+                    if target["expr"] == MAX_PERCENTAGE_EXPRESSION:
+                        # We skip expressions that are constant value targets
+                        continue
                     # Check for standard_global_filters
                     assert 'SessionName=~"$SessionName"' in target["expr"]
                     # Check for custom global_filters
