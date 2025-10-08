@@ -60,8 +60,7 @@ class ReferenceCounterInterface {
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
   virtual bool AddObjectRefDeletedCallback(
-      const ObjectID &object_id,
-      const std::function<void(const ObjectID &)> callback) = 0;
+      const ObjectID &object_id, std::function<void(const ObjectID &)> callback) = 0;
 
   virtual ~ReferenceCounterInterface() = default;
 };
