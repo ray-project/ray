@@ -760,6 +760,7 @@ class DifferentiableLearner(Checkpointable):
             key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
             value=total_module_steps,
             reduce="sum",
+            with_throughput=True,
         )
         # Log env steps (all modules).
         self.metrics.log_value(
