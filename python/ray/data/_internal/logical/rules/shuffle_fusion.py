@@ -107,6 +107,7 @@ class ShuffleFusion(Rule):
                     input_op=prev_op.input_dependencies[0],
                     num_outputs=op._num_outputs,
                     hash_shuffle=True,  # NOTE: the shuffle here
+                    random_permute=True,  # NOTE: the random permute here
                     keys=op._keys,
                     sort=op._sort,
                 )
