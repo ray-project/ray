@@ -29,6 +29,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
+#include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/object_manager_rpc_client/fake_object_manager_client.h"
 
@@ -140,6 +141,34 @@ TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 0);
   ASSERT_EQ(rpc_context_.poll_one(), 1);
   ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 1);
+}
+
+// A plasma client that simulates a transient I/O error on Delete once, then succeeds.
+class FlakyDeletePlasmaClient : public ::plasma::FakePlasmaClient {
+ public:
+  Status Delete(const std::vector<ray::ObjectID> &object_ids) override {
+    attempts++;
+    if (attempts == 1) {
+      return ray::Status::IOError("No buffer space available");
+    }
+    return ::plasma::FakePlasmaClient::Delete(object_ids);
+  }
+
+  int attempts = 0;
+};
+
+TEST_F(ObjectManagerTest, TestObjectBufferPoolFreeObjectsRetryOnIOErrorThenSucceeds) {
+  auto flaky_client = std::make_shared<FlakyDeletePlasmaClient>();
+  auto object_id = ObjectID::FromRandom();
+  flaky_client->objects_in_plasma_[object_id] =
+      std::make_pair(std::vector<uint8_t>(1), std::vector<uint8_t>(1));
+
+  ObjectBufferPool pool(flaky_client, /*chunk_size=*/1024);
+  pool.FreeObjects({object_id});
+
+  // First attempt fails with IOError, second attempt succeeds.
+  ASSERT_GE(flaky_client->attempts, 2);
+  ASSERT_TRUE(!flaky_client->objects_in_plasma_.contains(object_id));
 }
 
 }  // namespace ray

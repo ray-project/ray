@@ -327,8 +327,29 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 }
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
-  absl::MutexLock lock(&pool_mutex_);
-  RAY_CHECK_OK(store_client_->Delete(object_ids));
+  constexpr int kMaxAttempts = 3;
+  absl::Duration backoff = absl::Milliseconds(1);
+  for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
+    Status s;
+    {
+      absl::MutexLock lock(&pool_mutex_);
+      s = store_client_->Delete(object_ids);
+    }
+    if (s.ok()) {
+      return;
+    }
+    if (!s.IsIOError()) {
+      RAY_LOG(WARNING) << "Plasma delete failed (non-IOError), not retrying: " << s;
+      return;
+    }
+    RAY_LOG(WARNING) << "Plasma delete I/O error (attempt " << attempt << " of "
+                     << kMaxAttempts << "): " << s;
+    if (attempt < kMaxAttempts) {
+      absl::SleepFor(backoff);
+      backoff = backoff * 2;
+    }
+  }
+  RAY_LOG(WARNING) << "Plasma delete failed after retries (non-fatal).";
 }
 
 std::string ObjectBufferPool::DebugString() const {
