@@ -122,7 +122,7 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
   ASSERT_EQ(buffer.size(), 2);
   ASSERT_EQ(buffer[0]->GetEventType(),
             rpc::events::RayEvent::DRIVER_JOB_DEFINITION_EVENT);
-  ASSERT_EQ(buffer[1]->GetEventType(), rpc::events::RayEvent::DRIVER_JOB_EXECUTION_EVENT);
+  ASSERT_EQ(buffer[1]->GetEventType(), rpc::events::RayEvent::DRIVER_JOB_LIFECYCLE_EVENT);
 }
 
 TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {

@@ -34,6 +34,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pandas
@@ -289,8 +290,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.columns.tolist()
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.columns
-
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pd.Series, np.ndarray)):
+            return self.upsert_column(name, value)
+        # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
 
     @staticmethod
@@ -617,3 +620,17 @@ class PandasBlockAccessor(TableBlockAccessor):
                 yield row.as_pydict()
             else:
                 yield row
+
+    def filter(self, predicate_expr: "Expr") -> "pandas.DataFrame":
+        """Filter rows based on a predicate expression."""
+        if self._table.empty:
+            return self._table
+
+        # TODO: Move _expression_evaluator to _internal
+        from ray.data._expression_evaluator import eval_expr
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use pandas boolean indexing
+        return self._table[mask]

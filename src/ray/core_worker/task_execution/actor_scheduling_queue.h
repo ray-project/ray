@@ -74,6 +74,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() override;
 
+  /// Cancel all pending (not yet accepted/executing) requests in the queue.
+  void CancelAllPending(const Status &status) override;
+
  private:
   /// Accept the given InboundRequest or reject it if a task id is canceled via
   /// CancelTaskIfFound.

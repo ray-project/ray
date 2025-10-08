@@ -29,12 +29,13 @@ from typing import (
 
 import numpy as np
 import pandas as pd
+
+# NOTE: pyarrow.fs module needs to be explicitly imported!
 import pyarrow
-from packaging.version import parse as parse_version
+import pyarrow.fs
 
 import ray
 from ray._common.retry import call_with_retry
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 import psutil
@@ -65,12 +66,6 @@ GiB = 1024 * MiB
 SENTINEL = object()
 
 
-# NOTE: Make sure that these lower and upper bounds stay in sync with version
-# constraints given in python/setup.py.
-# Inclusive minimum pyarrow version.
-MIN_PYARROW_VERSION = "6.0.1"
-RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
-_VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
 _EXAMPLE_SCHEME = "example"
 
@@ -128,34 +123,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    """Check that pyarrow's version is within the supported bounds."""
-    global _VERSION_VALIDATED
-
-    if not _VERSION_VALIDATED:
-        if os.environ.get(RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
-            _VERSION_VALIDATED = True
-            return
-
-        version = get_pyarrow_version()
-        if version is not None:
-            if version < parse_version(MIN_PYARROW_VERSION):
-                raise ImportError(
-                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
-                    f"{version} is installed. Reinstall with "
-                    f'`pip install -U "pyarrow"`. '
-                    "If you want to disable this pyarrow version check, set the "
-                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-                )
-        else:
-            logger.warning(
-                "You are using the 'pyarrow' module, but the exact version is unknown "
-                "(possibly carried as an internal component by another module). Please "
-                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Dataset. "
-                "If you want to disable this pyarrow version check, set the "
-                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-            )
-        _VERSION_VALIDATED = True
+    ray._private.arrow_utils._check_pyarrow_version()
 
 
 def _autodetect_parallelism(

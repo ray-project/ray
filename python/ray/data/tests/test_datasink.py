@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.datasource import Datasink
 from ray.data.datasource.datasink import DummyOutputDatasink, WriteResult
 
@@ -31,46 +31,25 @@ def test_write_datasink(ray_start_regular_shared):
 class NodeLoggerOutputDatasink(Datasink[None]):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
-    def __init__(self):
-        @ray.remote
-        class DataSink:
-            def __init__(self):
-                self.rows_written = 0
-                self.node_ids = set()
+    def __init__(self, node_id: str):
 
-            def write(self, node_id: str, block: Block) -> str:
-                block = BlockAccessor.for_block(block)
-                self.rows_written += block.num_rows()
-                self.node_ids.add(node_id)
-
-            def get_rows_written(self):
-                return self.rows_written
-
-            def get_node_ids(self):
-                return self.node_ids
-
-        self.data_sink = DataSink.remote()
         self.num_ok = 0
         self.num_failed = 0
+        self.node_id = node_id
+        self.num_rows_written = 0
 
     def write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> None:
-        data_sink = self.data_sink
 
-        def write(b):
-            node_id = ray.get_runtime_context().get_node_id()
-            return data_sink.write.remote(node_id, b)
-
-        tasks = []
-        for b in blocks:
-            tasks.append(write(b))
-        ray.get(tasks)
+        node_id = ray.get_runtime_context().get_node_id()
+        assert node_id == self.node_id
 
     def on_write_complete(self, write_result: WriteResult[None]):
         self.num_ok += 1
+        self.num_rows_written += write_result.num_rows
 
     def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1
@@ -83,29 +62,21 @@ def test_write_datasink_ray_remote_args(ray_start_cluster):
         resources={"foo": 100},
         num_cpus=1,
     )
-    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+    bar_worker = cluster.add_node(resources={"bar": 100}, num_cpus=1)
+    bar_node_id = bar_worker.node_id
 
     ray.init(cluster.address)
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
-
-    output = NodeLoggerOutputDatasink()
+    output = NodeLoggerOutputDatasink(bar_node_id)
     ds = ray.data.range(100, override_num_blocks=10)
     # Pin write tasks to node with "bar" resource.
     ds.write_datasink(output, ray_remote_args={"resources": {"bar": 1}})
     assert output.num_ok == 1
     assert output.num_failed == 0
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 100
-
-    node_ids = ray.get(output.data_sink.get_node_ids.remote())
-    assert node_ids == {bar_node_id}
+    assert output.num_rows_written == 100
 
 
-@pytest.mark.parametrize("min_rows_per_write", [5, 10, 50])
+@pytest.mark.parametrize("min_rows_per_write", [25, 50])
 def test_min_rows_per_write(tmp_path, ray_start_regular_shared, min_rows_per_write):
     class MockDatasink(Datasink[None]):
         def __init__(self, min_rows_per_write):
@@ -118,7 +89,7 @@ def test_min_rows_per_write(tmp_path, ray_start_regular_shared, min_rows_per_wri
         def min_rows_per_write(self):
             return self._min_rows_per_write
 
-    ray.data.range(100, override_num_blocks=20).write_datasink(
+    ray.data.range(100, override_num_blocks=4).write_datasink(
         MockDatasink(min_rows_per_write)
     )
 

@@ -1,6 +1,6 @@
 from collections import defaultdict
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import sys
 import time
@@ -237,10 +237,31 @@ class FaultTolerantActorManager:
     class _ActorState:
         """State of a single actor."""
 
-        # Num of outstanding async requests for this actor.
-        num_in_flight_async_requests: int = 0
+        # Num of outstanding async requests for this actor by tag.
+        num_in_flight_async_requests_by_tag: Dict[Optional[str], int] = field(
+            default_factory=dict
+        )
         # Whether this actor is in a healthy state.
         is_healthy: bool = True
+
+        def get_num_in_flight_requests(self, tag: Optional[str] = None) -> int:
+            """Get number of in-flight requests for a specific tag or all tags."""
+            if tag is None:
+                return sum(self.num_in_flight_async_requests_by_tag.values())
+            return self.num_in_flight_async_requests_by_tag.get(tag, 0)
+
+        def increment_requests(self, tag: Optional[str] = None) -> None:
+            """Increment the count of in-flight requests for a tag."""
+            if tag not in self.num_in_flight_async_requests_by_tag:
+                self.num_in_flight_async_requests_by_tag[tag] = 0
+            self.num_in_flight_async_requests_by_tag[tag] += 1
+
+        def decrement_requests(self, tag: Optional[str] = None) -> None:
+            """Decrement the count of in-flight requests for a tag."""
+            if tag in self.num_in_flight_async_requests_by_tag:
+                self.num_in_flight_async_requests_by_tag[tag] -= 1
+                if self.num_in_flight_async_requests_by_tag[tag] <= 0:
+                    del self.num_in_flight_async_requests_by_tag[tag]
 
     def __init__(
         self,
@@ -339,9 +360,12 @@ class FaultTolerantActorManager:
         return self._num_actor_restarts
 
     @DeveloperAPI
-    def num_outstanding_async_reqs(self) -> int:
+    def num_outstanding_async_reqs(self, tag: Optional[str] = None) -> int:
         """Return the number of outstanding async requests."""
-        return len(self._in_flight_req_to_actor_id)
+        return sum(
+            s.get_num_in_flight_requests(tag)
+            for s in self._remote_actor_states.values()
+        )
 
     @DeveloperAPI
     def is_actor_healthy(self, actor_id: int) -> bool:
@@ -543,18 +567,18 @@ class FaultTolerantActorManager:
             )
 
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
-        # Drop calls to actors that are too busy.
+        # Drop calls to actors that are too busy for this specific tag.
         if isinstance(func, list):
             assert len(func) == len(remote_actor_ids)
             limited_func = []
             limited_kwargs = []
             limited_remote_actor_ids = []
             for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
-                num_outstanding_reqs = self._remote_actor_states[
+                num_outstanding_reqs_for_tag = self._remote_actor_states[
                     raid
-                ].num_in_flight_async_requests
+                ].get_num_in_flight_requests(tag)
                 if (
-                    num_outstanding_reqs + num_calls_to_make[raid]
+                    num_outstanding_reqs_for_tag + num_calls_to_make[raid]
                     < self._max_remote_requests_in_flight_per_actor
                 ):
                     num_calls_to_make[raid] += 1
@@ -567,11 +591,11 @@ class FaultTolerantActorManager:
             limited_kwargs = kwargs
             limited_remote_actor_ids = []
             for raid in remote_actor_ids:
-                num_outstanding_reqs = self._remote_actor_states[
+                num_outstanding_reqs_for_tag = self._remote_actor_states[
                     raid
-                ].num_in_flight_async_requests
+                ].get_num_in_flight_requests(tag)
                 if (
-                    num_outstanding_reqs + num_calls_to_make[raid]
+                    num_outstanding_reqs_for_tag + num_calls_to_make[raid]
                     < self._max_remote_requests_in_flight_per_actor
                 ):
                     num_calls_to_make[raid] += 1
@@ -588,7 +612,7 @@ class FaultTolerantActorManager:
 
         # Save these as outstanding requests.
         for id, call in zip(limited_remote_actor_ids, remote_calls):
-            self._remote_actor_states[id].num_in_flight_async_requests += 1
+            self._remote_actor_states[id].increment_requests(tag)
             self._in_flight_req_to_actor_id[call] = (tag, id)
 
         return len(remote_calls)
@@ -643,14 +667,88 @@ class FaultTolerantActorManager:
         )
 
         for obj_ref, result in zip(ready, remote_results):
-            # Decrease outstanding request on this actor by 1.
-            self._remote_actor_states[result.actor_id].num_in_flight_async_requests -= 1
-            # Also, remove this call here from the in-flight list,
-            # obj_refs may have already been removed when we disable an actor.
+            # Get the tag for this request and decrease outstanding request count by 1.
             if obj_ref in self._in_flight_req_to_actor_id:
+                tag, actor_id = self._in_flight_req_to_actor_id[obj_ref]
+                self._remote_actor_states[result.actor_id].decrement_requests(tag)
+                # Remove this call from the in-flight list.
                 del self._in_flight_req_to_actor_id[obj_ref]
 
         return remote_results
+
+    @DeveloperAPI
+    def foreach_actor_async_fetch_ready(
+        self,
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
+        tag: Optional[str] = None,
+        *,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
+        timeout_seconds: Optional[float] = 0.0,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        healthy_only: bool = True,
+        remote_actor_ids: Optional[List[int]] = None,
+        ignore_ray_errors: bool = True,
+        return_actor_ids: bool = False,
+    ) -> List[Union[Tuple[int, Any], Any]]:
+        """Calls the given function asynchronously and returns previous results if any.
+
+        This is a convenience function that calls `fetch_ready_async_reqs()` to get
+        previous results and then `foreach_actor_async()` to start new async calls.
+
+        Args:
+            func: A single Callable applied to all specified remote actors or a list
+                of Callables, that get applied on the list of specified remote actors.
+                In the latter case, both list of Callables and list of specified actors
+                must have the same length. Alternatively, you can use the name of the
+                remote method to be called, instead, or a list of remote method names.
+            tag: A tag to identify the results from this async call.
+            kwargs: An optional single kwargs dict or a list of kwargs dict matching the
+                list of provided `func` or `remote_actor_ids`. In the first case (single
+                dict), use `kwargs` on all remote calls. The latter case (list of
+                dicts) allows you to define individualized kwarg dicts per actor.
+            timeout_seconds: Time to wait for results from previous calls. Default is 0,
+                meaning those requests that are already ready.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+            healthy_only: Apply `func` on known-to-be healthy actors only.
+            remote_actor_ids: Apply func on a selected set of remote actors.
+            ignore_ray_errors: Whether to ignore RayErrors in results.
+            return_actor_ids: Whether to return actor IDs in the results.
+                If True, the results will be a list of (actor_id, result) tuples.
+                If False, the results will be a list of results.
+        Returns:
+            The results from previous async requests that were ready.
+        """
+        # First fetch any ready results from previous async calls
+        remote_results = self.fetch_ready_async_reqs(
+            tags=tag,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+        # Then start new async calls
+        self.foreach_actor_async(
+            func,
+            tag=tag,
+            kwargs=kwargs,
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_actor_ids,
+        )
+
+        # Handle errors the same way as fetch_ready_async_reqs does
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=ignore_ray_errors,
+        )
+
+        if return_actor_ids:
+            return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
+        else:
+            return [r.get() for r in remote_results.ignore_errors()]
 
     @staticmethod
     def handle_remote_call_result_errors(
@@ -763,13 +861,16 @@ class FaultTolerantActorManager:
         if remote_actor_ids is None:
             remote_actor_ids = self.actor_ids()
 
+        calls = []
         if isinstance(func, list):
             assert len(remote_actor_ids) == len(
                 func
             ), "Funcs must have the same number of callables as actor indices."
 
-        calls = []
-        if isinstance(func, list):
+            assert isinstance(
+                kwargs, list
+            ), "If func is a list of functions, kwargs has to be a list of kwargs."
+
             for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
                     calls.append(
@@ -792,7 +893,7 @@ class FaultTolerantActorManager:
                 )
         else:
             for raid in remote_actor_ids:
-                calls.append(self._actors[raid].apply.remote(func))
+                calls.append(self._actors[raid].apply.remote(func=func, **kwargs or {}))
 
         return calls
 
@@ -940,12 +1041,12 @@ class FaultTolerantActorManager:
         return func, kwargs, remote_actor_ids
 
     def _filter_calls_by_tag(
-        self, tags: Union[str, List[str], Tuple[str]]
+        self, tags: Optional[Union[str, List[str], Tuple[str]]] = None
     ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
         """Return all the in flight requests that match the given tags, if any.
 
         Args:
-            tags: A str or a list/tuple of str. If tags is empty, return all the in
+            tags: A str or a list/tuple of str. If tags is empty or None, return all the in
                 flight requests.
 
         Returns:
@@ -953,7 +1054,9 @@ class FaultTolerantActorManager:
             a list of the corresponding remote actor IDs for these calls (same length),
             and a list of the tags corresponding to these calls (same length).
         """
-        if isinstance(tags, str):
+        if tags is None:
+            tags = set()
+        elif isinstance(tags, str):
             tags = {tags}
         elif isinstance(tags, (list, tuple)):
             tags = set(tags)
@@ -985,9 +1088,15 @@ class FaultTolerantActorManager:
         # Remove any outstanding async requests for this actor.
         # Use `list` here to not change a looped generator while we mutate the
         # underlying dict.
-        for id, req in list(self._in_flight_req_to_actor_id.items()):
+        for req, (tag, id) in list(self._in_flight_req_to_actor_id.items()):
             if id == actor_id:
                 del self._in_flight_req_to_actor_id[req]
+
+        # Clear all tag-based request counts for this actor
+        if actor_id in self._remote_actor_states:
+            self._remote_actor_states[
+                actor_id
+            ].num_in_flight_async_requests_by_tag.clear()
 
     def actors(self):
         # TODO(jungong) : remove this API once EnvRunnerGroup.remote_workers()

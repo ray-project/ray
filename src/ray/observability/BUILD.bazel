@@ -74,16 +74,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "ray_driver_job_execution_event",
+    name = "ray_driver_job_lifecycle_event",
     srcs = [
-        "ray_driver_job_execution_event.cc",
+        "ray_driver_job_lifecycle_event.cc",
     ],
     hdrs = [
-        "ray_driver_job_execution_event.h",
+        "ray_driver_job_lifecycle_event.h",
     ],
     deps = [
         ":ray_event",
-        "//src/ray/protobuf/public:events_driver_job_execution_event_cc_proto",
+        "//src/ray/protobuf/public:events_driver_job_lifecycle_event_cc_proto",
     ],
 )
 
@@ -167,11 +167,9 @@ ray_cc_library(
         ":ray_event_recorder_interface",
         "//src/ray/common:asio",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:logging",
         "@boost//:circular_buffer",
-        "@com_google_absl//absl/time",
     ],
 )
 

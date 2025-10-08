@@ -1,11 +1,57 @@
 import json
+import logging
+import os
 from typing import Dict, Optional
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 from packaging.version import Version, parse as parse_version
 
+_RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
+
+
 _PYARROW_INSTALLED: Optional[bool] = None
 _PYARROW_VERSION: Optional[Version] = None
+
+
+# NOTE: Make sure that these lower and upper bounds stay in sync with version
+# constraints given in python/setup.py.
+# Inclusive minimum pyarrow version.
+_PYARROW_SUPPORTED_VERSION_MIN = "9.0.0"
+_PYARROW_VERSION_VALIDATED = False
+
+
+logger = logging.getLogger(__name__)
+
+
+def _check_pyarrow_version():
+    """Checks that Pyarrow's version is within the supported bounds."""
+    global _PYARROW_VERSION_VALIDATED
+
+    if os.environ.get("RAY_DOC_BUILD", "0") == "1":
+        return
+
+    if not _PYARROW_VERSION_VALIDATED:
+        if os.environ.get(_RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
+            _PYARROW_VERSION_VALIDATED = True
+            return
+
+        version = get_pyarrow_version()
+        if version is not None:
+            if version < parse_version(_PYARROW_SUPPORTED_VERSION_MIN):
+                raise ImportError(
+                    f"Dataset requires pyarrow >= {_PYARROW_SUPPORTED_VERSION_MIN}, but "
+                    f"{version} is installed. Reinstall with "
+                    f'`pip install -U "pyarrow"`. '
+                )
+        else:
+            logger.warning(
+                "You are using the 'pyarrow' module, but the exact version is unknown "
+                "(possibly carried as an internal component by another module). Please "
+                f"make sure you are using pyarrow >= {_PYARROW_SUPPORTED_VERSION_MIN} to ensure "
+                "compatibility with Ray Dataset. "
+            )
+
+        _PYARROW_VERSION_VALIDATED = True
 
 
 def get_pyarrow_version() -> Optional[Version]:
