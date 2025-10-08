@@ -301,6 +301,8 @@ int main(int argc, char *argv[]) {
         << "Failed to start raylet. Could not create CgroupManager because of "
         << cgroup_manager_s.ToString();
 
+    RAY_LOG(INFO) << "Started CgroupManager successfully";
+
     cgroup_manager = std::move(cgroup_manager_s.value());
 
 #ifndef __linux__
