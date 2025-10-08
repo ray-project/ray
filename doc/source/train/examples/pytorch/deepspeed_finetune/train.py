@@ -177,6 +177,9 @@ def train_loop(config: Dict[str, Any]) -> None:
     steps_per_epoch = len(train_loader)
     device = ray.train.torch.get_device()
 
+    # Set model to training mode
+    ds_engine.train()
+
     for epoch in range(start_epoch, config["epochs"]):
         if ray.train.get_context().get_world_size() > 1 and hasattr(
             train_loader, "sampler"

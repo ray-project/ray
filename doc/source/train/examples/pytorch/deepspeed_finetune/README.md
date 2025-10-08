@@ -304,6 +304,9 @@ def train_loop(config: Dict[str, Any]) -> None:
     # (4) Get device for this worker
     device = ray.train.torch.get_device()
 
+    # Set model to training mode
+    ds_engine.train()
+
     for epoch in range(start_epoch, config["epochs"]):
         # (6) Ensure unique shard per worker when using multiple GPUs
         if ray.train.get_context().get_world_size() > 1 and hasattr(train_loader, "sampler"):
