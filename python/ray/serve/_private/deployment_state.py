@@ -1778,7 +1778,7 @@ class DeploymentState:
         """
         Check if the deployment is under autoscaling
         """
-        return self._id in self._autoscaling_state_manager._autoscaling_states
+        return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -2156,20 +2156,22 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self) -> int:
-        """Autoscale the deployment based on metrics.
+    def scale(self, decision_num_replicas: Optional[int] = None) -> bool:
+        """
+        Apply the given scaling decision by updating the target replica count.
+
+        Skips if deleting, if `decision_num_replicas` is None, or matches the
+        current target. Otherwise updates the state and logs an up/down scaling.
+
+        Args:
+            decision_num_replicas: Optional target replica count to apply.
 
         Returns:
-            Whether the target state has changed.
+            bool: True if the target state was updated, False if no change occurred.
         """
 
         if self._target_state.deleting:
             return False
-
-        decision_num_replicas = self._autoscaling_state_manager.get_target_num_replicas(
-            deployment_id=self._id,
-            curr_target_num_replicas=self._target_state.target_num_replicas,
-        )
 
         if (
             decision_num_replicas is None
@@ -2982,6 +2984,7 @@ class DeploymentStateManager:
             create_placement_group_fn_override,
         )
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._scaling_decisions: Dict[DeploymentID, int] = {}
 
         self._shutting_down = False
 
@@ -3266,7 +3269,14 @@ class DeploymentStateManager:
             self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
             self._record_deployment_usage()
 
-        return self._deployment_states[deployment_id].deploy(deployment_info)
+        target_state_changed = self._deployment_states[deployment_id].deploy(
+            deployment_info
+        )
+        if target_state_changed and deployment_id in self._scaling_decisions:
+            # if the target state changed as a result of deployment config change,
+            # we should remove the scaling decision for this deployment.
+            del self._scaling_decisions[deployment_id]
+        return target_state_changed
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
@@ -3324,11 +3334,17 @@ class DeploymentStateManager:
         target_state_changed = False
 
         # STEP 1: Update current state
-        for deployment_state in self._deployment_states.values():
+        for deployment_id, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
-                target_state_changed = (
-                    deployment_state.autoscale() or target_state_changed
-                )
+                if deployment_id in self._scaling_decisions:
+                    target_state_changed = (
+                        deployment_state.scale(
+                            decision_num_replicas=self._scaling_decisions[deployment_id]
+                        )
+                        or target_state_changed
+                    )
+                    # clean up the scaling decision after it is applied
+                    del self._scaling_decisions[deployment_id]
 
             deployment_state.check_and_update_replicas()
 
@@ -3423,6 +3439,15 @@ class DeploymentStateManager:
             self.save_checkpoint()
 
         return any_recovering
+
+    def set_decision_num_replicas(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ) -> bool:
+        if deployment_id not in self._deployment_states:
+            return False
+
+        self._scaling_decisions[deployment_id] = target_num_replicas
+        return True
 
     def _handle_scheduling_request_failures(
         self,
