@@ -167,20 +167,24 @@ class HTMLDatasource(FileBasedDatasource):
 
         # Parse HTML with appropriate parser
         # Try lxml first (faster) if available, otherwise use html.parser
-        parser = "html.parser"  # Default fallback
+        soup = None
+        parse_error = None
+        
+        # First try lxml parser (faster)
         try:
-            import lxml  # noqa: F401
-
-            parser = "lxml"
-        except ImportError:
-            pass  # lxml not available, use html.parser
-
-        try:
-            soup = BeautifulSoup(html_content, parser)
-        except Exception as parse_error:
-            raise ValueError(
-                f"Failed to parse HTML file '{path}' with {parser} parser: {parse_error}"
-            ) from parse_error
+            soup = BeautifulSoup(html_content, "lxml")
+        except Exception as e:
+            # lxml not available or failed, try html.parser
+            parse_error = e
+            try:
+                soup = BeautifulSoup(html_content, "html.parser")
+            except Exception as fallback_error:
+                # Both parsers failed, raise error with details
+                raise ValueError(
+                    f"Failed to parse HTML file '{path}'. "
+                    f"lxml parser error: {parse_error}. "
+                    f"html.parser error: {fallback_error}"
+                ) from fallback_error
 
         # Extract document-level metadata from full document (before selector)
         # This includes title, description, keywords from <head> section
