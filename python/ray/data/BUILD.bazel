@@ -1133,7 +1133,10 @@ py_test(
         "exclusive",
         "team:data",
     ],
-    deps = [":ml_lib"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
