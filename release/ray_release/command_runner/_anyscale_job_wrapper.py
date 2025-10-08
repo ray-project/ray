@@ -91,14 +91,11 @@ def run_storage_cp(source: str, target: str):
         ]
     elif storage_service == "abfss":
         subprocess.run(["azcopy", "login", "--identity"], check=True)
-        account, container, path = _parse_abfss_uri(target)
-        # Azcopy doesn't support ABFSS URI, so we need to convert it to a blob URI
-        new_target = f"https://{account}.dfs.core.windows.net/{container}/{path}"
         cp_cmd_args = [
             "azcopy",
             "copy",
             source,
-            new_target,
+            target,
         ]
     else:
         raise Exception(f"Not supporting storage service: {storage_service}")
@@ -371,30 +368,6 @@ def main(
 
     time.sleep(1)
     return return_code
-
-
-def _parse_abfss_uri(uri: str) -> Tuple[str, str, str]:
-    """Parse ABFSS URI to extract account, container, and path.
-    ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
-    Returns: (account_name, container_name, path)
-    """
-    parsed = urlparse(uri)
-    if "@" not in parsed.netloc:
-        raise ValueError(
-            f"Invalid ABFSS URI format: {uri}. "
-            "Expected format: abfss://container@account.dfs.core.windows.net/path"
-        )
-
-    # Split netloc into container@account.dfs.core.windows.net
-    container, account_part = parsed.netloc.split("@", 1)
-
-    # Extract account name from account.dfs.core.windows.net
-    account = account_part.split(".")[0]
-
-    # Path starts with / which we keep for the blob path
-    path = parsed.path.lstrip("/")
-
-    return account, container, path
 
 
 if __name__ == "__main__":

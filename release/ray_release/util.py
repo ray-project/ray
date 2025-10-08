@@ -378,3 +378,12 @@ def _parse_abfss_uri(uri: str) -> tuple:
     path = parsed.path.lstrip("/")
 
     return account, container, path
+
+
+def convert_abfss_uri_to_https(uri: str) -> str:
+    """Convert ABFSS URI to HTTPS URI.
+    ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
+    Returns: HTTPS URI format: https://account.dfs.core.windows.net/container/path
+    """
+    account, container, path = _parse_abfss_uri(uri)
+    return f"https://{account}.dfs.core.windows.net/{container}/{path}"

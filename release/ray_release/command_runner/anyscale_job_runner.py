@@ -29,6 +29,7 @@ from ray_release.util import (
     S3_CLOUD_STORAGE,
     AZURE_CLOUD_STORAGE,
     upload_working_dir_to_azure,
+    convert_abfss_uri_to_https,
 )
 
 if TYPE_CHECKING:
@@ -234,17 +235,40 @@ class AnyscaleJobRunner(JobRunner):
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
         )
+        results_cloud_storage_uri = join_cloud_storage_paths(
+            self.upload_path, self._RESULT_OUTPUT_JSON
+        )
+        metrics_cloud_storage_uri = join_cloud_storage_paths(
+            self.upload_path, self._METRICS_OUTPUT_JSON
+        )
+        output_cloud_storage_uri = join_cloud_storage_paths(
+            self.upload_path, self.output_json
+        )
+        upload_cloud_storage_uri = self.upload_path
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            results_cloud_storage_uri = convert_abfss_uri_to_https(
+                results_cloud_storage_uri
+            )
+            metrics_cloud_storage_uri = convert_abfss_uri_to_https(
+                metrics_cloud_storage_uri
+            )
+            output_cloud_storage_uri = convert_abfss_uri_to_https(
+                output_cloud_storage_uri
+            )
+            upload_cloud_storage_uri = convert_abfss_uri_to_https(
+                upload_cloud_storage_uri
+            )
         full_command = (
             f"python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
+            f"'{results_cloud_storage_uri}' "
             "--metrics-cloud-storage-uri "
             f"'"
-            f"{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
+            f"{metrics_cloud_storage_uri}' "
             "--output-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self.output_json)}' "
-            f"--upload-cloud-storage-uri '{self.upload_path}' "
+            f"'{output_cloud_storage_uri}' "
+            f"--upload-cloud-storage-uri '{upload_cloud_storage_uri}' "
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
@@ -271,7 +295,6 @@ class AnyscaleJobRunner(JobRunner):
             azure_path = upload_working_dir_to_azure(
                 working_dir=os.getcwd(), azure_path=self.upload_path
             )
-            self.upload_path = azure_path
             working_dir = azure_path
 
             logger.info(
