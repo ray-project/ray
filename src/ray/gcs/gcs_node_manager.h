@@ -91,6 +91,17 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
       rpc::GetAllNodeAddressAndLivenessReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Get all node address and liveness information
+  ///
+  /// \param node_ids Set of node IDs to filter by (empty set means all nodes).
+  /// \param state_filter Optional state filter (ALIVE or DEAD).
+  /// \param limit Maximum number of nodes to return.
+  /// \return Vector of GcsNodeAddressAndLiveness information.
+  std::vector<rpc::GcsNodeAddressAndLiveness> GetAllNodeAddressAndLiveness(
+      const absl::flat_hash_set<NodeID> &node_ids,
+      std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
+      int64_t limit) const;
+
   /// Handle check alive request for GCS.
   void HandleCheckAlive(rpc::CheckAliveRequest request,
                         rpc::CheckAliveReply *reply,

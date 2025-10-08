@@ -430,63 +430,37 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
 
   // Test 1: Get all nodes without filter
   {
-    rpc::GetAllNodeAddressAndLivenessRequest request;
-    rpc::GetAllNodeAddressAndLivenessReply reply;
-    std::promise<bool> promise;
-    auto send_reply_callback = [&promise](ray::Status status,
-                                          std::function<void()> f1,
-                                          std::function<void()> f2) {
-      promise.set_value(true);
-    };
+    absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
+    auto result = node_manager.GetAllNodeAddressAndLiveness(
+        node_ids, std::nullopt, std::numeric_limits<int64_t>::max());
 
-    node_manager.HandleGetAllNodeAddressAndLiveness(request, &reply, send_reply_callback);
-    promise.get_future().get();
-
-    EXPECT_EQ(reply.node_info_list_size(), 8);  // 5 alive + 3 dead
+    EXPECT_EQ(result.size(), 8);  // 5 alive + 3 dead
   }
 
   // Test 2: Get only alive nodes
   {
-    rpc::GetAllNodeAddressAndLivenessRequest request;
-    request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
-    rpc::GetAllNodeAddressAndLivenessReply reply;
-    std::promise<bool> promise;
-    auto send_reply_callback = [&promise](ray::Status status,
-                                          std::function<void()> f1,
-                                          std::function<void()> f2) {
-      promise.set_value(true);
-    };
+    absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
+    auto result = node_manager.GetAllNodeAddressAndLiveness(
+        node_ids, rpc::GcsNodeInfo::ALIVE, std::numeric_limits<int64_t>::max());
 
-    node_manager.HandleGetAllNodeAddressAndLiveness(request, &reply, send_reply_callback);
-    promise.get_future().get();
-
-    EXPECT_EQ(reply.node_info_list_size(), 5);
+    EXPECT_EQ(result.size(), 5);
 
     // Verify all returned nodes are alive
-    for (const auto &node_info : reply.node_info_list()) {
+    for (const auto &node_info : result) {
       EXPECT_EQ(node_info.state(), rpc::GcsNodeInfo::ALIVE);
     }
   }
 
   // Test 3: Get only dead nodes
   {
-    rpc::GetAllNodeAddressAndLivenessRequest request;
-    request.set_state_filter(rpc::GcsNodeInfo::DEAD);
-    rpc::GetAllNodeAddressAndLivenessReply reply;
-    std::promise<bool> promise;
-    auto send_reply_callback = [&promise](ray::Status status,
-                                          std::function<void()> f1,
-                                          std::function<void()> f2) {
-      promise.set_value(true);
-    };
+    absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
+    auto result = node_manager.GetAllNodeAddressAndLiveness(
+        node_ids, rpc::GcsNodeInfo::DEAD, std::numeric_limits<int64_t>::max());
 
-    node_manager.HandleGetAllNodeAddressAndLiveness(request, &reply, send_reply_callback);
-    promise.get_future().get();
-
-    EXPECT_EQ(reply.node_info_list_size(), 3);
+    EXPECT_EQ(result.size(), 3);
 
     // Verify all returned nodes are dead
-    for (const auto &node_info : reply.node_info_list()) {
+    for (const auto &node_info : result) {
       EXPECT_EQ(node_info.state(), rpc::GcsNodeInfo::DEAD);
       EXPECT_EQ(node_info.death_info().reason(),
                 rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
@@ -495,39 +469,21 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
 
   // Test 4: Filter by specific node ID
   {
-    rpc::GetAllNodeAddressAndLivenessRequest request;
-    *request.add_node_ids() = alive_nodes[0]->node_id();
-    rpc::GetAllNodeAddressAndLivenessReply reply;
-    std::promise<bool> promise;
-    auto send_reply_callback = [&promise](ray::Status status,
-                                          std::function<void()> f1,
-                                          std::function<void()> f2) {
-      promise.set_value(true);
-    };
+    absl::flat_hash_set<NodeID> node_ids;
+    node_ids.insert(NodeID::FromBinary(alive_nodes[0]->node_id()));
+    auto result = node_manager.GetAllNodeAddressAndLiveness(
+        node_ids, std::nullopt, std::numeric_limits<int64_t>::max());
 
-    node_manager.HandleGetAllNodeAddressAndLiveness(request, &reply, send_reply_callback);
-    promise.get_future().get();
-
-    EXPECT_EQ(reply.node_info_list_size(), 1);
-    EXPECT_EQ(reply.node_info_list(0).node_id(), alive_nodes[0]->node_id());
+    EXPECT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].node_id(), alive_nodes[0]->node_id());
   }
 
-  // Test 6: Apply limit
+  // Test 5: Apply limit
   {
-    rpc::GetAllNodeAddressAndLivenessRequest request;
-    request.set_limit(3);
-    rpc::GetAllNodeAddressAndLivenessReply reply;
-    std::promise<bool> promise;
-    auto send_reply_callback = [&promise](ray::Status status,
-                                          std::function<void()> f1,
-                                          std::function<void()> f2) {
-      promise.set_value(true);
-    };
+    absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
+    auto result = node_manager.GetAllNodeAddressAndLiveness(node_ids, std::nullopt, 3);
 
-    node_manager.HandleGetAllNodeAddressAndLiveness(request, &reply, send_reply_callback);
-    promise.get_future().get();
-
-    EXPECT_EQ(reply.node_info_list_size(), 3);
+    EXPECT_EQ(result.size(), 3);
   }
 }
 
