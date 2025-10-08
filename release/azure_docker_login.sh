@@ -11,8 +11,13 @@ SECRET=$(aws secretsmanager get-secret-value \
   --output text)
 
 CLIENT_ID="$(echo "$SECRET" | jq -r '.client_id')"
-CLIENT_SECRET="$(echo "$SECRET" | jq -r '.client_secret')"
 TENANT_ID="$(echo "$SECRET" | jq -r '.tenant_id')"
 
+aws secretsmanager get-secret-value \
+--secret-id azure-service-principal-certificate \
+--query SecretString \
+--region us-west-2 \
+--output text > /tmp/azure_cert.pem
+
 # Login to azure
-az login --service-principal --username "$CLIENT_ID" --password "$CLIENT_SECRET" --tenant "$TENANT_ID"
+az login --service-principal --username "$CLIENT_ID" --certificate /tmp/azure_cert.pem --tenant "$TENANT_ID"
