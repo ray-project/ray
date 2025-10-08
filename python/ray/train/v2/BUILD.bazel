@@ -444,9 +444,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu_only",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -478,7 +477,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
