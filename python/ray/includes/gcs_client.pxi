@@ -690,7 +690,7 @@ cdef class InnerGcsClient:
      #############################################################
     # GcsRpcClient methods
     #############################################################
-    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None) -> Future[None]:
+    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None) -> int:
         """Async AddEvents using native C++ AddEvents with Status callback."""
         cdef:
             CAddEventsRequest c_req
@@ -712,14 +712,14 @@ cdef class InnerGcsClient:
         if not parsed:
             # Fail fast on parse error
             assign_and_decrement_fut((None, ValueError("Invalid AddEventsRequest payload")), fut)
-            return asyncio.wrap_future(fut)
+            return await asyncio.wrap_future(fut)
 
         with nogil:
             self.inner.get().GetGcsRpcClient().AddEvents(
                 move(c_req),
                 StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
                 timeout_ms)
-        return asyncio.wrap_future(fut)
+        return await asyncio.wrap_future(fut)
 
 # Util functions for async handling
 
