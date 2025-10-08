@@ -362,7 +362,7 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
 async def test_pending_job_timeout_during_raylet_creation(
     call_ray_start, tmp_path, monkeypatch  # noqa: F811
 ):
-    """Test the timeout for pending jobs during new raylet creation."""
+    """Test the timeout for pending jobs during new head node creation."""
 
     RAY_JOB_START_TIMEOUT_S = 1
     monkeypatch.setenv(
