@@ -8,6 +8,7 @@ def hello_world():
 
 def main():
     print(ray.get(hello_world.remote()))
+    assert 1 == 2
 
 
 if __name__ == "__main__":

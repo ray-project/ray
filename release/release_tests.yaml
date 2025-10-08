@@ -92,6 +92,7 @@
   run:
     timeout: 1800
     script: python hello_world.py
+    num_retries: 3
 
   variations:
     - __suffix__: aws
