@@ -27,6 +27,9 @@ from ray_release.util import (
     generate_tmp_cloud_storage_path,
     get_anyscale_sdk,
     S3_CLOUD_STORAGE,
+    AZURE_CLOUD_STORAGE,
+    AZURE_STORAGE_CONTAINER,
+    upload_working_dir_to_azure,
 )
 
 if TYPE_CHECKING:
@@ -76,6 +79,11 @@ class AnyscaleJobRunner(JobRunner):
             f"{cloud_storage_provider}://{self.file_manager.bucket}",
             self.path_in_bucket,
         )
+        if cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            self.upload_path = join_cloud_storage_paths(
+                f"{AZURE_CLOUD_STORAGE}://{AZURE_STORAGE_CONTAINER}@{self.file_manager.bucket}.dfs.core.windows.net",
+                self.path_in_bucket,
+            )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0
@@ -256,11 +264,21 @@ class AnyscaleJobRunner(JobRunner):
             - self._wait_for_nodes_timeout
             + 900,
         )
+        working_dir = "."
+        # If running on Azure, upload working dir to Azure blob storage first
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            logger.info(f"Uploading working dir to {self.upload_path}...")
+            azure_file_path = upload_working_dir_to_azure(
+                working_dir=os.get_cwd(), azure_directory_uri=self.upload_path
+            )
+            self.upload_path = azure_file_path
+            working_dir = azure_file_path
+            logger.info(f"Working dir uploaded to {self.upload_path}")
 
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
-            working_dir=".",
+            working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
             pip=pip,

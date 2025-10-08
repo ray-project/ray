@@ -18,6 +18,9 @@ from ray_release.util import (
     S3_CLOUD_STORAGE,
     GS_CLOUD_STORAGE,
     GS_BUCKET,
+    AZURE_CLOUD_STORAGE,
+    AZURE_STORAGE_ACCOUNT,
+    AZURE_STORAGE_CONTAINER,
 )
 
 
@@ -37,6 +40,8 @@ class JobFileManager(FileManager):
         elif self.cloud_storage_provider == GS_CLOUD_STORAGE:
             self.bucket = GS_BUCKET
             self.gs_client = storage.Client()
+        elif self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            self.bucket = AZURE_STORAGE_ACCOUNT
         else:
             raise RuntimeError(
                 f"Non supported anyscale service provider: "
@@ -75,7 +80,21 @@ class JobFileManager(FileManager):
             bucket = self.gs_client.bucket(self.bucket)
             blob = bucket.blob(key)
             self._run_with_retry(lambda: blob.download_to_filename(target))
+        if self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            from azure.storage.blob import BlobServiceClient
+            from azure.identity import DefaultAzureCredential
 
+            account_url = f"https://{AZURE_STORAGE_ACCOUNT}.dfs.core.windows.net"
+            credential = DefaultAzureCredential(
+                exclude_managed_identity_credential=True
+            )
+            blob_service_client = BlobServiceClient(account_url, credential)
+            blob_client = blob_service_client.get_blob_client(
+                container=AZURE_STORAGE_CONTAINER, blob=key
+            )
+            with open(target, "wb") as f:
+                download_stream = blob_client.download_blob()
+                f.write(download_stream.readall())
         if delete_after_download:
             self.delete(key)
 
