@@ -1063,7 +1063,7 @@ def test_task_events_gc_default_policy(shutdown_only):
     def error_task():
         raise ValueError("Expected to fail")
 
-    ray.init(
+    ray_context = ray.init(
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 5,
