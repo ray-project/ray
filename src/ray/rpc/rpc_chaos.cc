@@ -139,7 +139,8 @@ class RpcFailureManager {
   absl::flat_hash_map<std::string, size_t> num_req_failures_ ABSL_GUARDED_BY(&mu_);
   absl::flat_hash_map<std::string, size_t> num_resp_failures_ ABSL_GUARDED_BY(&mu_);
 
-  RpcFailure GetFailureTypeFromFailable(Failable &failable, const std::string &name) {
+  RpcFailure GetFailureTypeFromFailable(Failable &failable, const std::string &name)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (failable.num_remaining_failures == 0) {
       // If < 0, unlimited failures.
       return RpcFailure::None;
