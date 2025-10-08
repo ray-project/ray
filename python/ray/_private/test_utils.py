@@ -440,6 +440,7 @@ def wait_for_aggregator_agent_ready(address, node_id):
     # wait for 2 extra seconds to make sure the agent is ready
     time.sleep(2)
 
+
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
     start_time = time.time()
     while time.time() - start_time < timeout:
