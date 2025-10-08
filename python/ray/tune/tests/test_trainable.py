@@ -128,46 +128,6 @@ def test_save_load_checkpoint_path_fn(ray_start_2_cpus, tmp_path):
     ray.get(restoring_future)
 
 
-# TODO(justinvyu): [fallback_to_latest]
-@pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
-def test_find_latest_checkpoint_local(tmpdir):
-    """Tests that we identify the latest available checkpoint correctly.
-
-    When new checkpoints are created, they should be the latest available ones.
-    When the latest checkpoint is deleted, we should go back to the previous one.
-    """
-
-
-# TODO(justinvyu): [fallback_to_latest]
-@pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
-def test_find_latest_checkpoint_remote(tmpdir):
-    """Tests that we identify the latest available checkpoint correctly.
-
-    When new checkpoints are created, they should be the latest available ones.
-    When the latest checkpoint is deleted, we should go back to the previous one.
-    """
-
-
-# TODO(justinvyu): [fallback_to_latest]
-@pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
-@pytest.mark.parametrize("upload_uri", [None, "memory:///test/location_recover_latest"])
-@pytest.mark.parametrize("fetch_from_cloud", [False, True])
-def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
-    """Test that trainable recovery falls back to recovery from latest checkpoint.
-
-    Creates a trainable, saves a few checkpoints.
-
-    Asserts that restoring from a non-existing path falls back to the latest saved
-    checkpoint.
-
-    Asserts that restoring from a previously-existing path falls back to the latest
-    saved checkpoints.
-
-    If `fetch_from_cloud=True`, asserts that newer checkpoints on cloud are preferred
-    over older checkpoints on local disk.
-    """
-
-
 if __name__ == "__main__":
     import sys
 
