@@ -468,16 +468,10 @@ class LLMServer(LLMServerProtocol):
             engine_config.placement_bundles, replica_actor_resources
         )
 
-        # DP deployments use STRICT_PACK
-        placement_strategy = engine_config.placement_strategy
-        data_parallel_size = engine_config.engine_kwargs.get("data_parallel_size", 1)
-        if data_parallel_size > 1:
-            placement_strategy = "STRICT_PACK"
-
         deployment_options.update(
             {
                 "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": placement_strategy,
+                "placement_group_strategy": engine_config.placement_strategy,
             }
         )
 

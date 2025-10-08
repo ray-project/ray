@@ -2,6 +2,7 @@ from typing import Any, Dict
 
 import pytest
 
+from ray.llm._internal.serve.deployments.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 
@@ -232,7 +233,7 @@ def test_llm_serve_data_parallel_placement_override():
         placement_group_config=placement_group_config,
     )
 
-    serve_options = LLMServer.get_deployment_options(llm_config)
+    serve_options = DPServer.get_deployment_options(llm_config)
 
     # Data parallel should override to STRICT_PACK regardless of user-specified strategy
     assert serve_options["placement_group_strategy"] == "STRICT_PACK"
