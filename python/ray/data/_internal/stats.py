@@ -299,46 +299,6 @@ class _StatsActor:
             description="Seconds spent in iterator initialization code",
             tag_keys=iter_tag_keys,
         )
-        self.iter_get_s = Gauge(
-            "data_iter_get_seconds",
-            description="Seconds spent in ray.get() while resolving block references",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_next_batch_s = Gauge(
-            "data_iter_next_batch_seconds",
-            description="Seconds spent getting the next batch from the block buffer",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_format_batch_s = Gauge(
-            "data_iter_format_batch_seconds",
-            description="Seconds spent formatting the batch",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_collate_batch_s = Gauge(
-            "data_iter_collate_batch_seconds",
-            description="Seconds spent collating the batch",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_finalize_batch_s = Gauge(
-            "data_iter_finalize_batch_seconds",
-            description="Seconds spent finalizing the batch",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocks_local = Gauge(
-            "data_iter_blocks_local",
-            description="Number of blocks already on the local node",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocks_remote = Gauge(
-            "data_iter_blocks_remote",
-            description="Number of blocks that require fetching from another node",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_unknown_location = Gauge(
-            "data_iter_unknown_location",
-            description="Number of blocks that have unknown locations",
-            tag_keys=iter_tag_keys,
-        )
 
         # === Dataset and Operator Metadata Metrics ===
         dataset_tags = ("dataset", "job_id", "start_time")
@@ -521,14 +481,6 @@ class _StatsActor:
         self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
-        self.iter_get_s.set(stats.iter_get_s.get(), tags)
-        self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
-        self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
-        self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
-        self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
-        self.iter_blocks_local.set(stats.iter_blocks_local, tags)
-        self.iter_blocks_remote.set(stats.iter_blocks_remote, tags)
-        self.iter_unknown_location.set(stats.iter_unknown_location, tags)
 
     def register_dataset(
         self,
