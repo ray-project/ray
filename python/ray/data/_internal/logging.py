@@ -213,10 +213,13 @@ def configure_logging() -> None:
 
         # Preserve the propagate settings for loggers if they've been explicitly set
         # (e.g., by test fixtures). This ensures test logging capture works correctly.
+        # Only check loggers that already exist to avoid capturing default values.
         logger_names = list(config.get("loggers", {}).keys())
-        propagate_settings = {
-            name: logging.getLogger(name).propagate for name in logger_names
-        }
+        propagate_settings = {}
+        for name in logger_names:
+            # Only preserve propagate setting if logger already exists
+            if name in logging.Logger.manager.loggerDict:
+                propagate_settings[name] = logging.getLogger(name).propagate
 
         logging.config.dictConfig(config)
 
