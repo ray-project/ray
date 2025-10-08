@@ -126,7 +126,6 @@ def mock_transcription_request(stream, temperature, language):
     mock_file = UploadFile(
         file=BytesIO(mock_audio_data),
         filename="test_audio.wav",
-        content_type="audio/wav",
     )
 
     return TranscriptionRequest(
