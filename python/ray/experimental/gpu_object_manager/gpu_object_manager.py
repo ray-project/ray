@@ -54,22 +54,28 @@ class TransferMetadata(NamedTuple):
 # @PublicAPI(stability="alpha")
 def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
-    Wait for the tensor to be freed from this actor's GPU object store.
+    Wait for the tensor to be freed.
 
     This function is useful for cases where an actor keeps a reference to a
     tensor after returning the tensor from a task annotated with
-    `@ray.method(tensor_transport=...)`. Tensors that are returned by these
-    tasks may be sent to other actors while the corresponding `ray.ObjectRef` is
-    still in scope. If the actor modifies the tensor while it is still in the
-    actor's GPU object store, then Ray may end up sending invalid data to other
-    tasks. Call this function to ensure that the `ray.ObjectRef` has gone out of
-    scope and therefore the tensor is safe to write to again.
+    `@ray.method(tensor_transport=...)`. In this case, Ray will store a
+    *reference* to the tensor, so any in-place modifications made by the actor
+    that returned the tensor could be seen by other actors. See
+    :ref:`Ray Direct Transport (RDT) <direct-transport>` for more details.
+
+    Call this function for RDT objects to ensure that all corresponding
+    `ray.ObjectRefs` have gone out of scope and therefore the tensor is safe to
+    write to again.
 
     Args:
-        tensor: The tensor to wait to be freed.
-        timeout: The timeout in seconds. Set to None to wait indefinitely. Note
-            that this function could then hang if the `ray.ObjectRef` that
-            refers to this tensor never goes out of scope.
+        tensor: The tensor to wait to be freed. This should be a tensor that was
+            previously returned by a task annotated with
+            `@ray.method(tensor_transport=...)` or stored via
+            `ray.put(_tensor_transport="...")`.
+        timeout: The timeout in seconds to wait for all references to the tensor
+            to go out of scope. Set to None to wait indefinitely. Note that if
+            None is used, this function could hang if the `ray.ObjectRefs` that
+            refer to this tensor never go out of scope.
     """
     gpu_object_manager = ray.worker.global_worker.gpu_object_manager
     gpu_object_manager.gpu_object_store.wait_tensor_freed(tensor, timeout)
@@ -152,7 +158,7 @@ class GPUObjectManager:
                         not_done[0],
                         ref_info_map,
                         TimeoutError(
-                            f"RDT transfer failed after {ray.constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
+                            f"RDT transfer failed after {ray_constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
                         ),
                     )
                 else:
@@ -522,6 +528,29 @@ class GPUObjectManager:
                 object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
             )
         return gpu_object
+
+    def free_object_primary_copy(self, object_id: str):
+        """
+        Free the primary copy of the GPU object. Expected to be idempotent when called from
+        free_actor_object_callback because the primary copy holder should always only have one ref
+        in the deque.
+        """
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_free__,
+        )
+
+        try:
+            gpu_object_meta = self.managed_gpu_object_metadata[object_id]
+            src_actor = gpu_object_meta.src_actor
+            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
+            )
+        except Exception as e:
+            logger.error(
+                "Something went wrong while freeing the RDT object!", exc_info=e
+            )
 
     def actor_has_tensor_transport(
         self, actor: "ray.actor.ActorHandle", tensor_transport: TensorTransportEnum
