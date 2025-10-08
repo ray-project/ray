@@ -41,12 +41,11 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "small",
+    size = "medium",
     files = glob(["tests/preprocessors/test_*.py"]),
     tags = [
         "exclusive",
-        "ray_air",
-        "team:ml",
+        "team:data",
     ],
     deps = [
         ":conftest",
@@ -481,6 +480,76 @@ py_test(
     name = "test_consumption",
     size = "enormous",
     srcs = ["tests/test_consumption.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_limits",
+    size = "large",
+    srcs = ["tests/test_dataset_limits.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_creation",
+    size = "large",
+    srcs = ["tests/test_dataset_creation.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_validation",
+    size = "large",
+    srcs = ["tests/test_dataset_validation.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_aggregrations",
+    size = "large",
+    srcs = ["tests/test_dataset_aggregrations.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_iter",
+    size = "large",
+    srcs = ["tests/test_dataset_iter.py"],
     tags = [
         "exclusive",
         "team:data",
