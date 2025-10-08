@@ -48,7 +48,7 @@ class HighMemoryIssueDetector(IssueDetector):
         for op in self._executor._topology.keys():
             if isinstance(op, MapOperator):
                 self._initial_memory_requests[op] = (
-                    op._get_runtime_ray_remote_args().get("memory") or 0
+                    op._get_dynamic_ray_remote_args().get("memory") or 0
                 )
 
     def detect(self) -> List[Issue]:
@@ -60,7 +60,7 @@ class HighMemoryIssueDetector(IssueDetector):
             if op.metrics.average_max_uss_per_task is None:
                 continue
 
-            remote_args = op._get_runtime_ray_remote_args()
+            remote_args = op._get_dynamic_ray_remote_args()
             num_cpus_per_task = remote_args.get("num_cpus", 1)
             max_memory_per_task = self._MEMORY_PER_CORE_ESTIMATE * num_cpus_per_task
 

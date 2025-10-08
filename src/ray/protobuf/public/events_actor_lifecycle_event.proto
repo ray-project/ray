@@ -1,0 +1,54 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+import "src/ray/protobuf/common.proto";
+import "google/protobuf/timestamp.proto";
+
+message ActorLifecycleEvent {
+  enum State{
+    // Actor info is registered in GCS. But its dependencies are not ready.
+    DEPENDENCIES_UNREADY = 0;
+    // Actor local dependencies are ready. This actor is being created.
+    PENDING_CREATION = 1;
+    // Actor is alive.
+    ALIVE = 2;
+    // Actor is dead, now being restarted.
+    // After reconstruction finishes, the state will become alive again.
+    RESTARTING = 3;
+    // Actor is already dead and won't be restarted.
+    DEAD = 4;
+  }
+
+  message StateTransition {
+    State state = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    // The node id of the actor once it is created.
+    // available when state is ALIVE updated when the actor is restarted.
+    bytes node_id = 3;
+    // The worker id of the worker on which this actor is running. available when state is ALIVE.
+    // The worker id can change when the actor is restarted.
+    bytes worker_id = 4;
+    // Contains metadata about why the actor is dead. available when state is DEAD.
+    ActorDeathCause death_cause = 6;
+  }
+
+  // The ID of the actor that was created.
+  bytes actor_id = 1;
+  // Current state of this actor.
+  repeated StateTransition state_transitions = 2;
+}

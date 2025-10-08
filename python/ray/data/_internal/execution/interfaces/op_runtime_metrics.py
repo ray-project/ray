@@ -334,6 +334,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Byte size of blocks in the external inqueue",
         metrics_group=MetricsGroup.OUTPUTS,
     )
+    num_external_outqueue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in the external outqueue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    num_external_outqueue_bytes: int = metric_field(
+        default=0,
+        description="Byte size of blocks in the external outqueue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
 
     # === Tasks-related metrics ===
     num_tasks_submitted: int = metric_field(
@@ -521,6 +531,31 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
         else:
             return self.num_outputs_of_finished_tasks / self.num_tasks_finished
+
+    @metric_property(
+        description="Average number of blocks generated per task.",
+        metrics_group=MetricsGroup.INPUTS,
+    )
+    def average_num_inputs_per_task(self) -> Optional[float]:
+        """Average number of input blocks per task, or None if no task has finished."""
+        if self.num_tasks_finished == 0:
+            return None
+        else:
+            return self.num_task_inputs_processed / self.num_tasks_finished
+
+    @metric_property(
+        description="Average number of output blocks per task per second.",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    def num_output_blocks_per_task_s(self) -> Optional[float]:
+        """Average number of output blocks per task per second.
+
+        If the operator hasn't produced any output yet, this metric returns `None`.
+        """
+        if self.block_generation_time == 0:
+            return None
+        else:
+            return self.num_task_outputs_generated / self.block_generation_time
 
     @metric_property(
         description="Average size of task output in bytes.",
@@ -817,6 +852,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         task_time_delta = time.perf_counter() - task_info.start_time
         self.task_completion_time += task_time_delta
+
+        # NOTE: This is used for Issue Detection
+        self._op_task_duration_stats.add_duration(task_time_delta)
 
         assert task_info.cum_block_gen_time is not None
         self.task_completion_time_without_backpressure += task_info.cum_block_gen_time

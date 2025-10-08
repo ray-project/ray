@@ -23,7 +23,11 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
-from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
+from ray.tests.conftest import (  # noqa
+    external_redis,
+    propagate_logs,
+    pytest_runtest_makereport,
+)
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
