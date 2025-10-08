@@ -52,7 +52,9 @@ def main(args):
 
     def benchmark_fn():
         splits = ds.streaming_split(
-            args.num_workers, equal=bool(args.equal_split), locality_hints=locality_hints
+            args.num_workers,
+            equal=bool(args.equal_split),
+            locality_hints=locality_hints,
         )
         future = [
             consumers[i].consume.remote(split, max_rows_to_read_per_worker)
