@@ -1608,6 +1608,7 @@
 ########################
 
 - name: training_ingest_benchmark-task=image_classification
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1744,6 +1745,7 @@
         cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
 
 - name: training_ingest_benchmark-task=recsys
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1779,6 +1781,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
 - name: train_multinode_persistence
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/multinode_persistence
 
@@ -1818,6 +1821,7 @@
   alert: default
 
 - name: train_colocate_trainer
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
@@ -1855,6 +1859,7 @@
     script: python torch_local_mode_launcher.py
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
