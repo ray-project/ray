@@ -1815,7 +1815,8 @@
   frequency: nightly
   team: ml
   cluster:
-    byod: {}
+    byod:
+      type: gpu
     cluster_compute: compute_aws.yaml
   run:
     timeout: 3600
