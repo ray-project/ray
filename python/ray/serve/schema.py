@@ -560,8 +560,8 @@ class ServeApplicationSchema(BaseModel):
         default=[],
         description="Deployment options that override options specified in the code.",
     )
-    autoscaling_policy: dict = Field(
-        default={},
+    autoscaling_policy: Optional[dict] = Field(
+        default=None,
         description=(
             "Autoscaling policy for the application. "
             "If null, serve fallbacks to autoscaling policy in each deployment. "
