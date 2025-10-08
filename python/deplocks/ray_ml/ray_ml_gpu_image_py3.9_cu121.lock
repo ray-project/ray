@@ -2089,6 +2089,7 @@ importlib-metadata==6.11.0 \
     #   dask
     #   flask
     #   gymnasium
+    #   jax
     #   jupyter-ydoc
     #   jupyterlab-server
     #   markdown
@@ -2150,6 +2151,36 @@ itsdangerous==2.1.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   flask
+jax==0.4.25 \
+    --hash=sha256:8158c837e5ecc195074b421609e85329a962785b36f9fe5ff53e844e8ad87dbc \
+    --hash=sha256:a8ee189c782de2b7b2ffb64a8916da380b882a617e2769aa429b71d79747b982
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
+jaxlib==0.4.25 \
+    --hash=sha256:0ce2a25263e7504d575e8ba5ba4f53aef6fe274679785bcf87ab06b0aaec0b90 \
+    --hash=sha256:0df7e2193b216e195dfc7a8aa14527eb52614ec3ba4c59a199af2f17195ae1c1 \
+    --hash=sha256:0e97542bbd89f4316d2feb599119d8a43440ca151b7a165eff0fc127cf4512e7 \
+    --hash=sha256:0fd113ab414de856f90f07264e6ccd0cb95d392f3579c0deab4ff0943ef75f73 \
+    --hash=sha256:32881f93d5de195a0fd19e091a2aa89418fa27f630d30c79b4613a51cff4d1c6 \
+    --hash=sha256:37da780cb545ca210bfa0402b5081452ad830bb06fe9e970fd16ad14d2fdc6a6 \
+    --hash=sha256:3b5cbd3a4f731636469cdaf06c4413208811ca458ee312647e8f3faca32f6445 \
+    --hash=sha256:425d6f3fa57ea1d1674ae84b5a3d3588ba0937f3c47fd4f166eb84c4240887b8 \
+    --hash=sha256:6660b68741286bd4b849c149d86a8c36e448f7e39e1d483e79dab79ea300bf1b \
+    --hash=sha256:89a011330aaeaf19027bba5e3236be155cc8d73d94aa9db84d817d414f4a7647 \
+    --hash=sha256:a0dd09cbb62583941872b6a198894e87a1b64d8e4dd6b53946dbb41d642b8f5f \
+    --hash=sha256:ad1ab653265c33b8d54bdcc40867a8ffd61fea879176e4d4cd0b585fe52521fc \
+    --hash=sha256:b11aef2bd6cf873b39399fda122170b625776d977bbc56b4635f46c396279b8b \
+    --hash=sha256:be1b26e96e80d42f54f77226a016717cb969d7d208d0dcb61997f19dc7b2d8e2 \
+    --hash=sha256:c4e3bc32aea275e025e762612216954626478c9cf5c44131e248cdd17e361efd \
+    --hash=sha256:dcda74c7c8eb328cde8afeebcf21ec9240138fac54f9631a60b679a211f7e100 \
+    --hash=sha256:dcfb71a7f559c13734584769ca30373bc4b73d0fe105790462370e49f35dcbe4 \
+    --hash=sha256:dfb1ef8c2e6a01ecb60f8833552ff077cd593154fd75739050fba9148879a2a4 \
+    --hash=sha256:f7aa9682b6806e4197ad51294e87e77f04f5eee7ced4e841aa7ccc7320c6d96b \
+    --hash=sha256:fd751b10e60c085dec42bec6c27c9905f5c57d12323190eea0df10ee14c574e0
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
 jedi==0.19.1 \
     --hash=sha256:cf0496f3651bc65d7174ac1b7d043eff454892c708a87d1b683e57b569927ffd \
     --hash=sha256:e983c654fe5c02867aef4cdfce5a2fbb4a50adc0af145f70504238f18ef5e7e0
@@ -2843,7 +2874,7 @@ ml-collections==0.1.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   open-spiel
-ml-dtypes==0.3.2 ; (python_full_version < '3.12' and platform_machine != 'arm64') or (python_full_version < '3.12' and sys_platform != 'darwin') \
+ml-dtypes==0.3.2 \
     --hash=sha256:2c34f2ba9660b21fe1034b608308a01be82bbef2a92fb8199f24dc6bad0d5226 \
     --hash=sha256:3a17ef2322e60858d93584e9c52a5be7dd6236b056b7fa1ec57f1bb6ba043e33 \
     --hash=sha256:533059bc5f1764fac071ef54598db358c167c51a718f68f5bb55e3dee79d2967 \
@@ -2863,6 +2894,8 @@ ml-dtypes==0.3.2 ; (python_full_version < '3.12' and platform_machine != 'arm64'
     --hash=sha256:f47619d978ab1ae7dfdc4052ea97c636c6263e1f19bd1be0e42c346b98d15ff4
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   jax
+    #   jaxlib
     #   tensorflow
 mlagents-envs==0.28.0 \
     --hash=sha256:29be1e0bef0d00c20b1cdb20156546dc9d2c6426c436fcada60ed9d92e9ed190 \
@@ -3383,6 +3416,8 @@ numpy==1.26.4 \
     #   hpbandster
     #   hyperopt
     #   imageio
+    #   jax
+    #   jaxlib
     #   labmaze
     #   lightgbm
     #   matplotlib
@@ -3637,6 +3672,7 @@ opt-einsum==3.3.0 \
     --hash=sha256:59f6475f77bbc37dcf7cd748519c0ec60722e91e63ca114e68821c0c54a46549
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   jax
     #   pyro-ppl
     #   tensorflow
 optuna==4.1.0 \
@@ -5132,6 +5168,39 @@ s3fs==2023.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
+s3torchconnector==1.4.3 \
+    --hash=sha256:a7288d1446905663d15b3a0debb819a86ced3c3f4a0c29055e3d205741bff2a2
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
+s3torchconnectorclient==1.4.3 \
+    --hash=sha256:0c997613b3d424be40abd915dbcd498291150a9d08ec67d0fa4916f4d0ba6493 \
+    --hash=sha256:11c085011f28a57f94bdccbdae4fcfd91a689a6ad72aa63c1f1661f63e0a2c99 \
+    --hash=sha256:21bc530cd25acf7828e7d7d83b302afa598e186af692e20e8d71ab92cc5b2c20 \
+    --hash=sha256:36d9ab9564a409543061763fcb273ab074005a796fa4d68e8149fddfa78c1270 \
+    --hash=sha256:3ab7cd161e43c43b8ca57ee0506253ad5ffd9b04622cd01724b0c407f351f378 \
+    --hash=sha256:3e841f3d4ca64b03ad59c6fe8d7e0f9894a73a809181adde80f7f8d92defbd41 \
+    --hash=sha256:40568b9de5f6eda3a430bc9ae4d15918646b64d17546427437a69a334d157072 \
+    --hash=sha256:4fbb7efa65e35b0717cd684f178a694fa2c2fd7dc13d7042627c8f6a6c098161 \
+    --hash=sha256:669fb3b734b243afcab6630ede982da61320565ddc4e9999d5636b2a4f4714e0 \
+    --hash=sha256:69679d937eaac416b1b028f27184a00541a1dcff8942c427cc42b53fe4887101 \
+    --hash=sha256:69e6a6c71ad928ef549e76054dd59e400c47f21e010359c382ccf1ee70dde413 \
+    --hash=sha256:795c80f7fd552288d957678889a776730c9b78b0b703238e4b760c75340ff385 \
+    --hash=sha256:7a85252954374eca8db9a3a1952e9d3d45cb34044f0f8c030c37410c56e49030 \
+    --hash=sha256:80e7af022734838083a11188f7bd65bbb5184ba5ceabd15a0239c370589ff96c \
+    --hash=sha256:818eb39a56a3e5cc53c480fb22f85d345399f63dcecd4f8d5d38b04422da2ad0 \
+    --hash=sha256:86f6f4687e2716dafc421eaf8c8bbc182769524c4c387c2d8038dd0422d6861f \
+    --hash=sha256:900c87e497413df445500e95f2ad4c918ba0d5677036337203b1d3a851e0e275 \
+    --hash=sha256:9cec8f10747f7b6c3281d312dc4f194a68ab1e561df322d361f1872f0304ba91 \
+    --hash=sha256:ad45afdcf1381deb2cdf09f3d264f9305d3b6e5ff6dfb0880902f975d3be5d4b \
+    --hash=sha256:b4de49f2ad51f8803bbad2c9d2256238f608b5c6f2a74cb310c8c7a896cc3c9d \
+    --hash=sha256:cad1098c655709cfdd019b0303e4199ef3ca75952cf1aab2aa3391397c7f6c3f \
+    --hash=sha256:d2cc3529db8d352810d8f7808b208005441cc61507dd67dfdfb8f4a3fdcddc4f \
+    --hash=sha256:e607e04251c46d9772a4519924498033418c4d564467bf12a7e3a98cf1dd60da \
+    --hash=sha256:eb31fb473ec3cd70a674901407eee2a5a7732c4a32268dfda2818ba04201e61e
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   s3torchconnector
 s3transfer==0.8.0 \
     --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
     --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
@@ -5341,6 +5410,8 @@ scipy==1.11.4 \
     #   gpy
     #   hpbandster
     #   hyperopt
+    #   jax
+    #   jaxlib
     #   lightgbm
     #   linear-operator
     #   mlflow
@@ -6167,6 +6238,7 @@ torch==2.3.0+cu121 \
     #   pyro-ppl
     #   pytorch-lightning
     #   pytorch-ranger
+    #   s3torchconnector
     #   timm
     #   torch-optimizer
     #   torchmetrics
