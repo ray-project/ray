@@ -159,16 +159,19 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    resources_per_bundle: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="This will override the default resource bundles for placement groups. "
-        "You can specify a custom device label e.g. {'NPU': 1}. "
-        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
-    )
-
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
+    )
+
+    placement_group_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Ray placement group configuration for scheduling vLLM engine workers. "
+            "Defines resource bundles and placement strategy for multi-node deployments. "
+            "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
+            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+        ),
     )
 
     lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
