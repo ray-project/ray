@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-import grpc
 import requests
 import yaml
 
@@ -1520,6 +1519,7 @@ class RayletKiller(NodeKillerBase):
             self.killed.add(node_id)
 
     def _kill_raylet(self, ip, port, graceful=False):
+        import grpc
         from grpc._channel import _InactiveRpcError
 
         from ray.core.generated import node_manager_pb2_grpc
@@ -1873,6 +1873,7 @@ def wandb_setup_api_key_hook():
 
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
+    import grpc
 
     from ray.core.generated import node_manager_pb2_grpc
 
@@ -1925,6 +1926,7 @@ def get_load_metrics_report(webui_url):
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
+    import grpc
     from grpc._channel import _InactiveRpcError
 
     from ray.core.generated import node_manager_pb2_grpc
