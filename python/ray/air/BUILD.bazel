@@ -54,22 +54,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_arrow",
-    size = "small",
-    srcs = [
-        "conftest",
-        "tests/test_arrow.py",
-    ],
-    tags = [
-        "exclusive",
-        "ray_data",
-        "team:data",
-        "team:ml",
-    ],
-    deps = [":ml_lib"],
-)
-
-py_test(
     name = "test_air_usage",
     size = "small",
     srcs = ["tests/test_air_usage.py"],
@@ -122,6 +106,8 @@ py_test(
     name = "test_errors",
     size = "medium",
     srcs = ["tests/test_errors.py"],
+    # NOTE: This tests Tune (Train V1) error propagation logic.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -133,6 +119,8 @@ py_test(
     name = "test_integration_comet",
     size = "small",
     srcs = ["tests/test_integration_comet.py"],
+    # NOTE: This tests the Tune Comet callback.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -144,6 +132,8 @@ py_test(
     name = "test_integration_wandb",
     size = "small",
     srcs = ["tests/test_integration_wandb.py"],
+    # NOTE: This tests the Tune wandb callback.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -155,6 +145,8 @@ py_test(
     name = "test_integration_mlflow",
     size = "small",
     srcs = ["tests/test_integration_mlflow.py"],
+    # NOTE: This tests the Tune mlflow callback.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -166,6 +158,7 @@ py_test(
     name = "test_keras_callback",
     size = "medium",
     srcs = ["tests/test_keras_callback.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
@@ -180,51 +173,6 @@ py_test(
     tags = [
         "exclusive",
         "hdfs",
-        "team:ml",
-    ],
-    deps = [":ml_lib"],
-)
-
-py_test(
-    name = "test_tensor_extension",
-    size = "small",
-    srcs = ["tests/test_tensor_extension.py"],
-    tags = [
-        "exclusive",
-        "ray_data",
-        "team:data",
-        "team:ml",
-    ],
-    deps = [
-        ":conftest",
-        ":ml_lib",
-    ],
-)
-
-py_test(
-    name = "test_torch_tensor_utils",
-    size = "small",
-    srcs = ["tests/test_torch_tensor_utils.py"],
-    tags = [
-        "exclusive",
-        "ray_data",
-        "team:data",
-        "team:ml",
-    ],
-    deps = [
-        ":conftest",
-        ":ml_lib",
-    ],
-)
-
-py_test(
-    name = "test_object_extension",
-    size = "small",
-    srcs = ["tests/test_object_extension.py"],
-    tags = [
-        "exclusive",
-        "ray_data",
-        "team:data",
         "team:ml",
     ],
     deps = [":ml_lib"],
