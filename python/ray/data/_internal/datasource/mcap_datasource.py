@@ -18,7 +18,6 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
-
     from mcap.reader import Channel, Message, Schema
 
 logger = logging.getLogger(__name__)
