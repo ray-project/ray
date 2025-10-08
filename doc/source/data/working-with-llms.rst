@@ -208,9 +208,9 @@ You can also make calls to deployed models that have an OpenAI compatible API en
 Batch inference with serve deployments
 ---------------------------------------
 
-You can configure any serve deployment for batch inference. This is particularly useful for multi-turn conversations,
-where you can use a shared vLLM engine across conversations. To achieve this, create an LLM serve deployment and use
-the :class:`ServeDeploymentProcessorConfig <ray.data.llm.ServeDeploymentProcessorConfig>` to configure the processor.
+You can configure any :ref:`serve deployment <converting-to-ray-serve-application>` for batch inference. This is particularly useful for multi-turn conversations,
+where you can use a shared vLLM engine across conversations. To achieve this, create an :ref:`LLM serve deployment <serving-llms>` and use
+the :class:`ServeDeploymentProcessorConfig <ray.data.llm.ServeDeploymentProcessorConfig>` class to configure the processor.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -231,8 +231,8 @@ distributed executor backend to enable cross-node parallelism.
     :end-before: __cross_node_parallelism_config_example_end__
 
 
-In addition, you can customize placement group strategy to control how the vLLM engine workers are
-placed across nodes. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine and is not directly configurable through the Ray Data LLM API.
+In addition, you can customize the placement group strategy to control how Ray places vLLM engine workers across nodes.
+While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine and you can't directly configure it through the Ray Data LLM API.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -240,7 +240,7 @@ placed across nodes. While you can specify the degree of tensor and pipeline par
     :end-before: __custom_placement_group_strategy_config_example_end__
 
 Besides cross-node parallelism, you can also horizontally scale the LLM stage to multiple nodes.
-The number of replicas is configured by the `concurrency` argument in
+Configure the number of replicas with the `concurrency` argument in
 :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
