@@ -90,6 +90,7 @@ def run_storage_cp(source: str, target: str):
             target,
         ]
     elif storage_service == "abfss":
+        subprocess.run(["azcopy", "login", "--identity"], check=True)
         account, container, path = _parse_abfss_uri(target)
         # Azcopy doesn't support ABFSS URI, so we need to convert it to a blob URI
         new_target = f"https://{account}.dfs.core.windows.net/{container}/{path}"
