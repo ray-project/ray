@@ -5,10 +5,8 @@ import pytest
 
 import ray
 from ray import serve
+from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.serve_deployment_proc import (
-    ServeDeploymentProcessorConfig,
-)
 from ray.serve.llm.openai_api_models import ChatCompletionRequest, CompletionRequest
 
 
@@ -65,7 +63,7 @@ def test_simple_serve_deployment(serve_cleanup):
         concurrency=1,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         config,
         preprocess=lambda row: dict(
             method="add",
@@ -100,7 +98,7 @@ def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
         concurrency=1,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         config,
         preprocess=lambda row: dict(
             method="completions",
@@ -139,7 +137,7 @@ def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deplo
         concurrency=1,
     )
 
-    processor1 = ProcessorBuilder.build(
+    processor1 = build_llm_processor(
         config1,
         preprocess=lambda row: dict(
             dtype="CompletionRequest",
@@ -165,7 +163,7 @@ def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deplo
         concurrency=1,
     )
 
-    processor2 = ProcessorBuilder.build(
+    processor2 = build_llm_processor(
         config2,
         preprocess=lambda row: dict(
             dtype="CompletionRequest",
@@ -204,7 +202,7 @@ def test_chat_model(model_opt_125m, create_model_opt_125m_deployment):
         concurrency=1,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         config,
         preprocess=lambda row: dict(
             dtype="ChatCompletionRequest",

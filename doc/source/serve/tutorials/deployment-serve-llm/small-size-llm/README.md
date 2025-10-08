@@ -85,8 +85,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:  
 
 
-```bash
-%%bash
+```python
 export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 serve run serve_llama_3_1_8b:app --non-blocking
 ```
@@ -102,8 +101,7 @@ Your endpoint is available locally at `http://localhost:8000`. You can use a pla
 Example curl:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -143,8 +141,7 @@ for chunk in response:
 Shutdown your LLM service: 
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
@@ -180,8 +177,7 @@ applications:
 Deploy your service with the following command. Make sure to forward your Hugging Face token:
 
 
-```bash
-%%bash
+```python
 anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 ```
 
@@ -225,8 +221,7 @@ See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling
 Shutdown your Anyscale Service:
 
 
-```bash
-%%bash
+```python
 anyscale service terminate -n deploy-llama-3-8b
 ```
 

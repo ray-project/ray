@@ -5,6 +5,7 @@ import pydantic
 import pytest
 
 import ray
+from ray.data.llm import build_llm_processor
 from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
@@ -139,22 +140,24 @@ def test_processor_with_stages(has_extra: bool):
             assert row["result"] == (row["id"] * 2 + extra) * 3 + extra
 
 
+# Common dummy classes for testing
+class DummyStatefulStageUDF(StatefulStageUDF):
+    async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
+        for row in batch:
+            yield row
+
+
+class DummyStage(StatefulStage):
+    fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
+    fn_constructor_kwargs: Dict[str, Any] = {}
+    map_batches_kwargs: Dict[str, Any] = {}
+
+
+class DummyProcessorConfig(ProcessorConfig):
+    pass
+
+
 def test_builder():
-    class DummyStatefulStageUDF(StatefulStageUDF):
-        async def udf(
-            self, batch: List[Dict[str, Any]]
-        ) -> AsyncIterator[Dict[str, Any]]:
-            for row in batch:
-                yield row
-
-    class DummyStage(StatefulStage):
-        fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
-        fn_constructor_kwargs: Dict[str, Any] = {}
-        map_batches_kwargs: Dict[str, Any] = {}
-
-    class TestBuilderDummyProcessorConfig(ProcessorConfig):
-        pass
-
     def build_processor(config: ProcessorConfig) -> Processor:
         stages = [
             DummyStage(
@@ -165,10 +168,10 @@ def test_builder():
         processor = Processor(config, stages)
         return processor
 
-    ProcessorBuilder.register(TestBuilderDummyProcessorConfig, build_processor)
+    ProcessorBuilder.register(DummyProcessorConfig, build_processor)
 
-    processor = ProcessorBuilder.build(TestBuilderDummyProcessorConfig(batch_size=64))
-    assert isinstance(processor.config, TestBuilderDummyProcessorConfig)
+    processor = ProcessorBuilder.build(DummyProcessorConfig(batch_size=64))
+    assert isinstance(processor.config, DummyProcessorConfig)
     assert processor.list_stage_names() == ["DummyStage"]
     assert (
         processor.get_stage_by_name("DummyStage").map_batches_kwargs["concurrency"] == 1
@@ -179,13 +182,97 @@ def test_builder():
             stage.map_batches_kwargs["concurrency"] = 2
 
     processor = ProcessorBuilder.build(
-        TestBuilderDummyProcessorConfig(batch_size=64),
+        DummyProcessorConfig(batch_size=64),
         override_stage_config_fn=overrider,
     )
     assert processor.list_stage_names() == ["DummyStage"]
     assert (
         processor.get_stage_by_name("DummyStage").map_batches_kwargs["concurrency"] == 2
     )
+
+
+class TestBuilderKwargsValidation:
+    @pytest.fixture
+    def build_processor_with_kwargs(self):
+        def build_processor_with_kwargs(
+            config: ProcessorConfig,
+            preprocess=None,
+            postprocess=None,
+            custom_kwarg=None,
+            another_kwarg=None,
+        ) -> Processor:
+            stages = [
+                DummyStage(
+                    fn_constructor_kwargs=dict(
+                        custom_kwarg=custom_kwarg,
+                        another_kwarg=another_kwarg,
+                    ),
+                    map_batches_kwargs=dict(concurrency=1),
+                )
+            ]
+            processor = Processor(
+                config, stages, preprocess=preprocess, postprocess=postprocess
+            )
+            return processor
+
+        return build_processor_with_kwargs
+
+    @pytest.fixture(autouse=True)
+    def clear_registry(self):
+        ProcessorBuilder.clear_registry()
+
+    def test_builder_kwargs_passthrough(self, build_processor_with_kwargs):
+        ProcessorBuilder.register(DummyProcessorConfig, build_processor_with_kwargs)
+
+        config = DummyProcessorConfig(batch_size=64)
+        processor = build_llm_processor(
+            config,
+            preprocess=lambda row: {"val": row["id"]},
+            postprocess=lambda row: {"result": row["val"]},
+            builder_kwargs=dict(
+                custom_kwarg="test_value",
+                another_kwarg=42,
+            ),
+        )
+        assert processor.list_stage_names() == ["DummyStage"]
+        stage = processor.get_stage_by_name("DummyStage")
+        assert stage.fn_constructor_kwargs["custom_kwarg"] == "test_value"
+        assert stage.fn_constructor_kwargs["another_kwarg"] == 42
+
+    def test_unsupported_kwargs(self):
+        def build_processor_no_kwargs(
+            config: ProcessorConfig,
+            preprocess=None,
+            postprocess=None,
+        ) -> Processor:
+            stages = []
+            processor = Processor(
+                config, stages, preprocess=preprocess, postprocess=postprocess
+            )
+            return processor
+
+        ProcessorBuilder.register(DummyProcessorConfig, build_processor_no_kwargs)
+
+        config = DummyProcessorConfig(batch_size=64)
+        with pytest.raises(TypeError, match="unsupported_kwarg"):
+            build_llm_processor(
+                config,
+                builder_kwargs=dict(unsupported_kwarg="value"),
+            )
+
+    @pytest.mark.parametrize("conflicting_key", ["preprocess", "postprocess"])
+    def test_error_builder_kwargs_conflict(
+        self, conflicting_key, build_processor_with_kwargs
+    ):
+        ProcessorBuilder.register(DummyProcessorConfig, build_processor_with_kwargs)
+
+        config = DummyProcessorConfig(batch_size=64)
+        with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
+            build_llm_processor(
+                config,
+                preprocess=lambda row: {"val": row["id"]},
+                builder_kwargs={conflicting_key: lambda row: {"other": row["id"]}},
+            )
 
 
 class TestProcessorConfig:

@@ -334,6 +334,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Byte size of blocks in the external inqueue",
         metrics_group=MetricsGroup.OUTPUTS,
     )
+    num_external_outqueue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in the external outqueue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    num_external_outqueue_bytes: int = metric_field(
+        default=0,
+        description="Byte size of blocks in the external outqueue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
 
     # === Tasks-related metrics ===
     num_tasks_submitted: int = metric_field(

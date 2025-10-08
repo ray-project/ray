@@ -1,6 +1,8 @@
 group: llm tests
 depends_on:
   - forge
+  - ray-core-build
+  - ray-dashboard-build
 steps:
   - name: llmbuild
     wanda: ci/docker/llm.build.wanda.yaml

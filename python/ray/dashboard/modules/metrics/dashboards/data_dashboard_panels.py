@@ -523,7 +523,7 @@ TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
 # Ray Data Metrics (Object Store Memory)
 INTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     id=13,
-    title="Operator Internal Inqueue Size (Blocks)",
+    title="Operator Internal Input Queue Size (Blocks)",
     description="Number of blocks in operator's internal input queue",
     unit="blocks",
     targets=[
@@ -538,7 +538,7 @@ INTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 
 INTERNAL_INQUEUE_BYTES_PANEL = Panel(
     id=14,
-    title="Operator Internal Inqueue Size (Bytes)",
+    title="Operator Internal Input Queue Size (Bytes)",
     description="Byte size of input blocks in the operator's internal input queue.",
     unit="bytes",
     targets=[
@@ -553,7 +553,7 @@ INTERNAL_INQUEUE_BYTES_PANEL = Panel(
 
 INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
     id=15,
-    title="Operator Internal Outqueue Size (Blocks)",
+    title="Operator Internal Output Queue Size (Blocks)",
     description="Number of blocks in operator's internal output queue",
     unit="blocks",
     targets=[
@@ -568,7 +568,7 @@ INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
 
 INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
     id=16,
-    title="Operator Internal Outqueue Size (Bytes)",
+    title="Operator Internal Output Queue Size (Bytes)",
     description=("Byte size of output blocks in the operator's internal output queue."),
     unit="bytes",
     targets=[
@@ -583,7 +583,7 @@ INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 
 EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     id=2,
-    title="Operator External InQueue Size (Blocks)",
+    title="Operator External Input Queue Size (Blocks)",
     description="Number of blocks in operator's external input queue",
     unit="blocks",
     targets=[
@@ -598,7 +598,7 @@ EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 
 EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     id=27,
-    title="Operator External InQueue Size (bytes)",
+    title="Operator External Input Queue Size (bytes)",
     description="Byte size of blocks in operator's external input queue",
     unit="bytes",
     targets=[
@@ -611,15 +611,60 @@ EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     stack=False,
 )
 
-# Combined Inqueue and Outqueue Blocks Panel
-COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL = Panel(
+EXTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
+    id=58,
+    title="Operator External Output Queue Size (Blocks)",
+    description="Number of blocks in operator's external output queue",
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_num_external_outqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Number of Blocks: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+EXTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
+    id=59,
+    title="Operator External Output Queue Size (bytes)",
+    description="Byte size of blocks in operator's external output queue",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_num_external_outqueue_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Number of Bytes: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+# Combined Input Queue and Output Queue Blocks Panel
+COMBINED_INQUEUE_BLOCKS_PANEL = Panel(
     id=56,
-    title="Operator Combined Internal + External Inqueue Size (Blocks)",
+    title="Operator Combined Internal + External Input Queue Size (Blocks)",
     description="Total number of blocks in operator's internal + external input queue.",
     unit="blocks",
     targets=[
         Target(
             expr='sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}, operator=~"$Operator"}} + ray_data_num_external_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Combined Blocks: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+COMBINED_OUTQUEUE_BLOCKS_PANEL = Panel(
+    id=60,
+    title="Operator Combined Internal + External Output Queue Size (Blocks)",
+    description="Total number of blocks in operator's internal + external output queue.",
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters}, operator=~"$Operator"}} + ray_data_num_external_outqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
             legend="Combined Blocks: {{dataset}}, {{operator}}",
         )
     ],
@@ -844,7 +889,8 @@ DATA_GRAFANA_ROWS = [
             ROWS_GENERATED_PANEL,
             OBJECT_STORE_MEMORY_PANEL,
             RUNNING_TASKS_PANEL,
-            COMBINED_INQUEUE_OUTQUEUE_BLOCKS_PANEL,
+            COMBINED_INQUEUE_BLOCKS_PANEL,
+            COMBINED_OUTQUEUE_BLOCKS_PANEL,
         ],
         collapsed=False,
     ),
@@ -881,6 +927,8 @@ DATA_GRAFANA_ROWS = [
         panels=[
             INTERNAL_OUTQUEUE_BLOCKS_PANEL,
             INTERNAL_OUTQUEUE_BYTES_PANEL,
+            EXTERNAL_OUTQUEUE_BLOCKS_PANEL,
+            EXTERNAL_OUTQUEUE_BYTES_PANEL,
             MAX_BYTES_TO_READ_PANEL,
         ],
         collapsed=True,

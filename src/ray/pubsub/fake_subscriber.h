@@ -45,11 +45,9 @@ class FakeSubscriber : public SubscriberInterface {
       pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {}
 
-  bool Unsubscribe(rpc::ChannelType channel_type,
+  void Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::optional<std::string> &key_id) override {
-    return true;
-  }
+                   const std::optional<std::string> &key_id) override {}
 
   bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,

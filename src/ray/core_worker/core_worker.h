@@ -42,6 +42,7 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
@@ -181,7 +182,7 @@ class CoreWorker {
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
-             std::shared_ptr<ReferenceCounter> reference_counter,
+             std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
              std::shared_ptr<experimental::MutableObjectProviderInterface>
@@ -1480,7 +1481,7 @@ class CoreWorker {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounter::ReferenceTableProto *borrowed_refs,
+      ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
       std::string *application_error);
 
@@ -1765,7 +1766,7 @@ class CoreWorker {
   boost::thread &io_thread_;
 
   // Keeps track of object ID reference counts.
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
   ///
   /// Fields related to storing and retrieving objects.
