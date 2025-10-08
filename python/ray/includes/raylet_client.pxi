@@ -2,7 +2,13 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.string cimport string as c_string
 from libc.stdint cimport int32_t as c_int32_t
 from libcpp.memory cimport unique_ptr, make_unique, shared_ptr
-from ray.includes.common cimport CThreadedRayletClient, CRayStatus, CAddress
+from ray.includes.common cimport (
+    CThreadedRayletClient,
+    CRayStatus,
+    CAddress,
+    ConnectOnSingletonIoContext
+)
+from cython.operator import dereference
 
 cdef class RayletClient:
     cdef:
@@ -15,6 +21,9 @@ cdef class RayletClient:
         c_ip_address = ip_address.encode('utf-8')
         c_port = <int32_t>port
         self.inner = make_unique[CThreadedRayletClient](c_ip_address, c_port)
+        with nogil:
+            # connects on singleton io context even if multiple raylet clients are created
+            ConnectOnSingletonIoContext(dereference(self.inner))
 
     def get_worker_pids(self, timeout_ms: int = 1000) -> list[int]:
         """Get the PIDs of all workers registered with the raylet."""

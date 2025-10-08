@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -27,22 +28,13 @@ namespace ray {
 namespace rpc {
 
 ThreadedRayletClient::ThreadedRayletClient(const std::string &ip_address, int port)
-    : RayletClient() {
-  io_service_ = std::make_unique<instrumented_io_context>();
-  std::promise<bool> promise;
-  thread_io_service_ = std::make_unique<std::thread>([this, &promise] {
-    SetThreadName("raylet.client");
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
-        io_service_->get_executor());
-    io_service_->run();
-    promise.set_value(true);
-  });
-  promise.get_future().get();
+    : RayletClient(), ip_address_(ip_address), port_(port) {}
 
+void ThreadedRayletClient::Connect(instrumented_io_context &io_service) {
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
-      *io_service_, /*record_stats=*/false, ip_address);
+      io_service, /*record_stats=*/false, ip_address_);
   grpc_client_ = std::make_unique<rpc::GrpcClient<rpc::NodeManagerService>>(
-      ip_address, port, *client_call_manager_);
+      ip_address_, port_, *client_call_manager_);
   auto raylet_unavailable_timeout_callback = []() {
     RAY_LOG(WARNING) << "Raylet is unavailable for "
                      << ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s()
@@ -60,7 +52,7 @@ ThreadedRayletClient::ThreadedRayletClient(const std::string &ip_address, int po
       /*server_unavailable_timeout_callback=*/
       raylet_unavailable_timeout_callback,
       /*server_name=*/
-      std::string("Raylet ") + ip_address);
+      std::string("Raylet ") + ip_address_);
 }
 
 Status ThreadedRayletClient::GetWorkerPIDs(
@@ -93,6 +85,12 @@ Status ThreadedRayletClient::GetWorkerPIDs(
     return Status::TimedOut("Timed out getting worker PIDs from raylet");
   }
   return future.get();
+}
+
+void ConnectOnSingletonIoContext(ThreadedRayletClient &raylet_client) {
+  static InstrumentedIOContextWithThread io_context("raylet_client_io_service");
+  instrumented_io_context &io_service = io_context.GetIoService();
+  raylet_client.Connect(io_service);
 }
 
 }  // namespace rpc

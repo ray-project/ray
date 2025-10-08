@@ -483,7 +483,9 @@ class ReporterAgent(
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
 
-        self._raylet_client = None
+        self._raylet_client = RayletClient(
+            ip_address=self._ip, port=self._dashboard_agent.node_manager_port
+        )
 
     async def GetTraceback(self, request, context):
         pid = request.pid
@@ -887,17 +889,10 @@ class ReporterAgent(
                 stats.write_count,
             )
 
-    def _get_raylet_client(self):
-        if self._raylet_client is None:
-            self._raylet_client = RayletClient(
-                ip_address=self._ip, port=self._dashboard_agent.node_manager_port
-            )
-        return self._raylet_client
-
     def _get_worker_pids_from_raylet(self) -> List[int]:
         try:
             # Get worker pids from raylet via gRPC.
-            return self._get_raylet_client().get_worker_pids()
+            return self._raylet_client.get_worker_pids()
         except TimeoutError as e:
             logger.debug(f"Failed to get worker pids from raylet: {e}")
             return []
@@ -947,9 +942,6 @@ class ReporterAgent(
             for k in keys_to_pop:
                 self._workers.pop(k)
 
-            # Remove the current process (reporter agent), which is also a child of
-            # the Raylet.
-            self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             # Build process ID -> GPU info mapping for faster lookups
             gpu_pid_mapping = defaultdict(list)
             if gpus is not None:
