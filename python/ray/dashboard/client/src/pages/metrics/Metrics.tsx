@@ -3,7 +3,6 @@ import {
   AlertProps,
   Box,
   Button,
-  InputAdornment,
   Link,
   Menu,
   MenuItem,
@@ -11,18 +10,15 @@ import {
   SxProps,
   Tab,
   Tabs,
-  TextField,
   Theme,
   Tooltip,
 } from "@mui/material";
-import React, { useContext, useEffect, useState } from "react";
-import { BiRefresh, BiTime } from "react-icons/bi";
+import React, { useContext, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
 import { useLocalStorage } from "usehooks-ts";
 import { GlobalContext } from "../../App";
 import { ClassNameProps } from "../../common/props";
-import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { MAIN_NAV_HEIGHT } from "../layout/MainNavLayout";
 
@@ -78,9 +74,6 @@ export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
-const CONTROL_TOOLBAR_HEIGHT = 36;
-const TAB_BAR_HEIGHT = 48;
-
 type DashboardTab = "core" | "data";
 
 // Exported for use by Serve metrics sections (they still use individual panels)
@@ -111,60 +104,16 @@ export const Metrics = () => {
     ? `&var-Cluster=${grafanaClusterFilter}`
     : "";
 
-  const [cachedRefreshOptionStr, setCachedRefreshOptionStr] = useLocalStorage<
-    string | null
-  >(`Metrics-refreshOption`, null);
-  const cachedRefreshOption = cachedRefreshOptionStr
-    ? (cachedRefreshOptionStr as RefreshOptions)
-    : undefined;
-
-  const [cachedTimeRangeOptionStr, setCachedTimeRangeOptionStr] =
-    useLocalStorage<string | null>(`Metrics-timeRangeOption`, null);
-
-  const cachedTimeRangeOption = cachedTimeRangeOptionStr
-    ? (cachedTimeRangeOptionStr as TimeRangeOptions)
-    : undefined;
-
   const [cachedSelectedTab, setCachedSelectedTab] = useLocalStorage<
     DashboardTab | null
   >(`Metrics-selectedTab`, null);
-
-  const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
-    cachedRefreshOption ?? RefreshOptions.FIVE_SECONDS,
-  );
-
-  const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    cachedTimeRangeOption ?? TimeRangeOptions.FIVE_MINS,
-  );
 
   const [selectedTab, setSelectedTab] = useState<DashboardTab>(
     cachedSelectedTab ?? "core",
   );
 
-  const [refresh, setRefresh] = useState<string | null>(null);
-
-  const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
-    null,
-    null,
-  ]);
-
-  useEffect(() => {
-    setRefresh(REFRESH_VALUE[refreshOption]);
-  }, [refreshOption]);
-
-  useEffect(() => {
-    const from = TIME_RANGE_TO_FROM_VALUE[timeRangeOption];
-    setTimeRange([from, "now"]);
-  }, [timeRangeOption]);
-
   const [viewInGrafanaMenuRef, setViewInGrafanaMenuRef] =
     useState<HTMLButtonElement | null>(null);
-
-  const fromParam = from !== null ? `&from=${from}` : "";
-  const toParam = to !== null ? `&to=${to}` : "";
-  const timeRangeParams = `${fromParam}${toParam}`;
-
-  const refreshParams = refresh ? `&refresh=${refresh}` : "";
 
   // Build the dashboard URL based on selected tab
   const buildDashboardUrl = (tab: DashboardTab): string => {
@@ -173,6 +122,9 @@ export const Metrics = () => {
     const baseParams = `orgId=${grafanaOrgIdParam}&theme=light&kiosk=tv`;
     const variableParams = `&var-SessionName=${sessionName}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`;
     const timezoneParam = `&timezone=${currentTimeZone}`;
+    // Use default time range (last 5 minutes) and refresh (5 seconds)
+    const timeRangeParams = `&from=now-5m&to=now`;
+    const refreshParams = `&refresh=5s`;
 
     return `${grafanaHost}/d/${dashboardUid}/?${baseParams}${refreshParams}${timeRangeParams}${timezoneParam}${variableParams}`;
   };
@@ -206,110 +158,7 @@ export const Metrics = () => {
               display: "flex",
               flexDirection: "row",
               alignItems: "center",
-              justifyContent: "flex-end",
-              padding: 1,
-              boxShadow: "0px 1px 0px #D2DCE6",
-              zIndex: 1,
-              height: CONTROL_TOOLBAR_HEIGHT,
-              flexShrink: 0,
-            }}
-          >
-            <Button
-              onClick={({ currentTarget }) => {
-                setViewInGrafanaMenuRef(currentTarget);
-              }}
-              endIcon={<RiExternalLinkLine />}
-            >
-              View in Grafana
-            </Button>
-            {viewInGrafanaMenuRef && (
-              <Menu
-                open
-                anchorEl={viewInGrafanaMenuRef}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
-                onClose={() => {
-                  setViewInGrafanaMenuRef(null);
-                }}
-              >
-                <MenuItem
-                  component="a"
-                  href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Core Dashboard
-                </MenuItem>
-                {grafanaDataDashboardUid && (
-                  <Tooltip title="The Ray Data dashboard has a dropdown to filter the data metrics by Dataset ID">
-                    <MenuItem
-                      component="a"
-                      href={`${grafanaHost}/d/${grafanaDataDashboardUid}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Ray Data Dashboard
-                    </MenuItem>
-                  </Tooltip>
-                )}
-              </Menu>
-            )}
-            <TextField
-              sx={{ marginLeft: 2, width: 80 }}
-              select
-              size="small"
-              value={refreshOption}
-              onChange={({ target: { value } }) => {
-                setRefreshOption(value as RefreshOptions);
-                setCachedRefreshOptionStr(value);
-              }}
-              variant="standard"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <BiRefresh style={{ fontSize: 25, paddingBottom: 5 }} />
-                  </InputAdornment>
-                ),
-              }}
-            >
-              {Object.entries(RefreshOptions).map(([key, value]) => (
-                <MenuItem key={key} value={value}>
-                  {value}
-                </MenuItem>
-              ))}
-            </TextField>
-            <HelpInfo>Auto-refresh interval</HelpInfo>
-            <TextField
-              sx={{ marginLeft: 2, width: 140 }}
-              select
-              size="small"
-              value={timeRangeOption}
-              onChange={({ target: { value } }) => {
-                setTimeRangeOption(value as TimeRangeOptions);
-                setCachedTimeRangeOptionStr(value);
-              }}
-              variant="standard"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <BiTime style={{ fontSize: 22, paddingBottom: 5 }} />
-                  </InputAdornment>
-                ),
-              }}
-            >
-              {Object.entries(TimeRangeOptions).map(([key, value]) => (
-                <MenuItem key={key} value={value}>
-                  {value}
-                </MenuItem>
-              ))}
-            </TextField>
-            <HelpInfo>Time range picker</HelpInfo>
-          </Paper>
-          <Paper
-            sx={{
-              position: "sticky",
-              top: MAIN_NAV_HEIGHT + CONTROL_TOOLBAR_HEIGHT,
-              width: "100%",
+              justifyContent: "space-between",
               boxShadow: "0px 1px 0px #D2DCE6",
               zIndex: 1,
               flexShrink: 0,
@@ -322,7 +171,7 @@ export const Metrics = () => {
                 setCachedSelectedTab(newValue as DashboardTab);
               }}
               sx={{
-                borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                borderBottom: "none",
               }}
             >
               <Tab label="Core" value="core" />
@@ -330,6 +179,48 @@ export const Metrics = () => {
                 <Tab label="Ray Data" value="data" />
               )}
             </Tabs>
+            <Box sx={{ paddingRight: 2 }}>
+              <Button
+                onClick={({ currentTarget }) => {
+                  setViewInGrafanaMenuRef(currentTarget);
+                }}
+                endIcon={<RiExternalLinkLine />}
+              >
+                View in Grafana
+              </Button>
+              {viewInGrafanaMenuRef && (
+                <Menu
+                  open
+                  anchorEl={viewInGrafanaMenuRef}
+                  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                  transformOrigin={{ vertical: "top", horizontal: "right" }}
+                  onClose={() => {
+                    setViewInGrafanaMenuRef(null);
+                  }}
+                >
+                  <MenuItem
+                    component="a"
+                    href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Core Dashboard
+                  </MenuItem>
+                  {grafanaDataDashboardUid && (
+                    <Tooltip title="The Ray Data dashboard has a dropdown to filter the data metrics by Dataset ID">
+                      <MenuItem
+                        component="a"
+                        href={`${grafanaHost}/d/${grafanaDataDashboardUid}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ray Data Dashboard
+                      </MenuItem>
+                    </Tooltip>
+                  )}
+                </Menu>
+              )}
+            </Box>
           </Paper>
           <Box
             sx={{
