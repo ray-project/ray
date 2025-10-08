@@ -33,6 +33,7 @@ def ray_init_with_task_retry_delay():
 
 @pytest.fixture
 def ray_init_with_actor_graceful_shutdown_timeout():
+    ray.shutdown()
     address = ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 1000})
     yield address
     ray.shutdown()
