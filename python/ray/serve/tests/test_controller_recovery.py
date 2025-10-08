@@ -476,7 +476,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     resp = httpx.get("http://localhost:8000")
     assert resp.status_code == 200
     wait_for_condition(
-        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
+        check_log_file, log_file=file_path, expected_regex=['"levelname": "DEBUG"']
     )
 
 
