@@ -764,7 +764,7 @@ ITERATION_USER_PANEL = Panel(
 )
 
 ITERATION_GET_PANEL = Panel(
-    id=60,
+    id=70,
     title="Iteration Get Time",
     description="Seconds spent in ray.get() while resolving block references",
     unit="seconds",
@@ -779,7 +779,7 @@ ITERATION_GET_PANEL = Panel(
 )
 
 ITERATION_NEXT_BATCH_PANEL = Panel(
-    id=61,
+    id=71,
     title="Iteration Next Batch Time",
     description="Seconds spent getting the next batch from the block buffer",
     unit="seconds",
@@ -794,7 +794,7 @@ ITERATION_NEXT_BATCH_PANEL = Panel(
 )
 
 ITERATION_FORMAT_BATCH_PANEL = Panel(
-    id=62,
+    id=72,
     title="Iteration Format Batch Time",
     description="Seconds spent formatting the batch",
     unit="seconds",
@@ -809,7 +809,7 @@ ITERATION_FORMAT_BATCH_PANEL = Panel(
 )
 
 ITERATION_COLLATE_BATCH_PANEL = Panel(
-    id=63,
+    id=73,
     title="Iteration Collate Batch Time",
     description="Seconds spent collating the batch",
     unit="seconds",
@@ -824,7 +824,7 @@ ITERATION_COLLATE_BATCH_PANEL = Panel(
 )
 
 ITERATION_FINALIZE_BATCH_PANEL = Panel(
-    id=64,
+    id=74,
     title="Iteration Finalize Batch Time",
     description="Seconds spent finalizing the batch",
     unit="seconds",
@@ -839,7 +839,7 @@ ITERATION_FINALIZE_BATCH_PANEL = Panel(
 )
 
 ITERATION_BLOCKS_LOCAL_PANEL = Panel(
-    id=65,
+    id=75,
     title="Iteration Blocks Local",
     description="Number of blocks already on the local node",
     unit="blocks",
@@ -854,7 +854,7 @@ ITERATION_BLOCKS_LOCAL_PANEL = Panel(
 )
 
 ITERATION_BLOCKS_REMOTE_PANEL = Panel(
-    id=66,
+    id=76,
     title="Iteration Blocks Remote",
     description="Number of blocks that require fetching from another node",
     unit="blocks",
@@ -869,7 +869,7 @@ ITERATION_BLOCKS_REMOTE_PANEL = Panel(
 )
 
 ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
-    id=67,
+    id=77,
     title="Iteration Blocks Unknown Location",
     description="Number of blocks that have unknown locations",
     unit="blocks",
