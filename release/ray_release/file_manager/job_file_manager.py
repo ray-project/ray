@@ -20,7 +20,7 @@ from ray_release.util import (
     GS_BUCKET,
     AZURE_BUCKET,
     AZURE_CLOUD_STORAGE,
-    _parse_abfss_uri,
+    AZURE_CONTAINER,
 )
 
 
@@ -84,14 +84,13 @@ class JobFileManager(FileManager):
             from azure.storage.blob import BlobServiceClient
             from azure.identity import DefaultAzureCredential
 
-            account, container, path = _parse_abfss_uri(key)
-            account_url = f"https://{account}.dfs.core.windows.net"
+            account_url = f"https://{AZURE_BUCKET}.dfs.core.windows.net"
             credential = DefaultAzureCredential(
                 exclude_managed_identity_credential=True
             )
             blob_service_client = BlobServiceClient(account_url, credential)
             blob_client = blob_service_client.get_blob_client(
-                container=container, blob=path
+                container=AZURE_CONTAINER, blob=key
             )
             with open(target, "wb") as f:
                 download_stream = blob_client.download_stream()

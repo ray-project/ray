@@ -36,6 +36,7 @@ GS_CLOUD_STORAGE = "gs"
 AZURE_CLOUD_STORAGE = "abfss"
 GS_BUCKET = "anyscale-oss-dev-bucket"
 AZURE_BUCKET = "rayreleasetests"
+AZURE_CONTAINER = "working-dirs"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
