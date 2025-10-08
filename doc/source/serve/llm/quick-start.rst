@@ -730,7 +730,7 @@ By customizing the placement groups of the GPU workers, you can serve multiple s
             )
         ),
         accelerator_type="L4",
-        resources_per_bundle=dict(GPU=0.49),
+        placement_group_config=dict(bundles=[dict(GPU=0.49)]),
         runtime_env=dict(
             env_vars={
                 "VLLM_RAY_PER_WORKER_GPUS": "0.49",
@@ -742,7 +742,7 @@ By customizing the placement groups of the GPU workers, you can serve multiple s
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=True)
 
-In this example, we have specified 8 replicas of the model, and we use the `resources_per_bundle` to specify the fraction of the GPU that each model will use in placement group. Also we need to set the `VLLM_RAY_PER_WORKER_GPUS` environment variable so that the vLLM GPU workers will each claim a fraction of the GPU. There is also a resource contention [issue](https://github.com/vllm-project/vllm/issues/24601) among workers when doing torch compile caching, so we need to set the `VLLM_DISABLE_COMPILE_CACHE` environment variable to get around it.
+In this example, we have specified 8 replicas of the model, and we use the `placement_group_config` to specify the fraction of the GPU that each model will use in placement group. Also we need to set the `VLLM_RAY_PER_WORKER_GPUS` environment variable so that the vLLM GPU workers will each claim a fraction of the GPU. There is also a resource contention [issue](https://github.com/vllm-project/vllm/issues/24601) among workers when doing torch compile caching, so we need to set the `VLLM_DISABLE_COMPILE_CACHE` environment variable to get around it.
 
 We need to make sure `gpu_memory_utilization` is set to a reasonable value, because vLLM will pre-allocate the GPU memory based on GPU memory utilization, regardless of how we scheduler the Ray GPU workers. In this example, setting it to 0.4 means, that vLLM will target to use 40% of the GPU memory for the model, its kv-cache, CUDAGraph memory, etc.
 
