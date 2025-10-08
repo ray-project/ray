@@ -344,10 +344,13 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             # queue
             self._add_bundled_input(bundled_input)
 
-    def _get_runtime_ray_remote_args(
+    def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
+
+        # max_calls isn't supported in `.options()`, so we remove it when generating dynamic ray_remote_args
+        ray_remote_args.pop("max_calls", None)
 
         # Override parameters from user provided remote args function.
         if self._ray_remote_args_fn:
