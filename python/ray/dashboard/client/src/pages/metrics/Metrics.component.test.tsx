@@ -67,7 +67,7 @@ describe("Metrics", () => {
     expect.assertions(4);
 
     render(<Metrics />, { wrapper: Wrapper });
-    await screen.findByText(/View in Grafana/);
+    await screen.findByText(/View tab in Grafana/);
     expect(screen.getByText(/Core/)).toBeVisible();
     expect(screen.getByText(/Ray Data/)).toBeVisible();
     expect(document.querySelector("iframe")).toBeTruthy();
@@ -85,7 +85,7 @@ describe("Metrics", () => {
     await screen.findByText(
       /Set up Prometheus and Grafana for better Ray Dashboard experience/,
     );
-    expect(screen.queryByText(/View in Grafana/)).toBeNull();
+    expect(screen.queryByText(/View tab in Grafana/)).toBeNull();
     expect(screen.queryByText(/Core/)).toBeNull();
     expect(document.querySelector("iframe")).toBeNull();
   });
@@ -94,7 +94,7 @@ describe("Metrics", () => {
     expect.assertions(11);
 
     render(<Metrics />, { wrapper: Wrapper });
-    await screen.findByText(/View in Grafana/);
+    await screen.findByText(/View tab in Grafana/);
 
     // Get iframe element (should be only one)
     const iframes = document.querySelectorAll("iframe");
@@ -108,7 +108,7 @@ describe("Metrics", () => {
     // Validate required iframe query parameters
     expect(url.searchParams.get("orgId")).toBe("1");
     expect(url.searchParams.get("theme")).toBe("light");
-    expect(url.searchParams.get("kiosk")).toBe("tv");
+    expect(url.searchParams.get("kiosk")).toBe("1");
     expect(url.searchParams.get("var-SessionName")).toBe("session-name");
     expect(url.searchParams.get("var-datasource")).toBe("Prometheus");
     expect(url.searchParams.get("refresh")).toBe("5s");
@@ -153,7 +153,7 @@ describe("Metrics", () => {
     expect.assertions(2);
 
     render(<Metrics />, { wrapper: WrapperWithClusterFilter });
-    await screen.findByText(/View in Grafana/);
+    await screen.findByText(/View tab in Grafana/);
 
     // Get the iframe and validate cluster filter parameter
     const iframes = document.querySelectorAll("iframe");

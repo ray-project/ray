@@ -4,14 +4,11 @@ import {
   Box,
   Button,
   Link,
-  Menu,
-  MenuItem,
   Paper,
   SxProps,
   Tab,
   Tabs,
   Theme,
-  Tooltip,
 } from "@mui/material";
 import React, { useContext, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
@@ -112,14 +109,12 @@ export const Metrics = () => {
     cachedSelectedTab ?? "core",
   );
 
-  const [viewInGrafanaMenuRef, setViewInGrafanaMenuRef] =
-    useState<HTMLButtonElement | null>(null);
-
   // Build the dashboard URL based on selected tab
-  const buildDashboardUrl = (tab: DashboardTab): string => {
+  const buildDashboardUrl = (tab: DashboardTab, kiosk = true): string => {
     const dashboardUid =
       tab === "data" ? grafanaDataDashboardUid : grafanaDefaultDashboardUid;
-    const baseParams = `orgId=${grafanaOrgIdParam}&theme=light&kiosk=tv`;
+    const kioskParam = kiosk ? "&kiosk=1" : "";
+    const baseParams = `orgId=${grafanaOrgIdParam}&theme=light${kioskParam}`;
     const variableParams = `&var-SessionName=${sessionName}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`;
     const timezoneParam = `&timezone=${currentTimeZone}`;
     // Use default time range (last 5 minutes) and refresh (5 seconds)
@@ -130,6 +125,7 @@ export const Metrics = () => {
   };
 
   const currentDashboardUrl = buildDashboardUrl(selectedTab);
+  const currentGrafanaUrl = buildDashboardUrl(selectedTab, false);
 
   return (
     <Box
@@ -181,45 +177,14 @@ export const Metrics = () => {
             </Tabs>
             <Box sx={{ paddingRight: 2 }}>
               <Button
-                onClick={({ currentTarget }) => {
-                  setViewInGrafanaMenuRef(currentTarget);
-                }}
+                component="a"
+                href={currentGrafanaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 endIcon={<RiExternalLinkLine />}
               >
-                View in Grafana
+                View tab in Grafana
               </Button>
-              {viewInGrafanaMenuRef && (
-                <Menu
-                  open
-                  anchorEl={viewInGrafanaMenuRef}
-                  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                  transformOrigin={{ vertical: "top", horizontal: "right" }}
-                  onClose={() => {
-                    setViewInGrafanaMenuRef(null);
-                  }}
-                >
-                  <MenuItem
-                    component="a"
-                    href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Core Dashboard
-                  </MenuItem>
-                  {grafanaDataDashboardUid && (
-                    <Tooltip title="The Ray Data dashboard has a dropdown to filter the data metrics by Dataset ID">
-                      <MenuItem
-                        component="a"
-                        href={`${grafanaHost}/d/${grafanaDataDashboardUid}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Ray Data Dashboard
-                      </MenuItem>
-                    </Tooltip>
-                  )}
-                </Menu>
-              )}
             </Box>
           </Paper>
           <Box
