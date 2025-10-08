@@ -109,6 +109,10 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            # ↓↓↓ make cleanup fast/consistent in CI
+            "object_timeout_milliseconds": 200,
+            "local_gc_min_interval_s": 1,
+            "core_worker_rpc_server_reconnect_timeout_s": 0,
         },
     )
 

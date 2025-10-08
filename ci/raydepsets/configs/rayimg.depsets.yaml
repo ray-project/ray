@@ -1,0 +1,73 @@
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+
+depsets:
+  - name: ray_img_depset_${PYTHON_SHORT}
+    packages:
+      - ray[all]==100.0.0.dev0
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
+    operation: compile
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --find-links=.whl/
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
+
+  - name: ray_base_extra_testdeps_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - python/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
+
+  - name: ray_ml_base_extra_testdeps_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - python/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
