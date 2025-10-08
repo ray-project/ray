@@ -28,7 +28,7 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Set[str]:
     Example: For expression "col1 + col2", returns {"col1", "col2"}
     """
     referenced_columns: Set[str] = set()
-
+    # TODO: Make this compatible with visitor pattern.
     def visit_expr(expr: Expr) -> None:
         """Recursively visit expression nodes to collect column references."""
         if isinstance(expr, ColumnExpr):
@@ -113,7 +113,7 @@ def _rewrite_column_references(
     return expr
 
 
-def _ensure_expression_has_alias(expr: Expr, target_name: str) -> Expr:
+def _try_wrap_expression_with_alias(expr: Expr, target_name: str) -> Expr:
     """
     Ensure an expression outputs with the specified name.
 
@@ -169,7 +169,7 @@ def _try_fuse_consecutive_projects(
     # Step 1: Analyze what the upstream project produces
     upstream_output_columns = {expr.name for expr in upstream_project.exprs}
     upstream_column_definitions = {
-        expr.name: _ensure_expression_has_alias(expr, expr.name)
+        expr.name: _try_wrap_expression_with_alias(expr, expr.name)
         for expr in upstream_project.exprs
     }
 
@@ -213,7 +213,7 @@ def _try_fuse_consecutive_projects(
         # Rewrite the expression to use upstream's definitions
         rewritten_expr = _rewrite_column_references(expr, upstream_column_definitions)
         rewritten_downstream_exprs.append(
-            _ensure_expression_has_alias(rewritten_expr, expr.name)
+            _try_wrap_expression_with_alias(rewritten_expr, expr.name)
         )
 
     # Step 4: Build the fused project based on downstream's behavior
@@ -232,7 +232,7 @@ def _try_fuse_consecutive_projects(
 
     # Start with upstream's column definitions and ordering
     column_definitions = {
-        expr.name: _ensure_expression_has_alias(expr, expr.name)
+        expr.name: _try_wrap_expression_with_alias(expr, expr.name)
         for expr in upstream_project.exprs
     }
     column_order = [expr.name for expr in upstream_project.exprs]
@@ -256,7 +256,7 @@ def _try_fuse_consecutive_projects(
             # Example: col("a").alias("d") means rename "a" to "d"
             source_name, dest_name = rename_pair
             resolved_expr = upstream_column_definitions.get(source_name, expr)
-            column_definitions[dest_name] = _ensure_expression_has_alias(
+            column_definitions[dest_name] = _try_wrap_expression_with_alias(
                 resolved_expr, dest_name
             )
 
@@ -286,7 +286,7 @@ def _try_fuse_consecutive_projects(
         # Example: If downstream has col("b") + 2, and upstream had b: col("y") + 1,
         # we rewrite to: (col("y") + 1) + 2, collapsing both transformations
         rewritten_expr = _rewrite_column_references(expr, upstream_column_definitions)
-        column_definitions[column_name] = _ensure_expression_has_alias(
+        column_definitions[column_name] = _try_wrap_expression_with_alias(
             rewritten_expr, column_name
         )
         if column_name not in column_order:

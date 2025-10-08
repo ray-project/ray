@@ -273,7 +273,7 @@ class Project(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        exprs: List["Expr"],
+        exprs: list["Expr"],
         # `preserve_existing` is required for Project to distinguish between retaining the existing set of columns vs. only using those defined in `exprs`
         # For example, it's set to True for operators like with_column, rename_columns, but False for select_columns since the final set of columns are to be pruned.
         preserve_existing: bool = False,
@@ -293,8 +293,6 @@ class Project(AbstractMap):
         self._preserve_existing = preserve_existing
 
         for expr in self._exprs:
-            if not isinstance(expr, Expr):
-                raise TypeError(f"Expected Expr got {expr} with type: {type(expr)}")
             if expr.name is None:
                 raise TypeError(
                     "All Project expressions must be named; use .alias(name) or col(name)."
