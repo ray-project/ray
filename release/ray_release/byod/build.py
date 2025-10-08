@@ -57,6 +57,17 @@ def build_anyscale_custom_byod_image(
         env=env,
     )
     _validate_and_push(image)
+    if os.environ.get("BUILDKITE"):
+        subprocess.run(
+            [
+                "buildkite-agent",
+                "annotate",
+                "--style=info",
+                "--context=custom-images",
+                "--append",
+                f"{image}<br/>",
+            ],
+        )
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
