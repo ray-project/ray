@@ -3,7 +3,24 @@
 Scheduling
 ==========
 
-For each task or actor, Ray will choose a node to run it and the scheduling decision is based on the following factors.
+This page provides an overview of how Ray decides to schedule tasks and actors to nodes.
+
+.. DJS 19 Sept 2025: There should be an overview of all features and configs that impact scheduling here.
+  This should include descriptions for default values and behaviors, and links to things like default labels or resource definitions that can be used for scheduling without customization.
+
+Labels
+------
+
+Labels provide a simplified solution for controlling scheduling for tasks, actors, and placement group bundles using default and custom labels. See :doc:`./labels`.
+
+Labels are a beta feature. As this feature becomes stable, the Ray team recommends using labels to replace the following patterns:
+
+- NodeAffinitySchedulingStrategy when `soft=false`. Use the default `ray.io/node-id` label instead.
+- The `accelerator_type` option for tasks and actors. Use the default `ray.io/accelerator-type` label instead.
+
+.. note:: 
+
+  A legacy pattern recommended using custom resources for label-based scheduling. We now recommend only using custom resources when you need to manage scheduling using numeric values. 
 
 .. _ray-scheduling-resources:
 
@@ -127,6 +144,7 @@ More about Ray Scheduling
 .. toctree::
     :maxdepth: 1
 
+    labels
     resources
     accelerators
     placement-group
