@@ -127,7 +127,7 @@ TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   remote_node_info.set_node_id(remote_node_id_.Binary());
   node_info_map_[remote_node_id_] = remote_node_info;
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAllNodeAddressAndLiveness)
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAllNodeAddressAndLiveness())
       .WillOnce(::testing::ReturnRef(node_info_map_));
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               GetNodeAddressAndLiveness(remote_node_id_, _))

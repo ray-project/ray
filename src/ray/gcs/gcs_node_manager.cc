@@ -365,6 +365,9 @@ std::vector<rpc::GcsNodeAddressAndLiveness> GcsNodeManager::GetAllNodeAddressAnd
   if (!node_ids.empty()) {
     // optimized path if request only wants specific node ids
     for (const auto &node_id : node_ids) {
+      if (num_added >= limit) {
+        break;
+      }
       if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::ALIVE) {
         auto iter = alive_nodes_.find(node_id);
         if (iter != alive_nodes_.end()) {
