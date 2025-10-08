@@ -119,45 +119,47 @@ def plan_project_op(
             block_accessor = BlockAccessor.for_block(block)
 
             # Skip projection only for schema-less empty blocks.
-            # Note: PyArrow tables with 0 columns but N rows will have num_rows() == 0
-            # due to PyArrow's behavior, but they need to be processed to add columns.
             if (
                 block_accessor.num_rows() == 0
                 and len(block_accessor.column_names()) == 0
             ):
                 return block
 
-            if len(op.exprs) == 0:
-                if not op.preserve_existing:
-                    # Preserve row count for zero-column projection by inserting a stub column.
-                    # This avoids Arrow's zero-column tables collapsing to 0 rows.
-                    if block_accessor.num_rows() > 0:
-                        from ray.data._internal.arrow_block import (
-                            _BATCH_SIZE_PRESERVING_STUB_COL_NAME as _STUB,
-                        )
+            # Check if there's an all() expression
+            from ray.data.expressions import AllColumnsExpr
 
-                        return BlockAccessor.for_block(block).fill_column(_STUB, None)
-                    return block_accessor.select([])
-                return block
+            has_all = any(isinstance(expr, AllColumnsExpr) for expr in op.exprs)
 
-            # Preserve original input column order for preserve_existing semantics.
+            # Preserve original input column order
             existing_cols = list(block_accessor.column_names())
 
-            # Outputs to compute (in order) and their computed data.
+            if len(op.exprs) == 0:
+                # No expressions at all - return empty projection
+                if block_accessor.num_rows() > 0:
+                    from ray.data._internal.arrow_block import (
+                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME as _STUB,
+                    )
+
+                    return BlockAccessor.for_block(block).fill_column(_STUB, None)
+                return block_accessor.select([])
+
+            # Handle single all() with no other expressions
+            if len(op.exprs) == 1 and isinstance(op.exprs[0], AllColumnsExpr):
+                return block  # Identity projection
+
+            # Phase 1: Compute non-all() expressions
             new_output_cols: List[str] = []
             seen_output_names = set()
-
-            # Track direct renames from input schema only:
-            # src_col -> dest_col for col(src).alias(dest) where src is in input_cols.
             rename_map: Dict[str, str] = {}
-
             computed_outputs: Dict[str, Any] = {}
 
-            # Phase 1: compute all outputs from the same input schema.
             for expr in op.exprs:
+                if isinstance(expr, AllColumnsExpr):
+                    continue  # Skip all() for now, handle in Phase 3
+
                 output_name = expr.name
 
-                # Detect simple rename sourced from the input schema.
+                # Detect simple rename sourced from the input schema
                 if (
                     isinstance(expr, AliasExpr)
                     and isinstance(expr.expr, ColumnExpr)
@@ -172,17 +174,17 @@ def plan_project_op(
                 new_output_cols.append(output_name)
                 seen_output_names.add(output_name)
 
-            # Phase 2: Upsert columns onto the block.
+            # Phase 2: Upsert computed columns onto the block
             cur_block = block
             for output_name in new_output_cols:
                 cur_block = BlockAccessor.for_block(cur_block).fill_column(
                     output_name, computed_outputs[output_name]
                 )
 
-            # Phase 3: finalize output schema.
-            if op.preserve_existing:
-                # Start from the input column order, applying only direct renames from input,
-                # then append any new output columns not already included.
+            # Phase 3: Finalize output schema based on all() position
+            if has_all:
+                # all() is present: preserve existing columns
+                # Start from input column order, applying renames, then append new columns
                 final_cols: List[str] = []
                 final_seen = set()
 
@@ -197,7 +199,7 @@ def plan_project_op(
                         final_cols.append(col)
                         final_seen.add(col)
             else:
-                # Exact select: only requested outputs (in order).
+                # No all(): exact select - only requested outputs (in order)
                 final_cols = new_output_cols
 
             return BlockAccessor.for_block(cur_block).select(final_cols)

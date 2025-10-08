@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import Expr
+from ray.data.expressions import Expr, all as rd_all
 
 logger = logging.getLogger(__name__)
 
@@ -852,9 +852,8 @@ class Dataset:
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                exprs=[expr.alias(column_name)],
+                exprs=[rd_all(), expr.alias(column_name)],
                 ray_remote_args=ray_remote_args,
-                preserve_existing=True,
             )
             logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1110,7 +1109,6 @@ class Dataset:
             exprs=exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
-            preserve_existing=False,
         )
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1238,10 +1236,9 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            exprs=exprs,
+            exprs=[rd_all()] + exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
-            preserve_existing=True,
         )
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
@@ -3625,9 +3622,7 @@ class Dataset:
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(
-            Project(self._logical_plan.dag, exprs=[], preserve_existing=False)
-        )
+        count_op = Count(Project(self._logical_plan.dag, exprs=[]))
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
@@ -4049,8 +4044,8 @@ class Dataset:
             concurrency=concurrency,
         )
 
-    @ConsumptionAPI
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    @ConsumptionAPI
     def write_iceberg(
         self,
         table_identifier: str,

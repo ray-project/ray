@@ -14,7 +14,7 @@ from ray.data._internal.logical.rules.projection_pushdown import (
     ProjectionPushdown,
 )
 from ray.data.context import DataContext
-from ray.data.expressions import DataType, col, udf
+from ray.data.expressions import DataType, all, col, udf
 
 
 @dataclass
@@ -121,11 +121,7 @@ class TestProjectionFusion:
                 named_expr = expr.alias(name)
                 exprs.append(named_expr)
 
-            # Set preserve_existing=True for all operators to allow fusion
-            # This means each operator adds new columns while preserving existing ones
-            current_op = Project(
-                current_op, exprs=exprs, preserve_existing=True, ray_remote_args={}
-            )
+            current_op = Project(current_op, exprs=[all()] + exprs, ray_remote_args={})
 
         return current_op
 
@@ -611,7 +607,7 @@ class TestProjectionFusion:
         assert self._count_project_operators(optimized_plan) == 1
         assert (
             self._describe_plan_structure(optimized_plan)
-            == "Project(3 exprs) -> FromItems"  # Changed from multiple operators
+            == "Project(4 exprs) -> FromItems"  # Changed from multiple operators
         )
 
         # Verify execution correctness
@@ -673,11 +669,11 @@ class TestProjectionFusion:
         )  # Changed from 3 to 1
         assert (
             self._describe_plan_structure(optimized_independent)
-            == "Project(3 exprs) -> FromItems"
+            == "Project(4 exprs) -> FromItems"
         )
         assert (
             self._describe_plan_structure(optimized_chained)
-            == "Project(3 exprs) -> FromItems"  # Changed from multiple operators
+            == "Project(4 exprs) -> FromItems"  # Changed from multiple operators
         )
 
     @pytest.mark.parametrize(

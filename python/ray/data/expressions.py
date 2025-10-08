@@ -555,6 +555,29 @@ class AliasExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class AllColumnsExpr(Expr):
+    """Expression that represents all columns from the input.
+
+    This is a special expression used in projections to indicate that
+    all existing columns should be preserved at this position in the output.
+    It's typically used internally by operations like with_column() and
+    rename_columns() to maintain existing columns.
+
+    Example:
+        When with_column("new_col", expr) is called, it creates:
+        Project(exprs=[all(), expr.alias("new_col")])
+
+        This means: keep all existing columns, then add/overwrite "new_col"
+    """
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, AllColumnsExpr)
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -617,6 +640,29 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
+@PublicAPI(stability="beta")
+def all() -> AllColumnsExpr:
+    """
+    Reference all existing columns from the input.
+
+    This is a special expression used in projections to preserve all
+    existing columns. It's typically used with operations that want to
+    add or modify columns while keeping the rest.
+
+    Returns:
+        An AllColumnsExpr that represents all input columns
+
+    Example:
+        >>> from ray.data.expressions import col, lit, all
+        >>> import ray
+        >>> ds = ray.data.from_items([{"a": 1, "b": 2}])
+        >>> # Manually create a projection with all columns plus a new one
+        >>> # (normally with_column does this automatically)
+        >>> ds = ds.select_columns([all(), lit(3).alias("c")])
+    """
+    return AllColumnsExpr()
+
+
 @DeveloperAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
@@ -662,8 +708,10 @@ __all__ = [
     "UDFExpr",
     "DownloadExpr",
     "AliasExpr",
+    "AllColumnsExpr",
     "udf",
     "col",
     "lit",
     "download",
+    "all",
 ]

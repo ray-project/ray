@@ -7,7 +7,7 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr
+from ray.data.expressions import AllColumnsExpr, Expr
 from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
@@ -274,9 +274,6 @@ class Project(AbstractMap):
         self,
         input_op: LogicalOperator,
         exprs: list["Expr"],
-        # `preserve_existing` is required for Project to distinguish between retaining the existing set of columns vs. only using those defined in `exprs`
-        # For example, it's set to True for operators like with_column, rename_columns, but False for select_columns since the final set of columns are to be pruned.
-        preserve_existing: bool = False,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -290,17 +287,17 @@ class Project(AbstractMap):
         self._exprs = exprs
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
-        self._preserve_existing = preserve_existing
 
         for expr in self._exprs:
-            if expr.name is None:
+            if expr.name is None and not isinstance(expr, AllColumnsExpr):
                 raise TypeError(
-                    "All Project expressions must be named; use .alias(name) or col(name)."
+                    "All Project expressions must be named (use .alias(name) or col(name)), "
+                    "or be an all() expression."
                 )
 
-    @property
-    def preserve_existing(self) -> bool:
-        return self._preserve_existing
+    def has_all_columns_expr(self) -> bool:
+        """Check if this projection contains an all() expression."""
+        return any(isinstance(expr, AllColumnsExpr) for expr in self._exprs)
 
     @property
     def exprs(self) -> List["Expr"]:

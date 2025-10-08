@@ -9,6 +9,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data.expressions import (
     AliasExpr,
+    AllColumnsExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
@@ -27,6 +28,10 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Set[str]:
 
     Example: For expression "col1 + col2", returns {"col1", "col2"}
     """
+    # If any expression is all(), we need all columns
+    if any(isinstance(expr, AllColumnsExpr) for expr in exprs):
+        return None
+
     referenced_columns: Set[str] = set()
     # TODO: Make this compatible with visitor pattern.
     def visit_expr(expr: Expr) -> None:
@@ -152,25 +157,24 @@ def _try_fuse_consecutive_projects(
     """
     Attempt to merge two consecutive Project operations into one.
 
-    This optimization eliminates intermediate projections when possible:
-        upstream_project -> downstream_project
-    becomes:
-        fused_project
-
-    Returns the fused Project if valid, or None if fusion is not possible.
-
-    Fusion rules:
-    - If upstream is a selection (preserve_existing=False), downstream can only
-      reference columns produced by upstream.
-    - If upstream preserves existing columns, downstream can reference both
-      upstream outputs and pass-through columns (except those removed by renames).
-    - Column references in downstream are rewritten to use upstream's definitions.
+    Updated to handle AllColumnsExpr instead of preserve_existing flag.
     """
+    from ray.data.expressions import AllColumnsExpr
+
+    # Check if projects have all()
+    upstream_has_all = upstream_project.has_all_columns_expr()
+    downstream_has_all = downstream_project.has_all_columns_expr()
+
     # Step 1: Analyze what the upstream project produces
-    upstream_output_columns = {expr.name for expr in upstream_project.exprs}
+    upstream_output_columns = {
+        expr.name
+        for expr in upstream_project.exprs
+        if not isinstance(expr, AllColumnsExpr)
+    }
     upstream_column_definitions = {
         expr.name: _try_wrap_expression_with_alias(expr, expr.name)
         for expr in upstream_project.exprs
+        if not isinstance(expr, AllColumnsExpr)
     }
 
     # Step 2: Identify columns removed by upstream renames
@@ -178,6 +182,8 @@ def _try_fuse_consecutive_projects(
     # then "col1" is effectively removed and cannot be accessed downstream.
     columns_removed_by_renames: Set[str] = set()
     for expr in upstream_project.exprs:
+        if isinstance(expr, AllColumnsExpr):
+            continue
         rename_pair = _extract_simple_rename(expr)
         if rename_pair is not None:
             source_name, _ = rename_pair
@@ -187,16 +193,21 @@ def _try_fuse_consecutive_projects(
     # Step 3: Validate and rewrite downstream expressions
     rewritten_downstream_exprs: List[Expr] = []
     for expr in downstream_project.exprs:
+        if isinstance(expr, AllColumnsExpr):
+            # all() passes through in fusion
+            rewritten_downstream_exprs.append(expr)
+            continue
+
         # Find which columns this expression references
         referenced_columns = _collect_referenced_columns([expr])
 
-        # Separate columns into: produced by upstream vs. pass-through from original input
+        # Separate columns: produced by upstream vs. pass-through from original input
         columns_from_original_input = referenced_columns - (
             referenced_columns & upstream_output_columns
         )
 
         # Validate that downstream can access the columns it needs
-        if not upstream_project.preserve_existing:
+        if not upstream_has_all:
             # Upstream is a selection: only upstream outputs are visible
             if columns_from_original_input:
                 # Fusion not possible: downstream needs columns not in upstream output
@@ -217,25 +228,32 @@ def _try_fuse_consecutive_projects(
         )
 
     # Step 4: Build the fused project based on downstream's behavior
-    if not downstream_project.preserve_existing:
+    if not downstream_has_all:
         # Downstream is a selection: output only what downstream specifies
         return Project(
             upstream_project.input_dependency,
             exprs=rewritten_downstream_exprs,
-            preserve_existing=False,
             ray_remote_args=downstream_project._ray_remote_args,
         )
 
-    # Step 5: Downstream preserves existing columns: merge both projections
-    # We need to merge upstream and downstream outputs, handling renames carefully.
-    downstream_output_columns = {expr.name for expr in downstream_project.exprs}
+    # Step 5: Downstream has all(): merge both projections
+    downstream_output_columns = {
+        expr.name
+        for expr in downstream_project.exprs
+        if not isinstance(expr, AllColumnsExpr)
+    }
 
     # Start with upstream's column definitions and ordering
     column_definitions = {
         expr.name: _try_wrap_expression_with_alias(expr, expr.name)
         for expr in upstream_project.exprs
+        if not isinstance(expr, AllColumnsExpr)
     }
-    column_order = [expr.name for expr in upstream_project.exprs]
+    column_order = [
+        expr.name
+        for expr in upstream_project.exprs
+        if not isinstance(expr, AllColumnsExpr)
+    ]
 
     # Apply downstream's transformations
     #
@@ -248,6 +266,9 @@ def _try_fuse_consecutive_projects(
     #   - "b" is overwritten with a new definition: (col("y") + 1) + 2
     #   - "c" passes through unchanged from upstream
     for expr in downstream_project.exprs:
+        if isinstance(expr, AllColumnsExpr):
+            continue
+
         column_name = expr.name
         rename_pair = _extract_simple_rename(expr)
 
@@ -290,19 +311,22 @@ def _try_fuse_consecutive_projects(
             rewritten_expr, column_name
         )
         if column_name not in column_order:
-            # New column added by downstream, append to end
             column_order.append(column_name)
 
     # Build final fused project
-    fused_exprs = [column_definitions[name] for name in column_order]
-    fused_preserve_existing = (
-        upstream_project.preserve_existing and downstream_project.preserve_existing
-    )
+    # Only include all() if upstream also had it (preserving selection semantics)
+    if upstream_has_all:
+        # Upstream preserves existing: fused result should too
+        fused_exprs = [AllColumnsExpr()] + [
+            column_definitions[name] for name in column_order
+        ]
+    else:
+        # Upstream is a selection: fused result should only have explicit columns
+        fused_exprs = [column_definitions[name] for name in column_order]
 
     return Project(
         upstream_project.input_dependency,
         exprs=fused_exprs,
-        preserve_existing=fused_preserve_existing,
         ray_remote_args=downstream_project._ray_remote_args,
     )
 
@@ -329,7 +353,7 @@ class ProjectionPushdown(Rule):
         Optimize a single Project operator.
 
         Steps:
-        1. Fuse with upstream Project operations iteratively
+        1. Iteratively fuse with upstream Project operations
         2. Push the resulting projection into the data source if possible
         """
         if not isinstance(op, Project):
@@ -352,13 +376,13 @@ class ProjectionPushdown(Rule):
         # to only read the required columns.
         input_op = current_project.input_dependency
         if (
-            not current_project.preserve_existing  # Must be a selection, not additive
+            not current_project.has_all_columns_expr()  # Must be a selection, not additive
             and isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
             and input_op.supports_projection_pushdown()
         ):
             required_columns = _collect_referenced_columns(list(current_project.exprs))
-            # Push the column list into the source operator
-            optimized_source = input_op.apply_projection(sorted(required_columns))
-            return optimized_source
+            if required_columns is not None:  # None means all() was present
+                optimized_source = input_op.apply_projection(sorted(required_columns))
+                return optimized_source
 
         return current_project

@@ -14,6 +14,7 @@ import pyarrow.dataset as ds
 from ray.data.block import Block, BlockAccessor, BlockColumn
 from ray.data.expressions import (
     AliasExpr,
+    AllColumnsExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
@@ -578,6 +579,12 @@ class NativeExpressionEvaluator:
             return self.visit_udf(expr)
         elif isinstance(expr, AliasExpr):
             return self.visit_alias(expr)
+        elif isinstance(expr, AllColumnsExpr):
+            # all() should not be evaluated directly - it's handled at Project level
+            raise TypeError(
+                "AllColumnsExpr cannot be evaluated as a regular expression. "
+                "It should only be used in Project operations."
+            )
         else:
             raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
