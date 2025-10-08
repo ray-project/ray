@@ -23,6 +23,6 @@ depsets:
     operation: compile
     requirements:
       - requirements_test.txt
-    output: requirements_compiled_pre_hook.txt
+    output: requirements_compiled_pre_hook_invalid.txt
     pre_hooks:
       - pre-hook-error-test.sh

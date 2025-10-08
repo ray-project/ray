@@ -8,12 +8,13 @@ _REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
-def copy_data_to_tmpdir(tmpdir):
+def copy_data_to_tmpdir(tmpdir, ignore=None):
     """Copy test data to a temporary directory."""
     shutil.copytree(
         _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/tests/test_data"),
         tmpdir,
         dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(ignore) if ignore else None,
     )
 
 

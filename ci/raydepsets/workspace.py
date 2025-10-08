@@ -100,7 +100,8 @@ class Workspace:
             raise RuntimeError("BUILD_WORKSPACE_DIRECTORY is not set")
 
     def load_configs(self, config_path: str = None) -> Config:
-        return self.merge_configs(self.get_all_configs(config_path))
+        merged_configs = self.merge_configs(self.get_all_configs(config_path))
+        return merged_configs
 
     def get_all_configs(self, config_path: str = None) -> List[Config]:
         return [self.load_config(path) for path in self.get_configs_dir(config_path)]
@@ -117,7 +118,8 @@ class Workspace:
         with open(os.path.join(self.dir, path), "r") as f:
             data = yaml.safe_load(f)
             config_name = os.path.basename(path)
-            return Config.from_dict(data, config_name)
+            config = Config.from_dict(data, config_name)
+        return config
 
     def merge_configs(self, configs: List[Config]) -> Config:
         return Config(

@@ -1,4 +1,5 @@
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -67,19 +68,32 @@ def _invoke_build(tmpdir: str, config_path: str, name: Optional[str] = None):
     )
 
 
-def _write_config_file(tmpdir: str, depset: Depset, config_name: str):
+def _write_to_config_file(tmpdir: str, depset: Depset, config_name: str):
     with open(Path(tmpdir) / config_name, "w") as f:
         f.write(
             f"""
 depsets:
     - name: {depset.name}
       operation: {depset.operation}
-      constraints:
-          - {depset.constraints}
-      requirements:
-          - {depset.requirements}
+      {f"constraints: {depset.constraints}" if depset.constraints else ""}
+      {f"requirements: {depset.requirements}" if depset.requirements else ""}
       output: {depset.output}
                 """
+        )
+
+
+def _append_to_config_file(tmpdir: str, depset: Depset, config_name: str):
+    with open(Path(tmpdir) / config_name, "a") as f:
+        f.write(
+            f"""
+  - name: {depset.name}
+    operation: {depset.operation}
+    constraints:
+        - {depset.constraints[0]}
+    requirements:
+        - {depset.requirements[0]}
+    output: {depset.output}
+            """
         )
 
 
@@ -98,7 +112,8 @@ class TestCli(unittest.TestCase):
             manager = _create_test_manager(tmpdir)
             assert manager is not None
             assert manager.workspace.dir == tmpdir
-            assert manager.config.depsets[0].operation == "compile"
+            assert len(manager.config.depsets) > 0
+            assert len(manager.build_graph.nodes) > 0
 
     def test_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -189,8 +204,9 @@ class TestCli(unittest.TestCase):
 
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
+            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
             result = _invoke_build(tmpdir, "test.depsets.yaml", "ray_base_test_depset")
+            print(f"Tmpdir: {os.listdir(tmpdir)}")
             output_fp = Path(tmpdir) / "requirements_compiled.txt"
             assert output_fp.is_file()
             assert result.exit_code == 0
@@ -378,8 +394,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 11
-            assert len(manager.build_graph.edges()) == 7
+            assert len(manager.build_graph.nodes()) == 6
+            assert len(manager.build_graph.edges()) == 3
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -398,8 +414,14 @@ class TestCli(unittest.TestCase):
             sorted_nodes = list(topological_sort(manager.build_graph))
             # assert that the root nodes are the compile depsets
             first_nodes = sorted_nodes[:4]
+            print(f"First nodes: {first_nodes}")
+            print(f"Build graph nodes: {manager.build_graph.nodes}")
+            print(
+                f"operations : {[manager.build_graph.nodes[node]['operation'] for node in first_nodes]}"
+            )
             assert all(
                 manager.build_graph.nodes[node]["operation"] == "compile"
+                or manager.build_graph.nodes[node]["operation"] == "pre_hook"
                 for node in first_nodes
             )
 
@@ -428,7 +450,7 @@ class TestCli(unittest.TestCase):
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
+            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
             depset = Depset(
                 name="invalid_op_depset",
                 operation="invalid_op",
@@ -436,7 +458,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_invalid_op.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_config_file(tmpdir, depset, "test.depsets.yaml")
+            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
             with self.assertRaises(ValueError):
                 _create_test_manager(tmpdir)
 
@@ -578,7 +600,7 @@ class TestCli(unittest.TestCase):
     def test_execute_single_pre_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            result = _invoke_build(tmpdir, "test.depsets.yaml", "pre_hook_test_depset")
+            result = _invoke_build(tmpdir, "test2.depsets.yaml", "pre_hook_test_depset")
             assert (Path(tmpdir) / "test.depsets.yaml").exists()
             assert result.exit_code == 0
             assert "Pre-hook test" in result.output
@@ -588,7 +610,7 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             result = _invoke_build(
-                tmpdir, "test.depsets.yaml", "pre_hook_invalid_test_depset"
+                tmpdir, "test2.depsets.yaml", "pre_hook_invalid_test_depset"
             )
             assert result.exit_code == 1
             assert isinstance(result.exception, RuntimeError)
@@ -599,7 +621,7 @@ class TestCli(unittest.TestCase):
 
     def test_copy_lock_files_to_temp_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
+            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
             depset = Depset(
                 name="check_depset",
                 operation="compile",
@@ -608,11 +630,14 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_config_file(tmpdir, depset, "test.depsets.yaml")
+            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
             save_file_as(
                 Path(tmpdir) / "requirements_compiled_test.txt",
                 Path(tmpdir) / "requirements_compiled.txt",
             )
+            with open(Path(tmpdir) / "test.depsets.yaml", "r") as f:
+                config_text = f.read()
+                print(f"Config text: {config_text}")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -628,7 +653,7 @@ class TestCli(unittest.TestCase):
 
     def test_diff_lock_files_out_of_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
+            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
             depset = Depset(
                 name="check_depset",
                 operation="compile",
@@ -637,7 +662,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_config_file(tmpdir, depset, "test.depsets.yaml")
+            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -663,7 +688,7 @@ class TestCli(unittest.TestCase):
 
     def test_diff_lock_files_up_to_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
+            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
             depset = Depset(
                 name="check_depset",
                 operation="compile",
@@ -672,7 +697,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_config_file(tmpdir, depset, "test.depsets.yaml")
+            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],

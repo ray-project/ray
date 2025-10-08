@@ -11,7 +11,7 @@ from typing import List, Optional
 
 import click
 import runfiles
-from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
+from networkx import DiGraph, ancestors as networkx_ancestors
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -104,10 +104,7 @@ class DependencySetManager:
 
     def get_output_paths(self) -> List[Path]:
         output_paths = []
-        print(f"Build graph nodes: {len(self.build_graph.nodes)}")
         for node in self.build_graph.nodes:
-            print(f"Node: {node}")
-            print(f"Node type: {self.build_graph.nodes[node]['node_type']}")
             if self.build_graph.nodes[node]["node_type"] == "depset":
                 output_paths.append(Path(self.build_graph.nodes[node]["depset"].output))
         return output_paths
@@ -192,22 +189,20 @@ class DependencySetManager:
                         config_name=depset.config_name,
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
+        self.subgraph_config_nodes()
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
         nodes = dependency_nodes | {depset_name}
-        new_graph = self.build_graph.subgraph(nodes).copy()
-        self.build_graph = list(topological_sort(new_graph))
+        self.build_graph = self.build_graph.subgraph(nodes).copy()
 
     def subgraph_config_nodes(self):
-        print(f"type of build graph: {type(self.build_graph)}")
         # Get all nodes that have the target config name
         config_nodes = [
             node
             for node in self.build_graph.nodes
             if self.build_graph.nodes[node]["config_name"] == self.config_name
         ]
-        print(f"Config nodes type: {type(config_nodes[0])}")
         # Get all ancestors of the target config nodes
         ancestors_by_confg_node = {
             n: networkx_ancestors(self.build_graph, n) for n in config_nodes
@@ -216,20 +211,13 @@ class DependencySetManager:
             *(ancestors_by_confg_node[n] for n in config_nodes)
         )
         nodes = set(config_nodes) | config_nodes_ancestors
-        print(f"Subgraph config nodes type: {nodes}")
-        print(f"Nodes: {nodes}")
-        new_graph = self.build_graph.subgraph(nodes).copy()
-        print(f"new graph config type: {type(new_graph)}")
-        self.build_graph = list(topological_sort(new_graph))
+        self.build_graph = self.build_graph.subgraph(nodes).copy()
 
     def execute(self, single_depset_name: Optional[str] = None):
         if single_depset_name:
             # check if the depset exists
             _get_depset(self.config.depsets, single_depset_name)
             self.subgraph_dependency_nodes(single_depset_name)
-        else:
-            self.subgraph_config_nodes()
-            print(f"Build graph nodes (post subgraph): {len(self.build_graph.nodes)}")
         for node in self.build_graph:
             node_type = self.build_graph.nodes[node]["node_type"]
             if node_type == "pre_hook":

@@ -34,6 +34,13 @@ depsets:
     requirements:
       - requirement_constraints_subset.txt
     output: requirements_compiled_subset_general.txt
+  - name: expanded_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+    operation: compile
+    requirements:
+      - requirements_expanded.txt
+    output: requirements_compiled_expanded.txt
+    build_arg_sets:
+      - py311_cpu
   - name: expand_general_depset__${PYTHON_VERSION}_${CUDA_VERSION}
     operation: expand
     depsets:
@@ -42,12 +49,5 @@ depsets:
     constraints:
       - requirement_constraints_expand.txt
     output: requirements_compiled_expand_general.txt
-    build_arg_sets:
-      - py311_cpu
-  - name: expanded_depset__${PYTHON_VERSION}_${CUDA_VERSION}
-    operation: compile
-    requirements:
-      - requirements_expanded.txt
-    output: requirements_compiled_expanded.txt
     build_arg_sets:
       - py311_cpu
