@@ -9,6 +9,7 @@ from ray_release.logger import logger
 from ray_release.test import (
     Test,
 )
+from ray_release.util import AZURE_REGISTRY_NAME
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -68,6 +69,9 @@ def build_anyscale_custom_byod_image(
                 f"{image}<br/>",
             ],
         )
+    tag_without_registry = image.split("/")[-1]
+    azure_tag = f"{AZURE_REGISTRY_NAME}.azurecr.io/{tag_without_registry}"
+    _tag_and_push(source=image, target=azure_tag)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
@@ -146,3 +150,14 @@ def _image_exist(image: str) -> bool:
         stderr=sys.stderr,
     )
     return p.returncode == 0
+
+
+def _tag_and_push(source: str, target: str) -> None:
+    subprocess.check_call(
+        ["docker", "tag", source, target],
+        stdout=sys.stderr,
+    )
+    subprocess.check_call(
+        ["docker", "push", target],
+        stdout=sys.stderr,
+    )
