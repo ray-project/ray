@@ -191,7 +191,7 @@ class FuseOperators(Rule):
             or (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, Repartition)
-                and down_logical_op._shuffle_blocks
+                and down_logical_op._hash_shuffle
             )
         ):
             return False
@@ -454,7 +454,7 @@ class FuseOperators(Rule):
             logical_op = Repartition(
                 input_op,
                 num_outputs=down_logical_op._num_outputs,
-                shuffle=down_logical_op._shuffle_blocks,
+                hash_shuffle=down_logical_op._hash_shuffle,
             )
         self._op_map[op] = logical_op
         # Return the fused physical operator.

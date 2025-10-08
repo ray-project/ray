@@ -77,12 +77,14 @@ class RandomShuffle(AbstractAllToAll):
         self,
         input_op: LogicalOperator,
         name: str = "RandomShuffle",
+        num_outputs: Optional[int] = None,
         seed: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             name,
             input_op,
+            num_outputs=num_outputs,
             sub_progress_bar_names=[
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -111,11 +113,12 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         self,
         input_op: LogicalOperator,
         num_outputs: int,
-        shuffle: bool,
+        hash_shuffle: bool,
+        random_permute: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
     ):
-        if shuffle:
+        if hash_shuffle:
             sub_progress_bar_names = [
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -130,8 +133,10 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
         )
-        self._shuffle_blocks = shuffle
-        self._random_shuffle = False
+        # Will perform a hash-shuffle-based partition
+        self._hash_shuffle = hash_shuffle
+        # Will randomly shuffle the block's orders
+        self._random_permute = random_permute
         self._keys = keys
         self._sort = sort
 
