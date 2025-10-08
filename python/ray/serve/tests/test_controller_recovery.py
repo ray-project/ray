@@ -472,11 +472,12 @@ def test_controller_crashes_with_logging_config(serve_instance):
     proxy_handles = ray.get(client._controller.get_proxies.remote())
     proxy_handle = list(proxy_handles.values())[0]
     file_path = ray.get(proxy_handle._get_logging_config.remote())
-    # Send request, we should see json logging and debug log message in proxy log.
-    resp = httpx.get("http://localhost:8000")
-    assert resp.status_code == 200
+    # We should see the health check debug log in the proxy logs.
     wait_for_condition(
-        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
+        check_log_file,
+        log_file=file_path,
+        expected_regex=['"message": "Received health check."'],
+        timeout=15,  # The health check period is 10 seconds.
     )
 
 
