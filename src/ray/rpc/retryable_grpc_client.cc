@@ -80,18 +80,12 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   case GRPC_CHANNEL_TRANSIENT_FAILURE:
   case GRPC_CHANNEL_CONNECTING: {
     if (server_unavailable_timeout_time_ < now) {
+      RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
+                       << server_unavailable_timeout_seconds_ << " seconds";
       server_unavailable_timeout_callback_();
-      if (server_unavailable_timeout_seconds_ == -1) {
-        // For raylets, the gcs/gcs_node_manager will notify us when the node has died
-        // hence we only need to check if the channel is available
-        server_unavailable_timeout_time_ = absl::InfiniteFuture();
-      } else {
-        // For core workers, remote raylets and other core workers are not notified when
-        // the worker has died hence we need to check this ourselves via the unavailable
-        // timeout callback
-        server_unavailable_timeout_time_ =
-            now + absl::Seconds(server_unavailable_timeout_seconds_);
-      }
+      // Reset the unavailable timeout.
+      server_unavailable_timeout_time_ =
+          now + absl::Seconds(server_unavailable_timeout_seconds_);
     }
 
     if (reset_timer) {
