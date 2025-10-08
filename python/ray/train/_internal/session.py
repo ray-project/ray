@@ -250,6 +250,7 @@ class _TrainSession:
         """
         # Set the stop event for the training thread to gracefully exit.
         self.stop_event.set()
+        print(f">>> [debugging] train session, we entered here to finish, stop_event: {self.stop_event.is_set()}")
 
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()

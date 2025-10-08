@@ -55,6 +55,7 @@ from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.train._internal.session import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ class DataParallelTrainer:
             train_func_context=self.backend_config.train_func_context,
             fn_arg_name="train_loop_per_worker",
         )
+    
 
     def fit(self) -> Result:
         """Launches the Ray Train controller to run training on workers.
@@ -241,7 +243,38 @@ class DataParallelTrainer:
         if threading.current_thread() is threading.main_thread():
             self._register_sigint_handler(controller)
 
-        ray.get(controller.run.remote())
+        # ray.get(controller.run.remote())
+        run_ref = controller.run.remote()
+        while True:
+            if get_session():
+                print(f">>> [debugging] data parallel trainer, we entered here to wait because of Ray Tune session")
+                print(f">>> [debugging] data parallel trainer, session trial id: {get_session().trial_info.id}")
+                print(f">>> [debugging] data parallel trainer, session.stop_event is set?: {get_session().stop_event.is_set()}")
+            else:
+                print(f">>> [debugging] data parallel trainer, we entered here to wait because of we cannot find tune session")
+
+            ready, _ = ray.wait([run_ref], timeout=1.0)
+            if ready:
+                break
+            # Observe Train’s stop flag (set by FunctionTrainable.cleanup()).
+            try:
+                if get_session() and get_session().stop_event.is_set():
+                    # 1) Ask controller to abort so it cleans up workers/PG.
+                    try:
+                        print(f">>> [debugging] data parallel trainer, we entered here to abort because of Ray Tune stop event")
+                        ray.get(controller.abort.remote())
+                    except ray.exceptions.RayActorError:
+                        pass
+                    # 2) Ensure the wait unblocks immediately.
+                    try:
+                        ray.cancel(run_ref, force=True)
+                    except Exception:
+                        pass
+                    break
+            except Exception:
+                # Not in a Train session (non-Tune path); ignore
+                pass
+
         return ray.get(controller.get_result.remote())
 
     def _register_sigint_handler(self, controller: ActorHandle[TrainController]):
