@@ -119,11 +119,11 @@ class _PyArrowExpressionVisitor:
         import pyarrow.compute as pc
 
         # Special handling for IN and NOT_IN operations
-        # These need the right operand to be unwrapped from scalar/expression
+        # PyArrow's is_in expects the value_set to be an array, not an expression
         if expr.op in (Operation.IN, Operation.NOT_IN):
             left = self.visit(expr.left)
 
-            # Extract the actual value from the right side if it's a literal
+            # Check the type of the right operand BEFORE visiting
             if isinstance(expr.right, LiteralExpr):
                 # For literal lists, convert directly to pa.array
                 right_value = expr.right.value
@@ -133,14 +133,13 @@ class _PyArrowExpressionVisitor:
                     # Single value, wrap in array
                     right = pa.array([right_value])
             else:
-                # For non-literals (e.g., column references), visit normally
-                right = self.visit(expr.right)
-                # If it's a scalar, extract the value
-                if isinstance(right, pc.Expression):
-                    # This case is complex - for now, raise an error
-                    raise ValueError(
-                        "is_in/not_in operations require the value set to be a literal list"
-                    )
+                # PyArrow's is_in doesn't support expressions as the value_set
+                # It requires an actual array of values
+                raise ValueError(
+                    f"is_in/not_in operations require the right operand to be a "
+                    f"literal list, got {type(expr.right).__name__}. "
+                    f"Column-to-column is_in is not supported in PyArrow expressions."
+                )
 
             # Now apply the operation
             result = pc.is_in(left, right)
