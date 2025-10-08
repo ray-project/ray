@@ -82,18 +82,22 @@ depsets:
 
 
 def _append_to_config_file(tmpdir: str, depset: Depset, config_name: str):
-    with open(Path(tmpdir) / config_name, "a") as f:
-        f.write(
-            f"""
+    content = f"""
   - name: {depset.name}
     operation: {depset.operation}
-    constraints:
-        - {depset.constraints[0]}
-    requirements:
-        - {depset.requirements[0]}
-    output: {depset.output}
-            """
+"""
+    if depset.constraints:
+        content += "    constraints:\n" + "\n".join(
+            f"        - {c}" for c in depset.constraints
         )
+    if depset.requirements:
+        content += "\n    requirements:\n" + "\n".join(
+            f"        - {r}" for r in depset.requirements
+        )
+    content += f"\n    output: {depset.output}\n"
+
+    with open(Path(tmpdir) / config_name, "a") as f:
+        f.write(content)
 
 
 class TestCli(unittest.TestCase):
