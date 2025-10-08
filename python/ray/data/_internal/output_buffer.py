@@ -11,6 +11,7 @@ from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, MAX_SAFE_ROWS_PER_BLOCK
 class OutputBlockSizeOption:
     target_max_block_size: Optional[int] = None
     target_num_rows_per_block: Optional[int] = None
+    override_max_safe_rows_per_block_factor: Optional[int] = None
 
     def __post_init__(self):
         if (
@@ -27,6 +28,7 @@ class OutputBlockSizeOption:
         cls,
         target_max_block_size: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
+        override_max_safe_rows_per_block_factor: Optional[int] = None,
     ) -> Optional["OutputBlockSizeOption"]:
         if target_max_block_size is None and target_num_rows_per_block is None:
             return None
@@ -34,6 +36,7 @@ class OutputBlockSizeOption:
             return OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size,
                 target_num_rows_per_block=target_num_rows_per_block,
+                override_max_safe_rows_per_block_factor=override_max_safe_rows_per_block_factor,
             )
 
 
@@ -147,10 +150,18 @@ class BlockOutputBuffer:
         # Slice a block to respect the target max rows per block. We only do this if we
         # are more than 50% above the target rows per block, because this ensures that
         # the last block produced will be at least half the target row count.
+        max_safe_rows_per_block_factor = MAX_SAFE_ROWS_PER_BLOCK_FACTOR
+        if (
+            self._output_block_size_option.override_max_safe_rows_per_block_factor
+            is not None
+        ):
+            max_safe_rows_per_block_factor = (
+                self._output_block_size_option.override_max_safe_rows_per_block_factor
+            )
         return (
             self._max_num_rows_per_block() is not None
             and block.num_rows()
-            >= MAX_SAFE_ROWS_PER_BLOCK_FACTOR * self._max_num_rows_per_block()
+            >= max_safe_rows_per_block_factor * self._max_num_rows_per_block()
         )
 
     def next(self) -> Block:

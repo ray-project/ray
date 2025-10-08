@@ -1,7 +1,7 @@
 import functools
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Literal, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -355,19 +355,30 @@ class StreamingRepartition(AbstractMap):
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for
            streaming repartition.
+        mode: The mode for streaming repartition. "approximate" is the default mode. "exact" is the mode that guarantees exact row counts per block.
     """
 
     def __init__(
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
+        mode: Literal["approximate", "exact"] = "approximate",
     ):
         super().__init__("StreamingRepartition", input_op)
         self._target_num_rows_per_block = target_num_rows_per_block
+        self._min_rows_per_bundled_input = None
+        self._override_max_safe_rows_per_block_factor = None
+        if mode == "exact":
+            self._override_max_safe_rows_per_block_factor = 1
+            self._min_rows_per_bundled_input = float("inf")
 
     @property
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
+
+    @property
+    def override_max_safe_rows_per_block_factor(self) -> int:
+        return self._override_max_safe_rows_per_block_factor
 
     def can_modify_num_rows(self) -> bool:
         return False
