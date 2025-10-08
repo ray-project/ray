@@ -25,6 +25,8 @@ def check_cluster(target_num_nodes: int, target_resources: Dict[str, float]):
     for k, v in target_resources.items():
         assert cluster_status.total_resources().get(k, 0) == v
 
+    return True
+
 
 ctx = {
     "num_cpus": 0,
