@@ -1273,9 +1273,18 @@ def check_version_info(
             - Python patch versions do not match, AND
             - python_version_match_level == 'minor' AND
             - raise_on_mismatch == False.
+
+    Note:
+        The `RAY_PYTHON_VERSION_MATCH_LEVEL` environment variable can be used to
+        override the python_version_match_level argument.
+
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
+    python_version_match_level = os.environ.get(
+        "RAY_PYTHON_VERSION_MATCH_LEVEL", python_version_match_level
+    )
+
     cluster_version_info = (
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
