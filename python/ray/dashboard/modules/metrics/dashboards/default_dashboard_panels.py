@@ -641,15 +641,9 @@ DEFAULT_GRAFANA_ROWS = [
         collapsed=False,
     ),
     Row(
-        title="Ray Tasks, Actors and Placement Groups",
-        id=1002,
-        panels=RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS,
-        collapsed=False,
-    ),
-    Row(
-        title="Ray Resources by Node",
-        id=1003,
-        panels=RAY_RESOURCES_PANELS,
+        title="Hardware Utilization by Node",
+        id=1005,
+        panels=NODE_HARDWARE_UTILIZATION_PANELS,
         collapsed=False,
     ),
     Row(
@@ -659,9 +653,15 @@ DEFAULT_GRAFANA_ROWS = [
         collapsed=False,
     ),
     Row(
-        title="Hardware Utilization by Node",
-        id=1005,
-        panels=NODE_HARDWARE_UTILIZATION_PANELS,
+        title="Ray Resources by Node",
+        id=1003,
+        panels=RAY_RESOURCES_PANELS,
+        collapsed=False,
+    ),
+    Row(
+        title="Ray Tasks, Actors and Placement Groups",
+        id=1002,
+        panels=RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS,
         collapsed=False,
     ),
     Row(
