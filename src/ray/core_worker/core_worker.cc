@@ -111,7 +111,7 @@ ObjectLocation CreateObjectLocation(
 }
 
 std::optional<ObjectLocation> TryGetLocalObjectLocation(
-    ReferenceCounter &reference_counter, const ObjectID &object_id) {
+    ReferenceCounterInterface &reference_counter, const ObjectID &object_id) {
   if (!reference_counter.HasReference(object_id)) {
     return std::nullopt;
   }
@@ -285,7 +285,7 @@ CoreWorker::CoreWorker(
     std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::shared_ptr<RayletClientInterface> local_raylet_rpc_client,
     boost::thread &io_thread,
-    std::shared_ptr<ReferenceCounter> reference_counter,
+    std::shared_ptr<ReferenceCounterInterface> reference_counter,
     std::shared_ptr<CoreWorkerMemoryStore> memory_store,
     std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
     std::shared_ptr<experimental::MutableObjectProviderInterface>
@@ -345,8 +345,17 @@ CoreWorker::CoreWorker(
       task_counter_(task_by_state_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
-      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
-      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+      actor_shutdown_callback_(options_.actor_shutdown_callback),
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap),
+      free_actor_object_callback_(
+          [this, free_actor_object_callback = options_.free_actor_object_callback](
+              const ObjectID &object_id) {
+            // Need to post to the io service to prevent deadlock because this submits a
+            // task and therefore needs to acquire the reference counter lock.
+            io_service_.post([free_actor_object_callback,
+                              object_id]() { free_actor_object_callback(object_id); },
+                             "CoreWorker.FreeActorObjectCallback");
+          }) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -1023,8 +1032,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
 
     // Register the callback to free the GPU object when it is out of scope.
     if (tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
-      reference_counter_->AddObjectOutOfScopeOrFreedCallback(
-          *object_id, options_.free_actor_object_callback);
+      reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
+                                                             free_actor_object_callback_);
     }
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
@@ -1965,7 +1974,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*include_job_config=*/true,
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_event=*/task_options.enable_task_events,
+                      /*enable_task_events=*/task_options.enable_task_events,
                       task_options.labels,
                       task_options.label_selector);
   ActorID root_detached_actor_id;
@@ -2695,7 +2704,7 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-    ReferenceCounter::ReferenceTableProto *borrowed_refs,
+    ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
@@ -3070,7 +3079,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     // we borrow the object. When the object value is allocatd, the
     // memory store is updated. We should clear borrowers and memory store
     // here.
-    ReferenceCounter::ReferenceTableProto borrowed_refs;
+    ReferenceCounterInterface::ReferenceTableProto borrowed_refs;
     reference_counter_->PopAndClearLocalBorrowers(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
@@ -3140,7 +3149,7 @@ void CoreWorker::HandleReportGeneratorItemReturns(
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
   auto return_objects = std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>();
-  auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
+  auto borrowed_refs = ReferenceCounterInterface::ReferenceTableProto();
 
   std::vector<rpc::ObjectReference> returned_refs;
   size_t num_returns = task_spec.NumReturns();
@@ -4344,14 +4353,6 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
     // to be ready).
     callback();
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                                       rpc::FreeActorObjectReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  options_.free_actor_object_callback(object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

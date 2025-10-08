@@ -51,11 +51,6 @@ LLM_CONFIG = LLMConfig(
         },
         "max_ongoing_requests": 8192,
     },
-    runtime_env={
-        "env_vars": {
-            "VLLM_USE_V1": "1",
-        },
-    },
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_model_len": TEST_MAX_MODEL_LEN,

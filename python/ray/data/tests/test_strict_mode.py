@@ -258,12 +258,32 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
     [
         (pd.ArrowDtype(pa.int32()), pa.int32()),
         (np.dtype("int64"), pa.int64()),
+        # Integer nullable types
+        (pd.Int8Dtype(), pa.int8()),
+        (pd.Int16Dtype(), pa.int16()),
+        (pd.Int32Dtype(), pa.int32()),
+        (pd.Int64Dtype(), pa.int64()),
+        (pd.UInt8Dtype(), pa.uint8()),
+        (pd.UInt16Dtype(), pa.uint16()),
+        (pd.UInt32Dtype(), pa.uint32()),
+        (pd.UInt64Dtype(), pa.uint64()),
+        # Float nullable types
+        (pd.Float32Dtype(), pa.float32()),
+        (pd.Float64Dtype(), pa.float64()),
+        # Boolean nullable type
+        (pd.BooleanDtype(), pa.bool_()),
+        # String type (default storage)
+        (pd.StringDtype(), pa.string()),
+        # String type with explicit pyarrow storage
+        (pd.StringDtype(storage="pyarrow"), pa.string()),
+        # String type with python storage
+        (pd.StringDtype(storage="python"), pa.string()),
     ],
 )
 def test_schema_types_property(input_dtype, expected_arrow_type):
     """
     Tests that the Schema.types property correctly converts pandas and numpy
-    dtypes to pyarrow types.
+    dtypes to pyarrow types, including BaseMaskedDtype subclasses.
     """
     from ray.data._internal.pandas_block import PandasBlockSchema
 

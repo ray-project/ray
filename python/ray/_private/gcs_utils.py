@@ -111,15 +111,14 @@ def cleanup_redis_storage(
     storage_namespace: str,
     username: Optional[str] = None,
 ):
-    """This function is used to cleanup the storage. Before we having
-    a good design for storage backend, it can be used to delete the old
-    data. It support redis cluster and non cluster mode.
+    """This function is used to cleanup the GCS storage in Redis.
+    It supports Redis in cluster and non-cluster modes.
 
     Args:
-       host: The host address of the Redis.
-       port: The port of the Redis.
-       username: The username of the Redis.
-       password: The password of the Redis.
+       host: The Redis host address.
+       port: The Redis port.
+       username: The Redis username.
+       password: The Redis password.
        use_ssl: Whether to encrypt the connection.
        storage_namespace: The namespace of the storage to be deleted.
     """
@@ -147,9 +146,9 @@ def cleanup_redis_storage(
     if not isinstance(storage_namespace, str):
         raise ValueError("storage namespace must be a string")
 
-    # Right now, GCS stores all data into multiple hashes with keys prefixed by
+    # Right now, GCS stores all data in multiple hashes with keys prefixed by
     # storage_namespace. So we only need to delete the specific key prefix to cleanup
-    # the cluster.
+    # the cluster's data.
     # Note this deletes all keys with prefix `RAY{key_prefix}@`, not `{key_prefix}`.
     return del_key_prefix_from_storage(
         host, port, username, password, use_ssl, storage_namespace

@@ -3,6 +3,7 @@ import logging
 import time
 
 import cupy
+import torch
 
 import ray
 from ray.util.collective.collective_group import nccl_util
@@ -657,6 +658,9 @@ class NCCLGroup(BaseGroup):
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
         for i, tensor in enumerate(tensors):
             p2p_fn(tensor, comms[i], streams[i], peer_p2p_rank)
+            # Record the stream to avoid tensor being freed before the send/recv is completed.
+            torch_stream = torch.cuda.ExternalStream(streams[i].ptr)
+            tensor.record_stream(torch_stream)
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):

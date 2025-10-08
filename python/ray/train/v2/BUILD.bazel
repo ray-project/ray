@@ -1,4 +1,20 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    name = "py_doctest[train_v2]",
+    size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    files = glob(
+        ["**/*.py"],
+        exclude = [
+            "tests/**",
+            "horovod/**",
+            "jax/**",
+        ],
+    ),
+    tags = ["team:ml"],
+)
 
 py_library(
     name = "conftest",
@@ -444,9 +460,8 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu_only",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -478,7 +493,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
-        "train_v2",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",

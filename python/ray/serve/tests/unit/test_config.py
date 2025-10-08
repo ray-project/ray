@@ -128,6 +128,21 @@ class TestDeploymentConfig:
         # Test dynamic default for max_ongoing_requests.
         assert DeploymentConfig().max_ongoing_requests == 5
 
+    def test_max_constructor_retry_count_validation(self):
+        # Test max_constructor_retry_count validation.
+        DeploymentConfig(max_constructor_retry_count=1)
+        DeploymentConfig(max_constructor_retry_count=10)
+
+        with pytest.raises(ValidationError, match="type_error"):
+            DeploymentConfig(max_constructor_retry_count="hello")
+        with pytest.raises(ValidationError, match="value_error"):
+            DeploymentConfig(max_constructor_retry_count=-1)
+        with pytest.raises(ValidationError, match="value_error"):
+            DeploymentConfig(max_constructor_retry_count=0)
+
+        # Test default value
+        assert DeploymentConfig().max_constructor_retry_count == 20
+
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
 

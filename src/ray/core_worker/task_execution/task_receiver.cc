@@ -81,9 +81,11 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       }
 
       bool objects_valid = return_objects.size() == num_returns;
-      for (const auto &return_object : return_objects) {
-        if (return_object.second == nullptr) {
+      size_t empty_object_idx = 0;
+      for (size_t i = 0; i < return_objects.size(); i++) {
+        if (return_objects[i].second == nullptr) {
           objects_valid = false;
+          empty_object_idx = i;
         }
       }
 
@@ -154,18 +156,35 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         }
       } else {
         RAY_CHECK_OK(status);
-        RAY_CHECK(objects_valid);
+        RAY_CHECK(objects_valid)
+            << num_returns << " return objects expected, " << return_objects.size()
+            << " returned. Object at idx " << empty_object_idx << " was not stored.";
         accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
       }
     };
   };
 
-  auto cancel_callback = [reply](
+  auto cancel_callback = [this, reply](
                              const TaskSpecification &canceled_task_spec,
                              const Status &status,
                              const rpc::SendReplyCallback &canceled_send_reply_callback) {
     if (canceled_task_spec.IsActorTask()) {
-      canceled_send_reply_callback(status, nullptr, nullptr);
+      // If task cancelation is due to worker shutdown, propagate that information
+      // to the submitter.
+      bool is_worker_exiting = false;
+      {
+        absl::MutexLock lock(&stop_mu_);
+        is_worker_exiting = stopping_;
+        if (stopping_) {
+          reply->set_worker_exiting(true);
+          reply->set_was_cancelled_before_running(true);
+        }
+      }
+      if (is_worker_exiting) {
+        canceled_send_reply_callback(Status::OK(), nullptr, nullptr);
+      } else {
+        canceled_send_reply_callback(status, nullptr, nullptr);
+      }
     } else {
       reply->set_was_cancelled_before_running(true);
       canceled_send_reply_callback(status, nullptr, nullptr);
@@ -174,16 +193,15 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
 
   {
     absl::MutexLock lock(&stop_mu_);
+    task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
     if (stopping_) {
-      RAY_LOG(INFO)
-          << "Rejecting PushTask due to worker shutdown: task will be cancelled";
       reply->set_was_cancelled_before_running(true);
-      send_reply_callback(
-          Status::SchedulingCancelled("Worker is shutting down"), nullptr, nullptr);
+      if (task_spec.IsActorTask()) {
+        reply->set_worker_exiting(true);
+      }
+      send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
-
-    task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
 
     if (task_spec.IsActorCreationTask()) {
       SetupActor(task_spec.IsAsyncioActor(),

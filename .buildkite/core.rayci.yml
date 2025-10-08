@@ -2,6 +2,8 @@ group: core tests
 depends_on:
   - forge
   - oss-ci-base_build
+  - ray-core-build
+  - ray-dashboard-build
 steps:
   # builds
   - name: corebuild
@@ -169,6 +171,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/util/dask/... core
         --install-mask all-ray-libraries
+        --python-version 3.12
         --build-name databuild-py3.12
     depends_on:
       - databuild-multipy
@@ -253,6 +256,7 @@ steps:
       # core tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
@@ -260,6 +264,7 @@ steps:
         --except-tags basic_test,manual
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
@@ -269,6 +274,7 @@ steps:
       # core redis tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=TEST_EXTERNAL_REDIS=1
@@ -279,6 +285,7 @@ steps:
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --only-tags minimal
@@ -446,6 +453,8 @@ steps:
   - label: ":core: core: spark-on-ray tests"
     tags:
       - spark_on_ray
+      - java
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core

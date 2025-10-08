@@ -307,29 +307,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
     if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
         rpc::TensorTransport::OBJECT_STORE) {
-      reference_counter_.AddObjectOutOfScopeOrFreedCallback(
-          return_object_id, [this](const ObjectID &object_id) {
-            auto actor_id = ObjectID::ToActorID(object_id);
-            auto rpc_client = get_actor_rpc_client_callback_(actor_id);
-            if (!rpc_client.has_value()) {
-              // ActorTaskSubmitter already knows the actor is already dead.
-              return;
-            }
-            rpc::FreeActorObjectRequest request;
-            request.set_object_id(object_id.Binary());
-            rpc_client.value()->FreeActorObject(
-                std::move(request),
-                [object_id, actor_id](const Status &status,
-                                      const rpc::FreeActorObjectReply &reply) {
-                  if (status.IsDisconnected()) {
-                    RAY_LOG(DEBUG).WithField(object_id).WithField(actor_id)
-                        << "FreeActorObject failed because actor worker is dead";
-                  } else if (!status.ok()) {
-                    RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
-                        << "Failed to free actor object: " << status;
-                  }
-                });
-          });
+      reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_object_id,
+                                                            free_actor_object_callback_);
     }
 
     returned_refs.push_back(std::move(ref));
@@ -1350,7 +1329,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   RemoveFinishedTaskReferences(spec,
                                /*release_lineage=*/true,
                                rpc::Address(),
-                               ReferenceCounter::ReferenceTableProto());
+                               ReferenceCounterInterface::ReferenceTableProto());
 
   MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
 
@@ -1420,7 +1399,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     TaskSpecification &spec,
     bool release_lineage,
     const rpc::Address &borrower_addr,
-    const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
+    const ReferenceCounterInterface::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies = ExtractPlasmaDependencies(spec);
 
   std::vector<ObjectID> return_ids;

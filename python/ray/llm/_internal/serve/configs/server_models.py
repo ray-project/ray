@@ -1,16 +1,12 @@
-import os
 from enum import Enum
 from typing import (
     Any,
     Dict,
-    List,
     Optional,
-    Sequence,
     TypeVar,
     Union,
 )
 
-import pydantic
 from pydantic import (
     BaseModel,
     Field,
@@ -20,7 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-import ray
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import (
@@ -29,10 +24,8 @@ from ray.llm._internal.common.utils.cloud_utils import (
 )
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
-    ENABLE_WORKER_PROCESS_SETUP_HOOK,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
@@ -205,14 +198,14 @@ class LLMConfig(BaseModelExtended):
         "requests together. This config decides how long to wait for the "
         "batch before processing the requests. Defaults to "
         f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
-        "- `num_router_replicas`: The number of replicas for the router. Ray "
+        "- `num_ingress_replicas`: The number of replicas for the router. Ray "
         "Serve will take the max amount all the replicas. Default would be 2 "
         "router replicas per model replica.\n",
     )
 
     log_engine_metrics: Optional[bool] = Field(
-        default=False,
-        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
+        default=True,
+        description="Enable additional engine metrics via Ray Prometheus port. Default is True.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -364,6 +357,19 @@ class LLMConfig(BaseModelExtended):
 
         return lora_config
 
+    @field_validator("experimental_configs")
+    def validate_experimental_configs(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the experimental configs dictionary."""
+        # TODO(Kourosh): Remove this deprecation check after users have
+        # migrated.
+        if "num_router_replicas" in value:
+            raise ValueError(
+                "The 'num_router_replicas' key in experimental_configs has "
+                "been renamed to 'num_ingress_replicas'. Please update "
+                "your configuration to use 'num_ingress_replicas' instead."
+            )
+        return value
+
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
         # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
@@ -424,170 +430,6 @@ class LLMConfig(BaseModelExtended):
         if self._engine_config:
             self._engine_config.engine_kwargs.update(kwargs)
 
-    def _merge_replica_actor_and_child_actor_bundles(
-        self,
-        child_actor_bundles: List[Dict[str, float]],
-        replica_actor_bundle: Dict[str, float],
-    ) -> List[Dict[str, float]]:
-        """Sum up the bundles from replica actor bundles with the first bundle from child actor bundles.
-
-        This is because the replica actor will use the first bundle in the list, and we want to collocate the replica actor with the child actor.
-        So we need to group them together.
-
-        So for example:
-        child_actor_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1, "CPU": 1}]
-        replica_actor_bundle = {"GPU": 0, "CPU": 1, "memory": 100}
-        return [{"GPU": 1, "CPU": 2, "memory": 100}, {"GPU": 1, "CPU": 1}]
-        """
-
-        if not child_actor_bundles:
-            return [replica_actor_bundle]
-
-        if not replica_actor_bundle:
-            return child_actor_bundles
-
-        first_bundle = child_actor_bundles[0]
-        bundle_key_set = set(first_bundle.keys()) | set(replica_actor_bundle.keys())
-
-        for key in bundle_key_set:
-            first_bundle[key] = replica_actor_bundle.get(key, 0) + first_bundle.get(
-                key, 0
-            )
-
-        return [first_bundle] + child_actor_bundles[1:]
-
-    def _set_deployment_placement_options(self) -> Dict[str, Any]:
-        deployment_config = self.deployment_config
-        engine_config = self.get_engine_config()
-
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
-        deployment_config["ray_actor_options"] = ray_actor_options
-
-        replica_actor_resources = {
-            "CPU": ray_actor_options.get("num_cpus", 1),
-            "GPU": ray_actor_options.get("num_gpus", 0),
-            **ray_actor_options.get("resources", {}),
-        }
-        if "memory" in ray_actor_options:
-            replica_actor_resources["memory"] = ray_actor_options["memory"]
-
-        if (
-            "placement_group_bundles" in deployment_config
-            or "placement_group_strategy" in deployment_config
-        ):
-            raise ValueError(
-                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. "
-                "Use scaling_config to configure replica placement group."
-            )
-
-        try:
-            child_actor_bundles = engine_config.placement_bundles
-        except ValueError:
-            # May happen if all bundles are empty.
-            child_actor_bundles = []
-
-        pg_bundles = self._merge_replica_actor_and_child_actor_bundles(
-            child_actor_bundles, replica_actor_resources
-        )
-        deployment_config.update(
-            {
-                "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
-            }
-        )
-
-        return deployment_config
-
-    def _get_deployment_name(self) -> str:
-        return self.model_id.replace("/", "--").replace(".", "_")
-
-    def get_serve_options(
-        self,
-        *,
-        name_prefix: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Get the Serve options for the given LLM config.
-
-        This method is used to generate the Serve options for the given LLM config.
-
-
-        Examples:
-            .. testcode::
-                :skipif: True
-
-                from ray import serve
-                from ray.serve.llm import LLMConfig, LLMServer
-
-                llm_config = LLMConfig(
-                    model_loading_config=dict(model_id="test_model"),
-                    accelerator_type="L4",
-                    runtime_env={"env_vars": {"FOO": "bar"}},
-                )
-                serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
-                serve.run(llm_app)
-
-        Args:
-            name_prefix: Optional prefix to be used for the deployment name.
-
-        Returns:
-            The dictionary to use in .options() when creating the deployment.
-        """
-
-        deployment_options = self._set_deployment_placement_options()
-
-        default_runtime_env = ray.get_runtime_context().runtime_env
-        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
-            default_runtime_env[
-                "worker_process_setup_hook"
-            ] = "ray.llm._internal.serve._worker_process_setup_hook"
-
-        ray_actor_options = deployment_options.get("ray_actor_options", {})
-        ray_actor_options["runtime_env"] = {
-            **default_runtime_env,
-            # Existing runtime_env should take precedence over the default.
-            **ray_actor_options.get("runtime_env", {}),
-            **(self.runtime_env if self.runtime_env else {}),
-        }
-        deployment_options["ray_actor_options"] = ray_actor_options
-
-        # Set the name of the deployment config to map to the model ID.
-        if "name" not in deployment_options:
-            deployment_options["name"] = self._get_deployment_name()
-        if name_prefix:
-            deployment_options["name"] = name_prefix + deployment_options["name"]
-
-        # Configure DP deployment options.
-        # TODO(rui): move the following to DPServer, e.g.,
-        # deployment_options = DPServer.get_deployment_options(llm_config)
-        dp_size = self.engine_kwargs.get("data_parallel_size", 1)
-        if not (isinstance(dp_size, int) and dp_size > 0):
-            raise ValueError(
-                f"Invalid data_parallel_size: {dp_size}, expecting " "positive integer."
-            )
-        if dp_size != 1:
-            if "num_replicas" in deployment_options:
-                raise ValueError(
-                    "num_replicas should not be specified for DP deployment, "
-                    f"use engine_kwargs.data_parallel_size={dp_size} instead."
-                )
-            if "autoscaling_config" in deployment_options:
-                raise ValueError(
-                    "autoscaling_config is not supported for DP deployment, "
-                    f"use engine_kwargs.data_parallel_size={dp_size} to set a "
-                    "fixed number of replicas instead."
-                )
-            deployment_options["num_replicas"] = dp_size
-            deployment_options["max_ongoing_requests"] = DEFAULT_MAX_ONGOING_REQUESTS
-            if deployment_options["placement_group_strategy"] != "STRICT_PACK":
-                logger.warning(
-                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
-                    "is not supported. Using STRICT_PACK instead."
-                )
-                deployment_options["placement_group_strategy"] = "STRICT_PACK"
-
-        return deployment_options
-
     def setup_engine_backend(self):
         self._setup_kv_connector_backend()
 
@@ -609,104 +451,6 @@ class LLMConfig(BaseModelExtended):
         # 2. Setup the backend
         kv_connector_backend = kv_connector_backend_class(self)
         kv_connector_backend.setup()
-
-
-def _is_yaml_file(filename: str) -> bool:
-    yaml_extensions = [".yml", ".yaml", ".json"]
-    for s in yaml_extensions:
-        if filename.endswith(s):
-            return True
-    return False
-
-
-def _parse_path_args(path: str) -> List[LLMConfig]:
-    assert os.path.exists(
-        path
-    ), f"Could not load model from {path}, as it does not exist."
-    if os.path.isfile(path):
-        with open(path, "r") as f:
-            llm_config = LLMConfig.parse_yaml(f)
-            return [llm_config]
-    elif os.path.isdir(path):
-        apps = []
-        for root, _dirs, files in os.walk(path):
-            for p in files:
-                if _is_yaml_file(p):
-                    with open(os.path.join(root, p), "r") as f:
-                        llm_config = LLMConfig.parse_yaml(f)
-                        apps.append(llm_config)
-        return apps
-    else:
-        raise ValueError(
-            f"Could not load model from {path}, as it is not a file or directory."
-        )
-
-
-def parse_args(
-    args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
-) -> List[LLMConfig]:
-    """Parse the input args and return a standardized list of LLMConfig objects
-
-    Supported args format:
-    1. The path to a yaml file defining your LLMConfig
-    2. The path to a folder containing yaml files, which define your LLMConfigs
-    3. A list of yaml files defining multiple LLMConfigs
-    4. A dict or LLMConfig object
-    5. A list of dicts or LLMConfig objects
-    """
-
-    raw_models = [args]
-    if isinstance(args, list):
-        raw_models = args
-
-    # For each
-    models: List[LLMConfig] = []
-    for raw_model in raw_models:
-        if isinstance(raw_model, str):
-            if os.path.exists(raw_model):
-                parsed_models = _parse_path_args(raw_model)
-            else:
-                try:
-                    llm_config = LLMConfig.parse_yaml(raw_model)
-                    parsed_models = [llm_config]
-                except pydantic.ValidationError as e:
-                    raise ValueError(
-                        f"Could not parse string as yaml. If you are "
-                        "specifying a path, make sure it exists and can be "
-                        f"reached. raw_model: {raw_model}"
-                    ) from e
-        else:
-            try:
-                llm_config = LLMConfig.model_validate(raw_model)
-                parsed_models = [llm_config]
-            except pydantic.ValidationError:
-                parsed_models = [LLMConfig.model_validate(raw_model)]
-        models += parsed_models
-
-    return models
-
-
-class LLMServingArgs(BaseModelExtended):
-    llm_configs: List[Union[str, LLMConfig]] = Field(
-        description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
-    )
-
-    def parse_args(self) -> "LLMServingArgs":
-        """Converts this LLMServingArgs object into an DeployArgs object."""
-
-        llm_configs = []
-        for config in self.llm_configs:
-            parsed_config = parse_args(config)[0]
-            if not isinstance(parsed_config, LLMConfig):
-                raise ValueError(
-                    "When using the new Serve config format, all model "
-                    "configs must also use the new model config format. Got "
-                    "a model config that doesn't match new format. Type: "
-                    f"{type(parsed_config)}. Contents: {parsed_config}."
-                )
-            llm_configs.append(parsed_config)
-
-        return LLMServingArgs(llm_configs=llm_configs)
 
 
 class DiskMultiplexConfig(BaseModelExtended):

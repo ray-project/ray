@@ -150,11 +150,6 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (const RayletNotifyGCSRestartRequest &request,
                const ClientCallback<RayletNotifyGCSRestartReply> &callback),
               (override));
-  MOCK_METHOD(void,
-              FreeActorObject,
-              (FreeActorObjectRequest && request,
-               const ClientCallback<FreeActorObjectReply> &callback),
-              (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 

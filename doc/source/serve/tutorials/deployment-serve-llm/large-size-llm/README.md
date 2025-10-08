@@ -98,8 +98,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:  
 
 
-```bash
-%%bash
+```python
 serve run serve_deepseek_r1:app --non-blocking
 ```
 
@@ -114,8 +113,7 @@ Your endpoint is available locally at `http://localhost:8000` and you can use a 
 Example curl:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -163,8 +161,7 @@ for chunk in response:
 Shutdown your LLM service: 
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
@@ -225,8 +222,7 @@ applications:
 Deploy your service
 
 
-```bash
-%%bash
+```python
 anyscale service deploy -f service.yaml
 ```
 
@@ -272,8 +268,7 @@ See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling
 Shutdown your Anyscale service:
 
 
-```bash
-%%bash
+```python
 anyscale service terminate -n deploy-deepseek-r1
 ```
 
