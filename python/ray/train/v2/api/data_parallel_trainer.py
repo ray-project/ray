@@ -127,13 +127,13 @@ class DataParallelTrainer:
 
         if not isinstance(self.run_config, RunConfigV2):
             raise ValueError(
-                f"Invalid `RunConfig` type: `{self.run_config.__class__}`. "
+                f"Invalid `RunConfig` type: {self.run_config.__class__}. "
                 "Use `ray.train.RunConfig` instead."
             )
 
         if not isinstance(self.scaling_config, ScalingConfigV2):
             raise ValueError(
-                f"Invalid `ScalingConfig` type: `{self.scaling_config.__class__}`. "
+                f"Invalid `ScalingConfig` type: {self.scaling_config.__class__}. "
                 "Use `ray.train.ScalingConfig` instead."
             )
 
