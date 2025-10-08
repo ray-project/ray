@@ -871,12 +871,13 @@ def test_random_sample_fixed_seed_0002(
 
 
 def test_actor_udf_cleanup(
-    ray_start_regular_shared,
     tmp_path,
     restore_data_context,
     target_max_block_size_infinite_or_default,
 ):
     """Test that for the actor map operator, the UDF object is deleted properly."""
+    ray.shutdown()
+    ray.init(num_cpus=2)
     ctx = DataContext.get_current()
     ctx._enable_actor_pool_on_exit_hook = True
 
