@@ -248,14 +248,15 @@ def reset_logging() -> None:
     global _ACTIVE_DATASET
     global _logging_configured
 
-    logger = logging.getLogger("ray.data")
-    logger.handlers.clear()
-    logger.setLevel(logging.NOTSET)
-
-    _DATASET_LOGGER_HANDLER = {}
-    _ACTIVE_DATASET = None
     with _logging_lock:
-        _logging_configured = False  # Reset the flag to allow reconfiguration
+        _logging_configured = False
+
+        logger = logging.getLogger("ray.data")
+        logger.handlers.clear()
+        logger.setLevel(logging.NOTSET)
+
+        _DATASET_LOGGER_HANDLER = {}
+        _ACTIVE_DATASET = None
 
 
 def get_log_directory() -> Optional[str]:
