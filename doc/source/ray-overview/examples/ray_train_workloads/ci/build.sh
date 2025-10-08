@@ -21,7 +21,7 @@ pip3 install --no-cache-dir \
     "transformers==4.56.2" \
     "accelerate==1.10.1" \
     "sentencepiece==0.2.1" \
-    "tokenizers==0.20.1" \
+    "tokenizers==0.23.0" \
     "safetensors==0.6.2"
 
 # Env vars
