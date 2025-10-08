@@ -83,12 +83,18 @@ def test_get_best_checkpoint():
     )
 
 
-def test_result_restore(ray_start_4_cpus, monkeypatch, tmp_path):
+@pytest.mark.parametrize("storage", ["local", "remote"])
+def test_result_restore(
+    ray_start_4_cpus, monkeypatch, tmp_path, storage, mock_s3_bucket_uri
+):
     """Test Result.from_path functionality similar to v1 test_result_restore."""
     NUM_ITERATIONS = 5
     NUM_CHECKPOINTS = 3
 
-    storage_path = str(tmp_path)
+    if storage == "local":
+        storage_path = str(tmp_path)
+    elif storage == "remote":
+        storage_path = str(mock_s3_bucket_uri)
 
     exp_name = "test_result_restore_v2"
 
@@ -110,8 +116,9 @@ def test_result_restore(ray_start_4_cpus, monkeypatch, tmp_path):
 
     # The experiment directory is where the trial results are stored
     trial_dir = storage_context.experiment_fs_path
+    file_system = storage_context.storage_filesystem
 
-    result = Result.from_path(trial_dir)
+    result = Result.from_path(trial_dir, storage_filesystem=file_system)
 
     assert result.checkpoint
     assert len(result.best_checkpoints) == NUM_CHECKPOINTS
