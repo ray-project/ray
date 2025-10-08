@@ -3,7 +3,7 @@
 aioboto3
 anyscale >= 0.26.14
 azure-identity
-azure-storage-file-datalake
+azure-storage-blob
 bazel-runfiles
 boto3
 click
