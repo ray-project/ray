@@ -83,6 +83,12 @@ const TAB_BAR_HEIGHT = 48;
 
 type DashboardTab = "core" | "data";
 
+// Exported for use by Serve metrics sections (they still use individual panels)
+export type MetricConfig = {
+  title: string;
+  pathParams: string;
+};
+
 export const Metrics = () => {
   const {
     grafanaHost,
