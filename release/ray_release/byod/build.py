@@ -60,7 +60,7 @@ def build_anyscale_custom_byod_image(
     _validate_and_push(image)
     tag_without_registry = image.split("/")[-1]
     azure_tag = f"{AZURE_REGISTRY_NAME}.azurecr.io/{tag_without_registry}"
-    _retag_and_push(source=image, target=azure_tag)
+    _tag_and_push(source=image, target=azure_tag)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
@@ -141,7 +141,7 @@ def _image_exist(image: str) -> bool:
     return p.returncode == 0
 
 
-def _retag_and_push(source: str, target: str) -> None:
+def _tag_and_push(source: str, target: str) -> None:
     subprocess.check_call(
         ["docker", "tag", source, target],
         stdout=sys.stderr,
