@@ -163,14 +163,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     client_context_->setGcsRpcClient(gcs_rpc_client);
   }
 
-  resubscribe_func_ = [this]() {
-    job_accessor_->AsyncResubscribe();
-    actor_accessor_->AsyncResubscribe();
-    node_accessor_->AsyncResubscribe();
-    node_resource_accessor_->AsyncResubscribe();
-    worker_accessor_->AsyncResubscribe();
-  };
-
   actor_accessor_ = accessor_factory_->CreateActorInfoAccessor(client_context_.get());
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
@@ -183,6 +175,14 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
   publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
+
+  resubscribe_func_ = [this]() {
+    job_accessor_->AsyncResubscribe();
+    actor_accessor_->AsyncResubscribe();
+    node_accessor_->AsyncResubscribe();
+    node_resource_accessor_->AsyncResubscribe();
+    worker_accessor_->AsyncResubscribe();
+  };
 
   RAY_LOG(DEBUG) << "GcsClient connected "
                  << BuildAddress(options_.gcs_address_, options_.gcs_port_);
