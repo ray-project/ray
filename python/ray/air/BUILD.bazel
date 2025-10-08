@@ -54,18 +54,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_api",
-    size = "small",
-    srcs = ["tests/test_api.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [":ml_lib"],
-)
-
-py_test(
     name = "test_arrow",
     size = "small",
     srcs = [
@@ -85,17 +73,6 @@ py_test(
     name = "test_air_usage",
     size = "small",
     srcs = ["tests/test_air_usage.py"],
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [":ml_lib"],
-)
-
-py_test(
-    name = "test_configs",
-    size = "small",
-    srcs = ["tests/test_configs.py"],
     tags = [
         "exclusive",
         "team:ml",

@@ -1,6 +1,7 @@
+import pyarrow.fs
 import pytest
 
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 
 
 def test_scaling_config_validation():
@@ -29,6 +30,12 @@ def test_scaling_config_accelerator_type():
     assert scaling_config.additional_resources_per_worker == {
         "accelerator_type:A100": 0.001
     }
+
+
+def test_storage_filesystem_repr():
+    """Test for https://github.com/ray-project/ray/pull/40851"""
+    config = RunConfig(storage_filesystem=pyarrow.fs.S3FileSystem())
+    repr(config)
 
 
 if __name__ == "__main__":
