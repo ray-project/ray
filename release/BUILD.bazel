@@ -340,6 +340,8 @@ py_library(
         bk_require("pybuildkite"),
         bk_require("pygithub"),
         bk_require("requests"),
+        bk_require("azure-storage-file-datalake"),
+        bk_require("msal"),
     ],
 )
 

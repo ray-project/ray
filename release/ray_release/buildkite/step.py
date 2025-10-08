@@ -11,11 +11,11 @@ from ray_release.config import (
     as_smoke_test,
     get_test_project_id,
 )
-from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.custom_byod_build_init_helper import (
     generate_custom_build_step_key,
     get_prerequisite_step,
 )
+from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
 from ray_release.util import DeferredEnvVar
 

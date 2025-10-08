@@ -32,6 +32,7 @@ class DeferredEnvVar:
 ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 S3_CLOUD_STORAGE = "s3"
 GS_CLOUD_STORAGE = "gs"
+ABFSS_CLOUD_STORAGE = "abfss"
 GS_BUCKET = "anyscale-oss-dev-bucket"
 ERROR_LOG_PATTERNS = [
     "ERROR",

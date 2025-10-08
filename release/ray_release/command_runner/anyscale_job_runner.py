@@ -76,6 +76,7 @@ class AnyscaleJobRunner(JobRunner):
             f"{cloud_storage_provider}://{self.file_manager.bucket}",
             self.path_in_bucket,
         )
+        self.upload_path = "abfss://working-dirs@rayreleasetests.dfs.core.windows.net"
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0

@@ -18,6 +18,7 @@ from ray_release.util import (
     S3_CLOUD_STORAGE,
     GS_CLOUD_STORAGE,
     GS_BUCKET,
+    ABFSS_CLOUD_STORAGE,
 )
 
 
@@ -32,11 +33,14 @@ class JobFileManager(FileManager):
         self.cloud_storage_provider = os.environ.get(
             "ANYSCALE_CLOUD_STORAGE_PROVIDER", S3_CLOUD_STORAGE
         )
+        print("Cloud storage provider: ", self.cloud_storage_provider)
         if self.cloud_storage_provider == S3_CLOUD_STORAGE:
             self.bucket = str(RELEASE_AWS_BUCKET)
         elif self.cloud_storage_provider == GS_CLOUD_STORAGE:
             self.bucket = GS_BUCKET
             self.gs_client = storage.Client()
+        elif self.cloud_storage_provider == ABFSS_CLOUD_STORAGE:
+            self.bucket = "rayreleasetests"
         else:
             raise RuntimeError(
                 f"Non supported anyscale service provider: "

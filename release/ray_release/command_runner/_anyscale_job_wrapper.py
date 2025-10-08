@@ -88,6 +88,32 @@ def run_storage_cp(source: str, target: str):
             source,
             target,
         ]
+    elif storage_service == "abfss":
+        parts = target.replace("abfss://", "").split("@")
+        container = parts[0]
+        rest = parts[1].split(".dfs.core.windows.net/")
+        storage_account = rest[0]
+        file_path = rest[1]
+        print("Container: ", container)
+        print("Storage account: ", storage_account)
+        print("File path: ", file_path)
+
+        from azure.storage.filedatalake import DataLakeServiceClient
+        from azure.identity import DefaultAzureCredential
+
+        credential = DefaultAzureCredential(
+            exclude_managed_identity_credential=True,
+            exclude_shared_token_cache_credential=True,
+        )
+        service_client = DataLakeServiceClient(
+            account_url=f"https://{storage_account}.dfs.core.windows.net",
+            credential=credential,
+        )
+
+        file_system_client = service_client.get_file_system_client(container)
+        file_client = file_system_client.get_file_client(file_path)
+        with open(source, "rb") as data:
+            file_client.upload_data(data, overwrite=True)
     else:
         raise Exception(f"Not supporting storage service: {storage_service}")
 

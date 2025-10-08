@@ -85,6 +85,8 @@ def _load_test_configuration(
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
+    anyscale_project_name: Optional[str] = None,
+    anyscale_cloud_name: Optional[str] = None,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
 
@@ -126,8 +128,10 @@ def _load_test_configuration(
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
-            test,
-            anyscale_project,
+            test=test,
+            project_id=anyscale_project,
+            project_name=anyscale_project_name,
+            cloud_name=anyscale_cloud_name,
             smoke_test=smoke_test,
             log_streaming_limit=log_streaming_limit,
         )
@@ -384,6 +388,8 @@ def run_release_test(
     test: Test,
     result: Result,
     anyscale_project: Optional[str] = None,
+    anyscale_project_name: Optional[str] = None,
+    anyscale_cloud_name: Optional[str] = None,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
@@ -403,6 +409,8 @@ def run_release_test(
     return run_release_test_anyscale(
         test=test,
         anyscale_project=anyscale_project,
+        anyscale_project_name=anyscale_project_name,
+        anyscale_cloud_name=anyscale_cloud_name,
         result=result,
         reporters=reporters,
         smoke_test=smoke_test,
@@ -491,6 +499,8 @@ def run_release_test_anyscale(
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
+    anyscale_project_name: Optional[str] = None,
+    anyscale_cloud_name: Optional[str] = None,
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
@@ -510,6 +520,8 @@ def run_release_test_anyscale(
             no_terminate,
             test_definition_root,
             log_streaming_limit,
+            anyscale_project_name,
+            anyscale_cloud_name,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
