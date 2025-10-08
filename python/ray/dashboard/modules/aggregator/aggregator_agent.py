@@ -9,7 +9,6 @@ from ray._private import ray_constants
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
-from ray._raylet import GcsClient
 from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
@@ -124,18 +123,13 @@ class AggregatorAgent(
             )
             self._http_endpoint_publisher = NoopPublisher()
 
-        self._gcs_client = None
         if PUBLISH_EVENTS_TO_GCS:
             logger.info("Publishing events to GCS is enabled")
             self._event_processing_enabled = True
-            self._gcs_client = GcsClient(
-                address=self.gcs_address,
-                cluster_id=dashboard_agent.cluster_id_hex,
-            )
             self._gcs_publisher = RayEventPublisher(
                 name="ray_gcs",
                 publish_client=AsyncGCSTaskEventsPublisherClient(
-                    gcs_client=self._gcs_client,
+                    gcs_client=self._dashboard_agent.gcs_client,
                     executor=self._executor,
                 ),
                 event_buffer=self._event_buffer,
