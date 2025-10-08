@@ -316,7 +316,7 @@ RAY_RESOURCES_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='sum(ray_object_store_memory{{instance=~"$Instance",{global_filters}, Location="SPILLED"}}) by (instance)',
+                expr='sum(ray_object_store_memory{{instance=~"$Instance",Location="SPILLED",{global_filters}}}) by (instance)',
                 legend="{{instance}}",
             ),
         ],
@@ -491,7 +491,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * ray_node_gpus_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} / 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} / 100) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
                 legend="GPU Usage: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
