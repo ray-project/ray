@@ -523,6 +523,28 @@ def test_take_all(ray_start_regular_shared):
         assert ray.data.range(5).take_all(4)
 
 
+def test_union(ray_start_regular_shared):
+    ds = ray.data.range(20, override_num_blocks=10).materialize()
+
+    # Test lazy union.
+    ds = ds.union(ds, ds, ds, ds)
+    assert ds._plan.initial_num_blocks() == 50
+    assert ds.count() == 100
+    assert ds.sum() == 950
+
+    ds = ds.union(ds)
+    assert ds.count() == 200
+    assert ds.sum() == (950 * 2)
+
+    # Test materialized union.
+    ds2 = ray.data.from_items([1, 2, 3, 4, 5])
+    assert ds2.count() == 5
+    ds2 = ds2.union(ds2)
+    assert ds2.count() == 10
+    ds2 = ds2.union(ds)
+    assert ds2.count() == 210
+
+
 def test_block_builder_for_block(ray_start_regular_shared):
     # pandas dataframe
     builder = BlockBuilder.for_block(pd.DataFrame())
