@@ -52,8 +52,7 @@ class AnyscaleDockerContainer(DockerContainer):
                         "--style=info",
                         f"--context={self.image_type}-images",
                         "--append",
-                        f"{aws_alias_image}",
-                        "<br/>",
+                        f"{aws_alias_image}<br/>",
                     ]
                 )
                 subprocess.run(
@@ -63,8 +62,7 @@ class AnyscaleDockerContainer(DockerContainer):
                         "--style=info",
                         f"--context={self.image_type}-images",
                         "--append",
-                        f"{gcp_alias_image}",
-                        "<br/>",
+                        f"{gcp_alias_image}<br/>",
                     ]
                 )
 
