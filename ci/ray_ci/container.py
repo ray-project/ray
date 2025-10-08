@@ -21,6 +21,7 @@ https://developer\.nvidia\.com/ngc/nvidia-deep-learning-container-license
 A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience\.
 """
 
+_AZURE_REGISTRY_NAME = "rayreleasetest"
 _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
@@ -28,6 +29,10 @@ _DOCKER_ECR_REPO = os.environ.get(
 _DOCKER_GCP_REGISTRY = os.environ.get(
     "RAYCI_GCP_REGISTRY",
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
+)
+_DOCKER_AZURE_REGISTRY = os.environ.get(
+    "RAYCI_AZURE_REGISTRY",
+    "rayreleasetest.azurecr.io",
 )
 _DOCKER_ENV = [
     "BUILDKITE",
