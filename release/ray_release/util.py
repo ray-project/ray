@@ -315,6 +315,9 @@ def upload_file_to_azure(local_file_path: str, azure_file_path: str) -> str:
         from azure.storage.blob import BlobServiceClient
         from azure.identity import DefaultAzureCredential
 
+        logger.info(
+            f"Uploading {local_file_path} to Azure Blob Storage: {azure_file_path}"
+        )
         account, container, path = _parse_abfss_uri(azure_file_path)
         account_url = f"https://{account}.blob.core.windows.net"
         credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
