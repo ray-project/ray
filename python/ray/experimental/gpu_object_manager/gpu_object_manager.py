@@ -529,6 +529,29 @@ class GPUObjectManager:
             )
         return gpu_object
 
+    def free_object_primary_copy(self, object_id: str):
+        """
+        Free the primary copy of the GPU object. Expected to be idempotent when called from
+        free_actor_object_callback because the primary copy holder should always only have one ref
+        in the deque.
+        """
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_free__,
+        )
+
+        try:
+            gpu_object_meta = self.managed_gpu_object_metadata[object_id]
+            src_actor = gpu_object_meta.src_actor
+            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
+            )
+        except Exception as e:
+            logger.error(
+                "Something went wrong while freeing the RDT object!", exc_info=e
+            )
+
     def actor_has_tensor_transport(
         self, actor: "ray.actor.ActorHandle", tensor_transport: TensorTransportEnum
     ):

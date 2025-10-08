@@ -169,7 +169,7 @@ TEST(GcsClientInjectableTest, GcsClientWithMixedAccessors) {
   // Create GcsClient with custom context and factory
   GcsClientOptions options;
   GcsClient gcs_client(
-      options, UniqueID::FromRandom(), std::move(factory), std::move(context));
+      options, "", UniqueID::FromRandom(), std::move(factory), std::move(context));
 
   // Connect the client
   instrumented_io_context io_service;

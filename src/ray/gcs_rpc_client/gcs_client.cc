@@ -14,10 +14,8 @@
 
 #include "ray/gcs_rpc_client/gcs_client.h"
 
-#include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -104,11 +102,15 @@ GcsClient::GcsClient() {
   accessor_factory_ = std::make_unique<DefaultAccessorFactory>();
   client_context_ = std::make_shared<DefaultGcsClientContext>();
 };
+
 GcsClient::GcsClient(const GcsClientOptions &options,
+                     std::string local_address,
                      UniqueID gcs_client_id,
                      std::unique_ptr<AccessorFactoryInterface> accessor_factory,
                      std::shared_ptr<GcsClientContext> client_context)
-    : options_(options), gcs_client_id_(gcs_client_id) {
+    : options_(std::move(options)),
+      gcs_client_id_(gcs_client_id),
+      local_address_(std::move(local_address)) {
   if (accessor_factory == nullptr) {
     accessor_factory_ = std::make_unique<DefaultAccessorFactory>();
   } else {
@@ -126,8 +128,10 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
-      io_service, /*record_stats=*/false, options_.cluster_id_);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service,
+                                                                  /*record_stats=*/false,
+                                                                  local_address_,
+                                                                  options_.cluster_id_);
 
   // Only initialize the RPC client and subscriber if needed
   if (!client_context_->isInitialized()) {
