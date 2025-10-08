@@ -182,10 +182,7 @@ class HTMLDatasource(FileBasedDatasource):
                 f"Failed to parse HTML file '{path}' with {parser} parser: {parse_error}"
             ) from parse_error
 
-        # Extract metadata from full document (before applying selector)
-        metadata = self._extract_metadata(soup) if self.extract_metadata else None
-
-        # Apply selector if specified (for text/tables/links extraction)
+        # Apply selector if specified (before extracting any content)
         content_soup = soup
         if self.selector:
             elements = soup.select(self.selector)
@@ -193,12 +190,25 @@ class HTMLDatasource(FileBasedDatasource):
                 logger.warning(
                     f"CSS selector '{self.selector}' matched no elements in '{path}'"
                 )
-                # Create empty soup but preserve metadata
+                # Create empty soup for consistent behavior
                 content_soup = BeautifulSoup("", parser)
             else:
-                # Create new soup with copies of selected elements (preserves original DOM)
-                combined_html = "".join(str(elem) for elem in elements)
-                content_soup = BeautifulSoup(combined_html, parser)
+                # Create wrapper to preserve DOM structure and relationships
+                import copy
+
+                from bs4 import Tag
+
+                wrapper = Tag(name="div")
+                # Clone and append selected elements to preserve structure
+                for elem in elements:
+                    # Use deepcopy to preserve nested structure
+                    elem_copy = copy.deepcopy(elem)
+                    wrapper.append(elem_copy)
+                # Create new soup with wrapper preserving DOM context
+                content_soup = BeautifulSoup(str(wrapper), parser)
+
+        # Extract metadata from content_soup (after applying selector for consistency)
+        metadata = self._extract_metadata(content_soup) if self.extract_metadata else None
 
         # Build row data
         row_data = self._extract_content(content_soup, path, metadata)

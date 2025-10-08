@@ -297,7 +297,101 @@ class TestHTMLReading:
 
         # Should return empty result
         assert len(records) == 1
-        # Block should be empty or have minimal data
+        # Content should be empty
+        assert records[0]["text"] == ""
+        # Metadata should also be empty/None for consistency
+        assert records[0].get("title") is None or records[0]["title"] == ""
+
+    def test_selector_metadata_consistency(self, ray_start_regular_shared, tmp_path):
+        """Test that metadata is extracted from selected content only."""
+        html_content = """<!DOCTYPE html>
+<html>
+<head>
+    <title>Full Page Title</title>
+    <meta name="description" content="Full page description">
+</head>
+<body>
+    <h1>Page Header</h1>
+    <article class="main-content">
+        <h2>Article Title</h2>
+        <h3>Article Subtitle</h3>
+        <p>Article content</p>
+    </article>
+    <aside class="sidebar">
+        <h2>Sidebar Header</h2>
+        <p>Sidebar content</p>
+    </aside>
+</body>
+</html>"""
+        html_path = os.path.join(tmp_path, "selector_metadata.html")
+        with open(html_path, "w") as f:
+            f.write(html_content)
+
+        # Extract only article with metadata
+        ds = ray.data.read_html(
+            html_path, selector="article.main-content", extract_metadata=True
+        )
+        records = ds.take_all()
+
+        assert len(records) == 1
+        record = records[0]
+
+        # Content should only include article content
+        text = record["text"]
+        assert "Article content" in text
+        assert "Sidebar content" not in text
+
+        # Metadata should be extracted from selected content only
+        # Title should be None or empty since article has no title tag
+        assert record.get("title") is None or record["title"] == ""
+
+        # Headers should only include h2 and h3 from article, not from sidebar
+        if "headers" in record:
+            headers = record["headers"]
+            if "h2" in headers:
+                assert "Article Title" in headers["h2"]
+                assert "Sidebar Header" not in str(headers)
+            if "h3" in headers:
+                assert "Article Subtitle" in headers["h3"]
+
+    def test_selector_preserves_dom_structure(self, ray_start_regular_shared, tmp_path):
+        """Test that CSS selector preserves DOM structure."""
+        html_content = """<!DOCTYPE html>
+<html>
+<body>
+    <div class="container">
+        <div class="nested">
+            <p>Nested <span class="highlight">highlighted</span> text</p>
+        </div>
+        <table>
+            <tr><td>Cell 1</td><td>Cell 2</td></tr>
+        </table>
+    </div>
+</body>
+</html>"""
+        html_path = os.path.join(tmp_path, "selector_dom.html")
+        with open(html_path, "w") as f:
+            f.write(html_content)
+
+        # Extract with selector and table extraction
+        ds = ray.data.read_html(
+            html_path, selector="div.container", extract_tables=True
+        )
+        records = ds.take_all()
+
+        assert len(records) == 1
+        record = records[0]
+
+        # Text should preserve nested structure
+        text = record["text"]
+        assert "Nested" in text
+        assert "highlighted" in text
+        assert "text" in text
+
+        # Tables should still be extractable from selected content
+        assert "tables" in record
+        assert len(record["tables"]) == 1
+        assert "Cell 1" in str(record["tables"][0])
 
     def test_encoding_utf8(self, ray_start_regular_shared, tmp_path):
         """Test UTF-8 encoding handling."""
