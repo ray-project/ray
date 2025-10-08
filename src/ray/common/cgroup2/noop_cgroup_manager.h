@@ -25,10 +25,10 @@ class NoopCgroupManager : public CgroupManagerInterface {
  public:
   // Uncopyable type.
   NoopCgroupManager() = default;
-  explicit NoopCgroupManager(const CgroupManager &) = delete;
-  NoopCgroupManager &operator=(const CgroupManager &) = delete;
-  explicit NoopCgroupManager(CgroupManager &&) {}
-  NoopCgroupManager &operator=(CgroupManager &&) { return *this; }
+  explicit NoopCgroupManager(const NoopCgroupManager &) = delete;
+  NoopCgroupManager &operator=(const NoopCgroupManager &) = delete;
+  explicit NoopCgroupManager(NoopCgroupManager &&) {}
+  NoopCgroupManager &operator=(NoopCgroupManager &&) { return *this; }
   ~NoopCgroupManager() = default;
 
   Status AddProcessToApplicationCgroup(const std::string &pid) override {
