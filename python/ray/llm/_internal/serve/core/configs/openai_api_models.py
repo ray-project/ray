@@ -102,6 +102,15 @@ class EmbeddingResponse(vLLMEmbeddingResponse):
 class TranscriptionRequest(vLLMTranscriptionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    request_id: str = Field(
+        default_factory=lambda: f"{random_uuid()}",
+        description=(
+            "The request_id related to this request. If the caller does "
+            "not set it, a random_uuid will be generated. This id is used "
+            "through out the inference process and return in response."
+        ),
+    )
+    
 
 class TranscriptionResponse(vLLMTranscriptionResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
