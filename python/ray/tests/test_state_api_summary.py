@@ -335,6 +335,7 @@ def test_task_summary(ray_start_cluster):
         # task_name -> states
         task_summary = summarize_tasks()
         task_summary = task_summary["cluster"]["summary"]
+        print(task_summary)
         assert "task_wait_for_dep" in task_summary
         assert "run_long_time_task" in task_summary
         assert (

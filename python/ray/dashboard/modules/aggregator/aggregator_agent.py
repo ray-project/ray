@@ -58,7 +58,7 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
 )
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
 )
 
 
