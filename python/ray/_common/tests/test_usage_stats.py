@@ -1617,7 +1617,7 @@ def test_get_cloud_azure_not_detected_as_aws():
     3. Azure IMDS returns 400 (not 404) when queried with AWS endpoint
     4. Old code accepted any non-404 status, so it incorrectly returned "aws"
 
-    This test ensures Azure is checked FIRST and only 200 status is accepted.
+    This test ensures only 200 status is accepted.
     """
     with patch("requests.get") as mock_get:
         # Simulate being on an Azure VM
