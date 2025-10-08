@@ -268,9 +268,9 @@ class DeploymentAutoscalingState:
             total_num_requests=self.get_total_num_requests(),
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
-            policy_state=self._policy_state.copy()
-            if self._policy_state is not None
-            else {},
+            policy_state=(
+                self._policy_state.copy() if self._policy_state is not None else {}
+            ),
             current_time=time.time(),
             config=self._config,
             queued_requests=None,
