@@ -1,6 +1,7 @@
 """Shared test utilities for raydepsets tests."""
 
 import shutil
+from typing import Optional
 
 import runfiles
 
@@ -8,7 +9,7 @@ _REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
-def copy_data_to_tmpdir(tmpdir, ignore_patterns=None):
+def copy_data_to_tmpdir(tmpdir, ignore_patterns: Optional[str] = None):
     """Copy test data to a temporary directory."""
     shutil.copytree(
         _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/tests/test_data"),
