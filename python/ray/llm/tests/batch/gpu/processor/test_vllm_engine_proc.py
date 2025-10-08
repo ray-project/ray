@@ -219,11 +219,11 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
             dtype="half",
         ),
         # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
-        runtime_env=dict(
-            env_vars=dict(
-                VLLM_USE_V1="0",
-            ),
-        ),
+        # runtime_env=dict(
+        #     env_vars=dict(
+        #         VLLM_USE_V1="0",
+        #     ),
+        # ),
         apply_chat_template=True,
         has_image=True,
         tokenize=False,
