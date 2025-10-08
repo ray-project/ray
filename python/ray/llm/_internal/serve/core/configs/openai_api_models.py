@@ -125,7 +125,9 @@ LLMEmbeddingsResponse = Union[
     AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None],
 ]
 
-LLMScoreResponse = Union[AsyncGenerator[Union[ScoreResponse, ErrorResponse], None],]
+LLMScoreResponse = Union[
+    AsyncGenerator[Union[ScoreResponse, ErrorResponse], None],
+]
 
 LLMChatResponse = Union[
     AsyncGenerator[

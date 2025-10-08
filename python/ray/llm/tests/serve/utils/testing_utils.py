@@ -115,12 +115,13 @@ class LLMResponseValidator:
         response: Union[TranscriptionResponse, List[str]],
         temperature: float,
         language: Optional[str] = None,
+        lora_model_id: str = "",
     ):
         """Validate transcription responses for both streaming and non-streaming."""
         if isinstance(response, list):
             # Streaming response - validate chunks
             LLMResponseValidator.validate_transcription_streaming_chunks(
-                response, temperature, language
+                response, temperature, language, lora_model_id
             )
         else:
             # Non-streaming response
@@ -131,6 +132,8 @@ class LLMResponseValidator:
 
             # Check that the response contains expected language and temperature info
             expected_text = f"Mock transcription in {language} language with temperature {temperature}"
+            if lora_model_id:
+                expected_text = f"[lora_model] {lora_model_id}: {expected_text}"
             assert response.text == expected_text
 
             # Validate usage information
@@ -142,7 +145,10 @@ class LLMResponseValidator:
 
     @staticmethod
     def validate_transcription_streaming_chunks(
-        chunks: List[str], temperature: float, language: Optional[str] = None
+        chunks: List[str],
+        temperature: float,
+        language: Optional[str] = None,
+        lora_model_id: str = "",
     ):
         """Validate streaming transcription response chunks."""
         # Should have at least one chunk (transcription text) + final chunk + [DONE]
@@ -182,6 +188,8 @@ class LLMResponseValidator:
         expected_text = (
             f"Mock transcription in {language} language with temperature {temperature}"
         )
+        if lora_model_id:
+            expected_text = f"[lora_model] {lora_model_id}: {expected_text}"
         assert full_transcription.strip() == expected_text.strip()
 
         # Validate final [DONE] chunk
