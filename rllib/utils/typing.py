@@ -46,7 +46,7 @@ TensorType = Union[np.ndarray, "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
 TensorStructType = Union[TensorType, dict, tuple]
 
 # A shape of a tensor.
-TensorShape = Union[Tuple[int], List[int]]
+TensorShape = Union[Tuple[int, ...], List[int]]
 
 # A neural network.
 NetworkType = Union["torch.nn.Module", "tf.keras.Model"]

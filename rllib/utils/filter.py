@@ -283,7 +283,7 @@ class MeanStdFilter(Filter):
         )
         # If preprocessing (flattening dicts/tuples), make sure shape
         # is an np.ndarray, so we don't confuse it with a complex Tuple
-        # space's shape structure (which is a Tuple[np.ndarray]).
+        # space's shape structure (which is a Tuple[np.ndarray, ...]).
         if not self.no_preprocessor:
             self.shape = np.array(self.shape)
         self.demean = demean
