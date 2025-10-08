@@ -569,7 +569,6 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
-  python: "3.10"
   frequency: "{{frequency}}"
   group: data-batch-inference
 
