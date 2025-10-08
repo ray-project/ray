@@ -148,22 +148,12 @@ class MockVLLMEngine(LLMEngine):
             raise RuntimeError("Engine not started")
 
         # Extract audio file info
-        audio_file = request.file
         language = getattr(request, "language", "en")
         temperature = getattr(request, "temperature", 0.0)
-        stream = getattr(request, "stream", False)
-
-        # Generate mock transcription response
-        mock_transcription_text = (
-            f"Mock transcription in {language} language with temperature {temperature}"
-        )
 
         # Generate transcription response
         async for response in self._generate_transcription_response(
-            request=request,
-            transcription_text=mock_transcription_text,
-            language=language,
-            temperature=temperature,
+            request=request, language=language, temperature=temperature
         ):
             yield response
 
@@ -347,7 +337,6 @@ class MockVLLMEngine(LLMEngine):
     async def _generate_transcription_response(
         self,
         request: TranscriptionRequest,
-        transcription_text: str,
         language: str,
         temperature: float,
     ) -> AsyncGenerator[Union[str, TranscriptionResponse], None]:
@@ -360,13 +349,20 @@ class MockVLLMEngine(LLMEngine):
             else f"[lora_model] {request.model}: "
         )
 
+        # Generate mock transcription text with LoRA prefix
+        mock_transcription_text = (
+            f"Mock transcription in {language} language with temperature {temperature}"
+        )
+        if lora_prefix:
+            mock_transcription_text = f"{lora_prefix}{mock_transcription_text}"
+
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
             model_name = getattr(request, "model", "mock-model")
 
             # Split transcription into words for streaming
-            words = transcription_text.split()
+            words = mock_transcription_text.split()
 
             for i, word in enumerate(words):
                 # Create streaming chunk
@@ -418,7 +414,7 @@ class MockVLLMEngine(LLMEngine):
         else:
             # Non-streaming response - return response object
             response = TranscriptionResponse(
-                text=transcription_text,
+                text=mock_transcription_text,
                 logprobs=None,
                 usage={
                     "seconds": 5.0,
