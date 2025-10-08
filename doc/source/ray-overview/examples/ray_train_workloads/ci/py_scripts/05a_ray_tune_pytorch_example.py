@@ -1,50 +1,63 @@
 # 00. Runtime setup — install same deps as build.sh and set env vars
 import os, sys, subprocess
 
-# Non-secret env var 
+# Non-secret env var
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
-# Install Python dependencies 
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "torchvision==0.23.0",
-    "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
-])
+# Install Python dependencies
+subprocess.check_call(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-cache-dir",
+        "torch==2.8.0",
+        "torchvision==0.23.0",
+        "matplotlib==3.10.6",
+        "pyarrow==14.0.2",
+    ]
+)
 
 # 01. Imports
 
 # --- Standard libraries ---
-import os              # Filesystem utilities (paths, directories)
-import tempfile        # Temporary directories for checkpoints
-import shutil          # Cleanup of files and directories
+import os  # Filesystem utilities (paths, directories)
+import tempfile  # Temporary directories for checkpoints
+import shutil  # Cleanup of files and directories
 
 # --- Analytics / plotting ---
-import pandas as pd                    # Converting output to dataframe for plotting
-import matplotlib.pyplot as plt        # For generating plots 
+import pandas as pd  # Converting output to dataframe for plotting
+import matplotlib.pyplot as plt  # For generating plots
 
 # --- Scientific computing ---
-import numpy as np     # Numerical operations, used for random sampling in search space
+import numpy as np  # Numerical operations, used for random sampling in search space
 
 # --- PyTorch (deep learning) ---
 import torch
-import torch.nn as nn                  # Neural network modules (layers, models)
-import torch.nn.functional as F        # Functional API for activations/losses
-import torch.optim as optim            # Optimizers (e.g., SGD, Adam)
-import torchvision                     # Popular vision datasets and pretrained models
+import torch.nn as nn  # Neural network modules (layers, models)
+import torch.nn.functional as F  # Functional API for activations/losses
+import torch.optim as optim  # Optimizers (e.g., SGD, Adam)
+import torchvision  # Popular vision datasets and pretrained models
 import torchvision.transforms as transforms  # Image preprocessing pipelines
-from torch.utils.data import random_split    # Train/validation dataset splitting
+from torch.utils.data import random_split  # Train/validation dataset splitting
 
 # --- Utilities ---
-from filelock import FileLock          # Prevents race conditions when multiple workers download CIFAR-10
+from filelock import (
+    FileLock,
+)  # Prevents race conditions when multiple workers download CIFAR-10
 
 # --- Ray (tuning and orchestration) ---
-from ray import train, tune            # Core APIs for metric reporting and trial execution
-from ray.tune.schedulers import ASHAScheduler  # Asynchronous HyperBand for early stopping
-from ray.air.config import RunConfig   # Configure experiment metadata (name, storage, logging)
+from ray import train, tune  # Core APIs for metric reporting and trial execution
+from ray.tune.schedulers import (
+    ASHAScheduler,
+)  # Asynchronous HyperBand for early stopping
+from ray.air.config import (
+    RunConfig,
+)  # Configure experiment metadata (name, storage, logging)
 
-# 02. Load and prepare CIFAR-10 data  
+# 02. Load and prepare CIFAR-10 data
+
 
 def load_data(data_dir="/mnt/cluster_storage/cifar10"):
     """
@@ -52,24 +65,29 @@ def load_data(data_dir="/mnt/cluster_storage/cifar10"):
     Returns the full training set and the test set.
     """
     # Define preprocessing: convert to tensor and normalize channels
-    transform = transforms.Compose([
-        transforms.ToTensor(),  # Convert images to PyTorch tensors [0,1]
-        transforms.Normalize(    # Normalize with dataset mean & std (per channel)
-            (0.4914, 0.4822, 0.4465),   # mean (R, G, B)
-            (0.2023, 0.1994, 0.2010)    # std (R, G, B)
-        ),
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),  # Convert images to PyTorch tensors [0,1]
+            transforms.Normalize(  # Normalize with dataset mean & std (per channel)
+                (0.4914, 0.4822, 0.4465),  # mean (R, G, B)
+                (0.2023, 0.1994, 0.2010),  # std (R, G, B)
+            ),
+        ]
+    )
 
     # FileLock ensures that multiple parallel workers downloading CIFAR-10
     # don't interfere with each other (prevents race conditions).
     with FileLock(os.path.expanduser("~/.data.lock")):
         trainset = torchvision.datasets.CIFAR10(
-            root=data_dir, train=True, download=True, transform=transform)
+            root=data_dir, train=True, download=True, transform=transform
+        )
 
         testset = torchvision.datasets.CIFAR10(
-            root=data_dir, train=False, download=True, transform=transform)
+            root=data_dir, train=False, download=True, transform=transform
+        )
 
     return trainset, testset
+
 
 def create_dataloaders(trainset, batch_size, num_workers=8):
     """
@@ -80,26 +98,24 @@ def create_dataloaders(trainset, batch_size, num_workers=8):
     train_size = int(len(trainset) * 0.8)
 
     # Randomly partition the dataset into train/val subsets
-    train_subset, val_subset = random_split(trainset, [train_size, len(trainset) - train_size])
+    train_subset, val_subset = random_split(
+        trainset, [train_size, len(trainset) - train_size]
+    )
 
     # Training loader: shuffle for stochastic gradient descent
     train_loader = torch.utils.data.DataLoader(
-        train_subset,
-        batch_size=batch_size, 
-        shuffle=True,
-        num_workers=num_workers
+        train_subset, batch_size=batch_size, shuffle=True, num_workers=num_workers
     )
 
     # Validation loader: no shuffle (deterministic evaluation)
     val_loader = torch.utils.data.DataLoader(
-        val_subset,
-        batch_size=batch_size,
-        shuffle=False, 
-        num_workers=num_workers
+        val_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers
     )
     return train_loader, val_loader
 
-# 03. Load synthetic test data 
+
+# 03. Load synthetic test data
+
 
 def load_test_data():
     """
@@ -112,24 +128,23 @@ def load_test_data():
     # Each sample is shaped like a CIFAR-10 image: (3 channels, 32x32 pixels)
     # Labels are drawn from 10 possible classes.
     trainset = torchvision.datasets.FakeData(
-        size=128,                     # number of samples
-        image_size=(3, 32, 32),       # match CIFAR-10 format
-        num_classes=10,               # same number of categories as CIFAR-10
-        transform=transforms.ToTensor()  # convert to PyTorch tensors
+        size=128,  # number of samples
+        image_size=(3, 32, 32),  # match CIFAR-10 format
+        num_classes=10,  # same number of categories as CIFAR-10
+        transform=transforms.ToTensor(),  # convert to PyTorch tensors
     )
 
     # Generate a smaller fake test set of 16 samples
     testset = torchvision.datasets.FakeData(
-        size=16,
-        image_size=(3, 32, 32),
-        num_classes=10,
-        transform=transforms.ToTensor()
+        size=16, image_size=(3, 32, 32), num_classes=10, transform=transforms.ToTensor()
     )
-    
+
     # Return both sets so they can be wrapped into DataLoaders
     return trainset, testset
 
-# 04. Define CNN model 
+
+# 04. Define CNN model
+
 
 class Net(nn.Module):
     """
@@ -137,6 +152,7 @@ class Net(nn.Module):
     Consists of two convolutional layers with pooling, followed by three
     fully connected (dense) layers. Hidden layer sizes l1 and l2 are tunable.
     """
+
     def __init__(self, l1=120, l2=84):
         super(Net, self).__init__()
 
@@ -183,7 +199,9 @@ class Net(nn.Module):
 
         return x
 
-# 05. Define a training function 
+
+# 05. Define a training function
+
 
 def train_cifar(config):
     """
@@ -202,12 +220,12 @@ def train_cifar(config):
     net.to(device)
 
     # --- Loss and optimizer ---
-    criterion = nn.CrossEntropyLoss() # standard classification loss
+    criterion = nn.CrossEntropyLoss()  # standard classification loss
     optimizer = optim.SGD(
         net.parameters(),
-        lr=config["lr"],          # learning rate (tunable)
-        momentum=0.9,             # helps accelerate gradients
-        weight_decay=5e-5         # L2 regularization
+        lr=config["lr"],  # learning rate (tunable)
+        momentum=0.9,  # helps accelerate gradients
+        weight_decay=5e-5,  # L2 regularization
     )
 
     # --- Resume from checkpoint (if available) ---
@@ -218,7 +236,7 @@ def train_cifar(config):
             model_state, optimizer_state = torch.load(
                 os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
             )
-            net.load_state_dict(model_state)  # restore model weights 
+            net.load_state_dict(model_state)  # restore model weights
             optimizer.load_state_dict(optimizer_state)  # restore optimizer state
 
     # --- Data setup ---
@@ -230,9 +248,9 @@ def train_cifar(config):
 
     # Create train/validation DataLoaders
     train_loader, val_loader = create_dataloaders(
-        trainset, 
-        config["batch_size"],                         # tunable batch size
-        num_workers=0 if config["smoke_test"] else 8  # no workers for synthetic data
+        trainset,
+        config["batch_size"],  # tunable batch size
+        num_workers=0 if config["smoke_test"] else 8,  # no workers for synthetic data
     )
 
     # --- Training loop ---
@@ -245,12 +263,12 @@ def train_cifar(config):
             inputs, labels = inputs.to(device), labels.to(device)
 
             # forward, backward, and optimize
-            optimizer.zero_grad()       # reset gradients
-            outputs = net(inputs)       # forward pass
+            optimizer.zero_grad()  # reset gradients
+            outputs = net(inputs)  # forward pass
             loss = criterion(outputs, labels)  # compute loss
-            loss.backward()             # backpropagation
-            optimizer.step()            # update weights
-            
+            loss.backward()  # backpropagation
+            optimizer.step()  # update weights
+
             running_loss += loss.item()
 
         # --- Validation loop ---
@@ -270,25 +288,25 @@ def train_cifar(config):
 
         # --- Report metrics to Ray Tune ---
         metrics = {
-            "loss": val_loss / len(val_loader),     # average validation loss
-            "accuracy": correct / total,            # validation accuracy
+            "loss": val_loss / len(val_loader),  # average validation loss
+            "accuracy": correct / total,  # validation accuracy
         }
 
         # --- Save checkpoint ---
         # Store model and optimizer state so trial can resume later if needed.
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             path = os.path.join(temp_checkpoint_dir, "checkpoint.pt")
-            torch.save(
-                (net.state_dict(), optimizer.state_dict()), path
-            )
+            torch.save((net.state_dict(), optimizer.state_dict()), path)
             checkpoint = tune.Checkpoint.from_directory(temp_checkpoint_dir)
 
-             # Report both metrics and checkpoint to Ray Tune
+            # Report both metrics and checkpoint to Ray Tune
             tune.report(metrics, checkpoint=checkpoint)
-            
+
     print("Finished Training!")  # Final message at end of training
 
+
 # 06. Evaluate the best model
+
 
 def test_best_model(best_result, smoke_test=False):
     """
@@ -309,8 +327,12 @@ def test_best_model(best_result, smoke_test=False):
 
     # --- Load weights from checkpoint ---
     # Convert checkpoint object to a directory, then restore model state_dict
-    checkpoint_path = os.path.join(best_result.checkpoint.to_directory(), "checkpoint.pt")
-    model_state, _optimizer_state = torch.load(checkpoint_path)  # optimizer state not needed here
+    checkpoint_path = os.path.join(
+        best_result.checkpoint.to_directory(), "checkpoint.pt"
+    )
+    model_state, _optimizer_state = torch.load(
+        checkpoint_path
+    )  # optimizer state not needed here
     best_trained_model.load_state_dict(model_state)
 
     # --- Select test dataset ---
@@ -343,9 +365,10 @@ def test_best_model(best_result, smoke_test=False):
             # Update totals for accuracy calculation
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
-            
+
     # --- Print final accuracy ---
     print(f"Best trial test set accuracy: {correct / total}")
+
 
 # 07. Smoke test flag
 
@@ -355,17 +378,22 @@ SMOKE_TEST = False
 # 08. Define the hyperparameter search space and configuration
 
 config = {
-    "l1": tune.sample_from(lambda _: 2**np.random.randint(2, 9)),   # size of 1st FC layer
-    "l2": tune.sample_from(lambda _: 2**np.random.randint(2, 9)),   # size of 2nd FC layer
-    "lr": tune.loguniform(1e-4, 1e-1),                              # learning rate
-    "batch_size": tune.choice([2, 4, 8, 16]),                       # training batch size
-    "smoke_test": SMOKE_TEST,                                       # toggle for FakeData vs CIFAR-10
-    "num_trials": 10 if not SMOKE_TEST else 2,                      # number of hyperparam trials
-    "max_num_epochs": 10 if not SMOKE_TEST else 2,                  # training epochs per trial
-    "device": "cuda" if torch.cuda.is_available() else "cpu",       # use GPU if available
+    "l1": tune.sample_from(
+        lambda _: 2 ** np.random.randint(2, 9)
+    ),  # size of 1st FC layer
+    "l2": tune.sample_from(
+        lambda _: 2 ** np.random.randint(2, 9)
+    ),  # size of 2nd FC layer
+    "lr": tune.loguniform(1e-4, 1e-1),  # learning rate
+    "batch_size": tune.choice([2, 4, 8, 16]),  # training batch size
+    "smoke_test": SMOKE_TEST,  # toggle for FakeData vs CIFAR-10
+    "num_trials": 10 if not SMOKE_TEST else 2,  # number of hyperparam trials
+    "max_num_epochs": 10 if not SMOKE_TEST else 2,  # training epochs per trial
+    "device": "cuda" if torch.cuda.is_available() else "cpu",  # use GPU if available
 }
 
-# 09. Run hyperparameter tuning with Ray Tune 
+# 09. Run hyperparameter tuning with Ray Tune
+
 
 def main(config, gpus_per_trial=1):
     """
@@ -376,35 +404,35 @@ def main(config, gpus_per_trial=1):
     # --- Define scheduler ---
     # ASHAScheduler prunes bad trials early and promotes promising ones.
     scheduler = ASHAScheduler(
-        time_attr="training_iteration",      # metric for progress = epoch count
-        max_t=config["max_num_epochs"],      # maximum epochs per trial
-        grace_period=1,                      # min epochs before pruning is allowed
-        reduction_factor=2                   # at each rung, keep ~1/2 of trials
+        time_attr="training_iteration",  # metric for progress = epoch count
+        max_t=config["max_num_epochs"],  # maximum epochs per trial
+        grace_period=1,  # min epochs before pruning is allowed
+        reduction_factor=2,  # at each rung, keep ~1/2 of trials
     )
-    
+
     # --- Define Ray Tune tuner ---
     tuner = tune.Tuner(
         # Wrap training function and specify trial resources
         tune.with_resources(
-            tune.with_parameters(train_cifar),   # training loop
-            resources={"cpu": 2, "gpu": gpus_per_trial}  # per-trial resources
+            tune.with_parameters(train_cifar),  # training loop
+            resources={"cpu": 2, "gpu": gpus_per_trial},  # per-trial resources
         ),
         tune_config=tune.TuneConfig(
-            metric="loss",                # optimize validation loss
-            mode="min",                   # minimize the metric
-            scheduler=scheduler,          # use ASHA for early stopping
+            metric="loss",  # optimize validation loss
+            mode="min",  # minimize the metric
+            scheduler=scheduler,  # use ASHA for early stopping
             num_samples=config["num_trials"],  # number of hyperparam trials
         ),
         run_config=RunConfig(
-            name="cifar10_tune_demo",     # experiment name
-            storage_path="/mnt/cluster_storage/ray-results"  # save results here
+            name="cifar10_tune_demo",  # experiment name
+            storage_path="/mnt/cluster_storage/ray-results",  # save results here
         ),
-        param_space=config,               # hyperparameter search space
+        param_space=config,  # hyperparameter search space
     )
 
     # --- Execute trials ---
-    results = tuner.fit()                 # launch tuning job
-    
+    results = tuner.fit()  # launch tuning job
+
     # --- Retrieve best result ---
     best_result = results.get_best_result("loss", "min")  # lowest validation loss
 
@@ -416,13 +444,16 @@ def main(config, gpus_per_trial=1):
     # --- Evaluate best model on test set ---
     test_best_model(best_result, smoke_test=config["smoke_test"])
 
-    return results, best_result   
+    return results, best_result
+
 
 # --- Run main entry point ---
 # Use 1 GPU per trial if available, otherwise run on CPU only
-results, best_result = main(config, gpus_per_trial=1 if torch.cuda.is_available() else 0)
+results, best_result = main(
+    config, gpus_per_trial=1 if torch.cuda.is_available() else 0
+)
 
-# 10. Analyze and visualize tuning results 
+# 10. Analyze and visualize tuning results
 
 # Convert all trial results into a DataFrame
 df = results.get_dataframe()
@@ -431,7 +462,7 @@ df = results.get_dataframe()
 top5 = df.sort_values("accuracy", ascending=False).head(5)
 
 # Plot learning rate versus validation accuracy
-plt.figure(figsize=(6,4))
+plt.figure(figsize=(6, 4))
 plt.scatter(df["config/lr"], df["accuracy"], alpha=0.7)
 plt.xscale("log")
 plt.xlabel("Learning Rate")
@@ -441,7 +472,7 @@ plt.grid(True)
 plt.show()
 
 # Plot batch size versus validation accuracy
-plt.figure(figsize=(6,4))
+plt.figure(figsize=(6, 4))
 plt.scatter(df["config/batch_size"], df["accuracy"], alpha=0.7)
 plt.xlabel("Batch Size")
 plt.ylabel("Validation Accuracy")
@@ -464,12 +495,27 @@ for res in results:
     hist = res.metrics_dataframe
     if hist is None or hist.empty:
         continue
-    epoch = hist["training_iteration"] if "training_iteration" in hist else pd.Series(range(1, len(hist) + 1))
+    epoch = (
+        hist["training_iteration"]
+        if "training_iteration" in hist
+        else pd.Series(range(1, len(hist) + 1))
+    )
     axes[0].plot(epoch, hist["loss"], color="blue", alpha=0.15)
 
 best_hist = best_result.metrics_dataframe
-epoch_best = best_hist["training_iteration"] if "training_iteration" in best_hist else pd.Series(range(1, len(best_hist) + 1))
-axes[0].plot(epoch_best, best_hist["loss"], marker="o", linewidth=2.5, color="blue", label="Best — Val Loss")
+epoch_best = (
+    best_hist["training_iteration"]
+    if "training_iteration" in best_hist
+    else pd.Series(range(1, len(best_hist) + 1))
+)
+axes[0].plot(
+    epoch_best,
+    best_hist["loss"],
+    marker="o",
+    linewidth=2.5,
+    color="blue",
+    label="Best — Val Loss",
+)
 
 axes[0].set_ylabel("Validation Loss")
 axes[0].set_title("All Trials (faded) + Best Trial (bold)")
@@ -481,10 +527,21 @@ for res in results:
     hist = res.metrics_dataframe
     if hist is None or hist.empty:
         continue
-    epoch = hist["training_iteration"] if "training_iteration" in hist else pd.Series(range(1, len(hist) + 1))
+    epoch = (
+        hist["training_iteration"]
+        if "training_iteration" in hist
+        else pd.Series(range(1, len(hist) + 1))
+    )
     axes[1].plot(epoch, hist["accuracy"], color="orange", alpha=0.15)
 
-axes[1].plot(epoch_best, best_hist["accuracy"], marker="s", linewidth=2.5, color="orange", label="Best — Val Accuracy")
+axes[1].plot(
+    epoch_best,
+    best_hist["accuracy"],
+    marker="s",
+    linewidth=2.5,
+    color="orange",
+    label="Best — Val Accuracy",
+)
 
 axes[1].set_xlabel("Epoch")
 axes[1].set_ylabel("Validation Accuracy")
@@ -494,12 +551,12 @@ axes[1].legend()
 plt.tight_layout()
 plt.show()
 
-# 12. Cleanup cluster storage  
+# 12. Cleanup cluster storage
 
 # Paths you used in the script
 paths_to_clean = [
-    "/mnt/cluster_storage/cifar10",       # dataset
-    "/mnt/cluster_storage/ray-results",   # Tune results & checkpoints
+    "/mnt/cluster_storage/cifar10",  # dataset
+    "/mnt/cluster_storage/ray-results",  # Tune results & checkpoints
 ]
 
 for p in paths_to_clean:
@@ -510,4 +567,3 @@ for p in paths_to_clean:
         print(f"{p} does not exist, skipping.")
 
 print("Cleanup complete ✅")
-

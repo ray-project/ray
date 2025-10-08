@@ -5,15 +5,21 @@ import os, sys, subprocess
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 # Install Python dependencies (same pinned versions as build.sh)
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "torchvision==0.23.0",
-    "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
-    "datasets==2.19.2",
-    "lightning==2.5.5",
-])
+subprocess.check_call(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-cache-dir",
+        "torch==2.8.0",
+        "torchvision==0.23.0",
+        "matplotlib==3.10.6",
+        "pyarrow==14.0.2",
+        "datasets==2.19.2",
+        "lightning==2.5.5",
+    ]
+)
 
 # 01. Imports
 
@@ -26,7 +32,15 @@ from PIL import Image
 
 # Ray
 import ray, ray.data
-from ray.train import ScalingConfig, get_context, RunConfig, FailureConfig, CheckpointConfig, Checkpoint, get_checkpoint
+from ray.train import (
+    ScalingConfig,
+    get_context,
+    RunConfig,
+    FailureConfig,
+    CheckpointConfig,
+    Checkpoint,
+    get_checkpoint,
+)
 from ray.train.torch import TorchTrainer
 from ray.train.lightning import RayLightningEnvironment
 
@@ -39,7 +53,7 @@ from torch import nn
 from datasets import load_dataset
 import pyarrow as pa
 import pyarrow.parquet as pq
-from tqdm import tqdm  
+from tqdm import tqdm
 from torchvision.transforms import Compose, Resize, CenterCrop
 import random
 
@@ -55,10 +69,7 @@ for example in tqdm(ds, desc="Preprocessing images", unit="img"):
         img = transform(example["image"])
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
-        records.append({
-            "image_bytes": buf.getvalue(),
-            "label": example["label"]
-        })
+        records.append({"image_bytes": buf.getvalue(), "label": example["label"]})
     except Exception as e:
         continue
 
@@ -86,10 +97,12 @@ plt.show()
 output_dir = "/mnt/cluster_storage/food101_lite/parquet_256"
 os.makedirs(output_dir, exist_ok=True)
 
-table = pa.Table.from_pydict({
-    "image_bytes": [r["image_bytes"] for r in records],
-    "label": [r["label"] for r in records]
-})
+table = pa.Table.from_pydict(
+    {
+        "image_bytes": [r["image_bytes"] for r in records],
+        "label": [r["label"] for r in records],
+    }
+)
 pq.write_table(table, os.path.join(output_dir, "shard_0.parquet"))
 
 print(f"Wrote {len(records)} records to {output_dir}")
@@ -105,16 +118,18 @@ print("Raw rows:", ds.count())
 
 # Decode JPEG → CHW float32 in [‑1, 1]
 
+
 def decode_and_normalize(batch_df):
     """Decode JPEG bytes and scale to [-1, 1]."""
     images = []
     for b in batch_df["image_bytes"]:
         img = Image.open(io.BytesIO(b)).convert("RGB")
-        arr = np.asarray(img, dtype=np.float32) / 255.0       # H × W × 3, 0‑1
-        arr = (arr - 0.5) / 0.5                               # ‑1 … 1
-        arr = arr.transpose(2, 0, 1)                          # 3 × H × W (CHW)
+        arr = np.asarray(img, dtype=np.float32) / 255.0  # H × W × 3, 0‑1
+        arr = (arr - 0.5) / 0.5  # ‑1 … 1
+        arr = arr.transpose(2, 0, 1)  # 3 × H × W (CHW)
         images.append(arr)
     return {"image": images}
+
 
 # Apply in parallel
 #   batch_format="pandas" → batch_df is a DataFrame, return dict of lists.
@@ -141,9 +156,10 @@ train_count = int(TOTAL * 0.8)
 ds = ds.random_shuffle()
 train_ds, val_ds = ds.split_at_indices([train_count])
 print("Train rows:", train_ds.count())
-print("Val rows:",   val_ds.count())
+print("Val rows:", val_ds.count())
 
 # 08. Pixel De-noising Diffusion Model
+
 
 class PixelDiffusion(pl.LightningModule):
     """Tiny CNN that predicts noise ϵ given noisy image + timestep."""
@@ -151,12 +167,16 @@ class PixelDiffusion(pl.LightningModule):
     def __init__(self, max_t=1000, log_path=None):
         super().__init__()
         self.max_t = max_t
-        self.log_path = log_path or "/mnt/cluster_storage/generative_cv/epoch_metrics.json"
+        self.log_path = (
+            log_path or "/mnt/cluster_storage/generative_cv/epoch_metrics.json"
+        )
 
         # Network: (3 + 1)‑channel input → 3‑channel noise prediction
         self.net = nn.Sequential(
-            nn.Conv2d(4, 32, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(32, 32, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(4, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.ReLU(),
             nn.Conv2d(32, 3, 3, padding=1),
         )
         self.loss_fn = nn.MSELoss()
@@ -170,13 +190,13 @@ class PixelDiffusion(pl.LightningModule):
         t_img = t_scaled.expand(-1, 1, h, w)
         x = torch.cat([noisy_img, t_img], dim=1)  # 4 channels
         return self.net(x)
-    
+
     # ---------- training / validation steps ----------
     def _shared_step(self, batch):
-        clean = batch["image"].to(self.device)             # Bx3xHxW, ‑1…1
-        noise = torch.randn_like(clean)                    # ϵ ~ N(0, 1)
+        clean = batch["image"].to(self.device)  # Bx3xHxW, ‑1…1
+        noise = torch.randn_like(clean)  # ϵ ~ N(0, 1)
         t = torch.randint(0, self.max_t, (clean.size(0),), device=self.device)
-        noisy = clean + noise                              # x_t = x_0 + ϵ
+        noisy = clean + noise  # x_t = x_0 + ϵ
         pred_noise = self(noisy, t)
         return self.loss_fn(pred_noise, noise)
 
@@ -195,27 +215,40 @@ class PixelDiffusion(pl.LightningModule):
         rank = get_context().get_world_rank()
         if rank == 0:
             train_avg = np.mean(self._train_losses)
-            val_avg   = np.mean(self._val_losses) if self._val_losses else None
+            val_avg = np.mean(self._val_losses) if self._val_losses else None
             if val_avg is not None:
-                print(f"[Epoch {self.current_epoch}] train={train_avg:.4f}  val={val_avg:.4f}")
+                print(
+                    f"[Epoch {self.current_epoch}] train={train_avg:.4f}  val={val_avg:.4f}"
+                )
             else:
                 print(f"[Epoch {self.current_epoch}] train={train_avg:.4f}  val=N/A")
 
             # Append to shared JSON so you can plot later
             if os.path.exists(self.log_path):
-                with open(self.log_path, "r") as f: logs = json.load(f)
+                with open(self.log_path, "r") as f:
+                    logs = json.load(f)
             else:
                 logs = []
-            logs.append({"epoch": self.current_epoch+1, "train_loss": train_avg, "val_loss": val_avg})
-            with open(self.log_path, "w") as f: json.dump(logs, f)
+            logs.append(
+                {
+                    "epoch": self.current_epoch + 1,
+                    "train_loss": train_avg,
+                    "val_loss": val_avg,
+                }
+            )
+            with open(self.log_path, "w") as f:
+                json.dump(logs, f)
 
         # Clear per‑epoch trackers
-        self._train_losses.clear(); self._val_losses.clear()
+        self._train_losses.clear()
+        self._val_losses.clear()
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=2e-4)
 
+
 # 09. Train loop for Ray TorchTrainer
+
 
 def train_loop(config):
     """Ray Train per-worker function with checkpointing and resume support."""
@@ -234,9 +267,9 @@ def train_loop(config):
 
     # Data
     train_ds = ray.train.get_dataset_shard("train")
-    val_ds   = ray.train.get_dataset_shard("val")
+    val_ds = ray.train.get_dataset_shard("val")
     train_loader = train_ds.iter_torch_batches(batch_size=32)
-    val_loader   = val_ds.iter_torch_batches(batch_size=32)
+    val_loader = val_ds.iter_torch_batches(batch_size=32)
 
     # Model
     model = PixelDiffusion()
@@ -246,7 +279,9 @@ def train_loop(config):
     ckpt = get_checkpoint()
     if ckpt:
         with ckpt.as_directory() as d:
-            model.load_state_dict(torch.load(os.path.join(d, "model.pt"), map_location="cpu"))
+            model.load_state_dict(
+                torch.load(os.path.join(d, "model.pt"), map_location="cpu")
+            )
             start_epoch = torch.load(os.path.join(d, "meta.pt")).get("epoch", 0) + 1
         if rank == 0:
             print(f"[Rank {rank}] Resumed from checkpoint at epoch {start_epoch}")
@@ -280,6 +315,7 @@ def train_loop(config):
         # Report with checkpoint so Ray saves it
         report({"epoch": epoch}, checkpoint=ckpt_out)
 
+
 # 10. Launch distributed training
 
 trainer = TorchTrainer(
@@ -301,7 +337,9 @@ trainer = TorchTrainer(
 
 result = trainer.fit()
 print("Training complete →", result.metrics)
-best_ckpt = result.checkpoint  # checkpoint from highest reported epoch (you can change score attr)
+best_ckpt = (
+    result.checkpoint
+)  # checkpoint from highest reported epoch (you can change score attr)
 
 # 11. Plot train/val loss curves
 
@@ -312,18 +350,24 @@ with open(LOG_PATH, "r") as f:
 df = pd.DataFrame(logs)
 df["val_loss"] = pd.to_numeric(df["val_loss"], errors="coerce")
 
-plt.figure(figsize=(7,4))
+plt.figure(figsize=(7, 4))
 plt.plot(df["epoch"], df["train_loss"], marker="o", label="Train")
-plt.plot(df["epoch"], df["val_loss"],   marker="o", label="Val")
-plt.xlabel("Epoch"); plt.ylabel("MSE Loss"); plt.title("Pixel Diffusion - Loss per Epoch")
-plt.grid(True); plt.legend(); plt.tight_layout(); plt.show()
+plt.plot(df["epoch"], df["val_loss"], marker="o", label="Val")
+plt.xlabel("Epoch")
+plt.ylabel("MSE Loss")
+plt.title("Pixel Diffusion - Loss per Epoch")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
 
-# 12. Run the trainer again to demonstrate resuming from latest checkpoint  
+# 12. Run the trainer again to demonstrate resuming from latest checkpoint
 
 result = trainer.fit()
 print("Training complete →", result.metrics)
 
 # 13. Reverse diffusion sampling
+
 
 def sample_image(model, steps=50, device="cpu"):
     """Generate an image by iteratively de-noising random noise."""
@@ -333,10 +377,11 @@ def sample_image(model, steps=50, device="cpu"):
         for step in reversed(range(steps)):
             t = torch.tensor([step], device=device)
             pred_noise = model(img, t)
-            img = img - pred_noise * 0.1                      # simple Euler update
+            img = img - pred_noise * 0.1  # simple Euler update
         # Rescale back to [0,1]
         img = torch.clamp((img * 0.5 + 0.5), 0.0, 1.0)
-        return img.squeeze(0).cpu().permute(1,2,0).numpy()
+        return img.squeeze(0).cpu().permute(1, 2, 0).numpy()
+
 
 # 14. Generate and display samples
 
@@ -347,7 +392,9 @@ assert best_ckpt is not None, "Checkpoint is missing. Did training run and compl
 
 with best_ckpt.as_directory() as ckpt_dir:
     model = PixelDiffusion()
-    model.load_state_dict(torch.load(os.path.join(ckpt_dir, "model.pt"), map_location="cpu"))
+    model.load_state_dict(
+        torch.load(os.path.join(ckpt_dir, "model.pt"), map_location="cpu")
+    )
 
 model = model.to("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -371,4 +418,3 @@ if os.path.exists(TARGET_PATH):
     print(f"✅ Deleted everything under {TARGET_PATH}")
 else:
     print(f"⚠️ Path does not exist: {TARGET_PATH}")
-

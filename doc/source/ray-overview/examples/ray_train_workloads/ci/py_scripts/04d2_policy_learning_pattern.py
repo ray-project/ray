@@ -1,17 +1,23 @@
 # 00. Runtime setup — install same deps as build.sh and set env vars
 import os, sys, subprocess
 
-# Non-secret env var 
+# Non-secret env var
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
-# Install Python dependencies 
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "matplotlib==3.10.6",
-    "lightning==2.5.5",
-    "pyarrow==14.0.2",
-])
+# Install Python dependencies
+subprocess.check_call(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-cache-dir",
+        "torch==2.8.0",
+        "matplotlib==3.10.6",
+        "lightning==2.5.5",
+        "pyarrow==14.0.2",
+    ]
+)
 
 # 01. Imports
 
@@ -27,8 +33,19 @@ import gymnasium as gym
 # Ray libraries for distributed data and training
 import ray
 import ray.data
-from ray.train.lightning import RayLightningEnvironment  # Make sure RAY_TRAIN_V2_ENABLED=1 in "Environment variables"
-from ray.train import ScalingConfig, RunConfig, FailureConfig, CheckpointConfig, get_context, get_checkpoint, report, Checkpoint
+from ray.train.lightning import (
+    RayLightningEnvironment,
+)  # Make sure RAY_TRAIN_V2_ENABLED=1 in "Environment variables"
+from ray.train import (
+    ScalingConfig,
+    RunConfig,
+    FailureConfig,
+    CheckpointConfig,
+    get_context,
+    get_checkpoint,
+    report,
+    Checkpoint,
+)
 from ray.train.torch import TorchTrainer
 
 # PyTorch Lightning and base PyTorch for model definition and training
@@ -37,7 +54,8 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn
 
-# 02. Generate Pendulum offline dataset 
+# 02. Generate Pendulum offline dataset
+
 
 def make_pendulum_dataset(n_steps: int = 10_000):
     """
@@ -49,17 +67,17 @@ def make_pendulum_dataset(n_steps: int = 10_000):
     data = []
 
     for _ in range(n_steps):
-        action = env.action_space.sample().astype(np.float32)      # shape (1,)
-        noise   = np.random.randn(*action.shape).astype(np.float32)
-        noisy_action = action + noise                              # add Gaussian noise
+        action = env.action_space.sample().astype(np.float32)  # shape (1,)
+        noise = np.random.randn(*action.shape).astype(np.float32)
+        noisy_action = action + noise  # add Gaussian noise
         timestep = np.random.randint(0, 1000, dtype=np.int64)
 
         data.append(
             {
-                "obs":        obs.astype(np.float32),              # shape (3,)
-                "noisy_action": noisy_action,                      # shape (1,)
-                "noise":        noise,                             # shape (1,)
-                "timestep":     timestep,
+                "obs": obs.astype(np.float32),  # shape (3,)
+                "noisy_action": noisy_action,  # shape (1,)
+                "noise": noise,  # shape (1,)
+                "timestep": timestep,
             }
         )
 
@@ -70,6 +88,7 @@ def make_pendulum_dataset(n_steps: int = 10_000):
 
     return ray.data.from_items(data)
 
+
 ds = make_pendulum_dataset()
 
 # 03. Normalize and split (vector obs ∈ [-π, π])
@@ -79,6 +98,7 @@ def normalize(batch):
     # Pendulum observations are roughly in [-π, π] → scale to [-1, 1]
     batch["obs"] = batch["obs"] / np.pi
     return batch
+
 
 # Apply normalization in parallel using Ray Data
 ds = ds.map_batches(normalize, batch_format="numpy")
@@ -97,11 +117,17 @@ print("Val size:", val_ds.count())
 
 # 04. DiffusionPolicy for low-dim observation (3D) and action (1D)
 
+
 class DiffusionPolicy(pl.LightningModule):
-    def __init__(self, obs_dim: int = 3, act_dim: int = 1, max_t: int = 1000,
-                 log_path: str = "/mnt/cluster_storage/pendulum_diffusion/epoch_metrics.json"):
+    def __init__(
+        self,
+        obs_dim: int = 3,
+        act_dim: int = 1,
+        max_t: int = 1000,
+        log_path: str = "/mnt/cluster_storage/pendulum_diffusion/epoch_metrics.json",
+    ):
         super().__init__()
-        self.max_t   = max_t
+        self.max_t = max_t
         self.log_path = log_path
 
         # 3D obs  + 1-D action  + 1 timestep  → 1-D noise
@@ -121,9 +147,9 @@ class DiffusionPolicy(pl.LightningModule):
 
     # ---------- shared step ----------
     def _shared_step(self, batch):
-        pred = self.forward(batch["obs"].float(),
-                            batch["noisy_action"],
-                            batch["timestep"])
+        pred = self.forward(
+            batch["obs"].float(), batch["noisy_action"], batch["timestep"]
+        )
         return self.loss_fn(pred, batch["noise"])
 
     def training_step(self, batch, _):
@@ -142,24 +168,32 @@ class DiffusionPolicy(pl.LightningModule):
         if rank == 0:
             tr_avg = float(np.mean(self._train_losses))
             va_avg = float(np.mean(self._val_losses)) if self._val_losses else None
-            print(f"[Epoch {self.current_epoch}] "
-                  f"train={tr_avg:.4f}  val={va_avg if va_avg is not None else 'N/A'}")
+            print(
+                f"[Epoch {self.current_epoch}] "
+                f"train={tr_avg:.4f}  val={va_avg if va_avg is not None else 'N/A'}"
+            )
 
             os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
             logs = []
             if os.path.exists(self.log_path):
                 with open(self.log_path, "r") as f:
                     logs = json.load(f)
-            logs.append({"epoch": self.current_epoch+1,
-                         "train_loss": tr_avg,
-                         "val_loss": va_avg})
+            logs.append(
+                {
+                    "epoch": self.current_epoch + 1,
+                    "train_loss": tr_avg,
+                    "val_loss": va_avg,
+                }
+            )
             with open(self.log_path, "w") as f:
                 json.dump(logs, f)
 
-        self._train_losses.clear(); self._val_losses.clear()
+        self._train_losses.clear()
+        self._val_losses.clear()
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
+
 
 # 05. Training loop
 
@@ -167,7 +201,7 @@ class DiffusionPolicy(pl.LightningModule):
 def train_loop(config):
 
     # ---------- Paths for logs & checkpoints ----------
-    LOG_PATH  = "/mnt/cluster_storage/pendulum_diffusion/epoch_metrics.json"
+    LOG_PATH = "/mnt/cluster_storage/pendulum_diffusion/epoch_metrics.json"
     CKPT_ROOT = "/mnt/cluster_storage/pendulum_diffusion/pendulum_diffusion_ckpts"
 
     rank = get_context().get_world_rank()
@@ -180,7 +214,7 @@ def train_loop(config):
 
     # ---------- Load Ray Dataset shards ----------
     train_ds = ray.train.get_dataset_shard("train")
-    val_ds   = ray.train.get_dataset_shard("val")
+    val_ds = ray.train.get_dataset_shard("val")
 
     # ---------- Instantiate model ----------
     model = DiffusionPolicy()
@@ -190,7 +224,9 @@ def train_loop(config):
     ckpt = get_checkpoint()
     if ckpt:
         with ckpt.as_directory() as d:
-            model.load_state_dict(torch.load(os.path.join(d, "model.pt"), map_location="cpu"))
+            model.load_state_dict(
+                torch.load(os.path.join(d, "model.pt"), map_location="cpu")
+            )
             start_epoch = torch.load(os.path.join(d, "meta.pt")).get("epoch", 0) + 1
         if rank == 0:
             print(f"[Rank {rank}] Resumed from checkpoint at epoch {start_epoch}")
@@ -209,22 +245,26 @@ def train_loop(config):
     for epoch in range(start_epoch, config.get("epochs", 10)):
 
         # Re-materialize fresh batches each epoch (avoid stale iterator errors)
-        train_data = list(train_ds.iter_torch_batches(
-            batch_size=32,
-            local_shuffle_buffer_size=1024,
-            prefetch_batches=1,
-            drop_last=True
-        ))
-        val_data = list(val_ds.iter_torch_batches(
-            batch_size=32,
-            local_shuffle_buffer_size=1024,
-            prefetch_batches=1,
-            drop_last=True
-        ))
+        train_data = list(
+            train_ds.iter_torch_batches(
+                batch_size=32,
+                local_shuffle_buffer_size=1024,
+                prefetch_batches=1,
+                drop_last=True,
+            )
+        )
+        val_data = list(
+            val_ds.iter_torch_batches(
+                batch_size=32,
+                local_shuffle_buffer_size=1024,
+                prefetch_batches=1,
+                drop_last=True,
+            )
+        )
 
         # Wrap lists in PyTorch DataLoaders
         train_loader = DataLoader(train_data, batch_size=None)
-        val_loader   = DataLoader(val_data, batch_size=None)
+        val_loader = DataLoader(val_data, batch_size=None)
 
         # Run one epoch (advance trainer manually)
         trainer.fit_loop.max_epochs = epoch + 1
@@ -244,6 +284,7 @@ def train_loop(config):
         # Report metrics + checkpoint back to Ray Train
         report({"epoch": epoch}, checkpoint=ckpt_out)
 
+
 # 06. Launch Ray Trainer
 
 # Configure Ray TorchTrainer to run the distributed training job
@@ -255,7 +296,7 @@ trainer = TorchTrainer(
         name="pendulum_diffusion_ft",
         storage_path="/mnt/cluster_storage/pendulum_diffusion/pendulum_diffusion_results",
         checkpoint_config=CheckpointConfig(
-            checkpoint_frequency=1,       # save every epoch
+            checkpoint_frequency=1,  # save every epoch
             num_to_keep=5,
             checkpoint_score_attribute="epoch",
             checkpoint_score_order="max",
@@ -266,7 +307,7 @@ trainer = TorchTrainer(
 
 result = trainer.fit()
 print("Training complete →", result.metrics)
-best_ckpt = result.checkpoint        # Checkpoint from last reported epoch
+best_ckpt = result.checkpoint  # Checkpoint from last reported epoch
 
 # 07. Plot training and validation loss
 
@@ -305,10 +346,10 @@ def sample_action(model, obs, n_steps=50, device="cpu"):
     """
     model.eval()
     with torch.no_grad():
-        obs = obs.unsqueeze(0).to(device)      # [1, 3]
-        obs = obs / np.pi                      # Same normalization used in training
+        obs = obs.unsqueeze(0).to(device)  # [1, 3]
+        obs = obs / np.pi  # Same normalization used in training
 
-        x = torch.randn(1, 1).to(device)       # Start from noise in action space
+        x = torch.randn(1, 1).to(device)  # Start from noise in action space
 
         for step in reversed(range(n_steps)):
             t = torch.tensor([step], device=device)
@@ -317,10 +358,11 @@ def sample_action(model, obs, n_steps=50, device="cpu"):
 
         return x.squeeze(0)
 
+
 # 09. In-notebook sampling from trained model
 
 # A plausible pendulum state: [cos(theta), sin(theta), theta_dot]
-obs_sample = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32)   # shape (3,)
+obs_sample = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32)  # shape (3,)
 
 # Load the most recent model checkpoint from the checkpoint directory
 CKPT_DIR = "/mnt/cluster_storage/pendulum_diffusion/pendulum_diffusion_ckpts"
@@ -346,4 +388,3 @@ if os.path.exists(TARGET_PATH):
     print(f"✅ Deleted everything under {TARGET_PATH}")
 else:
     print(f"⚠️ Path does not exist: {TARGET_PATH}")
-

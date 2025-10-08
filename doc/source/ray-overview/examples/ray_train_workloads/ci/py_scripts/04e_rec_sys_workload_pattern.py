@@ -1,16 +1,22 @@
 # 00. Runtime setup — install same deps as build.sh and set env vars
 import os, sys, subprocess
 
-# Non-secret env var 
+# Non-secret env var
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
-# Install Python dependencies 
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
-])
+# Install Python dependencies
+subprocess.check_call(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-cache-dir",
+        "torch==2.8.0",
+        "matplotlib==3.10.6",
+        "pyarrow==14.0.2",
+    ]
+)
 
 # 01. Imports
 
@@ -32,13 +38,24 @@ import torch.nn.functional as F
 # Ray
 import ray
 import ray.data
-from ray.train import ScalingConfig, RunConfig, CheckpointConfig, FailureConfig, Checkpoint, get_checkpoint, get_context,  get_dataset_shard, report
+from ray.train import (
+    ScalingConfig,
+    RunConfig,
+    CheckpointConfig,
+    FailureConfig,
+    Checkpoint,
+    get_checkpoint,
+    get_context,
+    get_dataset_shard,
+    report,
+)
 from ray.train.torch import TorchTrainer, prepare_model
 
 # Other
 from tqdm import tqdm
 
 import subprocess
+
 # 02. Load MovieLens 100K Dataset and store in /mnt/cluster_storage/
 
 # Define clean working paths
@@ -59,12 +76,14 @@ if not os.path.exists(LOCAL_ZIP):
 
 # Extract cleanly
 if not os.path.exists(EXTRACT_DIR):
-    with zipfile.ZipFile(LOCAL_ZIP, 'r') as zip_ref:
+    with zipfile.ZipFile(LOCAL_ZIP, "r") as zip_ref:
         zip_ref.extractall("/mnt/cluster_storage/rec_sys_tutorial")
 
 # Load raw file
 raw_path = os.path.join(EXTRACT_DIR, "u.data")
-df = pd.read_csv(raw_path, sep="\t", names=["user_id", "item_id", "rating", "timestamp"])
+df = pd.read_csv(
+    raw_path, sep="\t", names=["user_id", "item_id", "rating", "timestamp"]
+)
 
 # Save cleaned version
 df.to_csv(OUTPUT_CSV, index=False)
@@ -96,21 +115,24 @@ object_refs = [ray.put(split) for split in dfs]
 plt.figure(figsize=(12, 4))
 
 plt.subplot(1, 3, 1)
-df["rating"].hist(bins=[0.5,1.5,2.5,3.5,4.5,5.5], edgecolor='black')
+df["rating"].hist(bins=[0.5, 1.5, 2.5, 3.5, 4.5, 5.5], edgecolor="black")
 plt.title("Rating Distribution")
-plt.xlabel("Rating"); plt.ylabel("Frequency")
+plt.xlabel("Rating")
+plt.ylabel("Frequency")
 
 # Plot number of ratings per user
 plt.subplot(1, 3, 2)
-df["user_idx"].value_counts().hist(bins=30, edgecolor='black')
+df["user_idx"].value_counts().hist(bins=30, edgecolor="black")
 plt.title("Ratings per User")
-plt.xlabel("# Ratings"); plt.ylabel("Users")
+plt.xlabel("# Ratings")
+plt.ylabel("Users")
 
 # Plot number of ratings per item
 plt.subplot(1, 3, 3)
-df["item_idx"].value_counts().hist(bins=30, edgecolor='black')
+df["item_idx"].value_counts().hist(bins=30, edgecolor="black")
 plt.title("Ratings per Item")
-plt.xlabel("# Ratings"); plt.ylabel("Items")
+plt.xlabel("# Ratings")
+plt.ylabel("Items")
 
 plt.tight_layout()
 plt.show()
@@ -138,6 +160,7 @@ print(f"  Val   → {val_ds.count():,} rows")
 
 # 07. Define matrix factorization model
 
+
 class MatrixFactorizationModel(nn.Module):
     def __init__(self, num_users: int, num_items: int, embedding_dim: int = 64):
         super().__init__()
@@ -150,21 +173,23 @@ class MatrixFactorizationModel(nn.Module):
         dot_product = (user_vecs * item_vecs).sum(dim=1)
         return dot_product
 
+
 # 08. Define Ray Train loop (with val Loss and checkpointing and logging)
+
 
 def train_loop_per_worker(config):
 
     # Get dataset shards for this worker
     train_ds = get_dataset_shard("train")
-    val_ds   = get_dataset_shard("val")
+    val_ds = get_dataset_shard("val")
     train_loader = train_ds.iter_torch_batches(batch_size=512, dtypes=torch.float32)
-    val_loader   = val_ds.iter_torch_batches(batch_size=512, dtypes=torch.float32)
+    val_loader = val_ds.iter_torch_batches(batch_size=512, dtypes=torch.float32)
 
     # Create model and optimizer
     model = MatrixFactorizationModel(
         num_users=config["num_users"],
         num_items=config["num_items"],
-        embedding_dim=config.get("embedding_dim", 64)
+        embedding_dim=config.get("embedding_dim", 64),
     )
     model = prepare_model(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.get("lr", 1e-3))
@@ -180,8 +205,12 @@ def train_loop_per_worker(config):
     ckpt = get_checkpoint()
     if ckpt:
         with ckpt.as_directory() as ckpt_dir:
-            model.load_state_dict(torch.load(os.path.join(ckpt_dir, "model.pt"), map_location="cpu"))
-            start_epoch = torch.load(os.path.join(ckpt_dir, "meta.pt")).get("epoch", 0) + 1
+            model.load_state_dict(
+                torch.load(os.path.join(ckpt_dir, "model.pt"), map_location="cpu")
+            )
+            start_epoch = (
+                torch.load(os.path.join(ckpt_dir, "meta.pt")).get("epoch", 0) + 1
+            )
         if rank == 0:
             print(f"[Rank {rank}] ✅ Resumed from checkpoint at epoch {start_epoch}")
 
@@ -227,7 +256,9 @@ def train_loop_per_worker(config):
         avg_val_loss = sum(val_losses) / len(val_losses)
 
         # Log to stdout
-        print(f"[Epoch {epoch}] Train MSE: {avg_train_loss:.4f} | Val MSE: {avg_val_loss:.4f}")
+        print(
+            f"[Epoch {epoch}] Train MSE: {avg_train_loss:.4f} | Val MSE: {avg_val_loss:.4f}"
+        )
 
         # ---------- Save Checkpoint (Rank 0 Only) ----------
         if rank == 0:
@@ -250,20 +281,18 @@ def train_loop_per_worker(config):
                     print("⚠️  JSON log unreadable. Starting fresh.")
                     logs = []
 
-            logs.append({
-                "epoch": epoch,
-                "train_loss": avg_train_loss,
-                "val_loss": avg_val_loss
-            })
+            logs.append(
+                {"epoch": epoch, "train_loss": avg_train_loss, "val_loss": avg_val_loss}
+            )
             with open(LOG_PATH, "w") as f:
                 json.dump(logs, f)
 
         # ---------- Report to Ray Train ----------
-        report({
-            "epoch": epoch,
-            "train_loss": avg_train_loss,
-            "val_loss": avg_val_loss
-        }, checkpoint=ckpt_out)
+        report(
+            {"epoch": epoch, "train_loss": avg_train_loss, "val_loss": avg_val_loss},
+            checkpoint=ckpt_out,
+        )
+
 
 # 09. Launch distributed training with Ray TorchTrainer
 
@@ -280,16 +309,16 @@ trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config=train_config,
     scaling_config=ScalingConfig(
-        num_workers=8,       # Increase as needed
-        use_gpu=True         # Set to True if training on GPUs
+        num_workers=8,  # Increase as needed
+        use_gpu=True,  # Set to True if training on GPUs
     ),
     datasets={"train": train_ds, "val": val_ds},
     run_config=RunConfig(
         name="mf_ray_train",
         storage_path="/mnt/cluster_storage/rec_sys_tutorial/results",
         checkpoint_config=CheckpointConfig(num_to_keep=3),
-        failure_config=FailureConfig(max_failures=2)
-    )
+        failure_config=FailureConfig(max_failures=2),
+    ),
 )
 
 # Run distributed training
@@ -345,7 +374,7 @@ idx2item = {v: k for k, v in item2idx.items()}
 model = MatrixFactorizationModel(
     num_users=len(user2idx),
     num_items=len(item2idx),
-    embedding_dim=train_config["embedding_dim"]
+    embedding_dim=train_config["embedding_dim"],
 )
 
 with result.checkpoint.as_directory() as ckpt_dir:
@@ -366,13 +395,15 @@ model.eval()
 original_user_id = df["user_id"].sample(1).iloc[0]
 user_idx = user2idx[original_user_id]
 
-print(f"Generating recommendations for user_id={original_user_id} (internal idx={user_idx})")
+print(
+    f"Generating recommendations for user_id={original_user_id} (internal idx={user_idx})"
+)
 
 # Compute scores for all items for this user
 with torch.no_grad():
-    user_vector = model.user_embedding(torch.tensor([user_idx]))           # [1, D]
-    item_vectors = model.item_embedding.weight                             # [num_items, D]
-    scores = torch.matmul(user_vector, item_vectors.T).squeeze(0)          # [num_items]
+    user_vector = model.user_embedding(torch.tensor([user_idx]))  # [1, D]
+    item_vectors = model.item_embedding.weight  # [num_items, D]
+    scores = torch.matmul(user_vector, item_vectors.T).squeeze(0)  # [num_items]
 
     topk = torch.topk(scores, k=10)
     top_item_ids = [idx2item[j.item()] for j in topk.indices]
@@ -393,14 +424,11 @@ item_metadata = pd.read_csv(
     encoding="latin-1",
     header=None,
     usecols=[0, 1],  # Only item_id and title
-    names=["item_id", "title"]
+    names=["item_id", "title"],
 )
 
 # Join with top-N items
-top_items_df = pd.DataFrame({
-    "item_id": top_item_ids,
-    "score": top_scores
-})
+top_items_df = pd.DataFrame({"item_id": top_item_ids, "score": top_scores})
 
 merged = top_items_df.merge(item_metadata, on="item_id", how="left")
 
@@ -417,4 +445,3 @@ if os.path.exists(TARGET_PATH):
     print(f"✅ Deleted everything under {TARGET_PATH}")
 else:
     print(f"⚠️ Path does not exist: {TARGET_PATH}")
-

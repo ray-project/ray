@@ -5,46 +5,58 @@ import os, sys, subprocess
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 # Install Python dependencies (
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "torchvision==0.23.0",
-    "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
-])
+subprocess.check_call(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-cache-dir",
+        "torch==2.8.0",
+        "torchvision==0.23.0",
+        "matplotlib==3.10.6",
+        "pyarrow==14.0.2",
+    ]
+)
 
 # 01. Imports
 
 # --- Standard library: file IO, paths, timestamps, temp dirs, cleanup ---
-import csv            # Simple CSV logging for metrics in single-GPU section
-import datetime       # Timestamps for run directories / filenames
-import os             # Filesystem utilities (paths, env vars)
-import tempfile       # Ephemeral dirs for checkpoint staging with ray.train.report()
-import shutil         # Cleanup of artifacts (later cells)
-import gc             # Manual garbage collection to cleanup after inference
+import csv  # Simple CSV logging for metrics in single-GPU section
+import datetime  # Timestamps for run directories / filenames
+import os  # Filesystem utilities (paths, env vars)
+import tempfile  # Ephemeral dirs for checkpoint staging with ray.train.report()
+import shutil  # Cleanup of artifacts (later cells)
+import gc  # Manual garbage collection to cleanup after inference
 
 from pathlib import Path  # Convenient, cross-platform path handling
 
 # --- Visualization & data wrangling ---
 import matplotlib.pyplot as plt  # Plot sample digits and metrics curves
-from PIL import Image            # Image utilities for inspection/debug
-import numpy as np               # Numeric helpers (random sampling, arrays)
-import pandas as pd              # Read metrics.csv into a DataFrame
+from PIL import Image  # Image utilities for inspection/debug
+import numpy as np  # Numeric helpers (random sampling, arrays)
+import pandas as pd  # Read metrics.csv into a DataFrame
 
 # --- PyTorch & TorchVision (model + dataset) ---
 import torch
-from torch.nn import CrossEntropyLoss      # Classification loss for MNIST
-from torch.optim import Adam               # Optimizer
-from torchvision.models import resnet18    # Baseline CNN (we’ll adapt for 1-channel input)
-from torchvision.datasets import MNIST     # Dataset
-from torchvision.transforms import ToTensor, Normalize, Compose  # Preprocessing pipeline
+from torch.nn import CrossEntropyLoss  # Classification loss for MNIST
+from torch.optim import Adam  # Optimizer
+from torchvision.models import (
+    resnet18,
+)  # Baseline CNN (we’ll adapt for 1-channel input)
+from torchvision.datasets import MNIST  # Dataset
+from torchvision.transforms import (
+    ToTensor,
+    Normalize,
+    Compose,
+)  # Preprocessing pipeline
 
 # --- Ray Train (distributed orchestration) ---
 import ray
-from ray.train import ScalingConfig, RunConfig      # Configure scale and storage
-from ray.train.torch import TorchTrainer            # Multi-GPU PyTorch trainer (DDP/FSDP)
+from ray.train import ScalingConfig, RunConfig  # Configure scale and storage
+from ray.train.torch import TorchTrainer  # Multi-GPU PyTorch trainer (DDP/FSDP)
 
-# 02. Download MNIST Dataset  
+# 02. Download MNIST Dataset
 
 dataset = MNIST(root="/mnt/cluster_storage/data", train=True, download=True)
 
@@ -59,14 +71,15 @@ for i in range(1, cols * rows + 1):
     # Randomly select an index from the dataset
     sample_idx = np.random.randint(0, len(dataset.data))
     img, label = dataset[sample_idx]  # image (PIL) and its digit label
-    
+
     # Add subplot to the figure
     figure.add_subplot(rows, cols, i)
-    plt.title(label)         # show the digit label above each subplot
-    plt.axis("off")          # remove axes for cleaner visualization
+    plt.title(label)  # show the digit label above each subplot
+    plt.axis("off")  # remove axes for cleaner visualization
     plt.imshow(img, cmap="gray")  # display as grayscale image
 
 # 04. Define ResNet-18 Model for MNIST
+
 
 def build_resnet18():
     # Start with a torchvision ResNet-18 backbone
@@ -78,8 +91,8 @@ def build_resnet18():
     # - MNIST is grayscale → only 1 channel
     # - Keep kernel size/stride/padding consistent with original ResNet
     model.conv1 = torch.nn.Conv2d(
-        in_channels=1,   # input = grayscale
-        out_channels=64, # number of filters remains the same as original ResNet
+        in_channels=1,  # input = grayscale
+        out_channels=64,  # number of filters remains the same as original ResNet
         kernel_size=(7, 7),
         stride=(2, 2),
         padding=(3, 3),
@@ -89,7 +102,9 @@ def build_resnet18():
     # Return the customized ResNet-18
     return model
 
+
 # 05. Define the Ray Train per-worker training loop
+
 
 def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
     # config holds hyperparameters passed from TorchTrainer (e.g. num_epochs, global_batch_size)
@@ -107,7 +122,9 @@ def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
 
     # Calculate the batch size for each worker
     global_batch_size = config["global_batch_size"]
-    world_size = ray.train.get_context().get_world_size()  # total # of workers in the job
+    world_size = (
+        ray.train.get_context().get_world_size()
+    )  # total # of workers in the job
     batch_size = global_batch_size // world_size  # split global batch evenly
     print(f"{world_size=}\n{batch_size=}")
 
@@ -124,11 +141,11 @@ def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
 
         # Iterate over batches (sharded across workers)
         for images, labels in data_loader:
-            outputs = model(images)            # forward pass
+            outputs = model(images)  # forward pass
             loss = criterion(outputs, labels)  # compute loss
-            optimizer.zero_grad()              # reset gradients
+            optimizer.zero_grad()  # reset gradients
 
-            loss.backward()   # backward pass (grads averaged across workers via DDP)
+            loss.backward()  # backward pass (grads averaged across workers via DDP)
             optimizer.step()  # update model weights
 
         # After each epoch: report loss and log metrics
@@ -137,6 +154,7 @@ def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
         # Save checkpoint (only rank-0 worker persists the model)
         save_checkpoint_and_metrics_ray_train(model, metrics)
 
+
 # 06. Define the configuration dictionary passed into the training loop
 
 # train_loop_config is provided to TorchTrainer and injected into
@@ -144,10 +162,10 @@ def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
 # → Any values defined here are accessible inside the training loop.
 
 train_loop_config = {
-    "num_epochs": 2,           # Number of full passes through the dataset
-    "global_batch_size": 128   # Effective batch size across ALL workers
-                               # (Ray will split this evenly per worker, e.g.
-                               # with 8 workers → 16 samples/worker/step)
+    "num_epochs": 2,  # Number of full passes through the dataset
+    "global_batch_size": 128  # Effective batch size across ALL workers
+    # (Ray will split this evenly per worker, e.g.
+    # with 8 workers → 16 samples/worker/step)
 }
 
 # 07. Configure the scaling of the training job
@@ -158,11 +176,12 @@ train_loop_config = {
 #    with Ray handling synchronization via DDP under the hood.
 
 scaling_config = ScalingConfig(
-    num_workers=8,   # Launch 8 training workers (1 process per worker)
-    use_gpu=True     # Allocate 1 GPU to each worker
+    num_workers=8,  # Launch 8 training workers (1 process per worker)
+    use_gpu=True,  # Allocate 1 GPU to each worker
 )
 
 # 08. Build and prepare the model for Ray Train
+
 
 def load_model_ray_train() -> torch.nn.Module:
     model = build_resnet18()
@@ -170,7 +189,9 @@ def load_model_ray_train() -> torch.nn.Module:
     model = ray.train.torch.prepare_model(model)
     return model
 
+
 # 09. Build a Ray Train–ready DataLoader for MNIST
+
 
 def build_data_loader_ray_train(batch_size: int) -> torch.utils.data.DataLoader:
     # Define preprocessing: convert to tensor + normalize pixel values
@@ -184,36 +205,44 @@ def build_data_loader_ray_train(batch_size: int) -> torch.utils.data.DataLoader:
     )
 
     # Standard PyTorch DataLoader (batching, shuffling, drop last incomplete batch)
-    train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
+    train_loader = torch.utils.data.DataLoader(
+        train_data, batch_size=batch_size, shuffle=True, drop_last=True
+    )
 
     # prepare_data_loader():
     # - Adds a DistributedSampler when using multiple workers
     # - Moves batches to the correct device automatically
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
-    
+
     return train_loader
+
 
 # 10. Report training metrics from each worker
 
+
 def print_metrics_ray_train(loss: torch.Tensor, epoch: int) -> None:
-    metrics = {"loss": loss.item(), "epoch": epoch}  
-    world_rank = ray.train.get_context().get_world_rank() # report from all workers
+    metrics = {"loss": loss.item(), "epoch": epoch}
+    world_rank = ray.train.get_context().get_world_rank()  # report from all workers
     print(f"{metrics=} {world_rank=}")
     return metrics
 
+
 # 11. Save checkpoint and report metrics with Ray Train
 
-def save_checkpoint_and_metrics_ray_train(model: torch.nn.Module, metrics: dict[str, float]) -> None:
+
+def save_checkpoint_and_metrics_ray_train(
+    model: torch.nn.Module, metrics: dict[str, float]
+) -> None:
     # Create a temporary directory to stage checkpoint files
     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
         # Save the model weights.
         # Note: under DDP the model is wrapped in DistributedDataParallel,
-        # so we unwrap it with `.module` before calling state_dict().        
+        # so we unwrap it with `.module` before calling state_dict().
         torch.save(
             model.module.state_dict(),  # note the `.module` to unwrap the DistributedDataParallel
             os.path.join(temp_checkpoint_dir, "model.pt"),
         )
-        
+
         # Report metrics and attach a checkpoint to Ray Train.
         # → metrics are logged centrally
         # → checkpoint allows resuming training or running inference later
@@ -222,9 +251,13 @@ def save_checkpoint_and_metrics_ray_train(model: torch.nn.Module, metrics: dict[
             checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
         )
 
+
 # 12. Save checkpoint only from the rank-0 worker
 
-def save_checkpoint_and_metrics_ray_train(model: torch.nn.Module, metrics: dict[str, float]) -> None:
+
+def save_checkpoint_and_metrics_ray_train(
+    model: torch.nn.Module, metrics: dict[str, float]
+) -> None:
     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
         checkpoint = None
 
@@ -245,20 +278,21 @@ def save_checkpoint_and_metrics_ray_train(model: torch.nn.Module, metrics: dict[
             checkpoint=checkpoint,
         )
 
+
 # 13. Configure persistent storage and run name
 
 storage_path = "/mnt/cluster_storage/training/"
 run_config = RunConfig(
-    storage_path=storage_path,         # where to store checkpoints/logs
-    name="distributed-mnist-resnet18"  # identifier for this run
+    storage_path=storage_path,  # where to store checkpoints/logs
+    name="distributed-mnist-resnet18",  # identifier for this run
 )
 
 # 14. Set up the TorchTrainer
 
 trainer = TorchTrainer(
-    train_loop_ray_train,          # training loop to run on each worker
-    scaling_config=scaling_config, # number of workers and resource config
-    run_config=run_config,         # storage path + run name for artifacts
+    train_loop_ray_train,  # training loop to run on each worker
+    scaling_config=scaling_config,  # number of workers and resource config
+    run_config=run_config,  # storage path + run name for artifacts
     train_loop_config=train_loop_config,  # hyperparameters passed to the loop
 )
 
@@ -270,7 +304,7 @@ trainer = TorchTrainer(
 # - Collects metrics and checkpoints into result
 result = trainer.fit()
 
-# 16. Show the training results  
+# 16. Show the training results
 
 result  # contains metrics, checkpoints, and run history
 
@@ -279,6 +313,7 @@ result  # contains metrics, checkpoints, and run history
 result.metrics_dataframe
 
 # 18. Define a Ray actor to load the trained model and run inference
+
 
 @ray.remote(num_gpus=1)  # allocate 1 GPU to this actor
 class ModelWorker:
@@ -304,13 +339,14 @@ class ModelWorker:
         returns: list[int] predicted class indices
         """
         x = torch.as_tensor(batch)
-        if x.ndim == 3:          # single image → add batch dimension
-            x = x.unsqueeze(0)   # shape becomes [1,C,H,W]
+        if x.ndim == 3:  # single image → add batch dimension
+            x = x.unsqueeze(0)  # shape becomes [1,C,H,W]
         x = x.to("cuda", non_blocking=True)
 
         logits = self.model(x)
         preds = torch.argmax(logits, dim=1)
         return preds.detach().cpu().tolist()
+
 
 # Create a fresh actor instance (avoid naming conflicts)
 worker = ModelWorker.remote(result.checkpoint)
@@ -319,9 +355,10 @@ worker = ModelWorker.remote(result.checkpoint)
 
 to_tensor = ToTensor()
 
+
 def normalize_cpu(img):
     # Convert image (PIL) to tensor on CPU → shape [C,H,W]
-    t = to_tensor(img)                # [C,H,W] on CPU
+    t = to_tensor(img)  # [C,H,W] on CPU
     C = t.shape[0]
     # Apply channel-wise normalization (grayscale vs RGB)
     if C == 3:
@@ -329,6 +366,7 @@ def normalize_cpu(img):
     else:
         norm = Normalize((0.5,), (0.5,))
     return norm(t)
+
 
 figure = plt.figure(figsize=(8, 8))
 cols, rows = 3, 3
@@ -339,11 +377,11 @@ for i in range(1, cols * rows + 1):
     img, label = dataset[idx]
 
     # Preprocess on CPU, add batch dim → [1,C,H,W]
-    x = normalize_cpu(img).unsqueeze(0)    
+    x = normalize_cpu(img).unsqueeze(0)
 
-    # Run inference on GPU via Ray actor, fetch result   
+    # Run inference on GPU via Ray actor, fetch result
     pred = ray.get(worker.predict.remote(x))[0]  # int
-    
+
     # Plot image with true label and predicted label
     figure.add_subplot(rows, cols, i)
     plt.title(f"label: {label}; pred: {int(pred)}")
@@ -357,7 +395,7 @@ plt.show()
 # 20.
 
 # stop the actor process and free its GPU
-ray.kill(worker, no_restart=True)     
+ray.kill(worker, no_restart=True)
 
 # drop local references so nothing pins it
 del worker
@@ -370,34 +408,37 @@ gc.collect()
 
 # 01. Training loop using Ray Data
 
+
 def train_loop_ray_train_ray_data(config: dict):
     # Same as before: define loss, model, optimizer
     criterion = CrossEntropyLoss()
     model = load_model_ray_train()
     optimizer = Adam(model.parameters(), lr=1e-3)
-    
+
     # Different: build data loader from Ray Data instead of PyTorch DataLoader
     global_batch_size = config["global_batch_size"]
     batch_size = global_batch_size // ray.train.get_context().get_world_size()
-    data_loader = build_data_loader_ray_train_ray_data(batch_size=batch_size) 
-    
+    data_loader = build_data_loader_ray_train_ray_data(batch_size=batch_size)
+
     # Same: loop over epochs
     for epoch in range(config["num_epochs"]):
         # Different: no sampler.set_epoch(), Ray Data handles shuffling internally
 
         # Different: batches are dicts {"image": ..., "label": ...} not tuples
-        for batch in data_loader: 
+        for batch in data_loader:
             outputs = model(batch["image"])
             loss = criterion(outputs, batch["label"])
             optimizer.zero_grad()
-            loss.backward() 
+            loss.backward()
             optimizer.step()
 
         # Same: report metrics and save checkpoint each epoch
         metrics = print_metrics_ray_train(loss, epoch)
         save_checkpoint_and_metrics_ray_train(model, metrics)
 
+
 # 02. Build a Ray Data–backed data loader
+
 
 def build_data_loader_ray_train_ray_data(batch_size: int, prefetch_batches: int = 2):
 
@@ -411,16 +452,19 @@ def build_data_loader_ray_train_ray_data(batch_size: int, prefetch_batches: int 
     data_loader = dataset_iterator.iter_torch_batches(
         batch_size=batch_size, prefetch_batches=prefetch_batches
     )
-    
+
     return data_loader
+
 
 # 03. Convert MNIST dataset into Parquet for Ray Data
 
 # Build a DataFrame with image arrays and labels
-df = pd.DataFrame({
-    "image": dataset.data.tolist(),   # raw image pixels (as lists)
-    "label": dataset.targets          # digit labels 0–9
-})
+df = pd.DataFrame(
+    {
+        "image": dataset.data.tolist(),  # raw image pixels (as lists)
+        "label": dataset.targets,  # digit labels 0–9
+    }
+)
 
 # Persist the dataset in Parquet format (columnar, efficient for Ray Data)
 df.to_parquet("/mnt/cluster_storage/cifar10.parquet")
@@ -432,12 +476,15 @@ train_ds = ray.data.read_parquet("/mnt/cluster_storage/cifar10.parquet")
 
 # 05. Define preprocessing transform for Ray Data
 
+
 def transform_images(row: dict):
     # Convert numpy array to a PIL image, then apply TorchVision transforms
-    transform = Compose([
-        ToTensor(),              # convert to tensor
-        Normalize((0.5,), (0.5,)) # normalize to [-1, 1]
-    ])
+    transform = Compose(
+        [
+            ToTensor(),  # convert to tensor
+            Normalize((0.5,), (0.5,)),  # normalize to [-1, 1]
+        ]
+    )
 
     # Ensure image is in uint8 before conversion
     image_arr = np.array(row["image"], dtype=np.uint8)
@@ -445,6 +492,7 @@ def transform_images(row: dict):
     # Apply transforms and replace the "image" field with tensor
     row["image"] = transform(Image.fromarray(image_arr))
     return row
+
 
 # 06. Apply the preprocessing transform across the Ray Dataset
 
@@ -458,16 +506,15 @@ datasets = {"train": train_ds}
 
 trainer = TorchTrainer(
     train_loop_ray_train_ray_data,  # training loop consuming Ray Data
-    train_loop_config={             # hyperparameters
+    train_loop_config={  # hyperparameters
         "num_epochs": 1,
         "global_batch_size": 512,
     },
     scaling_config=scaling_config,  # number of workers + GPU/CPU resources
     run_config=RunConfig(
-        storage_path=storage_path, 
-        name="dist-cifar-res18-ray-data"
-    ),                              # where to store checkpoints/logs
-    datasets=datasets,              # provide Ray Dataset shards to workers
+        storage_path=storage_path, name="dist-cifar-res18-ray-data"
+    ),  # where to store checkpoints/logs
+    datasets=datasets,  # provide Ray Dataset shards to workers
 )
 
 # 08. Start the distributed training job with Ray Data integration
@@ -478,6 +525,7 @@ trainer = TorchTrainer(
 trainer.fit()
 
 # 01. Training loop with checkpoint loading for fault tolerance
+
 
 def train_loop_ray_train_with_checkpoint_loading(config: dict):
     # Same setup as before: loss, model, optimizer
@@ -523,14 +571,16 @@ def train_loop_ray_train_with_checkpoint_loading(config: dict):
             optimizer.step()
 
         # Report metrics and save model + optimizer + epoch state
-        metrics = print_metrics_ray_train(loss,  epoch)
+        metrics = print_metrics_ray_train(loss, epoch)
 
         # We now save the optimizer and epoch state in addition to the model
         save_checkpoint_and_metrics_ray_train_with_extra_state(
             model, metrics, optimizer, epoch
         )
 
+
 # 02. Save checkpoint with model, optimizer, and epoch state
+
 
 def save_checkpoint_and_metrics_ray_train_with_extra_state(
     model: torch.nn.Module,
@@ -543,27 +593,28 @@ def save_checkpoint_and_metrics_ray_train_with_extra_state(
         checkpoint = None
         # Only rank-0 worker saves files to disk
         if ray.train.get_context().get_world_rank() == 0:
-                # Save all state required for full recovery
-                torch.save(
-                    model.module.state_dict(),  # unwrap DDP before saving
-                    os.path.join(temp_checkpoint_dir, "model.pt"),
-                )
-                torch.save(
-                    optimizer.state_dict(),     # include optimizer state
-                    os.path.join(temp_checkpoint_dir, "optimizer.pt"),
-                )
-                torch.save(
-                    {"epoch": epoch},           # store last completed epoch
-                    os.path.join(temp_checkpoint_dir, "extra_state.pt"),
-                )
-                # Package into a Ray checkpoint
-                checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
-        
-        # Report metrics and attach checkpoint (only rank-0 attaches checkpoint)
-        ray.train.report(  
-            metrics,  
-            checkpoint=checkpoint,
+            # Save all state required for full recovery
+            torch.save(
+                model.module.state_dict(),  # unwrap DDP before saving
+                os.path.join(temp_checkpoint_dir, "model.pt"),
             )
+            torch.save(
+                optimizer.state_dict(),  # include optimizer state
+                os.path.join(temp_checkpoint_dir, "optimizer.pt"),
+            )
+            torch.save(
+                {"epoch": epoch},  # store last completed epoch
+                os.path.join(temp_checkpoint_dir, "extra_state.pt"),
+            )
+            # Package into a Ray checkpoint
+            checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+
+        # Report metrics and attach checkpoint (only rank-0 attaches checkpoint)
+        ray.train.report(
+            metrics,
+            checkpoint=checkpoint,
+        )
+
 
 # 03. Configure TorchTrainer with fault-tolerance enabled
 
@@ -574,14 +625,14 @@ experiment_name = "fault-tolerant-cifar-vit"
 
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_ray_train_with_checkpoint_loading,  # fault-tolerant loop
-    train_loop_config={   # hyperparameters
+    train_loop_config={  # hyperparameters
         "num_epochs": 1,
         "global_batch_size": 512,
     },
     scaling_config=scaling_config,  # resource scaling as before
     run_config=ray.train.RunConfig(
         name="fault-tolerant-cifar-vit",
-        storage_path=storage_path,      # persistent checkpoint storage
+        storage_path=storage_path,  # persistent checkpoint storage
         failure_config=failure_config,  # enable automatic retries
     ),
     datasets=datasets,  # Ray Dataset shard for each worker
@@ -597,15 +648,15 @@ trainer.fit()
 
 restored_trainer = TorchTrainer(
     train_loop_per_worker=train_loop_ray_train_with_checkpoint_loading,  # loop supports checkpoint loading
-        train_loop_config={   # hyperparameters must match
+    train_loop_config={  # hyperparameters must match
         "num_epochs": 1,
         "global_batch_size": 512,
     },
     scaling_config=scaling_config,  # same resource setup as before
     run_config=ray.train.RunConfig(
         name="fault-tolerant-cifar-vit",  # must match previous run name
-        storage_path=storage_path,       # path where checkpoints are saved
-        failure_config=failure_config,   # still allow retries
+        storage_path=storage_path,  # path where checkpoints are saved
+        failure_config=failure_config,  # still allow retries
     ),
     datasets=datasets,  # same dataset as before
 )
@@ -632,10 +683,9 @@ for path in paths_to_delete:
     if os.path.exists(path):
         # Handle directories vs. files
         if os.path.isdir(path):
-            shutil.rmtree(path)       # recursively delete directory
+            shutil.rmtree(path)  # recursively delete directory
         else:
-            os.remove(path)           # delete single file
+            os.remove(path)  # delete single file
         print(f"Deleted: {path}")
     else:
         print(f"Not found: {path}")
-

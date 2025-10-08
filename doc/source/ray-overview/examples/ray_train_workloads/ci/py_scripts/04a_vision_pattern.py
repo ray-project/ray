@@ -1,18 +1,24 @@
 # 00. Runtime setup — install same deps and set env vars
 import os, sys, subprocess
 
-# Non-secret env var 
+# Non-secret env var
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
-# Install Python dependencies 
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "torchvision==0.23.0",
-    "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
-    "datasets==2.19.2",
-])
+# Install Python dependencies
+subprocess.check_call(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-cache-dir",
+        "torch==2.8.0",
+        "torchvision==0.23.0",
+        "matplotlib==3.10.6",
+        "pyarrow==14.0.2",
+        "datasets==2.19.2",
+    ]
+)
 
 # 01. Imports
 
@@ -20,17 +26,17 @@ subprocess.check_call([
 # Standard Library Utilities
 # ————————————————————————
 import os, io, tempfile, shutil  # file I/O and temp dirs
-import json                      # reading/writing configs
-import random, uuid              # randomness and unique IDs
+import json  # reading/writing configs
+import random, uuid  # randomness and unique IDs
 
 # ————————————————————————
 # Core Data & Storage Libraries
 # ————————————————————————
-import pandas as pd              # tabular data handling
-import numpy as np               # numerical ops
-import pyarrow as pa             # in-memory columnar format
-import pyarrow.parquet as pq     # reading/writing Parquet files
-from tqdm import tqdm            # progress bars
+import pandas as pd  # tabular data handling
+import numpy as np  # numerical ops
+import pyarrow as pa  # in-memory columnar format
+import pyarrow.parquet as pq  # reading/writing Parquet files
+from tqdm import tqdm  # progress bars
 
 # ————————————————————————
 # Image Handling & Visualization
@@ -86,10 +92,7 @@ for example in tqdm(ds, desc="Preprocessing images", unit="img"):
         img = transform(example["image"])
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
-        records.append({
-            "image_bytes": buf.getvalue(),
-            "label": example["label"]
-        })
+        records.append({"image_bytes": buf.getvalue(), "label": example["label"]})
     except Exception as e:
         continue
 
@@ -117,15 +120,18 @@ plt.show()
 output_dir = "/mnt/cluster_storage/food101_lite/parquet_256"
 os.makedirs(output_dir, exist_ok=True)
 
-table = pa.Table.from_pydict({
-    "image_bytes": [r["image_bytes"] for r in records],
-    "label": [r["label"] for r in records]
-})
+table = pa.Table.from_pydict(
+    {
+        "image_bytes": [r["image_bytes"] for r in records],
+        "label": [r["label"] for r in records],
+    }
+)
 pq.write_table(table, os.path.join(output_dir, "shard_0.parquet"))
 
 print(f"Wrote {len(records)} records to {output_dir}")
 
 # 06. Define PyTorch Dataset that loads from Parquet
+
 
 class Food101Dataset(Dataset):
     def __init__(self, parquet_path: str, transform=None):
@@ -145,7 +151,9 @@ class Food101Dataset(Dataset):
     def __getitem__(self, idx):
         row_group_idx, local_idx = self.row_group_map[idx]
         # Read only the relevant row group (in memory-efficient batch---for scalability)
-        table = self.parquet_file.read_row_group(row_group_idx, columns=["image_bytes", "label"])
+        table = self.parquet_file.read_row_group(
+            row_group_idx, columns=["image_bytes", "label"]
+        )
         row = table.to_pandas().iloc[local_idx]
 
         img = Image.open(io.BytesIO(row["image_bytes"])).convert("RGB")
@@ -153,16 +161,19 @@ class Food101Dataset(Dataset):
             img = self.transform(img)
         return img, row["label"]
 
+
 # 07. Define data preprocessing transform
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD  = [0.229, 0.224, 0.225]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
-transform = T.Compose([
-    T.ToTensor(),
-    T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-])
+transform = T.Compose(
+    [
+        T.ToTensor(),
+        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ]
+)
 
-# 08. Create train/val Parquet splits 
+# 08. Create train/val Parquet splits
 full_path = "/mnt/cluster_storage/food101_lite/parquet_256/shard_0.parquet"
 
 df = (
@@ -171,13 +182,15 @@ df = (
     .sample(frac=1.0, random_state=42)  # shuffle for reproducibility
 )
 
-df[:-500].to_parquet("/mnt/cluster_storage/food101_lite/train.parquet")   # training
-df[-500:].to_parquet("/mnt/cluster_storage/food101_lite/val.parquet")     # validation
+df[:-500].to_parquet("/mnt/cluster_storage/food101_lite/train.parquet")  # training
+df[-500:].to_parquet("/mnt/cluster_storage/food101_lite/val.parquet")  # validation
 
 # 09. Observe data shape
 
 loader = DataLoader(
-    Food101Dataset("/mnt/cluster_storage/food101_lite/train.parquet", transform=transform),
+    Food101Dataset(
+        "/mnt/cluster_storage/food101_lite/train.parquet", transform=transform
+    ),
     batch_size=16,
     shuffle=True,
     num_workers=4,
@@ -189,6 +202,7 @@ for images, labels in loader:
 
 # 10. Define helper to create prepared DataLoader
 from torch.utils.data.distributed import DistributedSampler
+
 
 def build_dataloader(parquet_path: str, batch_size: int, shuffle=True):
     dataset = Food101Dataset(parquet_path, transform=transform)
@@ -210,6 +224,7 @@ def build_dataloader(parquet_path: str, batch_size: int, shuffle=True):
     )
     return prepare_data_loader(loader)
 
+
 # 11. Define Ray Train train_loop_per_worker
 def train_loop_per_worker(config):
 
@@ -227,16 +242,24 @@ def train_loop_per_worker(config):
     if checkpoint:
         with checkpoint.as_directory() as ckpt_dir:
             model.load_state_dict(torch.load(os.path.join(ckpt_dir, "model.pt")))
-            optimizer.load_state_dict(torch.load(os.path.join(ckpt_dir, "optimizer.pt")))
+            optimizer.load_state_dict(
+                torch.load(os.path.join(ckpt_dir, "optimizer.pt"))
+            )
             start_epoch = torch.load(os.path.join(ckpt_dir, "extra.pt"))["epoch"]
-        print(f"[Rank {get_context().get_world_rank()}] Resumed from checkpoint at epoch {start_epoch}")
+        print(
+            f"[Rank {get_context().get_world_rank()}] Resumed from checkpoint at epoch {start_epoch}"
+        )
 
     # === DataLoaders ===
     train_loader = build_dataloader(
-        "/mnt/cluster_storage/food101_lite/train.parquet", config["batch_size"], shuffle=True
+        "/mnt/cluster_storage/food101_lite/train.parquet",
+        config["batch_size"],
+        shuffle=True,
     )
     val_loader = build_dataloader(
-        "/mnt/cluster_storage/food101_lite/val.parquet", config["batch_size"], shuffle=False
+        "/mnt/cluster_storage/food101_lite/val.parquet",
+        config["batch_size"],
+        shuffle=False,
     )
 
     # === Training Loop ===
@@ -283,7 +306,9 @@ def train_loop_per_worker(config):
 
         # Append metrics to a file (only on rank 0)
         if train.get_context().get_world_rank() == 0:
-            with open("/mnt/cluster_storage/food101_lite/results/history.csv", "a") as f:
+            with open(
+                "/mnt/cluster_storage/food101_lite/results/history.csv", "a"
+            ) as f:
                 f.write(f"{epoch},{train_loss},{val_loss}\n")
         train.report(metrics, checkpoint=checkpoint)
 
@@ -297,7 +322,8 @@ def train_loop_per_worker(config):
     accuracy = correct / total
     print(f"Val Accuracy: {accuracy:.2%}")
 
-# 12. Run Training with Ray Train 
+
+# 12. Run Training with Ray Train
 
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
@@ -307,10 +333,10 @@ trainer = TorchTrainer(
         name="food101_ft_resume",
         storage_path="/mnt/cluster_storage/food101_lite/results",
         checkpoint_config=CheckpointConfig(
-            num_to_keep=5, 
+            num_to_keep=5,
             checkpoint_frequency=1,
             checkpoint_score_attribute="val_loss",
-            checkpoint_score_order="min"
+            checkpoint_score_order="min",
         ),
         failure_config=FailureConfig(max_failures=3),
     ),
@@ -336,13 +362,14 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-# 14. Run the trainer again to demonstrate resuming from latest checkpoint  
+# 14. Run the trainer again to demonstrate resuming from latest checkpoint
 
 result = trainer.fit()
 print("Final metrics:", result.metrics)
 
 
 # 15. Define batch inference function
+
 
 @ray.remote(num_gpus=1)
 def run_inference_from_checkpoint(checkpoint_path, parquet_path, idx=0):
@@ -362,10 +389,12 @@ def run_inference_from_checkpoint(checkpoint_path, parquet_path, idx=0):
     model.eval().cuda()
 
     # === Define transform ===
-    transform = T.Compose([
-        T.ToTensor(),
-        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
+    transform = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ]
+    )
 
     # === Load dataset ===
     dataset = Food101Dataset(parquet_path, transform=transform)
@@ -378,14 +407,17 @@ def run_inference_from_checkpoint(checkpoint_path, parquet_path, idx=0):
 
     return {"predicted_label": pred, "true_label": int(label), "index": idx}
 
+
 # 16. Perform inference with best trained model (that is, lowest validation loss for a checkpointed model)
- 
+
 checkpoint_root = "/mnt/cluster_storage/food101_lite/results/food101_ft_resume"
 
 checkpoint_dirs = sorted(
     [
-        d for d in os.listdir(checkpoint_root)
-        if d.startswith("checkpoint_") and os.path.isdir(os.path.join(checkpoint_root, d))
+        d
+        for d in os.listdir(checkpoint_root)
+        if d.startswith("checkpoint_")
+        and os.path.isdir(os.path.join(checkpoint_root, d))
     ],
     reverse=True,
 )
@@ -395,14 +427,16 @@ if not checkpoint_dirs:
 
 with result.checkpoint.as_directory() as ckpt_dir:
     print("Best checkpoint contents:", os.listdir(ckpt_dir))
-    best_ckpt_path = ckpt_dir 
+    best_ckpt_path = ckpt_dir
 parquet_path = "/mnt/cluster_storage/food101_lite/val.parquet"
 
 # Define which image to use
 idx = 2
 
 # Launch GPU inference task with Ray
-result = ray.get(run_inference_from_checkpoint.remote(best_ckpt_path, parquet_path, idx=idx))
+result = ray.get(
+    run_inference_from_checkpoint.remote(best_ckpt_path, parquet_path, idx=idx)
+)
 print(result)
 
 # Load label map from Hugging Face
@@ -416,7 +450,9 @@ img, _ = dataset[idx]
 # Plot the image with predicted and true labels
 plt.imshow(img)
 plt.axis("off")
-plt.title(f"Pred: {label_names[result['predicted_label']]}\nTrue: {label_names[result['true_label']]}")
+plt.title(
+    f"Pred: {label_names[result['predicted_label']]}\nTrue: {label_names[result['true_label']]}"
+)
 plt.show()
 
 # 17. Cleanup---delete checkpoints and metrics from model training
@@ -426,8 +462,8 @@ BASE_DIR = "/mnt/cluster_storage/food101_lite"
 
 # Paths to clean
 paths_to_delete = [
-    os.path.join(BASE_DIR, "tmp_checkpoints"),           # custom checkpoints
-    os.path.join(BASE_DIR, "results", "history.csv"),    # metrics history file
+    os.path.join(BASE_DIR, "tmp_checkpoints"),  # custom checkpoints
+    os.path.join(BASE_DIR, "results", "history.csv"),  # metrics history file
     os.path.join(BASE_DIR, "results", "food101_ft_resume"),  # ray trainer run dir
     os.path.join(BASE_DIR, "results", "food101_ft_run"),
     os.path.join(BASE_DIR, "results", "food101_single_run"),
@@ -444,4 +480,3 @@ for path in paths_to_delete:
             print(f"Deleted directory: {path}")
     else:
         print(f"Not found (skipped): {path}")
-
