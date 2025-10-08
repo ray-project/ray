@@ -16,7 +16,7 @@ To make Ray Train resilient to such erroneous imports, this linter proactively d
 
 ### Linter Specification
 
-The linter implements an `ast.NodeVisitor` to parse imports within the base train directory and the patching directory to detect circular imports. The below example depicts two circular imports detected by the linter originating from a fictitious `ray.train.common.__init__.py` file.
+The linter implements an `ast.NodeVisitor` to parse imports within the base train directory and the patching directory to detect circular imports. The below example depicts two circular imports that would be detected by the linter originating from a `ray.train.common.__init__.py` file.
 
 ![Linter](./images/Linter.png)
 
