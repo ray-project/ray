@@ -61,27 +61,10 @@ class Operation(Enum):
     NOT_IN = "not_in"
 
 
-class _PyArrowExpressionVisitor:
-    """Visitor that converts Ray Data expressions to PyArrow compute expressions.
+class _ExprVisitor(ABC):
+    """Base visitor with generic dispatch for Ray Data expressions."""
 
-    This follows the visitor pattern similar to ast.NodeVisitor, where a generic
-    visit() method dispatches to type-specific visit methods.
-    """
-
-    def visit(self, expr: "Expr") -> "pyarrow.compute.Expression":
-        """Visit an expression node and convert it to PyArrow.
-
-        Args:
-            expr: The expression to convert
-
-        Returns:
-            A PyArrow compute expression
-
-        Raises:
-            ValueError: If the operation is not supported by PyArrow
-            TypeError: If the expression type cannot be converted to PyArrow
-        """
-        # Dispatch to the appropriate visit method based on expression type
+    def visit(self, expr: "Expr") -> Any:
         if isinstance(expr, ColumnExpr):
             return self.visit_column(expr)
         elif isinstance(expr, LiteralExpr):
@@ -97,90 +80,94 @@ class _PyArrowExpressionVisitor:
         elif isinstance(expr, DownloadExpr):
             return self.visit_download(expr)
         else:
-            raise TypeError(
-                f"Unsupported expression type for PyArrow conversion: {type(expr)}"
-            )
+            raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
+
+    @abstractmethod
+    def visit_column(self, expr: "ColumnExpr") -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_literal(self, expr: "LiteralExpr") -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_binary(self, expr: "BinaryExpr") -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_unary(self, expr: "UnaryExpr") -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_alias(self, expr: "AliasExpr") -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_udf(self, expr: "UDFExpr") -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_download(self, expr: "DownloadExpr") -> Any:
+        raise NotImplementedError
+
+
+class _PyArrowExpressionVisitor(_ExprVisitor):
+    """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
-        """Convert a ColumnExpr to PyArrow field reference."""
         import pyarrow.compute as pc
 
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
-        """Convert a LiteralExpr to PyArrow scalar."""
         import pyarrow.compute as pc
 
         return pc.scalar(expr.value)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
-        """Convert a BinaryExpr to PyArrow binary operation."""
         import pyarrow as pa
         import pyarrow.compute as pc
 
-        # Special handling for IN and NOT_IN operations
-        # PyArrow's is_in expects the value_set to be an array, not an expression
         if expr.op in (Operation.IN, Operation.NOT_IN):
             left = self.visit(expr.left)
-
-            # Check the type of the right operand BEFORE visiting
             if isinstance(expr.right, LiteralExpr):
-                # For literal lists, convert directly to pa.array
                 right_value = expr.right.value
-                if isinstance(right_value, list):
-                    right = pa.array(right_value)
-                else:
-                    # Single value, wrap in array
-                    right = pa.array([right_value])
+                right = (
+                    pa.array(right_value)
+                    if isinstance(right_value, list)
+                    else pa.array([right_value])
+                )
             else:
-                # PyArrow's is_in doesn't support expressions as the value_set
-                # It requires an actual array of values
                 raise ValueError(
                     f"is_in/not_in operations require the right operand to be a "
-                    f"literal list, got {type(expr.right).__name__}. "
-                    f"Column-to-column is_in is not supported in PyArrow expressions."
+                    f"literal list, got {type(expr.right).__name__}."
                 )
-
-            # Now apply the operation
             result = pc.is_in(left, right)
-            if expr.op == Operation.NOT_IN:
-                result = pc.invert(result)
-            return result
+            return pc.invert(result) if expr.op == Operation.NOT_IN else result
 
-        # For all other operations, recursively visit both operands
         left = self.visit(expr.left)
         right = self.visit(expr.right)
-
-        # Reuse the Arrow operations map from the evaluator for other operations
         from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
-        else:
-            raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
+        raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
 
     def visit_unary(self, expr: "UnaryExpr") -> "pyarrow.compute.Expression":
-        """Convert a UnaryExpr to PyArrow unary operation."""
-        # Recursively visit operand
         operand = self.visit(expr.operand)
-
         from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](operand)
-        else:
-            raise ValueError(f"Unsupported unary operation for PyArrow: {expr.op}")
+        raise ValueError(f"Unsupported unary operation for PyArrow: {expr.op}")
 
     def visit_alias(self, expr: "AliasExpr") -> "pyarrow.compute.Expression":
-        """Convert an AliasExpr by converting its inner expression."""
         return self.visit(expr.expr)
 
     def visit_udf(self, expr: "UDFExpr") -> "pyarrow.compute.Expression":
-        """UDF expressions cannot be converted to PyArrow."""
         raise TypeError("UDF expressions cannot be converted to PyArrow expressions")
 
     def visit_download(self, expr: "DownloadExpr") -> "pyarrow.compute.Expression":
-        """Download expressions cannot be converted to PyArrow."""
         raise TypeError(
             "Download expressions cannot be converted to PyArrow expressions"
         )
