@@ -44,14 +44,14 @@ class TorchTrainer(DataParallelTrainer):
             from torch import nn
             from torch.nn.parallel import DistributedDataParallel
 
-            import ray
-            from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+            import ray.train
             from ray.train.torch import TorchTrainer
+
 
             # If using GPUs, set this to True.
             use_gpu = False
             # Number of processes to run training on.
-            num_workers = 4
+            num_workers = 2
 
             # Define your network structure.
             class NeuralNetwork(nn.Module):
@@ -65,7 +65,7 @@ class TorchTrainer(DataParallelTrainer):
                     return self.layer2(self.relu(self.layer1(input)))
 
             # Training loop.
-            def train_loop_per_worker(config):
+            def train_fn_per_worker(config):
 
                 # Read configurations.
                 lr = config["lr"]
@@ -90,7 +90,6 @@ class TorchTrainer(DataParallelTrainer):
 
                 # Train multiple epochs.
                 for epoch in range(num_epochs):
-
                     # Train epoch.
                     for batch in dataloader:
                         output = model(batch["input"])
@@ -100,37 +99,32 @@ class TorchTrainer(DataParallelTrainer):
                         optimizer.step()
 
                     # Create checkpoint.
-                    base_model = (model.module
-                        if isinstance(model, DistributedDataParallel) else model)
-                    checkpoint_dir = tempfile.mkdtemp()
-                    torch.save(
-                        {"model_state_dict": base_model.state_dict()},
-                        os.path.join(checkpoint_dir, "model.pt"),
+                    base_model = (
+                        model.module
+                        if isinstance(model, DistributedDataParallel)
+                        else model
                     )
-                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
 
-                    # Report metrics and checkpoint.
-                    ray.train.report({"loss": loss.item()}, checkpoint=checkpoint)
-
-
-            # Define configurations.
-            train_loop_config = {"num_epochs": 20, "lr": 0.01, "batch_size": 32}
-            scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
-            run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                        torch.save(
+                            {"model_state_dict": base_model.state_dict()},
+                            os.path.join(temp_checkpoint_dir, "model.pt"),
+                        )
+                        checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+                        # Report metrics and checkpoint.
+                        ray.train.report({"loss": loss.item()}, checkpoint=checkpoint)
 
             # Define datasets.
             train_dataset = ray.data.from_items(
-                [{"input": [x], "label": [2 * x + 1]} for x in range(2000)]
+                [{"input": [x], "label": [2 * x + 1]} for x in range(128)]
             )
-            datasets = {"train": train_dataset}
 
             # Initialize the Trainer.
             trainer = TorchTrainer(
-                train_loop_per_worker=train_loop_per_worker,
-                train_loop_config=train_loop_config,
-                scaling_config=scaling_config,
-                run_config=run_config,
-                datasets=datasets
+                train_fn_per_worker,
+                train_loop_config={"num_epochs": 1, "lr": 0.01, "batch_size": 32},
+                scaling_config=ray.train.ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+                datasets={"train": train_dataset},
             )
 
             # Train the model.
@@ -138,11 +132,6 @@ class TorchTrainer(DataParallelTrainer):
 
             # Inspect the results.
             final_loss = result.metrics["loss"]
-
-        .. testoutput::
-            :hide:
-
-            ...
 
     Args:
 
