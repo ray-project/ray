@@ -1385,7 +1385,8 @@
         cluster_compute: rte_gce_small.yaml
 
 
-- name: runtime_env_wheel_urls
+- name: core_runtime_env_wheel_urls
+  python: "3.10"
   group: Runtime env tests
   working_dir: runtime_env_tests
 
@@ -3634,7 +3635,8 @@
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
-- name: autoscaler_aws
+- name: core_autoscaler_aws
+  python: "3.10"
   group: autoscaler-test
   working_dir: autoscaling_tests
 
