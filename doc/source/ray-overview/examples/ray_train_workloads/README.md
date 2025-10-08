@@ -8,14 +8,14 @@
 This repository contains a hands-on tutorial series for learning **Ray Train V2** and its ecosystem (Ray Data, Ray Tune, Anyscale Workspaces).  
 The tutorials walk through common ML workload patterns—vision, tabular, time-series, generative, policy learning, and recommendation—showing how to scale them **from single-node to fully distributed training and inference** with minimal code changes.
 
----
+---a
 
 ## Tutorial Index
 
 ### 1. Getting Started
 - [**`01_02_03_intro_to_ray_train.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/ray_train_workloads/notebooks/01_02_03_intro_to_ray_train.ipynb)  
   Your starting point. Learn the basics of distributed training with PyTorch and Ray Train:
-  - Why and when to use Ray Train vs. raw DDP  
+  - Why and when to use Ray Train vs. raw Distributed Data Parallel (DDP)  
   - Wrapping models/data loaders with [`prepare_model`](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.prepare_model.html) / [`prepare_data_loader`](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.prepare_data_loader.html)  
   - Using [`ScalingConfig`](https://docs.ray.io/en/latest/train/api/doc/ray.train.ScalingConfig.html) and [`RunConfig`](https://docs.ray.io/en/latest/train/api/doc/ray.train.RunConfig.html) for scale and checkpointing  
   - Reporting metrics, saving checkpoints, and inspecting results with [`train.report`](https://docs.ray.io/en/latest/train/api/doc/ray.train.report.html)  
@@ -32,7 +32,7 @@ The tutorials walk through common ML workload patterns—vision, tabular, time-s
   Tabular ML with CoverType dataset, XGBoost + Ray Train, checkpoint-aware training, feature importance, and distributed inference.  
 
 - [**`04c_time_series_workload_pattern.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/ray_train_workloads/notebooks/04c_time_series_workload_pattern.ipynb)  
-  NYC taxi demand forecasting with a Transformer model, scaling across GPUs, epoch-level fault tolerance, and remote inference from checkpoints.  
+  New York City taxi demand forecasting with a Transformer model, scaling across GPUs, epoch-level fault tolerance, and remote inference from checkpoints.  
 
 - [**`04d1_generative_cv_pattern.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/ray_train_workloads/notebooks/04d1_generative_cv_pattern.ipynb)  
   A mini diffusion pipeline (Food-101-Lite), showcasing Ray Data preprocessing, PyTorch Lightning integration, checkpointing, and image generation.  
@@ -41,7 +41,7 @@ The tutorials walk through common ML workload patterns—vision, tabular, time-s
   Diffusion-policy pipeline on Gymnasium’s Pendulum-v1 dataset, scaling across GPUs, checkpoint-per-epoch, and direct policy rollout in-notebook.  
 
 - [**`04e_rec_sys_workload_pattern.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/ray_train_workloads/notebooks/04e_rec_sys_workload_pattern.ipynb)  
-  Matrix-factorization recommender system with MovieLens 100K, streaming batches via [`iter_torch_batches`](https://docs.ray.io/en/latest/data/api/doc/ray.data.DataIterator.iter_torch_batches.html), custom training loop with checkpointing, and modular separation of training/eval/inference.
+  Matrix-factorization recommendation system with MovieLens 100K, streaming batches with [`iter_torch_batches`](https://docs.ray.io/en/latest/data/api/doc/ray.data.DataIterator.iter_torch_batches.html), custom training loop with checkpointing, and modular separation of training/eval/inference.
 
 ---
 
@@ -50,18 +50,32 @@ The tutorials walk through common ML workload patterns—vision, tabular, time-s
 - [**`05_ray_tune_pytorch_example.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/ray_train_workloads/notebooks/05_ray_tune_pytorch_example.ipynb)  
   Introduces **Ray Tune** for PyTorch hyperparameter optimization:  
   - Define search spaces  
-  - Run parallel trials with ASHA schedulers  
+  - Run parallel trials with various schedulers  
   - Add checkpoint/resume logic with [`tune.get_checkpoint`](https://docs.ray.io/en/latest/tune/api/doc/ray.tune.get_checkpoint.html)  
   - Retrieve and evaluate the best model checkpoint  
-  This tutorial is standalone, but naturally extends the Ray Train patterns above.
+  This tutorial is standalone, but naturally extends the Ray Train patterns preceding.
 
 ---
 
 ## Key Benefits
 - **Unified abstraction:** One training loop, portable across CPU, GPU, and multi-node clusters  
-- **Fault tolerance:** Seamless resume from checkpoints on failures or preemptions  
+- **Fault tolerance:** Seamless resume from checkpoints on failures or pre-emptions  
 - **Scalability:** Move from laptop prototyping to cluster-scale training without code changes  
 - **Observability:** Metrics, logs, and checkpoints accessible through Ray + Anyscale tooling  
 - **Flexibility:** Mix and match workload patterns for real-world ML pipelines  
 
-Generated from README.ipynb
+```{toctree}
+:hidden:
+
+notebooks/01_02_03_intro_to_ray_train.ipynb
+notebooks/04a_vision_pattern.ipynb
+notebooks/04b_tabular_workload_pattern.ipynb
+notebooks/04c_time_series_workload_pattern.ipynb
+notebooks/04d1_generative_cv_pattern.ipynb
+notebooks/04d2_policy_learning_pattern.ipynb
+notebooks/04e_rec_sys_workload_pattern.ipynb
+notebooks/05_ray_tune_pytorch_example.ipynb
+```
+
+
+
