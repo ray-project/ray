@@ -18,7 +18,7 @@ from ray_release.util import (
     S3_CLOUD_STORAGE,
     GS_CLOUD_STORAGE,
     GS_BUCKET,
-    AZURE_BUCKET,
+    AZURE_REGISTRY_NAME,
     AZURE_CLOUD_STORAGE,
     AZURE_CONTAINER,
 )
@@ -41,7 +41,7 @@ class JobFileManager(FileManager):
             self.bucket = GS_BUCKET
             self.gs_client = storage.Client()
         elif self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
-            self.bucket = AZURE_BUCKET
+            self.bucket = AZURE_REGISTRY_NAME
         else:
             raise RuntimeError(
                 f"Non supported anyscale service provider: "
@@ -84,7 +84,7 @@ class JobFileManager(FileManager):
             from azure.storage.blob import BlobServiceClient
             from azure.identity import DefaultAzureCredential
 
-            account_url = f"https://{AZURE_BUCKET}.dfs.core.windows.net"
+            account_url = f"https://{AZURE_REGISTRY_NAME}.dfs.core.windows.net"
             credential = DefaultAzureCredential(
                 exclude_managed_identity_credential=True
             )

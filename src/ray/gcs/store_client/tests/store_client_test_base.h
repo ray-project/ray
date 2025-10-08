@@ -28,7 +28,6 @@
 #include "ray/common/id.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "ray/observability/fake_metric.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -205,11 +204,7 @@ class StoreClientTestBase : public ::testing::Test {
     Delete();
 
     GetEmpty();
-
-    TestMetrics();
   }
-
-  virtual void TestMetrics() { return; }
 
   void TestAsyncGetAllAndBatchDelete() {
     Exists(false);
