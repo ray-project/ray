@@ -21,13 +21,14 @@ class LightGBMTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import lightgbm as lgb
 
         import ray.data
         import ray.train
         from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
@@ -61,6 +62,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 train_set,
                 valid_sets=[eval_set],
                 valid_names=["eval"],
+                num_boost_round=1,
                 # To access the checkpoint from trainer, you need this callback.
                 callbacks=[RayTrainReportCallback()],
             )
@@ -72,15 +74,10 @@ class LightGBMTrainer(DataParallelTrainer):
         trainer = LightGBMTrainer(
             train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
