@@ -57,21 +57,10 @@ py_test(
     name = "test_air_usage",
     size = "small",
     srcs = ["tests/test_air_usage.py"],
+    # NOTE: This tests Train V1 telemetry.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
-        "team:ml",
-    ],
-    deps = [":ml_lib"],
-)
-
-py_test(
-    name = "test_data_batch_conversion",
-    size = "small",
-    srcs = ["tests/test_data_batch_conversion.py"],
-    tags = [
-        "exclusive",
-        "ray_data",
-        "team:data",
         "team:ml",
     ],
     deps = [":ml_lib"],
@@ -81,6 +70,8 @@ py_test(
     name = "test_new_dataset_config",
     size = "large",
     srcs = ["tests/test_new_dataset_config.py"],
+    # TODO: Move over
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",
@@ -95,6 +86,8 @@ py_test(
         "tests/_test_experiment_restore_run.py",
         "tests/test_experiment_restore.py",
     ],
+    # NOTE: This tests Tune and Train V1 restoration.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "team:ml",

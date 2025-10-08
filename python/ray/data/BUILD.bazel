@@ -536,6 +536,20 @@ py_test(
 )
 
 py_test(
+    name = "test_data_batch_conversion",
+    size = "small",
+    srcs = ["tests/test_data_batch_conversion.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_deduping_schema",
     size = "small",
     srcs = ["tests/test_deduping_schema.py"],
