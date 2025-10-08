@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Uni
 from pydantic import (
     BaseModel,
     ConfigDict,
-    Field,
 )
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest as vLLMChatCompletionRequest,
@@ -26,7 +25,6 @@ from vllm.entrypoints.openai.protocol import (
     ScoreRequest as vLLMScoreRequest,
     ScoreResponse as vLLMScoreResponse,
 )
-from vllm.utils import random_uuid
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig
@@ -52,18 +50,8 @@ class ErrorResponse(vLLMErrorResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-# TODO (Kourosh): Upstream
 class CompletionRequest(vLLMCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    request_id: str = Field(
-        default_factory=lambda: f"{random_uuid()}",
-        description=(
-            "The request_id related to this request. If the caller does "
-            "not set it, a random_uuid will be generated. This id is used "
-            "through out the inference process and return in response."
-        ),
-    )
 
 
 class CompletionResponse(vLLMCompletionResponse):
@@ -74,18 +62,8 @@ class CompletionStreamResponse(vLLMCompletionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-# TODO (Kourosh): Upstream
 class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    request_id: str = Field(
-        default_factory=lambda: f"{random_uuid()}",
-        description=(
-            "The request_id related to this request. If the caller does "
-            "not set it, a random_uuid will be generated. This id is used "
-            "through out the inference process and return in response."
-        ),
-    )
 
 
 class EmbeddingChatRequest(vLLMEmbeddingChatRequest):

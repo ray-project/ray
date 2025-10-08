@@ -3,7 +3,6 @@ import os
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
-from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
@@ -358,35 +357,13 @@ class VLLMEngine(LLMEngine):
         if isinstance(lora_request, VLLMErrorResponse):
             raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
-    def _create_raw_request(
-        self,
-        request: Union[
-            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
-        ],
-        path: str,
-    ) -> Request:
-        scope = {
-            "type": "http",
-            "method": "POST",
-            "path": path,
-            "headers": [(b"x-request-id", getattr(request, "request_id", "").encode())],
-            "query_string": b"",
-        }
-        return Request(scope)
-
     async def chat(
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
 
-        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
-        # PR: https://github.com/vllm-project/vllm/pull/21009
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_chat_completion API can assign the request_id properly.
-        raw_request = self._create_raw_request(request, "/chat/completions")
-
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
-            request, raw_request=raw_request
+            request
         )
 
         if isinstance(chat_response, AsyncGenerator):
@@ -407,15 +384,8 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
 
-        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
-        # PR: https://github.com/vllm-project/vllm/pull/21009
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_completion API can assign the request_id properly.
-        raw_request = self._create_raw_request(request, "/completions")
-
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
-            request,
-            raw_request=raw_request,
+            request
         )
 
         if isinstance(completion_response, AsyncGenerator):
@@ -438,13 +408,8 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
         self._validate_openai_serving_embedding()
 
-        # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_embedding API can assign the request_id properly.
-        raw_request = self._create_raw_request(request, "/embeddings")
-
         embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
-            request, raw_request=raw_request
+            request
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
@@ -459,11 +424,7 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
         self._validate_openai_serving_scores()
 
-        raw_request = self._create_raw_request(request, "/score")
-
-        score_response = await self._oai_serving_scores.create_score(
-            request, raw_request=raw_request
-        )
+        score_response = await self._oai_serving_scores.create_score(request)
 
         if isinstance(score_response, VLLMErrorResponse):
             yield ErrorResponse(**score_response.model_dump())
