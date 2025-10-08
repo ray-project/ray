@@ -96,7 +96,24 @@ def test_serialized_imports(ray_start_4_cpus):
     ray.get(dummy_task.remote())
 
 
-@pytest.mark.parametrize("env_v2_enabled", [True, False])
+def test_v1_config_validation(monkeypatch):
+    """Test that V1 configs raise an error when V2 is enabled."""
+    import ray.air
+
+    with pytest.raises(ValueError, match="ray.train.ScalingConfig"):
+        DataParallelTrainer(lambda: None, scaling_config=ray.air.ScalingConfig())
+
+    with pytest.raises(ValueError, match="ray.train.RunConfig"):
+        DataParallelTrainer(lambda: None, run_config=ray.air.RunConfig())
+
+    with pytest.raises(ValueError, match="ray.train.FailureConfig"):
+        DataParallelTrainer(
+            lambda: None,
+            run_config=ray.train.RunConfig(failure_config=ray.air.FailureConfig()),
+        )
+
+
+@pytest.mark.parametrize("env_v2_enabled", [False, True])
 def test_train_v2_import(monkeypatch, env_v2_enabled):
     monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", str(int(env_v2_enabled)))
 
@@ -144,23 +161,6 @@ def test_exceptions_are_picklable(error):
     # Verify attributes are preserved
     assert str(unpickled_error) == str(error)
     assert type(unpickled_error) is type(error)
-
-
-def test_v1_config_validation(monkeypatch):
-    """Test that V1 configs raise an error when V2 is enabled."""
-    import ray.air
-
-    with pytest.raises(ValueError, match="ray.train.ScalingConfig"):
-        DataParallelTrainer(lambda: None, scaling_config=ray.air.ScalingConfig())
-
-    with pytest.raises(ValueError, match="ray.train.RunConfig"):
-        DataParallelTrainer(lambda: None, run_config=ray.air.RunConfig())
-
-    with pytest.raises(ValueError, match="ray.train.FailureConfig"):
-        DataParallelTrainer(
-            lambda: None,
-            run_config=ray.train.RunConfig(failure_config=ray.air.FailureConfig()),
-        )
 
 
 if __name__ == "__main__":
