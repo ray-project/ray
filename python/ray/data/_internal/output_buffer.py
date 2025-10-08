@@ -152,7 +152,8 @@ class BlockOutputBuffer:
         # the last block produced will be at least half the target row count.
         max_safe_rows_per_block_factor = MAX_SAFE_ROWS_PER_BLOCK_FACTOR
         if (
-            self._output_block_size_option.override_max_safe_rows_per_block_factor
+            self._output_block_size_option is not None
+            and self._output_block_size_option.override_max_safe_rows_per_block_factor
             is not None
         ):
             max_safe_rows_per_block_factor = (
