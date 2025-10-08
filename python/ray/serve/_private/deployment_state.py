@@ -2984,7 +2984,6 @@ class DeploymentStateManager:
             create_placement_group_fn_override,
         )
         self._autoscaling_state_manager = autoscaling_state_manager
-        self._scaling_decisions: Dict[DeploymentID, int] = {}
 
         self._shutting_down = False
 
@@ -3272,10 +3271,6 @@ class DeploymentStateManager:
         target_state_changed = self._deployment_states[deployment_id].deploy(
             deployment_info
         )
-        if target_state_changed and deployment_id in self._scaling_decisions:
-            # if the target state changed as a result of deployment config change,
-            # we should remove the scaling decision for this deployment.
-            del self._scaling_decisions[deployment_id]
         return target_state_changed
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
@@ -3335,17 +3330,6 @@ class DeploymentStateManager:
 
         # STEP 1: Update current state
         for deployment_id, deployment_state in self._deployment_states.items():
-            if deployment_state.should_autoscale():
-                if deployment_id in self._scaling_decisions:
-                    target_state_changed = (
-                        deployment_state.scale(
-                            decision_num_replicas=self._scaling_decisions[deployment_id]
-                        )
-                        or target_state_changed
-                    )
-                    # clean up the scaling decision after it is applied
-                    del self._scaling_decisions[deployment_id]
-
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status
@@ -3440,14 +3424,11 @@ class DeploymentStateManager:
 
         return any_recovering
 
-    def set_decision_num_replicas(
-        self, deployment_id: DeploymentID, target_num_replicas: int
-    ) -> bool:
+    def scale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
         if deployment_id not in self._deployment_states:
             return False
 
-        self._scaling_decisions[deployment_id] = target_num_replicas
-        return True
+        return self._deployment_states[deployment_id].scale(target_num_replicas)
 
     def _handle_scheduling_request_failures(
         self,

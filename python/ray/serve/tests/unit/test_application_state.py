@@ -176,13 +176,13 @@ class MockDeploymentStateManager:
         ].deployment_config.num_replicas
         return details
 
-    def set_decision_num_replicas(self, id: DeploymentID, target_num_replicas: int):
-        self._scaling_decisions[id] = target_num_replicas
-        return True
-
     def save_checkpoint(self):
         """Mock save checkpoint method."""
         pass
+
+    def scale(self, id: DeploymentID, target_num_replicas: int):
+        self._scaling_decisions[id] = target_num_replicas
+        return True
 
 
 @pytest.fixture
