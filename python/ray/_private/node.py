@@ -416,11 +416,16 @@ class Node:
                 f"Unable to parse port number from {parts[1]} (full address = {ip_port})"
             )
 
-    def check_version_info(self):
+    def check_version_info(self, python_version_match_level: str = "patch"):
         """Check if the Python and Ray version of this process matches that in GCS.
 
         This will be used to detect if workers or drivers are started using
         different versions of Python, or Ray.
+
+        Args:
+            python_version_match_level: Specify the required python version match
+            level between the driver and the workers. The options are "minor"
+            and "patch". Default to "patch".
 
         Raises:
             Exception: An exception is raised if there is a version mismatch.
@@ -435,7 +440,9 @@ class Node:
             return
         node_ip_address = ray._private.services.get_node_ip_address()
         ray._private.utils.check_version_info(
-            cluster_metadata, f"node {node_ip_address}"
+            cluster_metadata,
+            f"node {node_ip_address}",
+            python_version_match_level=python_version_match_level,
         )
 
     def _register_shutdown_hooks(self):
