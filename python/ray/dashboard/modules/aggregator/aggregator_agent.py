@@ -123,6 +123,7 @@ class AggregatorAgent(
                 f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
             )
             self._http_endpoint_publisher = NoopPublisher()
+
         if PUBLISH_EVENTS_TO_GCS:
             logger.info("Publishing events to GCS is enabled")
             self._event_processing_enabled = True
