@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import Any, Dict, NamedTuple
+from typing import Any, Dict
 
 import ray
 from ray.llm._internal.common.utils.download_utils import (
@@ -8,11 +8,14 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.callbacks.custom_initialization import (
+    Callback,
+    CallbackCtx,
+)
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.utils import CallbackCtx
 from ray.util.placement_group import PlacementGroup
 
 torch = try_import("torch")
@@ -70,12 +73,7 @@ async def initialize_worker_nodes(
     )
 
 
-class InitializeNodeOutput(NamedTuple):
-    placement_group: PlacementGroup
-    runtime_env: Dict[str, Any]
-
-
-async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
+async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
     """Implements node initialization for LLM engines.
 
     Downloads model, tokenizer, and extra files as necessary.
@@ -105,7 +103,7 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         runtime_env=runtime_env,
     )
 
-    await callback.on_before_init(ctx)
+    await Callback.run_callback("on_before_node_init", callback, ctx)
 
     if ctx.run_downloads:
         if engine_config.placement_strategy == "STRICT_PACK":
@@ -132,11 +130,9 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
                 download_extra_files=True,
             )
 
-    await callback.on_after_init(ctx)
+    await Callback.run_callback("on_after_node_init", callback, ctx)
 
-    return InitializeNodeOutput(
-        placement_group=ctx.placement_group, runtime_env=ctx.runtime_env
-    )
+    return ctx
 
 
 @make_async

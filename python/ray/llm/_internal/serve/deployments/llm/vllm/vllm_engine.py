@@ -10,6 +10,7 @@ from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.callbacks.custom_initialization import CallbackCtx
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -31,7 +32,6 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    InitializeNodeOutput,
     initialize_node,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -233,12 +233,12 @@ class VLLMEngine(LLMEngine):
         ), "engine_client must have a check_health attribute"
 
     def _prepare_engine_config(
-        self, node_initialization: InitializeNodeOutput
+        self, node_initialization: CallbackCtx
     ) -> Tuple["AsyncEngineArgs", "FrontendArgs", "VllmConfig"]:
         """Prepare the engine config to start the engine.
 
         Args:
-            node_initialization: The node initialization output.
+            node_initialization: The node initialization context.
 
         Returns:
             A tuple of:

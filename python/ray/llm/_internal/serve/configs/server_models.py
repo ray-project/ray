@@ -3,7 +3,6 @@ from typing import (
     Any,
     Dict,
     Optional,
-    Type,
     TypeVar,
     Union,
 )
@@ -23,7 +22,11 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.common.utils.import_utils import load_class, try_import
+from ray.llm._internal.serve.callbacks.custom_initialization import (
+    Callback,
+    CallbackConfig,
+)
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -33,10 +36,6 @@ from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
     SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.utils.custom_initialization import (
-    CustomInitCallback,
-    NoOpInitCallback,
-)
 from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
@@ -213,20 +212,15 @@ class LLMConfig(BaseModelExtended):
         description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
     )
 
-    init_callback_class: Optional[Union[str, Type[CustomInitCallback]]] = Field(
-        default=None,
-        description="Custom initialization class to use for model initialization. Can be a string path to a class or a CustomInitCallback subclass.",
-    )
-
-    init_callback_kwargs: Optional[Dict[str, Any]] = Field(
-        default={},
-        description="Optional keyword arguments to pass to the CustomInitCallback class at construction.",
+    callback_config: CallbackConfig = Field(
+        default_factory=CallbackConfig,
+        description="Callback configuration to use for model initialization. Can be a string path to a class or a Callback subclass.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("UNSPECIFIED")
     _engine_config: EngineConfigType = PrivateAttr(None)
-    _callback_instance: Optional[CustomInitCallback] = PrivateAttr(None)
+    _callback_instance: Optional[Callback] = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -283,51 +277,31 @@ class LLMConfig(BaseModelExtended):
         self._infer_supports_vision(model_id_or_path)
         self._set_model_architecture(model_id_or_path)
 
-    def get_or_create_callback(self) -> Optional[CustomInitCallback]:
+    def get_or_create_callback(self) -> Optional[Callback]:
         """Get or create the callback instance for this process.
 
         This ensures one callback instance per process (singleton pattern).
         The instance is cached so the same object is used across all hooks.
 
         Returns:
-            Instance of class that implements CustomInitCallback
-        """
-        if self.init_callback_class is None:
-            self.init_callback_class = NoOpInitCallback
-
-        # Return cached instance if exists
+            Instance of class that implements Callback
+        """  # Return cached instance if exists
         if self._callback_instance is not None:
             return self._callback_instance
 
         # Create new instance
-        if isinstance(self.init_callback_class, str):
-            callback_class = self._load_callback_class()
+        if isinstance(self.callback_config.callback_class, str):
+            callback_class = load_class(self.callback_config.callback_class)
         else:
-            callback_class = self.init_callback_class
+            callback_class = self.callback_config.callback_class
 
-        self._callback_instance = callback_class(**self.init_callback_kwargs)
-
-        assert isinstance(
-            self._callback_instance, CustomInitCallback
-        ), "Callback class must be a implement CustomInitCallback"
+        self._callback_instance = callback_class(
+            raise_error_on_callback=self.callback_config.raise_error_on_callback,
+            **self.callback_config.callback_kwargs,
+        )
 
         logger.info(f"Created callback instance: {self._callback_instance}")
         return self._callback_instance
-
-    def _load_callback_class(self):
-        """Load callback class from string path."""
-        from ray.llm._internal.common.utils.import_utils import try_import
-
-        if ":" in self.init_callback_class:
-            module_path, class_name = self.init_callback_class.rsplit(":", 1)
-        else:
-            module_path, class_name = self.init_callback_class.rsplit(".", 1)
-
-        module = try_import(module_path, error=True)
-        callback_class = getattr(module, class_name)
-
-        logger.info(f"Loaded callback class: {self.init_callback_class}")
-        return callback_class
 
     @property
     def supports_vision(self) -> bool:
