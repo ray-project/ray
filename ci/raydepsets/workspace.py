@@ -106,7 +106,7 @@ class Workspace:
     def get_all_configs(self, config_path: str = None) -> List[Config]:
         return [self.load_config(path) for path in self.get_configs_dir(config_path)]
 
-    def get_configs_dir(self, configs_path: str = "ci/raydepsets/configs") -> List[str]:
+    def get_configs_dir(self, configs_path: str) -> List[str]:
         configs_dir = os.path.dirname(os.path.join(self.dir, configs_path))
         return [
             os.path.join(self.dir, configs_dir, path)
