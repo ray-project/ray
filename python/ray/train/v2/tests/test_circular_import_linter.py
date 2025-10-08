@@ -204,3 +204,9 @@ def test_expand_to_exclude_reexports(tmp_path: Path, monkeypatch: pytest.MonkeyP
     # The tensorflow trainer is not included in the imports_map
     trainer_module = "ray.train.v2.tensorflow.tensorflow_trainer"
     assert any(imp.module == trainer_module for imp in imports_map["ray.train"])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

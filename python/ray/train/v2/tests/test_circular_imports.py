@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_train_import():
     from ray.train.v2.api.callback import UserCallback  # noqa: F401
     from ray.train.v2.api.config import (  # noqa: F401
@@ -51,3 +54,9 @@ def test_torch_import():
 def test_xgboost_import():
     from ray.train.v2.xgboost.config import XGBoostConfig  # noqa: F401
     from ray.train.v2.xgboost.xgboost_trainer import XGBoostTrainer  # noqa: F401
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
