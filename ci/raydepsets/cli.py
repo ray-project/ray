@@ -207,6 +207,7 @@ class DependencySetManager:
         ancestors_by_confg_node = {
             n: networkx_ancestors(self.build_graph, n) for n in config_nodes
         }
+        # Union all the ancestors of the target config nodes
         config_nodes_ancestors = set().union(
             *(ancestors_by_confg_node[n] for n in config_nodes)
         )

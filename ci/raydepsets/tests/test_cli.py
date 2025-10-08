@@ -1,5 +1,4 @@
 import io
-import os
 import subprocess
 import sys
 import tempfile
@@ -206,7 +205,6 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
             result = _invoke_build(tmpdir, "test.depsets.yaml", "ray_base_test_depset")
-            print(f"Tmpdir: {os.listdir(tmpdir)}")
             output_fp = Path(tmpdir) / "requirements_compiled.txt"
             assert output_fp.is_file()
             assert result.exit_code == 0
@@ -414,11 +412,6 @@ class TestCli(unittest.TestCase):
             sorted_nodes = list(topological_sort(manager.build_graph))
             # assert that the root nodes are the compile depsets
             first_nodes = sorted_nodes[:4]
-            print(f"First nodes: {first_nodes}")
-            print(f"Build graph nodes: {manager.build_graph.nodes}")
-            print(
-                f"operations : {[manager.build_graph.nodes[node]['operation'] for node in first_nodes]}"
-            )
             assert all(
                 manager.build_graph.nodes[node]["operation"] == "compile"
                 or manager.build_graph.nodes[node]["operation"] == "pre_hook"
@@ -635,9 +628,6 @@ class TestCli(unittest.TestCase):
                 Path(tmpdir) / "requirements_compiled_test.txt",
                 Path(tmpdir) / "requirements_compiled.txt",
             )
-            with open(Path(tmpdir) / "test.depsets.yaml", "r") as f:
-                config_text = f.read()
-                print(f"Config text: {config_text}")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
