@@ -344,13 +344,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const std::function<void(const ObjectID &)> callback) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Sets the callback that will be run when the object reference is deleted
+  /// Stores the callback that will be run when the object reference is deleted
   /// from the reference table (all refs including lineage ref count go to 0).
+  /// There could be multiple callbacks for the same object due to retries and we store
+  /// them all to prevent the message reordering case where an earlier callback overwrites
+  /// the later one.
   /// Returns true if the object was in the reference table and the callback was added
   /// else false.
-  bool AddObjectRefDeletedCallback(const ObjectID &object_id,
-                                   const std::function<void(const ObjectID &)> callback)
-      override ABSL_LOCKS_EXCLUDED(mutex_);
+  bool AddObjectRefDeletedCallback(
+      const ObjectID &object_id, std::function<void(const ObjectID &)> callback) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// So we call PublishRefRemovedInternal when we are no longer borrowing this object
   /// (when our ref count goes to 0).
@@ -813,8 +816,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
         on_object_out_of_scope_or_freed_callbacks;
     /// Callbacks that will be called when the object ref is deleted
     /// from the reference table (all refs including lineage ref count go to 0).
-    /// Need to store multiple due to message reordering where the callback of the retry
-    /// of the request could be overwritten by the callback of the initial request
     std::vector<std::function<void(const ObjectID &)>> object_ref_deleted_callbacks;
     /// If this is set, we'll call PublishRefRemovedInternal when this process is no
     /// longer a borrower (RefCount() == 0).

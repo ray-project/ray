@@ -3482,6 +3482,9 @@ void CoreWorker::HandleWaitForActorRefDeleted(
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 
+  /// The callback for each request is stored in the reference counter due to retries
+  /// and message reordering where the callback of the retry of the request could be
+  /// overwritten by the callback of the initial request.
   if (actor_creator_->IsActorInRegistering(actor_id)) {
     actor_creator_->AsyncWaitForActorRegisterFinish(
         actor_id, [this, actor_id, respond = std::move(respond)](const auto &status) {
