@@ -219,7 +219,7 @@ class DependencySetManager:
             # check if the depset exists
             _get_depset(self.config.depsets, single_depset_name)
             self.subgraph_dependency_nodes(single_depset_name)
-        for node in self.build_graph:
+        for node in topological_sort(self.build_graph):
             node_type = self.build_graph.nodes[node]["node_type"]
             if node_type == "pre_hook":
                 pre_hook = self.build_graph.nodes[node]["pre_hook"]

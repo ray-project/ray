@@ -81,25 +81,6 @@ depsets:
         )
 
 
-def _append_to_config_file(tmpdir: str, depset: Depset, config_name: str):
-    content = f"""
-  - name: {depset.name}
-    operation: {depset.operation}
-"""
-    if depset.constraints:
-        content += "    constraints:\n" + "\n".join(
-            f"        - {c}" for c in depset.constraints
-        )
-    if depset.requirements:
-        content += "\n    requirements:\n" + "\n".join(
-            f"        - {r}" for r in depset.requirements
-        )
-    content += f"\n    output: {depset.output}\n"
-
-    with open(Path(tmpdir) / config_name, "a") as f:
-        f.write(content)
-
-
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -207,7 +188,7 @@ class TestCli(unittest.TestCase):
 
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
             result = _invoke_build(tmpdir, "test.depsets.yaml", "ray_base_test_depset")
             output_fp = Path(tmpdir) / "requirements_compiled.txt"
             assert output_fp.is_file()
@@ -447,7 +428,7 @@ class TestCli(unittest.TestCase):
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
             depset = Depset(
                 name="invalid_op_depset",
                 operation="invalid_op",
@@ -618,7 +599,7 @@ class TestCli(unittest.TestCase):
 
     def test_copy_lock_files_to_temp_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
             depset = Depset(
                 name="check_depset",
                 operation="compile",
@@ -647,7 +628,7 @@ class TestCli(unittest.TestCase):
 
     def test_diff_lock_files_out_of_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
             depset = Depset(
                 name="check_depset",
                 operation="compile",
@@ -682,7 +663,7 @@ class TestCli(unittest.TestCase):
 
     def test_diff_lock_files_up_to_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir, ignore="test2.depsets.yaml")
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
             depset = Depset(
                 name="check_depset",
                 operation="compile",
