@@ -1,3 +1,7 @@
+"""
+This file tests previously known circular imports to prevent regressions.
+"""
+
 import pytest
 
 

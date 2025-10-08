@@ -20,7 +20,7 @@ def test_import_collector_excludes_non_module_level_and_type_checking():
             import json
 
         class C:
-            from pkg import a
+            import pkg
         """
     )
 
