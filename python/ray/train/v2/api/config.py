@@ -246,7 +246,7 @@ class RunConfig:
                 "https://github.com/ray-project/ray/issues/49454"
             )
 
-        if not isinstance(self.failure_config, CheckpointConfig):
+        if not isinstance(self.checkpoint_config, CheckpointConfig):
             raise ValueError(
                 f"Invalid `CheckpointConfig` type: `{self.checkpoint_config.__class__}`. "
                 "Use `ray.train.CheckpointConfig` instead."
