@@ -33,6 +33,7 @@ ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 S3_CLOUD_STORAGE = "s3"
 GS_CLOUD_STORAGE = "gs"
 GS_BUCKET = "anyscale-oss-dev-bucket"
+AZURE_REGISTRY_NAME = "rayreleasetest"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
