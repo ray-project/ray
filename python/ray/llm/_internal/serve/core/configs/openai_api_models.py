@@ -125,12 +125,13 @@ LLMEmbeddingsResponse = Union[
     AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None],
 ]
 
-LLMScoreResponse = Union[
-    AsyncGenerator[Union[ScoreResponse, ErrorResponse], None],
-]
+LLMScoreResponse = Union[AsyncGenerator[Union[ScoreResponse, ErrorResponse], None],]
 
 LLMChatResponse = Union[
-    AsyncGenerator[Union[str, ChatCompletionStreamResponse, ChatCompletionResponse, ErrorResponse], None],
+    AsyncGenerator[
+        Union[str, ChatCompletionStreamResponse, ChatCompletionResponse, ErrorResponse],
+        None,
+    ],
 ]
 
 LLMCompletionsResponse = Union[
@@ -144,6 +145,7 @@ LLMTranscriptionResponse = Union[
         Union[TranscriptionStreamResponse, TranscriptionResponse, ErrorResponse], None
     ],
 ]
+
 
 # TODO: remove this class
 class OpenAIHTTPException(Exception):

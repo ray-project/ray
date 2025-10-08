@@ -361,7 +361,11 @@ class VLLMEngine(LLMEngine):
     def _create_raw_request(
         self,
         request: Union[
-            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, TranscriptionRequest, ScoreRequest
+            CompletionRequest,
+            ChatCompletionRequest,
+            EmbeddingRequest,
+            TranscriptionRequest,
+            ScoreRequest,
         ],
         path: str,
     ) -> Request:
