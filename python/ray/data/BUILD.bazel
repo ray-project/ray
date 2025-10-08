@@ -491,6 +491,76 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_limits",
+    size = "large",
+    srcs = ["tests/test_dataset_limits.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_creation",
+    size = "large",
+    srcs = ["tests/test_dataset_creation.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_validation",
+    size = "large",
+    srcs = ["tests/test_dataset_validation.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_aggregrations",
+    size = "large",
+    srcs = ["tests/test_dataset_aggregrations.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_iter",
+    size = "large",
+    srcs = ["tests/test_dataset_iter.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_csv",
     size = "medium",
     srcs = ["tests/test_csv.py"],
