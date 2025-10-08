@@ -419,29 +419,25 @@ def wait_for_dashboard_agent_available(cluster):
     )
 
 
-def wait_for_dashboard_agent_grpc_channel_available(address, node_id, timeout=30):
+def wait_for_aggregator_agent_ready(address, node_id):
     gcs_client = GcsClient(address=address)
-    # First wait for the KV entry to exist
+    # Wait for the agent to publish its address
     wait_for_condition(
         lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
     )
-    grpc_address = get_dashboard_agent_address(gcs_client, node_id)
-
-    # Create a gRPC channel and wait for it to be ready
-    from ray._private.utils import init_grpc_channel
-
-    channel = init_grpc_channel(grpc_address, options=ray_constants.GLOBAL_GRPC_OPTIONS)
-    try:
-        grpc.channel_ready_future(channel).result(timeout=timeout)
-    except grpc.FutureTimeoutError:
-        raise TimeoutError(
-            f"Timed out waiting for dashboard agent gRPC channel at {grpc_address} "
-            f"to be ready after {timeout} seconds. The dashboard agent may not have "
-            "fully started all modules (e.g., aggregator agent)."
+    # Wait for the agent to be ready
+    def _is_aggregator_agent_ready() -> bool:
+        ready_key = (
+            f"{dashboard_consts.DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX}{node_id}"
+        ).encode()
+        val = gcs_client.internal_kv_get(
+            ready_key,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
         )
-    finally:
-        if hasattr(channel, "close"):
-            channel.close()
+        return val == b"1"
+
+    wait_for_condition(_is_aggregator_agent_ready)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
@@ -1524,7 +1520,6 @@ class RayletKiller(NodeKillerBase):
             self.killed.add(node_id)
 
     def _kill_raylet(self, ip, port, graceful=False):
-        import grpc
         from grpc._channel import _InactiveRpcError
 
         from ray.core.generated import node_manager_pb2_grpc
@@ -1878,7 +1873,6 @@ def wandb_setup_api_key_hook():
 
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
-    import grpc
 
     from ray.core.generated import node_manager_pb2_grpc
 
@@ -1931,7 +1925,6 @@ def get_load_metrics_report(webui_url):
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
-    import grpc
     from grpc._channel import _InactiveRpcError
 
     from ray.core.generated import node_manager_pb2_grpc

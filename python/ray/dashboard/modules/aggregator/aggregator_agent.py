@@ -4,12 +4,12 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
-from ray._raylet import GcsClient
 from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
@@ -123,19 +123,13 @@ class AggregatorAgent(
                 f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
             )
             self._http_endpoint_publisher = NoopPublisher()
-
-        self._gcs_client = None
         if PUBLISH_EVENTS_TO_GCS:
             logger.info("Publishing events to GCS is enabled")
             self._event_processing_enabled = True
-            self._gcs_client = GcsClient(
-                address=self.gcs_address,
-                cluster_id=dashboard_agent.cluster_id_hex,
-            )
             self._gcs_publisher = RayEventPublisher(
                 name="ray_gcs",
                 publish_client=AsyncGCSTaskEventsPublisherClient(
-                    gcs_client=self._gcs_client,
+                    gcs_client=self._dashboard_agent.gcs_client,
                     executor=self._executor,
                 ),
                 event_buffer=self._event_buffer,
@@ -202,6 +196,16 @@ class AggregatorAgent(
             events_event_aggregator_service_pb2_grpc.add_EventAggregatorServiceServicer_to_server(
                 self, server
             )
+            # Signal readiness once the gRPC servicer is registered on the agent server.
+            try:
+                await self._dashboard_agent.gcs_client.async_internal_kv_put(
+                    f"{dashboard_consts.DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX}{self._dashboard_agent.node_id}".encode(),
+                    b"1",
+                    True,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                )
+            except Exception:
+                logger.exception("Failed to set aggregator agent readiness key.")
         try:
             await asyncio.gather(
                 self._http_endpoint_publisher.run_forever(),
