@@ -18,7 +18,8 @@ from packaging.version import Version
 
 import ray
 import ray._private.services
-from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
+from .databricks import DefaultDatabricksRayOnSparkStartHook, is_in_databricks_runtime
+from .spark_hook import SparkStartHook
 from .start_hook_base import RayOnSparkStartHook
 from .utils import (
     _get_cpu_cores,
@@ -35,7 +36,6 @@ from .utils import (
     get_spark_application_driver_host,
     get_spark_session,
     get_spark_task_assigned_physical_gpus,
-    is_in_databricks_runtime,
     is_port_in_use,
 )
 from ray._common.network_utils import build_address, parse_address
@@ -456,12 +456,23 @@ def _get_default_ray_tmp_dir():
 
 
 def _create_hook_entry(is_global):
+    """
+    Create the appropriate start hook for the current Spark environment.
+    This plugin architecture allows for optimized configurations across
+    different Spark distributions and deployment modes.
+
+    The plugin system provides:
+    - Custom hooks via RAY_ON_SPARK_START_HOOK environment variable
+    - Databricks integration for Databricks runtime environments
+    - Apache Spark hook with performance and compatibility improvements
+    """
     if RAY_ON_SPARK_START_HOOK in os.environ:
         return load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
     elif is_in_databricks_runtime():
         return DefaultDatabricksRayOnSparkStartHook(is_global)
     else:
-        return RayOnSparkStartHook(is_global)
+        # Use hook for Apache Spark environments
+        return SparkStartHook(is_global)
 
 
 def _setup_ray_cluster(
@@ -957,7 +968,11 @@ def _setup_ray_cluster_internal(
             total_mem_bytes,
         )
 
-    (num_cpus_spark_worker, num_gpus_spark_worker, spark_worker_mem_bytes,) = (
+    (
+        num_cpus_spark_worker,
+        num_gpus_spark_worker,
+        spark_worker_mem_bytes,
+    ) = (
         spark.sparkContext.parallelize([1], 1)
         .map(_get_spark_worker_resources)
         .collect()[0]
