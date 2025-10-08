@@ -290,20 +290,22 @@ class TestHTMLReading:
     def test_selector_no_match(self, ray_start_regular_shared, tmp_path):
         """Test CSS selector with no matching elements."""
         html_path = os.path.join(tmp_path, "no_match.html")
-        create_test_html(html_path)
+        create_test_html(html_path, title="Test Title")
 
         ds = ray.data.read_html(html_path, selector="div.nonexistent")
         records = ds.take_all()
 
-        # Should return empty result
+        # Should return one record per file
         assert len(records) == 1
-        # Content should be empty
+        # Content should be empty since selector matched nothing
         assert records[0]["text"] == ""
-        # Metadata should also be empty/None for consistency
-        assert records[0].get("title") is None or records[0]["title"] == ""
+        # Document-level metadata should still be present from full document
+        assert records[0]["title"] == "Test Title"
+        # Content metadata (headers) should be empty since selector matched nothing
+        assert "headers" not in records[0] or records[0]["headers"] == {}
 
     def test_selector_metadata_consistency(self, ray_start_regular_shared, tmp_path):
-        """Test that metadata is extracted from selected content only."""
+        """Test that document metadata is preserved while content metadata respects selector."""
         html_content = """<!DOCTYPE html>
 <html>
 <head>
@@ -341,18 +343,22 @@ class TestHTMLReading:
         assert "Article content" in text
         assert "Sidebar content" not in text
 
-        # Metadata should be extracted from selected content only
-        # Title should be None or empty since article has no title tag
-        assert record.get("title") is None or record["title"] == ""
+        # Document-level metadata should be preserved from full document
+        assert record["title"] == "Full Page Title"
+        assert record["description"] == "Full page description"
 
-        # Headers should only include h2 and h3 from article, not from sidebar
-        if "headers" in record:
-            headers = record["headers"]
-            if "h2" in headers:
-                assert "Article Title" in headers["h2"]
-                assert "Sidebar Header" not in str(headers)
-            if "h3" in headers:
-                assert "Article Subtitle" in headers["h3"]
+        # Headers should only include h2 and h3 from selected article, not from sidebar or page
+        assert "headers" in record
+        headers = record["headers"]
+        # Should NOT include h1 from page header (outside selector)
+        assert "h1" not in headers
+        # Should include h2 from article
+        assert "h2" in headers
+        assert "Article Title" in headers["h2"]
+        assert "Sidebar Header" not in headers["h2"]  # Sidebar h2 excluded
+        # Should include h3 from article
+        assert "h3" in headers
+        assert "Article Subtitle" in headers["h3"]
 
     def test_selector_preserves_dom_structure(self, ray_start_regular_shared, tmp_path):
         """Test that CSS selector preserves DOM structure."""

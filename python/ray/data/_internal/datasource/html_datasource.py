@@ -182,7 +182,13 @@ class HTMLDatasource(FileBasedDatasource):
                 f"Failed to parse HTML file '{path}' with {parser} parser: {parse_error}"
             ) from parse_error
 
-        # Apply selector if specified (before extracting any content)
+        # Extract document-level metadata from full document (before selector)
+        # This includes title, description, keywords from <head> section
+        doc_metadata = None
+        if self.extract_metadata:
+            doc_metadata = self._extract_document_metadata(soup)
+
+        # Apply selector if specified (for content extraction)
         content_soup = soup
         if self.selector:
             elements = soup.select(self.selector)
@@ -210,8 +216,14 @@ class HTMLDatasource(FileBasedDatasource):
 
                 content_soup = new_soup
 
-        # Extract metadata from content_soup (after applying selector for consistency)
-        metadata = self._extract_metadata(content_soup) if self.extract_metadata else None
+        # Extract content-specific metadata (headers) from selected content
+        content_metadata = None
+        if self.extract_metadata:
+            content_metadata = self._extract_content_metadata(content_soup)
+            # Combine document and content metadata
+            metadata = {**doc_metadata, **content_metadata}
+        else:
+            metadata = None
 
         # Build row data
         row_data = self._extract_content(content_soup, path, metadata)
@@ -335,14 +347,18 @@ class HTMLDatasource(FileBasedDatasource):
 
         return markdown_text.strip()
 
-    def _extract_metadata(self, soup: "BeautifulSoup") -> Dict[str, Any]:
-        """Extract metadata from HTML.
+    def _extract_document_metadata(self, soup: "BeautifulSoup") -> Dict[str, Any]:
+        """Extract document-level metadata from HTML.
+
+        This extracts metadata from the document's <head> section, including
+        title, meta description, and meta keywords. This should be called on
+        the full document before applying any CSS selectors.
 
         Args:
-            soup: BeautifulSoup object.
+            soup: BeautifulSoup object for the full document.
 
         Returns:
-            Dictionary with metadata.
+            Dictionary with document-level metadata.
         """
         metadata = {}
 
@@ -363,6 +379,22 @@ class HTMLDatasource(FileBasedDatasource):
             metadata["keywords"] = meta_keywords["content"]
         else:
             metadata["keywords"] = None
+
+        return metadata
+
+    def _extract_content_metadata(self, soup: "BeautifulSoup") -> Dict[str, Any]:
+        """Extract content-specific metadata from HTML.
+
+        This extracts metadata from the content, such as headers (h1-h6).
+        This should be called on the selected content after applying CSS selectors.
+
+        Args:
+            soup: BeautifulSoup object for the content (possibly filtered by selector).
+
+        Returns:
+            Dictionary with content-specific metadata.
+        """
+        metadata = {}
 
         # Extract headers
         headers = {}
