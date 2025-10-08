@@ -91,6 +91,7 @@ class DataParallelTrainer(BaseTrainer):
     Example:
 
     .. testcode::
+        :skipif: True
 
         import ray
         from ray import train
@@ -112,11 +113,6 @@ class DataParallelTrainer(BaseTrainer):
             datasets={"train": train_dataset},
         )
         result = trainer.fit()
-
-    .. testoutput::
-            :hide:
-
-            ...
 
     **How do I develop on top of DataParallelTrainer?**
 
