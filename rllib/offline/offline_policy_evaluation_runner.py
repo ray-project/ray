@@ -102,9 +102,11 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
             # TODO (simon): Refactor into a single code block for both cases.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
+                batch_length_T=(
+                    self.config.model_config.get("max_seq_len", 0)
+                    if self._module.is_stateful()
+                    else None
+                ),
                 n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
@@ -131,9 +133,11 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
             # Sample steps from the buffer.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
+                batch_length_T=(
+                    self.config.model_config.get("max_seq_len", 0)
+                    if self._module.is_stateful()
+                    else None
+                ),
                 n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
@@ -241,14 +245,14 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         # Define the collate function that converts the flattened dictionary
         # to a `MultiAgentBatch` with Tensors.
         def _collate_fn(
-            _batch: Dict[str, numpy.ndarray]
+            _batch: Dict[str, numpy.ndarray],
         ) -> Dict[EpisodeID, Dict[str, numpy.ndarray]]:
 
             return _batch["episodes"]
 
         # Define the finalize function that makes the host-to-device transfer.
         def _finalize_fn(
-            _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]]
+            _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]],
         ) -> Dict[EpisodeID, Dict[str, TensorType]]:
 
             return [
@@ -556,9 +560,11 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         try:
             self.__device = get_device(
                 self.config,
-                0
-                if not self.worker_index
-                else self.config.num_gpus_per_offline_eval_runner,
+                (
+                    0
+                    if not self.worker_index
+                    else self.config.num_gpus_per_offline_eval_runner
+                ),
             )
         except NotImplementedError:
             self.__device = None
@@ -613,7 +619,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         return self.__batch_iterator
 
     @property
-    def _device(self) -> DeviceType:
+    def _device(self) -> Union[DeviceType, None]:
         return self.__device
 
     @property
