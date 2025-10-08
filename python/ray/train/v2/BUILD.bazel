@@ -1,4 +1,20 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    name = "py_doctest[train_v2]",
+    size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    files = glob(
+        ["**/*.py"],
+        exclude = [
+            "tests/**",
+            "horovod/**",
+            "jax/**",
+        ],
+    ),
+    tags = ["team:ml"],
+)
 
 py_library(
     name = "conftest",
