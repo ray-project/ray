@@ -283,6 +283,8 @@ def test_async_checkpointing_validation_benchmark():
     logger.info(consolidated_metrics)
     safe_write_to_results_json(consolidated_metrics)
 
+    # TODO: consider correctness checks like validating that local checkpoints get deleted
+
 
 if __name__ == "__main__":
     import sys
