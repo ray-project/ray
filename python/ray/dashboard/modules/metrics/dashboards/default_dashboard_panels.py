@@ -27,6 +27,9 @@ def max_plus_pending(max_resource, pending_resource):
 MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
 MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
 
+MAX_PERCENTAGE_EXPRESSION = (
+    "100"  # To help draw the max limit line on percentage panels
+)
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # IMPORTANT: Please keep this in sync with Metrics.tsx and ray-metrics.rst
@@ -299,7 +302,7 @@ RAY_RESOURCES_PANELS = [
                 legend="{{instance}}",
             ),
             Target(
-                expr="100",
+                expr=MAX_PERCENTAGE_EXPRESSION,  # To show the memory limit visually
                 legend="MAX",
             ),
         ],
