@@ -92,6 +92,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import (
     Semaphore,
@@ -108,7 +109,6 @@ from ray.serve.exceptions import (
     RayServeException,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
-from ray.serve.task_consumer import TaskConsumerWrapper
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
