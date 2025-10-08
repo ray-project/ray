@@ -167,7 +167,6 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         "column": ["age", "name", "scores"],
-                        "dtype": ["int64", "string", "list<item: int64>"],
                         "count": [3, 3, 3],
                         "mean": [30.0, np.nan, np.nan],
                         "min": [25.0, np.nan, np.nan],
@@ -179,7 +178,6 @@ class TestDatasetSummary:
                 ).astype(
                     {
                         "column": "object",
-                        "dtype": "object",
                         "count": "int64",
                         "mean": "float64",
                         "min": "float64",
@@ -198,7 +196,6 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         "column": ["x", "y"],
-                        "dtype": ["int64", "double"],
                         "count": [2, 2],
                         "mean": [2.0, 3.0],
                         "min": [1.0, 2.0],
@@ -210,7 +207,6 @@ class TestDatasetSummary:
                 ).astype(
                     {
                         "column": "object",
-                        "dtype": "object",
                         "count": "int64",
                         "mean": "float64",
                         "min": "float64",
@@ -232,7 +228,6 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         "column": ["city", "country"],
-                        "dtype": ["string", "string"],
                         "count": [2, 2],
                         "mean": [np.nan, np.nan],
                         "min": [np.nan, np.nan],
@@ -244,7 +239,6 @@ class TestDatasetSummary:
                 ).astype(
                     {
                         "column": "object",
-                        "dtype": "object",
                         "count": "int64",
                         "mean": "float64",
                         "min": "float64",
@@ -263,7 +257,6 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         "column": ["value"],
-                        "dtype": ["int64"],
                         "count": [3],
                         "mean": [20.0],
                         "min": [10],
@@ -275,7 +268,6 @@ class TestDatasetSummary:
                 ).astype(
                     {
                         "column": "object",
-                        "dtype": "object",
                         "count": "int64",
                         "mean": "float64",
                         "min": "int64",
@@ -298,7 +290,6 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         "column": ["value", "text"],
-                        "dtype": ["int64", "string"],
                         "count": [3, 3],
                         "mean": [33.333333, np.nan],
                         "min": [0.0, np.nan],
@@ -310,7 +301,6 @@ class TestDatasetSummary:
                 ).astype(
                     {
                         "column": "object",
-                        "dtype": "object",
                         "count": "int64",
                         "mean": "float64",
                         "min": "float64",
@@ -332,7 +322,6 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         "column": ["age", "name"],
-                        "dtype": ["int64", "string"],
                         "count": [2, 2],
                         "mean": [27.5, np.nan],
                         "min": [25.0, np.nan],
@@ -344,7 +333,6 @@ class TestDatasetSummary:
                 ).astype(
                     {
                         "column": "object",
-                        "dtype": "object",
                         "count": "int64",
                         "mean": "float64",
                         "min": "float64",
@@ -363,7 +351,6 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         "column": ["value", "text"],
-                        "dtype": ["int64", "string"],
                         "count": [1, 1],
                         "mean": [42.0, np.nan],
                         "min": [42.0, np.nan],
@@ -375,7 +362,6 @@ class TestDatasetSummary:
                 ).astype(
                     {
                         "column": "object",
-                        "dtype": "object",
                         "count": "int64",
                         "mean": "float64",
                         "min": "float64",
@@ -431,15 +417,6 @@ class TestDatasetSummary:
 
         # Verify that each column has its correct dtype
         assert len(actual_df) == 4
-
-        dtypes_dict = dict(zip(actual_df["column"], actual_df["dtype"]))
-        assert "int8" in dtypes_dict["int8_col"]
-        assert "int64" in dtypes_dict["int64_col"]
-        assert (
-            "double" in dtypes_dict["float_col"]
-            or "float64" in dtypes_dict["float_col"]
-        )
-        assert "string" in dtypes_dict["str_col"]
 
     def test_summary_repr(self):
         """Test that summary has a repr."""
