@@ -167,7 +167,7 @@ TEST_F(ObjectManagerTest, TestObjectBufferPoolFreeObjectsRetryOnIOErrorThenSucce
   pool.FreeObjects({object_id});
 
   // First attempt fails with IOError, second attempt succeeds.
-  ASSERT_GE(flaky_client->attempts, 2);
+  ASSERT_EQ(flaky_client->attempts, 2);
   ASSERT_TRUE(!flaky_client->objects_in_plasma_.contains(object_id));
 }
 

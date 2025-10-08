@@ -328,8 +328,9 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   constexpr int kMaxAttempts = 3;
-  absl::Duration backoff = absl::Milliseconds(1);
-  for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
+  absl::Duration backoff = absl::Milliseconds(5);
+  int attempt = 1;
+  while (attempt <= kMaxAttempts) {
     Status s;
     {
       absl::MutexLock lock(&pool_mutex_);
@@ -348,6 +349,7 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
       absl::SleepFor(backoff);
       backoff = backoff * 2;
     }
+    attempt++;
   }
   RAY_LOG(WARNING) << "Plasma delete failed after retries (non-fatal).";
 }
