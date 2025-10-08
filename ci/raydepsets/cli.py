@@ -11,7 +11,7 @@ from typing import List, Optional
 
 import click
 import runfiles
-from networkx import DiGraph, ancestors as networkx_ancestors
+from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -104,7 +104,7 @@ class DependencySetManager:
 
     def get_output_paths(self) -> List[Path]:
         output_paths = []
-        for node in self.build_graph.nodes:
+        for node in topological_sort(self.build_graph):
             if self.build_graph.nodes[node]["node_type"] == "depset":
                 output_paths.append(Path(self.build_graph.nodes[node]["depset"].output))
         return output_paths
