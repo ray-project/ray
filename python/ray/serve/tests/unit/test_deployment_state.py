@@ -2987,10 +2987,7 @@ class TestAutoscaling:
             replica._actor.set_done_stopping()
         dsm.update()
         assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
-        assert (
-            TEST_DEPLOYMENT_ID
-            not in asm._app_autoscaling_states[TEST_DEPLOYMENT_ID.app_name].deployments
-        )
+        assert TEST_DEPLOYMENT_ID.app_name not in asm._app_autoscaling_states
 
     @pytest.mark.parametrize(
         "target_startup_status",

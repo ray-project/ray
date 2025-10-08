@@ -249,6 +249,8 @@ class DeploymentAutoscalingState:
         and max adjusted by the target capacity and returned. If
         `_skip_bound_check` is True, then the bounds are not applied.
         """
+        if self._policy is None:
+            raise ValueError(f"Policy is not set for deployment {self._deployment_id}.")
 
         autoscaling_context = self.get_autoscaling_context(curr_target_num_replicas)
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
@@ -634,13 +636,14 @@ class ApplicationAutoscalingState:
             curr_target_num_replicas,
         )
 
-    def deregister_deployment(self, deployment_id: DeploymentID):
+    def deregister_deployment(self, deployment_id: DeploymentID) -> int:
         if deployment_id not in self._deployment_autoscaling_states:
             logger.warning(
                 f"Cannot deregister autoscaling state for deployment {deployment_id} because it is not registered"
             )
-            return
+            return len(self._deployment_autoscaling_states)
         self._deployment_autoscaling_states.pop(deployment_id)
+        return len(self._deployment_autoscaling_states)
 
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
@@ -756,7 +759,10 @@ class AutoscalingStateManager:
         """Remove deployment from tracking."""
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
-            app_state.deregister_deployment(deployment_id)
+            num_deployments = app_state.deregister_deployment(deployment_id)
+            if num_deployments == 0:
+                # Clean up the app_name entry if no deployments are left
+                del self._app_autoscaling_states[deployment_id.app_name]
 
     def get_decision_num_replicas(
         self,

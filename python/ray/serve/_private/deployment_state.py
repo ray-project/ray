@@ -3268,10 +3268,7 @@ class DeploymentStateManager:
             self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
             self._record_deployment_usage()
 
-        target_state_changed = self._deployment_states[deployment_id].deploy(
-            deployment_info
-        )
-        return target_state_changed
+        return self._deployment_states[deployment_id].deploy(deployment_info)
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
