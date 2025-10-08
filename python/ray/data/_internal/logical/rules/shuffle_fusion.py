@@ -1,4 +1,3 @@
-import copy as cp
 import logging
 
 from ray.data import DataContext
@@ -19,8 +18,6 @@ from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
     StreamingRepartition,
 )
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
-from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 
 logger = logging.getLogger(__name__)
 
@@ -49,19 +46,16 @@ class ShuffleFusion(Rule):
 
             if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
                 _disconnect_op(prev_op)
-                copy_op = cp.copy(op)
-                copy_op._shuffle_blocks = op._shuffle_blocks or prev_op._shuffle_blocks
-                if copy_op._shuffle_blocks:
-                    copy_op._sub_progress_bar_names = [
-                        ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
-                        ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
-                    ]
-                else:
-                    copy_op.sub_progress_bar_names = [
-                        ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
-                    ]
-
-                return copy_op
+                # Create new Repartition with fused properties
+                shuffle_blocks = op._shuffle_blocks or prev_op._shuffle_blocks
+                new_op = Repartition(
+                    input_op=prev_op.input_dependencies[0],
+                    num_outputs=op._num_outputs,
+                    shuffle=shuffle_blocks,
+                    keys=op._keys,
+                    sort=op._sort,
+                )
+                return new_op
 
             if isinstance(prev_op, StreamingRepartition) and isinstance(
                 op, Repartition
@@ -75,9 +69,15 @@ class ShuffleFusion(Rule):
 
             if isinstance(prev_op, Repartition) and isinstance(op, RandomShuffle):
                 _disconnect_op(prev_op)
-                copy_op = cp.copy(op)
-                copy_op._num_outputs = prev_op._num_outputs
-                return copy_op
+                # Create new RandomShuffle with prev_op's num_outputs
+                new_op = RandomShuffle(
+                    input_op=prev_op.input_dependencies[0],
+                    name=op.name,
+                    seed=op._seed,
+                    ray_remote_args=op.ray_remote_args,
+                )
+                new_op._num_outputs = prev_op._num_outputs
+                return new_op
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, Sort):
                 _disconnect_op(prev_op)
@@ -85,15 +85,15 @@ class ShuffleFusion(Rule):
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, Repartition):
                 _disconnect_op(prev_op)
-                copy_op = cp.copy(op)
-                copy_op._shuffle_blocks = True
-                copy_op._random_shuffle = True
-                # Update progress bar names to match shuffle configuration
-                copy_op._sub_progress_bar_names = [
-                    ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
-                    ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
-                ]
-                return copy_op
+                # Create new Repartition with shuffle enabled
+                new_op = Repartition(
+                    input_op=prev_op.input_dependencies[0],
+                    num_outputs=op._num_outputs,
+                    shuffle=True,
+                    keys=op._keys,
+                    sort=op._sort,
+                )
+                return new_op
 
             if isinstance(prev_op, Repartition) and isinstance(op, Join):
                 # For joins, both left and right keys must match parent keys,
@@ -117,11 +117,21 @@ class ShuffleFusion(Rule):
                     return op
 
             if isinstance(prev_op, Aggregate) and isinstance(op, Aggregate):
-                if _keys_can_fuse(prev_op, op):
+                if (
+                    _keys_can_fuse(prev_op, op)
+                    and op._batch_format == prev_op._batch_format
+                ):
                     _disconnect_op(prev_op)
-                    copy_op = cp.copy(op)
-                    copy_op._aggs.extend(prev_op._aggs)
-                    return copy_op
+                    # Create new Aggregate with combined aggs
+                    combined_aggs = prev_op._aggs + op._aggs
+                    new_op = Aggregate(
+                        input_op=prev_op.input_dependencies[0],
+                        key=op._key,
+                        aggs=combined_aggs,
+                        num_partitions=op._num_partitions or prev_op._num_partitions,
+                        batch_format=op._batch_format,
+                    )
+                    return new_op
 
             if isinstance(prev_op, Sort) and isinstance(op, Aggregate):
                 ctx = DataContext.get_current()
@@ -135,9 +145,24 @@ class ShuffleFusion(Rule):
                     and prev_op._batch_format == op._batch_format
                 ):
                     _disconnect_op(prev_op)
-                    copy_op = cp.copy(op)
-                    copy_op._sort_key._columns.extend(prev_op._sort_key._columns)
-                    return copy_op
+                    # Create new Sort with combined columns
+                    from ray.data._internal.planner.exchange.sort_task_spec import (
+                        SortKey,
+                    )
+
+                    combined_columns = (
+                        prev_op._sort_key._columns + op._sort_key._columns
+                    )
+                    combined_sort_key = SortKey(
+                        columns=combined_columns,
+                        descending=op._sort_key._descending,
+                    )
+                    new_op = Sort(
+                        input_op=prev_op.input_dependencies[0],
+                        sort_key=combined_sort_key,
+                        batch_format=op._batch_format,
+                    )
+                    return new_op
 
         return op
 
