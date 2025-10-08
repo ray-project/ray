@@ -69,9 +69,9 @@ describe("Metrics", () => {
     render(<Metrics />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
     expect(screen.getByText(/5 minutes/)).toBeVisible();
-    expect(screen.getByText(/Tasks and Actors/)).toBeVisible();
-    expect(screen.getByText(/Ray Resource Usage/)).toBeVisible();
-    expect(screen.getByText(/Hardware Utilization/)).toBeVisible();
+    expect(screen.getByText(/Core/)).toBeVisible();
+    expect(screen.getByText(/Ray Data/)).toBeVisible();
+    expect(document.querySelector("iframe")).toBeTruthy();
     expect(
       screen.queryByText(
         /Set up Prometheus and Grafana for better Ray Dashboard experience/,
@@ -80,7 +80,7 @@ describe("Metrics", () => {
   });
 
   it("renders warning when grafana is not available", async () => {
-    expect.assertions(5);
+    expect.assertions(4);
 
     render(<Metrics />, { wrapper: MetricsDisabledWrapper });
     await screen.findByText(
@@ -88,9 +88,8 @@ describe("Metrics", () => {
     );
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
     expect(screen.queryByText(/5 minutes/)).toBeNull();
-    expect(screen.queryByText(/Tasks and Actors/)).toBeNull();
-    expect(screen.queryByText(/Ray Resource Usage/)).toBeNull();
-    expect(screen.queryByText(/Hardware Utilization/)).toBeNull();
+    expect(screen.queryByText(/Core/)).toBeNull();
+    expect(document.querySelector("iframe")).toBeNull();
   });
 
   it("validates iframe query parameters are correctly constructed", async () => {
@@ -99,28 +98,28 @@ describe("Metrics", () => {
     render(<Metrics />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
 
-    // Get all iframe elements
+    // Get iframe element (should be only one)
     const iframes = document.querySelectorAll("iframe");
-    expect(iframes.length).toBeGreaterThan(0);
+    expect(iframes.length).toBe(1);
 
-    // Test the first iframe to validate query parameters
-    const firstIframe = iframes[0] as HTMLIFrameElement;
-    const iframeSrc = firstIframe.src;
+    // Test the iframe to validate query parameters
+    const iframe = iframes[0] as HTMLIFrameElement;
+    const iframeSrc = iframe.src;
     const url = new URL(iframeSrc);
 
     // Validate required iframe query parameters
     expect(url.searchParams.get("orgId")).toBe("1");
     expect(url.searchParams.get("theme")).toBe("light");
-    expect(url.searchParams.get("panelId")).toBeTruthy();
+    expect(url.searchParams.get("kiosk")).toBe("tv");
     expect(url.searchParams.get("var-SessionName")).toBe("session-name");
     expect(url.searchParams.get("var-datasource")).toBe("Prometheus");
     expect(url.searchParams.get("refresh")).toBe("5s");
     expect(url.searchParams.get("from")).toBe("now-5m");
     expect(url.searchParams.get("to")).toBe("now");
 
-    // Validate URL structure
-    expect(iframeSrc).toMatch(/localhost:3000\/d-solo\/rayDefaultDashboard\?/);
-    expect(iframeSrc).toContain("/d-solo/rayDefaultDashboard");
+    // Validate URL structure (full dashboard, not panel-only)
+    expect(iframeSrc).toMatch(/localhost:3000\/d\/rayDefaultDashboard\/\?/);
+    expect(iframeSrc).toContain("/d/rayDefaultDashboard");
   });
 
   it("validates iframe query parameters with cluster filter", async () => {
@@ -158,10 +157,10 @@ describe("Metrics", () => {
     render(<Metrics />, { wrapper: WrapperWithClusterFilter });
     await screen.findByText(/View in Grafana/);
 
-    // Get the first iframe and validate cluster filter parameter
+    // Get the iframe and validate cluster filter parameter
     const iframes = document.querySelectorAll("iframe");
-    const firstIframe = iframes[0] as HTMLIFrameElement;
-    const iframeSrc = firstIframe.src;
+    const iframe = iframes[0] as HTMLIFrameElement;
+    const iframeSrc = iframe.src;
     const url = new URL(iframeSrc);
 
     expect(url.searchParams.get("var-Cluster")).toBe("test-cluster");
