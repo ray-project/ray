@@ -542,12 +542,13 @@ class BaseTrainer(abc.ABC):
 
         if is_v2_enabled():
             raise DeprecationWarning(
-                f"Ray Train V2 does not support the V1 Trainer class from this module: `{self.__class__.__module__}`. "
-                "You may be using a deprecated import path for the Trainer class. "
-                "For example, you should replace `from ray.train.torch.torch_trainer import TorchTrainer` "
-                "with `from ray.train.torch import TorchTrainer`. "
-                "Please either update your import path, or explicitly disable Ray Train V2 by "
-                f"setting the environment variable: {V2_ENABLED_ENV_VAR}=0"
+                f"Detected use of a deprecated Trainer import from `{self.__class__.__module__}`. "
+                "This Trainer class is not compatible with Ray Train V2.\n"
+                "To fix this:\n"
+                "  - Update to use the new import path. For example, "
+                "`from ray.train.torch.torch_trainer import TorchTrainer` -> "
+                "`from ray.train.torch import TorchTrainer`\n"
+                f"  - Or, explicitly disable V2 by setting: {V2_ENABLED_ENV_VAR}=0"
             )
 
         if not _v2_migration_warnings_enabled():

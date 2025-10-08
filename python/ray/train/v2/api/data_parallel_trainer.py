@@ -120,6 +120,23 @@ class DataParallelTrainer:
                 "when using this V2 Trainer API."
             )
 
+        from ray.train.v2.api.config import (
+            RunConfig as RunConfigV2,
+            ScalingConfig as ScalingConfigV2,
+        )
+
+        if not isinstance(self.run_config, RunConfigV2):
+            raise ValueError(
+                f"Invalid `RunConfig` type: `{self.run_config.__class__}`. "
+                "Use `ray.train.RunConfig` instead."
+            )
+
+        if not isinstance(self.scaling_config, ScalingConfigV2):
+            raise ValueError(
+                f"Invalid `ScalingConfig` type: `{self.scaling_config.__class__}`. "
+                "Use `ray.train.ScalingConfig` instead."
+            )
+
     def _get_train_func(self) -> Callable[[], None]:
         return construct_train_func(
             self.train_loop_per_worker,
