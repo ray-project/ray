@@ -293,7 +293,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
 class NodeManagerTest : public ::testing::Test {
  public:
   NodeManagerTest()
-      : client_call_manager_(io_service_, /*record_stats=*/false),
+      : client_call_manager_(io_service_, /*record_stats=*/false, /*local_address=*/""),
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),

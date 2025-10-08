@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <list>
 #include <memory>
 #include <string>
@@ -25,10 +26,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/protobuf_utils.h"
-#include "ray/gcs/gcs_ray_event_converter.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -39,7 +38,7 @@ class PeriodicalRunner;
 
 namespace gcs {
 
-enum GcsTaskManagerCounter {
+enum GcsTaskManagerCounter : std::uint8_t {
   kTotalNumTaskEventsReported,
   kTotalNumTaskAttemptsDropped,
   kTotalNumProfileTaskEventsDropped,
@@ -199,7 +198,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     ///
     /// \param job_id Job ID to filter task events.
     /// \return task events of `job_id`.
-    std::vector<rpc::TaskEvents> GetTaskEvents(JobID job_id) const;
+    std::vector<rpc::TaskEvents> GetTaskEvents(const JobID &job_id) const;
 
     /// Get all task events.
     ///
@@ -525,9 +524,6 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   // Pointer to the underlying task events storage. This is only accessed from
   // the io_service_thread_. Access to it is *not* thread safe.
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
-
-  // Converter for converting RayEvents to TaskEvents.
-  std::unique_ptr<GcsRayEventConverter> ray_event_converter_;
 
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;

@@ -48,67 +48,75 @@ class RayletIpcClient : public RayletIpcClientInterface {
                   int num_retries,
                   int64_t timeout);
 
-  ray::Status RegisterClient(const WorkerID &worker_id,
-                             rpc::WorkerType worker_type,
-                             const JobID &job_id,
-                             int runtime_env_hash,
-                             const rpc::Language &language,
-                             const std::string &ip_address,
-                             const std::string &serialized_job_config,
-                             const StartupToken &startup_token,
-                             NodeID *node_id,
-                             int *assigned_port) override;
+  Status RegisterClient(const WorkerID &worker_id,
+                        rpc::WorkerType worker_type,
+                        const JobID &job_id,
+                        int runtime_env_hash,
+                        const rpc::Language &language,
+                        const std::string &ip_address,
+                        const std::string &serialized_job_config,
+                        const StartupToken &startup_token,
+                        NodeID *node_id,
+                        int *assigned_port) override;
 
-  ray::Status Disconnect(const rpc::WorkerExitType &exit_type,
-                         const std::string &exit_detail,
-                         const std::shared_ptr<LocalMemoryBuffer>
-                             &creation_task_exception_pb_bytes) override;
+  Status Disconnect(const rpc::WorkerExitType &exit_type,
+                    const std::string &exit_detail,
+                    const std::shared_ptr<LocalMemoryBuffer>
+                        &creation_task_exception_pb_bytes) override;
 
   Status AnnounceWorkerPortForWorker(int port) override;
 
   Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override;
 
-  ray::Status ActorCreationTaskDone() override;
+  Status ActorCreationTaskDone() override;
 
-  ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                              const std::vector<rpc::Address> &owner_addresses) override;
+  Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                         const std::vector<rpc::Address> &owner_addresses) override;
 
-  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+  StatusOr<absl::flat_hash_set<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int num_returns,
       int64_t timeout_milliseconds) override;
 
-  ray::Status CancelGetRequest() override;
+  Status CancelGetRequest() override;
 
-  ray::Status NotifyDirectCallTaskBlocked() override;
+  /// Notify the raylet that the worker is currently blocked waiting for an object
+  /// to be pulled. The raylet will release the resources used by this worker.
+  ///
+  /// \return Status::OK if no error occurs.
+  /// \return Status::IOError if any error occurs.
+  Status NotifyWorkerBlocked() override;
 
-  ray::Status NotifyDirectCallTaskUnblocked() override;
+  /// Notify the raylet that the worker is unblocked. The raylet will cancel inflight
+  /// pull requests for the worker.
+  ///
+  /// \return Status::OK if no error occurs.
+  /// \return Status::IOError if any error occurs.
+  Status NotifyWorkerUnblocked() override;
 
-  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                   int64_t tag) override;
+  Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                              int64_t tag) override;
 
-  ray::Status PushError(const ray::JobID &job_id,
-                        const std::string &type,
-                        const std::string &error_message,
-                        double timestamp) override;
+  Status PushError(const JobID &job_id,
+                   const std::string &type,
+                   const std::string &error_message,
+                   double timestamp) override;
 
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
-                          bool local_only) override;
+  Status FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override;
 
   void SubscribePlasmaReady(const ObjectID &object_id,
                             const rpc::Address &owner_address) override;
 
  private:
   /// Send a request to raylet asynchronously.
-  ray::Status WriteMessage(MessageType type,
-                           flatbuffers::FlatBufferBuilder *fbb = nullptr);
+  Status WriteMessage(MessageType type, flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
   /// Send a request to raylet and synchronously wait for the response.
-  ray::Status AtomicRequestReply(MessageType request_type,
-                                 MessageType reply_type,
-                                 std::vector<uint8_t> *reply_message,
-                                 flatbuffers::FlatBufferBuilder *fbb = nullptr);
+  Status AtomicRequestReply(MessageType request_type,
+                            MessageType reply_type,
+                            std::vector<uint8_t> *reply_message,
+                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
   /// Protects read operations on the socket.
   std::mutex mutex_;
