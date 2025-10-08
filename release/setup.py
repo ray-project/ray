@@ -16,7 +16,7 @@ setup(
         # Keep this in sync with requirements_buildkite.in
         "aioboto3",
         "anyscale >= 0.26.1",
-        "azure-storage-file-datalake",
+        "azure-storage-blob",
         "azure-identity",
         "aws_requests_auth",
         "bazel-runfiles",
