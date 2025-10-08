@@ -107,7 +107,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/tune/... //python/ray/air/... ml
         --workers 4 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags gpu,minimal,doctest,needs_credentials,soft_imports,rllib
+        --except-tags gpu,train_v2_gpu,minimal,doctest,needs_credentials,soft_imports,rllib
     depends_on:
       - mlbuild-multipy
       - forge
@@ -141,7 +141,7 @@ steps:
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 2
         --python-version {{matrix.python}}
         --build-name mlgpubuild-py{{matrix.python}}
-        --only-tags gpu
+        --only-tags gpu,train_v2_gpu
         --except-tags doctest
     depends_on: [ "mlgpubuild-multipy", "forge" ]
     matrix:
