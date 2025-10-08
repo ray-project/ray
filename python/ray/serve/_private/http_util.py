@@ -685,6 +685,32 @@ def _apply_middlewares(app: ASGIApp, middlewares: List[Callable]) -> ASGIApp:
     return app
 
 
+def _inject_root_path(app, root_path: str):
+    """Middleware to enforce root_path for newer Uvicorn versions."""
+    if not root_path:
+        return app
+
+    async def scope_root_path_middleware(scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            scope["root_path"] = root_path
+        await app(scope, receive, send)
+
+    return scope_root_path_middleware
+
+
+def _apply_root_path(app, root_path: str):
+    """???"""
+    if not root_path:
+        return app, root_path
+
+    uvicorn_version = version.parse(uvicorn.__version__)
+    if uvicorn_version < version.parse("0.26.0"):
+        return app, root_path
+    else:
+        app = _inject_root_path(app, root_path)
+        return app, ""
+
+
 async def start_asgi_http_server(
     app: ASGIApp,
     http_options: HTTPOptions,
@@ -697,6 +723,11 @@ async def start_asgi_http_server(
     Returns a task that blocks until the server exits (e.g., due to error).
     """
     app = _apply_middlewares(app, http_options.middlewares)
+    app, root_path = _apply_root_path(app, http_options.root_path)
+    # root_path = http_options.root_path
+    # pip freeze | grep uvicorn
+    # 	pip install uvicorn==0.25.0
+    # 	pip install uvicorn==0.35.0
 
     sock = socket.socket()
     if enable_so_reuseport:
@@ -740,7 +771,7 @@ async def start_asgi_http_server(
             factory=True,
             host=http_options.host,
             port=http_options.port,
-            root_path=http_options.root_path,
+            root_path=root_path,
             timeout_keep_alive=http_options.keep_alive_timeout_s,
             loop=event_loop,
             lifespan="off",
