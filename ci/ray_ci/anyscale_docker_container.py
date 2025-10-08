@@ -44,18 +44,29 @@ class AnyscaleDockerContainer(DockerContainer):
                     f"docker push {gcp_alias_image}",
                 ]
 
-        if os.environ.get("BUILDKITE"):
-            subprocess.run(
-                [
-                    "buildkite-agent",
-                    "annotate",
-                    "--style=info",
-                    f"--context={self.image_type}-images",
-                    "--append",
-                    f"{aws_alias_image}",
-                    f"{gcp_alias_image}",
-                ]
-            )
+            if os.environ.get("BUILDKITE"):
+                subprocess.run(
+                    [
+                        "buildkite-agent",
+                        "annotate",
+                        "--style=info",
+                        f"--context={self.image_type}-images",
+                        "--append",
+                        f"{aws_alias_image}",
+                        "<br/>",
+                    ]
+                )
+                subprocess.run(
+                    [
+                        "buildkite-agent",
+                        "annotate",
+                        "--style=info",
+                        f"--context={self.image_type}-images",
+                        "--append",
+                        f"{gcp_alias_image}",
+                        "<br/>",
+                    ]
+                )
 
         self.run_script(cmds)
 
