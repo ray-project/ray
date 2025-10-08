@@ -52,12 +52,12 @@ The process periodically `reconciles <https://github.com/ray-project/ray/blob/03
 
 1. **The latest pending demands** (queried from the `get_cluster_resource_state <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/autoscaler.proto#L392-L394>`__ GCS RPC): Pending Ray tasks, actors, and placement groups.
 2. **The latest user cluster constraints** (queried from the `get_cluster_resource_state <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/autoscaler.proto#L392-L394>`__ GCS RPC): The minimum cluster size, if specified via the ``ray.autoscaler.sdk.request_resources`` invocation.
-3. **The latest total and available node resources** (queried from the `get_cluster_resource_state <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/autoscaler.proto#L392-L394>`__ GCS RPC): The total and currently available resources of each alive Ray node.
+3. **The latest Ray nodes information** (queried from the `get_cluster_resource_state <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/autoscaler.proto#L392-L394>`__ GCS RPC): The total and currently available resources of each Ray node in the cluster. Also includes each Ray node's status (ALIVE or DEAD) and other information such as idle duration. See Appendix for more details.
 4. **The latest cloud instances** (`queried from the cloud instance provider's implementation <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L205-L207>`__): The list of instances managed by the cloud instance provider implementation.
 5. **The latest worker group configurations** (queried from the cluster YAML file or the RayCluster CRD).
 
 The preceding information is retrieved at the beginning of each reconciliation loop.
-The Reconciler uses this information to construct its internal state. This is the `sync phase <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L112-L120>`__.
+The Reconciler uses this information to construct its internal state and perform "`passive <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L159>`__" instance lifecycle transitions by observations. This is the `sync phase <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L112-L120>`__.
 
 After the sync phase, the Reconciler performs the `following steps <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L840>`__ in order with the ``ResourceDemandScheduler``:
 
@@ -83,7 +83,7 @@ After the sync phase, the Reconciler performs the `following steps <https://gith
 Bin Packing and Worker Group Selection
 --------------------------------------
 
-The autoscaler applies the following scoring logic to evaluate each node. It selects the node with the highest score and assigns it a subset of feasible demands.
+The autoscaler applies the following scoring logic to evaluate each existing node. It selects the node with the highest score and assigns it a subset of feasible demands.
 It also applies the same scoring logic to each worker group and selects the one with the highest score to launch new instances.
 
 `Scoring <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L430>`__ is based on a tuple of four values:
@@ -128,7 +128,7 @@ Instance Manager and Cloud Instance Provider
 
 As described in the previous section, the autoscaler accumulates scaling decisions (steps 1–5) in memory and reconciles them with the cloud instance provider through the Instance Manager.
 
-Scaling decisions are represented as a list of ``InstanceUpdateEvent`` records. For example:
+Scaling decisions are represented as a list of `InstanceUpdateEvent <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/instance_manager.proto#L135>`__ records. For example:
 
 - **For launching new instances**:
   - ``instance_id``: A randomly generated ID for Instance Manager tracking.
@@ -156,7 +156,7 @@ A normal transition flow for an instance is:
 
 .. note::
 
-   The drain request sent by ``RAY_STOP_REQUESTED`` can be rejected if the node is not idle actually. Then the instance will be transitioned back to ``RAY_RUNNING`` instead.
+   The drain request sent by ``RAY_STOP_REQUESTED`` can be rejected if the node is no longer idle when the drain request arrives the node. Then the instance will be transitioned back to ``RAY_RUNNING`` instead.
 
 
 You can find all valid transitions in the `get_valid_transitions <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/common.py#L193>`__ method.
@@ -198,14 +198,14 @@ The autoscaler retrieves a cluster snapshot through the ``get_cluster_resource_s
 
 - Data sources and ownership:
 
-  - ``GcsAutoscalerStateManager`` maintains a per-node cache of ``ResourcesData`` that includes totals, availables, and load-by-shape. GCS periodically polls each alive raylet (``GetResourceLoad``) and updates this cache (`GcsServer::InitGcsResourceManager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_server.cc#L375-L418>`__, `UpdateResourceLoadAndUsage <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L267-L281>`__), then uses it to construct snapshots.
-  - ``GcsNodeInfo`` provides static and slowly changing node metadata (node ID, instance ID, node type name, IP, labels, instance type) and dead/alive status.
-  - Placement group demand comes from the placement group manager.
+  - `GcsAutoscalerStateManager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc>`__ maintains a per-node cache of ``ResourcesData`` that includes totals, availables, and load-by-shape. GCS periodically polls each alive raylet (``GetResourceLoad``) and updates this cache (`GcsServer::InitGcsResourceManager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_server.cc#L375-L418>`__, `UpdateResourceLoadAndUsage <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L267-L281>`__), then uses it to construct snapshots.
+  - `GcsNodeInfo <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/gcs.proto#L307>`__ provides static and slowly changing node metadata (node ID, instance ID, node type name, IP, labels, instance type) and dead/alive status.
+  - Placement group demand comes from the `placement group manager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_placement_group_mgr.cc#L934>`__.
   - User cluster constraints come from autoscaler SDK requests that GCS records.
 
 - Fields assembled in the reply:
 
-  - ``node_states``: For each node, GCS sets identity and metadata from ``GcsNodeInfo`` and pulls resources and status from the cached ``ResourcesData`` (`GetNodeStates <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L319>`__). Dead nodes are marked ``DEAD`` and omit resource details. For alive nodes, GCS also includes ``idle_duration_ms`` and any node activity strings.
+  - ``node_states``: For each node, GCS sets identity and metadata from `GcsNodeInfo <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/gcs.proto#L307>`__ and pulls resources and status from the cached ``ResourcesData`` (`GetNodeStates <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L319>`__). Dead nodes are marked ``DEAD`` and omit resource details. For alive nodes, GCS also includes ``idle_duration_ms`` and any node activity strings.
   - ``pending_resource_requests``: Computed by aggregating per-node load-by-shape across the cluster (`GetPendingResourceRequests <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L303-L317>`__). For each resource shape, the count is the sum of infeasible, backlog, and ready requests that haven't been scheduled yet.
   - ``pending_gang_resource_requests``: Pending or rescheduling placement groups represented as gang requests (`GetPendingGangResourceRequests <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L193>`__).
   - ``cluster_resource_constraints``: The set of minimal cluster resource constraints previously requested via ``ray.autoscaler.sdk.request_resources`` (`GetClusterResourceConstraints <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc#L245>`__).
