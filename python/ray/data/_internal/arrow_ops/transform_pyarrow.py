@@ -1,3 +1,4 @@
+import itertools
 import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -11,7 +12,10 @@ from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
+    get_arrow_extension_fixed_shape_tensor_types,
     get_arrow_extension_tensor_types,
+    unify_tensor_arrays,
+    unify_tensor_types,
 )
 
 try:
@@ -175,7 +179,7 @@ def _reconcile_diverging_fields(
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
 
     reconciled_fields = {}
-    field_types = defaultdict(set)  # field_name -> set of types seen so far
+    field_types = defaultdict(list)  # field_name -> list of types seen so far
     field_flags = defaultdict(
         lambda: defaultdict(bool)
     )  # field_name -> dict of boolean flags
@@ -188,7 +192,8 @@ def _reconcile_diverging_fields(
                 continue
 
             field_type = schema.field(field_name).type
-            field_types[field_name].add(field_type)
+            if field_type not in field_types[field_name]:
+                field_types[field_name].append(field_type)
             flags = field_flags[field_name]
 
             # Update flags
@@ -229,34 +234,20 @@ def _reconcile_field(
     """
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
         get_arrow_extension_tensor_types,
     )
 
     if not non_null_types:
         return None
 
-    tensor_types = get_arrow_extension_tensor_types()
-
     # Handle special cases in priority order
 
     # 1. Tensor fields
+    tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
-    if tensor_field_types:
-        needs_variable_shape = ArrowTensorType._need_variable_shaped_tensor_array(
-            tensor_field_types
-        )
 
-        if needs_variable_shape:
-            first_tensor = tensor_field_types[0]
-            if isinstance(first_tensor, ArrowVariableShapedTensorType):
-                return first_tensor
-            else:
-                # Convert fixed-shape to variable-shape
-                return ArrowVariableShapedTensorType(
-                    dtype=first_tensor.scalar_type, ndim=len(first_tensor.shape)
-                )
+    if tensor_field_types:
+        return unify_tensor_types(tensor_field_types)
 
     # 2. Object fields
     if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
@@ -442,9 +433,7 @@ def _backfill_missing_fields(
     import pyarrow as pa
 
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
         ArrowVariableShapedTensorType,
-        get_arrow_extension_tensor_types,
     )
 
     # Flatten chunked arrays into a single array if necessary
@@ -466,8 +455,6 @@ def _backfill_missing_fields(
     if column.type == unified_struct_type:
         return column
 
-    tensor_types = get_arrow_extension_tensor_types()
-
     aligned_fields = []
 
     # Iterate over the fields in the unified struct type schema
@@ -487,15 +474,13 @@ def _backfill_missing_fields(
                 )
 
             # Handle tensor extension type mismatches
-            elif isinstance(field_type, tensor_types) and isinstance(
-                current_array.type, tensor_types
+            elif isinstance(field_type, ArrowVariableShapedTensorType) and isinstance(
+                current_array.type, get_arrow_extension_fixed_shape_tensor_types()
             ):
                 # Convert to variable-shaped if needed
-                if ArrowTensorType._need_variable_shaped_tensor_array(
-                    [current_array.type, field_type]
-                ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
-                    # Only convert if it's not already a variable-shaped tensor array
-                    current_array = current_array.to_variable_shaped_tensor_array()
+                current_array = current_array.to_var_shaped_tensor_array(
+                    ndim=field_type.ndim
+                )
 
             # The schema should already be unified by unify_schemas, so types
             # should be compatible. If not, let the error propagate up.
@@ -599,6 +584,106 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
     return take_table(block, indices)
 
 
+def _concat_cols_with_null_list(
+    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+) -> "pyarrow.ChunkedArray":
+    import pyarrow as pa
+
+    # For each opaque list column, iterate through all schemas until
+    # we find a valid value_type that can be used to override the
+    # column types in the following for-loop.
+    scalar_type = None
+    for arr in col_chunked_arrays:
+        if not pa.types.is_list(arr.type) or not pa.types.is_null(arr.type.value_type):
+            scalar_type = arr.type
+            break
+
+    if scalar_type is not None:
+        for c_idx in range(len(col_chunked_arrays)):
+            c = col_chunked_arrays[c_idx]
+            if pa.types.is_list(c.type) and pa.types.is_null(c.type.value_type):
+                if pa.types.is_list(scalar_type):
+                    # If we are dealing with a list input,
+                    # cast the array to the scalar_type found above.
+                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
+                else:
+                    # If we are dealing with a single value, construct
+                    # a new array with null values filled.
+                    col_chunked_arrays[c_idx] = pa.chunked_array(
+                        [pa.nulls(c.length(), type=scalar_type)]
+                    )
+
+    return _concatenate_chunked_arrays(col_chunked_arrays)
+
+
+def _concat_cols_with_extension_tensor_types(
+    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+) -> "pyarrow.ChunkedArray":
+
+    import pyarrow as pa
+
+    # For our tensor extension types, manually construct a chunked array
+    # containing chunks from all blocks. This is to handle
+    # homogeneous-shaped block columns having different shapes across
+    # blocks: if tensor element shapes differ across blocks, a
+    # variable-shaped tensor array will be returned.
+    combined_chunks = list(
+        itertools.chain(*[chunked.iterchunks() for chunked in col_chunked_arrays])
+    )
+
+    return pa.chunked_array(unify_tensor_arrays(combined_chunks))
+
+
+def _concat_cols_with_extension_object_types(
+    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+) -> "pyarrow.ChunkedArray":
+    import pyarrow as pa
+
+    from ray.data.extensions import ArrowPythonObjectArray, ArrowPythonObjectType
+
+    chunks_to_concat = []
+    # Cast everything to objects if concatenated with an object column
+    for ca in col_chunked_arrays:
+        for chunk in ca.chunks:
+            if isinstance(ca.type, ArrowPythonObjectType):
+                chunks_to_concat.append(chunk)
+            else:
+                chunks_to_concat.append(
+                    ArrowPythonObjectArray.from_objects(chunk.to_pylist())
+                )
+    return pa.chunked_array(chunks_to_concat)
+
+
+def _concat_cols_with_native_pyarrow_types(
+    col_names: List[str], blocks: List["pyarrow.Table"], promote_types: bool = False
+) -> Dict[str, "pyarrow.ChunkedArray"]:
+    if not col_names:
+        return {}
+
+    # For columns with native Pyarrow types, we should use built-in pyarrow.concat_tables.
+    import pyarrow as pa
+
+    # When concatenating tables we allow type promotions to occur, since
+    # no schema enforcement is currently performed, therefore allowing schemas
+    # to vary b/w blocks
+
+    # NOTE: Type promotions aren't available in Arrow < 14.0
+    subset_blocks = []
+    for block in blocks:
+        cols_to_select = [
+            col_name for col_name in col_names if col_name in block.schema.names
+        ]
+        subset_blocks.append(block.select(cols_to_select))
+    if get_pyarrow_version() < parse_version("14.0.0"):
+        table = pa.concat_tables(subset_blocks, promote=True)
+    else:
+        arrow_promote_types_mode = "permissive" if promote_types else "default"
+        table = pa.concat_tables(
+            subset_blocks, promote_options=arrow_promote_types_mode
+        )
+    return {col_name: table.column(col_name) for col_name in table.schema.names}
+
+
 def concat(
     blocks: List["pyarrow.Table"], *, promote_types: bool = False
 ) -> "pyarrow.Table":
@@ -609,9 +694,7 @@ def concat(
 
     from ray.air.util.tensor_extensions.arrow import ArrowConversionError
     from ray.data.extensions import (
-        ArrowPythonObjectArray,
         ArrowPythonObjectType,
-        ArrowTensorArray,
         get_arrow_extension_tensor_types,
     )
 
@@ -629,12 +712,18 @@ def concat(
     try:
         schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
     except Exception as e:
-        raise ArrowConversionError(str(blocks)) from e
+        raise ArrowConversionError(
+            f"Failed to unify schemas: {str(e)}\n"
+            f"{'-' * 16}\n"
+            f"Schemas:\n"
+            f"{'-' * 16}\n"
+            f"{schemas_to_unify}"
+        ) from e
 
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
 
-    # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
+    # Identify columns with null lists
     cols_with_null_list = set()
     for b in blocks:
         for col_name in b.schema.names:
@@ -642,92 +731,45 @@ def concat(
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
 
-    if (
-        any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
-        or cols_with_null_list
-    ):
-        # Custom handling for extension array columns.
-        cols = []
-        for col_name in schema.names:
-            col_chunked_arrays = []
-            for block in blocks:
+    # Concatenate the columns according to their type
+    concatenated_cols = {}
+    native_pyarrow_cols = []
+    for col_name in schema.names:
+        col_type = schema.field(col_name).type
+
+        col_chunked_arrays = []
+        for block in blocks:
+            if col_name in block.schema.names:
                 col_chunked_arrays.append(block.column(col_name))
-
-            if isinstance(schema.field(col_name).type, tensor_types):
-                # For our tensor extension types, manually construct a chunked array
-                # containing chunks from all blocks. This is to handle
-                # homogeneous-shaped block columns having different shapes across
-                # blocks: if tensor element shapes differ across blocks, a
-                # variable-shaped tensor array will be returned.
-                col = ArrowTensorArray._chunk_tensor_arrays(
-                    [chunk for ca in col_chunked_arrays for chunk in ca.chunks]
-                )
-            elif isinstance(schema.field(col_name).type, ArrowPythonObjectType):
-                chunks_to_concat = []
-                # Cast everything to objects if concatenated with an object column
-                for ca in col_chunked_arrays:
-                    for chunk in ca.chunks:
-                        if isinstance(ca.type, ArrowPythonObjectType):
-                            chunks_to_concat.append(chunk)
-                        else:
-                            chunks_to_concat.append(
-                                ArrowPythonObjectArray.from_objects(chunk.to_pylist())
-                            )
-                col = pa.chunked_array(chunks_to_concat)
             else:
-                if col_name in cols_with_null_list:
-                    # For each opaque list column, iterate through all schemas until
-                    # we find a valid value_type that can be used to override the
-                    # column types in the following for-loop.
-                    scalar_type = None
-                    for arr in col_chunked_arrays:
-                        if not pa.types.is_list(arr.type) or not pa.types.is_null(
-                            arr.type.value_type
-                        ):
-                            scalar_type = arr.type
-                            break
+                col_chunked_arrays.append(pa.nulls(block.num_rows, type=col_type))
 
-                    if scalar_type is not None:
-                        for c_idx in range(len(col_chunked_arrays)):
-                            c = col_chunked_arrays[c_idx]
-                            if pa.types.is_list(c.type) and pa.types.is_null(
-                                c.type.value_type
-                            ):
-                                if pa.types.is_list(scalar_type):
-                                    # If we are dealing with a list input,
-                                    # cast the array to the scalar_type found above.
-                                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
-                                else:
-                                    # If we are dealing with a single value, construct
-                                    # a new array with null values filled.
-                                    col_chunked_arrays[c_idx] = pa.chunked_array(
-                                        [pa.nulls(c.length(), type=scalar_type)]
-                                    )
-
-                col = _concatenate_chunked_arrays(col_chunked_arrays)
-            cols.append(col)
-
-        # Build the concatenated table.
-        table = pyarrow.Table.from_arrays(cols, schema=schema)
-        # Validate table schema (this is a cheap check by default).
-        table.validate()
-    else:
-        # No extension array columns, so use built-in pyarrow.concat_tables.
-
-        # When concatenating tables we allow type promotions to occur, since
-        # no schema enforcement is currently performed, therefore allowing schemas
-        # to vary b/w blocks
-        #
-        # NOTE: Type promotions aren't available in Arrow < 14.0
-        if get_pyarrow_version() < parse_version("14.0.0"):
-            table = pyarrow.concat_tables(blocks, promote=True)
-        else:
-            arrow_promote_types_mode = "permissive" if promote_types else "default"
-            table = pyarrow.concat_tables(
-                blocks, promote_options=arrow_promote_types_mode
+        if col_name in cols_with_null_list:
+            concatenated_cols[col_name] = _concat_cols_with_null_list(
+                col_chunked_arrays
             )
+        elif isinstance(col_type, tensor_types):
+            concatenated_cols[col_name] = _concat_cols_with_extension_tensor_types(
+                col_chunked_arrays
+            )
+        elif isinstance(col_type, ArrowPythonObjectType):
+            concatenated_cols[col_name] = _concat_cols_with_extension_object_types(
+                col_chunked_arrays
+            )
+        else:
+            # Add to the list of native pyarrow columns, these will be concatenated after the loop using pyarrow.concat_tables
+            native_pyarrow_cols.append(col_name)
 
-    return table
+    concatenated_cols.update(
+        _concat_cols_with_native_pyarrow_types(
+            native_pyarrow_cols, blocks, promote_types
+        )
+    )
+
+    # Ensure that the columns are in the same order as the schema, reconstruct the table.
+    return pyarrow.Table.from_arrays(
+        [concatenated_cols[col_name] for col_name in schema.names], schema=schema
+    )
 
 
 def concat_and_sort(

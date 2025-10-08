@@ -30,10 +30,10 @@
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 
 namespace ray {
 namespace core {

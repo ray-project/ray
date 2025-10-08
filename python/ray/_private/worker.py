@@ -60,6 +60,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.utils import load_class
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.custom_types import TensorTransportEnum
@@ -1142,6 +1143,10 @@ class Worker:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
 
+    def shutdown_gpu_object_manager(self):
+        if self._gpu_object_manager:
+            self._gpu_object_manager.shutdown()
+
 
 _connect_or_shutdown_lock = threading.RLock()
 
@@ -2086,6 +2091,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
+    global_worker.shutdown_gpu_object_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
@@ -2907,13 +2913,17 @@ def get(
     if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.warning(
-                "Using blocking ray.get inside async actor. "
-                "This blocks the event loop. Please use `await` "
-                "on object ref with asyncio.gather if you want to "
-                "yield execution to the event loop instead."
-            )
-            blocking_get_inside_async_warned = True
+            if ray_constants.env_bool(
+                RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+                True,
+            ):
+                logger.warning(
+                    "Using blocking ray.get inside async actor. "
+                    "This blocks the event loop. Please use `await` "
+                    "on object ref with asyncio.gather if you want to "
+                    "yield execution to the event loop instead."
+                )
+                blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
         # TODO(sang): Should make ObjectRefGenerator
@@ -3535,6 +3545,7 @@ def remote(
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
     label_selector: Dict[str, str] = Undefined,
+    fallback_strategy: List[Dict[str, Any]] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3690,10 +3701,14 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
-        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+        label_selector: [Experimental] If specified, the labels required for the node on
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+        fallback_strategy: [Experimental] If specified, expresses soft constraints for scheduling
+                through a list of dicts of decorator options to fall back on when scheduling on a node.
+                Decorator options are evaluated together during scheduling. The first satisfied
+                dict of options is used. Currently only `label_selector` is a supported option.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.

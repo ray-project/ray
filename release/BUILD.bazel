@@ -52,6 +52,16 @@ compile_pip_requirements(
     visibility = ["//visibility:private"],
 )
 
+compile_pip_requirements(
+    name = "requirements_ml_byod_3.10",
+    requirements_in = "ray_release/byod/requirements_ml_byod_3.10.in",
+    requirements_txt = "ray_release/byod/requirements_ml_byod_3.10.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 test_srcs = glob(["**/*.py"])
 
 ####
@@ -478,6 +488,27 @@ py_test(
 )
 
 py_test(
+    name = "test_custom_image_build_and_test_init",
+    size = "small",
+    srcs = ["ray_release/tests/test_custom_image_build_and_test_init.py"],
+    data = [
+        "hello_world_tests/hello_world_compute_config.yaml",
+        "ray_release/configs/oss_config.yaml",
+        "ray_release/tests/sample_5_tests.yaml",
+        "ray_release/tests/sample_tests.yaml",
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],
@@ -752,8 +783,8 @@ py_binary(
 )
 
 py_binary(
-    name = "custom_byod_build_init",
-    srcs = ["ray_release/scripts/custom_byod_build_init.py"],
+    name = "custom_image_build_and_test_init",
+    srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
     data = glob(["release_*.yaml"]),
     exec_compatible_with = ["//:hermetic_python"],
     deps = [

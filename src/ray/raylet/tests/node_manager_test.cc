@@ -30,18 +30,17 @@
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
-#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -294,7 +293,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
 class NodeManagerTest : public ::testing::Test {
  public:
   NodeManagerTest()
-      : client_call_manager_(io_service_, /*record_stats=*/false),
+      : client_call_manager_(io_service_, /*record_stats=*/false, /*local_address=*/""),
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
@@ -419,7 +418,7 @@ class NodeManagerTest : public ::testing::Test {
         std::move(mutable_object_provider),
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
-        std::move(cgroup_manager_));
+        [](const std::string &) {});
   }
 
   instrumented_io_context io_service_;
@@ -438,7 +437,6 @@ class NodeManagerTest : public ::testing::Test {
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
   std::unique_ptr<MockObjectManager> mock_object_manager_;
-  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
       std::make_shared<plasma::FakePlasmaClient>();

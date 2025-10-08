@@ -18,6 +18,7 @@
 #include <string>
 
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace pubsub {
@@ -44,11 +45,9 @@ class FakeSubscriber : public SubscriberInterface {
       pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {}
 
-  bool Unsubscribe(rpc::ChannelType channel_type,
+  void Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::optional<std::string> &key_id) override {
-    return true;
-  }
+                   const std::optional<std::string> &key_id) override {}
 
   bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,

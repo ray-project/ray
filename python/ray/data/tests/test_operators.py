@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -30,6 +32,7 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _BlockRefBundler,
+    _per_block_limit_fn,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -40,7 +43,9 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
@@ -826,6 +831,58 @@ def test_limit_operator(ray_start_regular_shared):
         assert limit_op.completed(), limit
 
 
+def test_limit_operator_memory_leak_fix(ray_start_regular_shared, tmp_path):
+    """Test that LimitOperator properly drains upstream output queues.
+
+    This test verifies the memory leak fix by directly using StreamingExecutor
+    to access the actual topology and check queued blocks after execution.
+    """
+    for i in range(100):
+        data = [{"id": i * 5 + j, "value": f"row_{i * 5 + j}"} for j in range(5)]
+        table = pa.Table.from_pydict(
+            {"id": [row["id"] for row in data], "value": [row["value"] for row in data]}
+        )
+        parquet_file = tmp_path / f"test_data_{i}.parquet"
+        pq.write_table(table, str(parquet_file))
+
+    parquet_files = [str(tmp_path / f"test_data_{i}.parquet") for i in range(100)]
+
+    ds = (
+        ray.data.read_parquet(parquet_files, override_num_blocks=100)
+        .limit(5)
+        .map(lambda x: x)
+    )
+
+    execution_plan = ds._plan
+    physical_plan = get_execution_plan(execution_plan._logical_plan)
+
+    # Use StreamingExecutor directly to have access to the actual topology
+    executor = StreamingExecutor(DataContext.get_current())
+    output_iterator = executor.execute(physical_plan.dag)
+
+    # Collect all results and count rows
+    total_rows = 0
+    for bundle in output_iterator:
+        for block_ref in bundle.block_refs:
+            block = ray.get(block_ref)
+            total_rows += block.num_rows
+    assert (
+        total_rows == 5
+    ), f"Expected exactly 5 rows after limit(5), but got {total_rows}"
+
+    # Find the ReadParquet operator's OpState
+    topology = executor._topology
+    read_parquet_op_state = None
+    for op, op_state in topology.items():
+        if "ReadParquet" in op.name:
+            read_parquet_op_state = op_state
+            break
+
+    # Check the output queue size
+    output_queue_size = len(read_parquet_op_state.output_queue)
+    assert output_queue_size == 0, f"Expected 0 items, but got {output_queue_size}."
+
+
 def _get_bundles(bundle: RefBundle):
     output = []
     for block_ref in bundle.block_refs:
@@ -1144,7 +1201,10 @@ def test_map_estimated_blocks_split():
 
     min_rows_per_bundle = 10
     input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+        DataContext.get_current(),
+        make_ref_bundles(
+            [[i, i + 1] for i in range(100)]
+        ),  # create 2-row blocks so split_blocks can split into 2 blocks
     )
 
     def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
@@ -1311,6 +1371,47 @@ def test_input_data_buffer_does_not_free_inputs():
     # `InputDataBuffer` should still hold a reference to the input block even after
     # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
+
+
+@pytest.mark.parametrize(
+    "blocks_data,per_block_limit,expected_output",
+    [
+        # Test case 1: Single block, limit less than block size
+        ([[1, 2, 3, 4, 5]], 3, [[1, 2, 3]]),
+        # Test case 2: Single block, limit equal to block size
+        ([[1, 2, 3]], 3, [[1, 2, 3]]),
+        # Test case 3: Single block, limit greater than block size
+        ([[1, 2]], 5, [[1, 2]]),
+        # Test case 4: Multiple blocks, limit spans across blocks
+        ([[1, 2], [3, 4], [5, 6]], 3, [[1, 2], [3]]),
+        # Test case 5: Multiple blocks, limit exactly at block boundary
+        ([[1, 2], [3, 4]], 2, [[1, 2]]),
+        # Test case 6: Empty blocks
+        ([], 5, []),
+        # Test case 7: Zero limit
+        ([[1, 2, 3]], 0, []),
+    ],
+)
+def test_per_block_limit_fn(blocks_data, per_block_limit, expected_output):
+    """Test the _per_block_limit_fn function with various inputs."""
+    import pandas as pd
+
+    # Convert test data to pandas blocks
+    blocks = [pd.DataFrame({"value": data}) for data in blocks_data]
+
+    # Create a mock TaskContext
+    ctx = TaskContext(op_name="test", task_idx=0, target_max_block_size_override=None)
+
+    # Call the function
+    result_blocks = list(_per_block_limit_fn(blocks, ctx, per_block_limit))
+
+    # Convert result back to lists for comparison
+    result_data = []
+    for block in result_blocks:
+        block_data = block["value"].tolist()
+        result_data.append(block_data)
+
+    assert result_data == expected_output
 
 
 if __name__ == "__main__":

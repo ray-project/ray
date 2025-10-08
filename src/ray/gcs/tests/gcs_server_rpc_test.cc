@@ -21,7 +21,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
-#include "ray/gcs_client/rpc_client.h"
+#include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
 
 namespace ray {
@@ -60,7 +60,8 @@ class GcsServerTest : public ::testing::Test {
     }
 
     // Create gcs rpc client
-    client_call_manager_.reset(new rpc::ClientCallManager(io_service_, false));
+    client_call_manager_.reset(new rpc::ClientCallManager(
+        io_service_, /*record_stats=*/false, /*local_address=*/""));
     client_.reset(
         new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
   }

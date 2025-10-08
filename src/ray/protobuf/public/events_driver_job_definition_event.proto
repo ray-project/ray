@@ -20,7 +20,7 @@ package ray.rpc.events;
 // Message containing the definition information of a driver job.
 // The message is expected to be emitted once per job creation.
 //
-// For runtime information associated with this event, see DriverJobExecutionEvent.
+// For runtime information associated with this event, see DriverJobLifecycleEvent.
 message DriverJobDefinitionEvent {
   message Config {
     string serialized_runtime_env = 1;

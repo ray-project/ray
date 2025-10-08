@@ -1,4 +1,6 @@
+import logging
 import random
+import re
 import sys
 import threading
 import time
@@ -56,6 +58,29 @@ class GPUTestActor:
 
     def fail(self, error_message):
         raise Exception(error_message)
+
+
+@ray.remote
+class ErrorActor:
+    @ray.method(tensor_transport="gloo")
+    def send(self, tensor):
+        return tensor
+
+    def recv(self, tensor):
+        return tensor
+
+    def clear_gpu_object_store(self):
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
+
+        with gpu_object_store._lock:
+            assert len(gpu_object_store._gpu_object_store) > 0
+            gpu_object_store._gpu_object_store.clear()
+
+    @ray.method(concurrency_group="_ray_system")
+    def block_background_thread(self):
+        time.sleep(100)
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
@@ -883,6 +908,66 @@ def test_transfer_from_not_actor_creator(ray_start_regular):
     assert ray.get(actor[2].do_transfer.remote(actor[0], actor[1])) == pytest.approx(
         torch.tensor([1, 2, 3])
     )
+
+
+def test_send_fails(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # The gpu object will be gone when we trigger the transfer
+    # so the send will error out
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    ray.get(actors[0].clear_gpu_object_store.remote())
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+
+
+def test_send_actor_dies(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # Try a transfer with the sender's background thread blocked,
+    # so the send doesn't happen before the actor is killed
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    actors[0].block_background_thread.remote()
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    ray.kill(actors[0])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+
+
+def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # Do a transfer with the receiver's background thread blocked,
+    # so the recv doesn't happen before the actor is killed
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    actors[1].block_background_thread.remote()
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    ray.kill(actors[1])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(actors[0].recv.remote(1))
+
+    def check_logs():
+        records = caplog.records
+        return any(
+            record.levelno == logging.ERROR
+            and re.search(r"RDT transfer with.*failed", record.message)
+            for record in records
+        ) and any(
+            record.levelno == logging.ERROR
+            and "Destroyed collective group" in record.message
+            for record in records
+        )
+
+    wait_for_condition(check_logs)
 
 
 if __name__ == "__main__":

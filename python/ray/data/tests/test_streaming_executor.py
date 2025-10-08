@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._raylet import NodeID
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
@@ -219,6 +220,51 @@ def test_process_completed_tasks(sleep_task_ref):
     process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
+
+
+def test_update_operator_states_drains_upstream():
+    """Test that update_operator_states drains upstream output queues when
+    execution_finished() is called on a downstream operator.
+    """
+    inputs = make_ref_bundles([[x] for x in range(10)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
+    )
+    topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+
+    # First, populate the upstream output queues by processing some tasks
+    process_completed_tasks(topo, [], 0)
+    update_operator_states(topo)
+
+    # Verify that o1 (upstream) has output in its queue
+    assert (
+        len(topo[o1].output_queue) > 0
+    ), "Upstream operator should have output in queue"
+
+    # Store initial queue size for verification
+    initial_o1_queue_size = len(topo[o1].output_queue)
+
+    # Manually mark o2 as execution finished (simulating limit operator behavior)
+    o2.mark_execution_finished()
+    assert o2.execution_finished(), "o2 should be execution finished"
+
+    # Call update_operator_states - this should drain o1's output queue
+    update_operator_states(topo)
+
+    # Verify that o1's output queue was drained due to o2 being execution finished
+    assert len(topo[o1].output_queue) == 0, (
+        f"Upstream operator o1 output queue should be drained when downstream o2 is execution finished. "
+        f"Expected 0, got {len(topo[o1].output_queue)}. "
+        f"Initial size was {initial_o1_queue_size}"
+    )
 
 
 def test_get_eligible_operators_to_run():
@@ -498,29 +544,31 @@ def test_configure_output_locality(mock_scale_up):
 
     # Current node locality.
     build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
-    s1 = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
+    s1 = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
     assert isinstance(s1, NodeAffinitySchedulingStrategy)
     assert s1.node_id == ray.get_runtime_context().get_node_id()
-    s2 = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
+    s2 = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
     assert isinstance(s2, NodeAffinitySchedulingStrategy)
     assert s2.node_id == ray.get_runtime_context().get_node_id()
 
     # Multi node locality.
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
     build_streaming_topology(
-        o3, ExecutionOptions(locality_with_output=["node1", "node2"])
+        o3, ExecutionOptions(locality_with_output=[node_id_1, node_id_2])
     )
-    s1a = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s1b = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s1c = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s1a.node_id == "node1"
-    assert s1b.node_id == "node2"
-    assert s1c.node_id == "node1"
-    s2a = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s2b = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s2c = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s2a.node_id == "node1"
-    assert s2b.node_id == "node2"
-    assert s2c.node_id == "node1"
+    s1a = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s1b = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s1c = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    assert s1a.node_id == node_id_1
+    assert s1b.node_id == node_id_2
+    assert s1c.node_id == node_id_1
+    s2a = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s2b = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s2c = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    assert s2a.node_id == node_id_1
+    assert s2b.node_id == node_id_2
+    assert s2c.node_id == node_id_1
 
 
 class OpBufferQueueTest(unittest.TestCase):
