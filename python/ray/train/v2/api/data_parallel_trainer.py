@@ -128,13 +128,17 @@ class DataParallelTrainer:
         if not isinstance(self.run_config, RunConfigV2):
             raise ValueError(
                 f"Invalid `RunConfig` type: {self.run_config.__class__}. "
-                "Use `ray.train.RunConfig` instead."
+                "Use `ray.train.RunConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
 
         if not isinstance(self.scaling_config, ScalingConfigV2):
             raise ValueError(
                 f"Invalid `ScalingConfig` type: {self.scaling_config.__class__}. "
-                "Use `ray.train.ScalingConfig` instead."
+                "Use `ray.train.ScalingConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
 
     def _get_train_func(self) -> Callable[[], None]:

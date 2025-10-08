@@ -548,7 +548,9 @@ class BaseTrainer(abc.ABC):
                 "  - Update to use the new import path. For example, "
                 "`from ray.train.torch.torch_trainer import TorchTrainer` -> "
                 "`from ray.train.torch import TorchTrainer`\n"
-                f"  - Or, explicitly disable V2 by setting: {V2_ENABLED_ENV_VAR}=0"
+                f"  - Or, explicitly disable V2 by setting: {V2_ENABLED_ENV_VAR}=0\n"
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
 
         if not _v2_migration_warnings_enabled():
