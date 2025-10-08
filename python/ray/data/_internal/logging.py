@@ -326,6 +326,7 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
 
+    # This method is now invoked from inside the streaming executor.
     configure_logging()
 
     loggers = [logging.getLogger(name) for name in _get_logger_names()]
