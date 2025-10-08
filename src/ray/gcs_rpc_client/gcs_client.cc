@@ -98,16 +98,15 @@ bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
   }
 }
 
-GcsClient::GcsClient() {
-  accessor_factory_ = std::make_unique<DefaultAccessorFactory>();
-  client_context_ = std::make_shared<DefaultGcsClientContext>();
-};
+// TODO(zac): Remove the parameterless constructor.  It's only used in tests
+// https://github.com/ray-project/ray/issues/57563
+GcsClient::GcsClient(){};
 
 GcsClient::GcsClient(const GcsClientOptions &options,
                      std::string local_address,
                      UniqueID gcs_client_id,
                      std::unique_ptr<AccessorFactoryInterface> accessor_factory,
-                     std::shared_ptr<GcsClientContext> client_context)
+                     std::unique_ptr<GcsClientContext> client_context)
     : options_(std::move(options)),
       gcs_client_id_(gcs_client_id),
       local_address_(std::move(local_address)) {
@@ -117,9 +116,9 @@ GcsClient::GcsClient(const GcsClientOptions &options,
     accessor_factory_ = std::move(accessor_factory);
   }
   if (client_context == nullptr) {
-    client_context_ = std::make_shared<DefaultGcsClientContext>();
+    client_context_ = std::make_unique<DefaultGcsClientContext>();
   } else {
-    client_context_ = client_context;
+    client_context_ = std::move(client_context);
   }
 }
 

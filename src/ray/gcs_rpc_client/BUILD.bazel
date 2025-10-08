@@ -35,6 +35,7 @@ ray_cc_library(
     hdrs = [
         "gcs_client_context.h",
     ],
+    visibility = [":__pkg__"],
     deps = [
         ":rpc_client",
         "//src/ray/pubsub:gcs_subscriber",
@@ -47,6 +48,7 @@ ray_cc_library(
         "accessor_factory_interface.h",
         "accessors/actor_info_accessor_interface.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":client_utils",
         "//src/ray/common:gcs_callback_types",
@@ -62,6 +64,7 @@ ray_cc_library(
     name = "client_utils",
     srcs = ["utils/client_utils.cc"],
     hdrs = ["utils/client_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:ray_config",
         "@com_google_absl//absl/time",
@@ -76,6 +79,7 @@ ray_cc_library(
     hdrs = [
         "accessors/actor_info_accessor.h",
     ],
+    visibility = [":__pkg__"],
     deps = [
         ":accessor_interfaces",
         ":gcs_client_context",
@@ -106,6 +110,7 @@ ray_cc_library(
         "default_accessor_factory.h",
         "default_gcs_client_context.h",
     ],
+    visibility = [":__pkg__"],
     deps = [
         ":accessor_implementations",
         ":accessor_interfaces",

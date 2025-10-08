@@ -96,6 +96,8 @@ class GcsClientOptions {
 /// Before exit, `Disconnect()` must be called.
 class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  public:
+  // TODO(zac): Remove the parameterless constructor.  It's only used in tests
+  // https://github.com/ray-project/ray/issues/57563
   GcsClient();
   /// Constructor of GcsClient.
   ///
@@ -104,13 +106,14 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// inject RPC failures for testing)
   /// \param gcs_client_id This is used to give subscribers Unique ID's.
   /// \param accessor_factory A factory which supplies accessors to this gcs_client
-  /// instance \param client_context A context which supplies lower level functionality
+  /// instance
+  /// \param client_context A context which supplies lower level functionality
   /// like an rpc client and/or a subscriber
   explicit GcsClient(const GcsClientOptions &options,
                      std::string local_address = "",
                      UniqueID gcs_client_id = UniqueID::FromRandom(),
                      std::unique_ptr<AccessorFactoryInterface> accessor_factory = nullptr,
-                     std::shared_ptr<GcsClientContext> client_context = nullptr);
+                     std::unique_ptr<GcsClientContext> client_context = nullptr);
 
   GcsClient(const GcsClient &) = delete;
   GcsClient &operator=(const GcsClient &) = delete;
@@ -242,7 +245,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  protected:
   GcsClientOptions options_;
 
-  std::shared_ptr<GcsClientContext> client_context_;
+  std::unique_ptr<GcsClientContext> client_context_;
   std::unique_ptr<AccessorFactoryInterface> accessor_factory_;
   std::unique_ptr<ActorInfoAccessorInterface> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
