@@ -28,6 +28,9 @@ message AutoscalingPolicy {
   // Will be the concatenation of the policy module and the policy name if user passed a
   // callable.
   string name = 1;
+
+  // The cloudpickled policy definition.
+  bytes _serialized_policy_def = 2;
 }
 
 // Configuration options for Serve's replica autoscaler.
@@ -66,25 +69,22 @@ message AutoscalingConfig {
   // [DEPRECATED] Use `downscaling_factor` instead.
   optional double downscale_smoothing_factor = 10;
 
-  // The cloudpickled policy definition.
-  bytes _serialized_policy_def = 11;
-
   // The autoscaling policy definition.
-  AutoscalingPolicy policy = 12;
+  AutoscalingPolicy policy = 11;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
   // scales up. Must be a non-negative integer.
-  double target_ongoing_requests = 13;
+  double target_ongoing_requests = 12;
 
   // The multiplicative "gain" factor to limit upscale.
-  optional double upscaling_factor = 14;
+  optional double upscaling_factor = 13;
 
   // The multiplicative "gain" factor to limit downscale.
-  optional double downscaling_factor = 15;
+  optional double downscaling_factor = 14;
 
   // How long to wait before scaling down replicas from 1 to 0
-  optional double downscale_to_zero_delay_s = 16;
+  optional double downscale_to_zero_delay_s = 15;
 }
 
 //[Begin] LOGGING CONFIG

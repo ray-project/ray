@@ -799,7 +799,7 @@ def test_autoscaling_policy_serializations(policy):
     config = DeploymentConfig.from_default(autoscaling_config=autoscaling_config)
     deserialized_autoscaling_policy = DeploymentConfig.from_proto_bytes(
         config.to_proto_bytes()
-    ).autoscaling_config.get_policy()
+    ).autoscaling_config.policy.get_policy()
 
     # Right now we don't allow modifying the autoscaling policy, so this will always
     # be the default autoscaling policy
