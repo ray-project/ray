@@ -650,15 +650,7 @@ def all() -> AllColumnsExpr:
     add or modify columns while keeping the rest.
 
     Returns:
-        An AllColumnsExpr that represents all input columns
-
-    Example:
-        >>> from ray.data.expressions import col, lit, all
-        >>> import ray
-        >>> ds = ray.data.from_items([{"a": 1, "b": 2}])
-        >>> # Manually create a projection with all columns plus a new one
-        >>> # (normally with_column does this automatically)
-        >>> ds = ds.select_columns([all(), lit(3).alias("c")])
+        An AllColumnsExpr that represents all input columns.
     """
     return AllColumnsExpr()
 
