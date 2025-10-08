@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
@@ -19,6 +19,9 @@ def report(
     checkpoint_dir_name: Optional[str] = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
+    checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
+    validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+    validate_config: Optional[Dict] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -46,21 +49,16 @@ def report(
     Example:
 
         .. testcode::
+            :skipif: True
 
             import tempfile
 
-            from ray import train
-            from ray.train import Checkpoint
+            import ray.train
             from ray.train.torch import TorchTrainer
 
 
             def train_func(config):
                 start_epoch = 0
-                checkpoint = train.get_checkpoint()
-                if checkpoint:
-                    with checkpoint.as_directory() as checkpoint_dir:
-                        # Load back training state
-                        ...
 
                 for epoch in range(start_epoch, config.get("num_epochs", 10)):
                     # Do training...
@@ -71,16 +69,16 @@ def report(
                        # Save the checkpoint...
                        # torch.save(...)
 
-                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+                        checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
 
                         # Example: Only the rank 0 worker uploads the checkpoint.
                         if ray.train.get_context().get_world_rank() == 0:
-                            train.report(metrics, checkpoint=checkpoint)
+                            ray.train.report(metrics, checkpoint=checkpoint)
                         else:
-                            train.report(metrics, checkpoint=None)
+                            ray.train.report(metrics, checkpoint=None)
 
             trainer = TorchTrainer(
-                train_func, scaling_config=train.ScalingConfig(num_workers=2)
+                train_func, scaling_config=ray.train.ScalingConfig(num_workers=2)
             )
 
     Args:
@@ -95,11 +93,22 @@ def report(
             Defaults to uploading the checkpoint synchronously.
             This works when no checkpoint is provided but is not useful in that case.
         delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+        checkpoint_upload_fn: A user defined function that will be called with the
+            checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
+            utility for copying to the destination `storage_path`.
+        validate_fn: If provided, Ray Train will validate the checkpoint using
+            this function.
+        validate_config: Configuration passed to the validate_fn. Can contain info
+            like the validation dataset.
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
             checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
         )
+
+    # TODO: figure out how to validate validate_fn itself
+    if validate_config and not validate_fn:
+        raise ValueError("validate_fn must be provided together with validate_config")
 
     get_train_fn_utils().report(
         metrics=metrics,
@@ -107,6 +116,9 @@ def report(
         checkpoint_dir_name=checkpoint_dir_name,
         checkpoint_upload_mode=checkpoint_upload_mode,
         delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
+        checkpoint_upload_fn=checkpoint_upload_fn,
+        validate_fn=validate_fn,
+        validate_config=validate_config or {},
     )
 
 
@@ -127,20 +139,22 @@ def get_context() -> TrainContext:
 def get_checkpoint() -> Optional["Checkpoint"]:
     """Access the latest reported checkpoint to resume from if one exists.
 
+    See :ref:`the checkpoint loading guide <train-dl-loading-checkpoints>` for more details.
+
     Example:
 
         .. testcode::
+            :skipif: True
 
             import tempfile
 
-            from ray import train
-            from ray.train import Checkpoint
+            import ray.train
             from ray.train.torch import TorchTrainer
 
 
             def train_func(config):
                 start_epoch = 0
-                checkpoint = train.get_checkpoint()
+                checkpoint = ray.train.get_checkpoint()
                 if checkpoint:
                     with checkpoint.as_directory() as checkpoint_dir:
                         # Load back training state
@@ -154,11 +168,11 @@ def get_checkpoint() -> Optional["Checkpoint"]:
                     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                        # Save the checkpoint...
 
-                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-                        train.report(metrics, checkpoint=checkpoint)
+                        checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+                        ray.train.report(metrics, checkpoint=checkpoint)
 
             trainer = TorchTrainer(
-                train_func, scaling_config=train.ScalingConfig(num_workers=2)
+                train_func, scaling_config=ray.train.ScalingConfig(num_workers=2)
             )
 
     Returns:
@@ -172,7 +186,7 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
-    Blocks until Ray Train has finished processing every `ray.train.report` call.
+    Blocks until Ray Train has finished processing every in-flight `ray.train.report` call.
 
     Example:
 
@@ -180,31 +194,31 @@ def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
 
             import tempfile
 
-            from ray import train
-            from ray.train import Checkpoint
+            import ray.train
             from ray.train.torch import TorchTrainer
 
 
             def train_func(config):
                 start_epoch = 0
 
-                for epoch in range(start_epoch, config.get("num_epochs", 10)):
+                for epoch in range(start_epoch, config.get("num_epochs", 2)):
                     # Do training...
 
-                    metrics = {"loss": ...}
+                    metrics = {"loss": 0.1}
 
                     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                        # Save the checkpoint...
 
-                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-                        train.report(metrics, checkpoint=checkpoint)
+                        checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+                        ray.train.report(metrics, checkpoint=checkpoint)
 
-                reported_checkpoints = train.get_all_reported_checkpoints()
+                reported_checkpoints = ray.train.get_all_reported_checkpoints()
                 # Report artifacts/metrics to experiment tracking framework...
 
             trainer = TorchTrainer(
-                train_func, scaling_config=train.ScalingConfig(num_workers=2)
+                train_func, scaling_config=ray.train.ScalingConfig(num_workers=2)
             )
+            trainer.fit()
 
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
@@ -223,31 +237,24 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
 
     .. testcode::
 
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
+        import ray.train
         from ray.train.torch import TorchTrainer
 
-        def train_loop_per_worker(config):
+        def train_fn_per_worker(config):
             ...
             for epoch in range(2):
                 # Trainer will automatically handle sharding.
-                data_shard = train.get_dataset_shard("train")
+                data_shard = ray.train.get_dataset_shard("train")
                 for batch in data_shard.iter_torch_batches():
                     ...
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
         trainer = TorchTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2),
+            train_fn_per_worker,
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
             datasets={"train": train_dataset}
         )
         trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then

@@ -444,7 +444,7 @@ def make_multi_agent(
             #  an additional episode_done bool that covers cases where all agents are
             #  either terminated or truncated, but not all are truncated and not all are
             #  terminated. We can then get rid of the aweful `__all__` special keys!
-            terminated["__all__"] = len(self.terminateds) + len(self.truncateds) == len(
+            terminated["__all__"] = len(self.terminateds | self.truncateds) == len(
                 self.envs
             )
             truncated["__all__"] = len(self.truncateds) == len(self.envs)
