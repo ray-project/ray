@@ -37,6 +37,7 @@ AZURE_CLOUD_STORAGE = "abfss"
 AZURE_STORAGE_CONTAINER = "working-dirs"
 AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 GS_BUCKET = "anyscale-oss-dev-bucket"
+AZURE_REGISTRY_NAME = "rayreleasetest"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
