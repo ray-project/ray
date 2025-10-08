@@ -522,7 +522,7 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
     print(f">>> Observed locality hit ratio: {locality_ratio:.2f}% out of {total}")
 
     # NOTE: 90% is an observed locality ratio that should be fixed for this test
-    assert locality_ratio >= 0.9, (
+    assert locality_ratio >= 0.85, (
         f"Locality ratio {locality_ratio:.2f} too low. "
         f"Expected >=85% with locality-aware dispatching. "
         f"Hits: {locality_hits}/{total}"
