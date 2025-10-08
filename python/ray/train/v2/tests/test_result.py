@@ -35,13 +35,6 @@ def build_dummy_trainer(configs):
         train_loop_config=_PARAM_SPACE,
         scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
         run_config=RunConfig(
-            worker_runtime_env={
-                "env_vars": {
-                    "AWS_ACCESS_KEY_ID": "testing",
-                    "AWS_SECRET_ACCESS_KEY": "testing",
-                    "AWS_SESSION_TOKEN": "testing",
-                }
-            },
             name=configs["EXP_NAME"],
             storage_path=configs["STORAGE_PATH"],
             checkpoint_config=CheckpointConfig(
@@ -120,7 +113,6 @@ def test_result_restore(ray_start_4_cpus, monkeypatch, tmp_path):
 
     result = Result.from_path(trial_dir)
 
-    # Check if we restored all checkpoints
     assert result.checkpoint
     assert len(result.best_checkpoints) == NUM_CHECKPOINTS
 
