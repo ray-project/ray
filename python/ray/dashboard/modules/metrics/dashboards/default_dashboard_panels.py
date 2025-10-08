@@ -391,7 +391,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     ),
     Panel(
         id=55,
-        title="Node GPU % utilization",
+        title="Node GPU utilization %",
         description="Node's physical (hardware) GPU usage.",
         unit="%",
         targets=[
