@@ -899,8 +899,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # Request finalization of the partition
             block_gen = aggregator.finalize.options(
                 **finalize_task_resource_bundle,
-                # Make sure tasks are retried indefinitely
-                max_task_retries=-1,
             ).remote(partition_id)
 
             self._finalizing_tasks[partition_id] = DataOpTask(
@@ -1488,7 +1486,10 @@ class AggregatorPool:
         self._pending_aggregators_refs = None
 
 
-@ray.remote
+@ray.remote(
+    # Make sure tasks are retried indefinitely
+    max_task_retries=-1
+)
 class HashShuffleAggregator:
     """Actor handling of the assigned partitions during hash-shuffle operation
 
