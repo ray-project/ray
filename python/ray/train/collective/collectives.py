@@ -20,7 +20,6 @@ def broadcast_from_rank_zero(data: T) -> T:
     Example:
 
         .. testcode:
-            :skipif: True
 
             from ray.train import get_context
             from ray.train.collective import broadcast_from_rank_zero
@@ -62,7 +61,6 @@ def barrier() -> None:
     Example:
 
         .. testcode:
-            :skipif: True
 
             from ray.train import get_context
             from ray.train.collective import barrier

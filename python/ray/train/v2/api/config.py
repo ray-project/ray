@@ -65,24 +65,6 @@ class ScalingConfig(ScalingConfigV1):
             auto-detected for TPUs and added as Ray node labels. This arg enables
             SPMD execution of the training workload. This field is required
             when `use_tpu` is True and `num_workers` is greater than 1.
-
-    Example:
-
-        .. testcode::
-
-            from ray.train import ScalingConfig
-            scaling_config = ScalingConfig(
-                # Number of distributed workers.
-                num_workers=2,
-                # Turn on/off GPU.
-                use_gpu=True,
-            )
-
-        .. testoutput::
-            :hide:
-
-            ...
-
     """
 
     trainer_resources: Optional[dict] = None
