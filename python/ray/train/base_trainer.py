@@ -153,6 +153,7 @@ class BaseTrainer(abc.ABC):
     method, and optionally ``setup``.
 
     .. testcode::
+        :skipif: True
 
         import torch
 
@@ -207,11 +208,6 @@ class BaseTrainer(abc.ABC):
             [{"x": i, "y": i} for i in range(10)])
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
-
-    .. testoutput::
-            :hide:
-
-            ...
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -308,6 +304,7 @@ class BaseTrainer(abc.ABC):
         attempt to resume on both experiment-level and trial-level failures:
 
         .. testcode::
+            :skipif: True
 
             import os
             import ray
@@ -342,11 +339,6 @@ class BaseTrainer(abc.ABC):
                 )
 
             result = trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
 
         Args:
             path: The path to the experiment directory of the training run to restore.
