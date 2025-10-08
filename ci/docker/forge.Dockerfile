@@ -23,6 +23,10 @@ apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git apt-tran
 # Add docker client APT repository
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+# Download and install Microsoft signing key
+curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+  gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
+chmod go+r /etc/apt/keyrings/microsoft.gpg
 
 echo \
   "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
@@ -33,12 +37,7 @@ echo \
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
 AZ_VER=2.72.0
-AZ_DIST=$(lsb_release -cs)
-
-# Download and install Microsoft signing key
-curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
-  gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
-chmod go+r /etc/apt/keyrings/microsoft.gpg
+AZ_DIST="$(lsb_release -cs)"
 
 # Add Azure CLI repository
 echo "Types: deb
