@@ -140,7 +140,7 @@ class MockVLLMEngine(LLMEngine):
         )
         yield response
 
-    async def transcription(
+    async def transcriptions(
         self, request: TranscriptionRequest
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
         """Mock transcription generation."""

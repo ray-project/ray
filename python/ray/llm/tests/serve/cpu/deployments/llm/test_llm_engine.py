@@ -101,7 +101,7 @@ class TestMockLLMEngine:
         await engine.start()
 
         request = mock_transcription_request
-        response_generator = engine.transcription(request)
+        response_generator = engine.transcriptions(request)
 
         print(
             f"\n\n_____ TRANSCRIPTION ({'STREAMING' if stream else 'NON-STREAMING'}) language={language} temperature={temperature} _____\n\n"
