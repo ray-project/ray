@@ -232,8 +232,7 @@ distributed executor backend to enable cross-node parallelism.
 
 
 In addition, you can customize placement group strategy to control how the vLLM engine workers are
-placed across nodes. Tensor parallelism and pipeline parallelism ranks are, however, determined by the vLLM engine
-and aren't configurable through the Ray Data LLM API.
+placed across nodes. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine and is not directly configurable through the Ray Data LLM API.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
