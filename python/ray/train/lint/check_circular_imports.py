@@ -9,7 +9,10 @@ TRAIN_PACKAGES = set()
 
 
 def initialize_train_packages(base_train_dir: Path, patch_train_dir: Path) -> None:
-    """Initialize the global TRAIN_PACKAGES set with all package directories."""
+    """
+    Initialize the global TRAIN_PACKAGES with all train package names from base_train_dir
+    and patch_train_dir combined.
+    """
     global TRAIN_PACKAGES
     TRAIN_PACKAGES = set()
 
@@ -24,8 +27,21 @@ def initialize_train_packages(base_train_dir: Path, patch_train_dir: Path) -> No
         TRAIN_PACKAGES.add(dotted_module)
 
 
-def is_package(module_str: str) -> bool:
+def is_train_package(module_str: str) -> bool:
     return module_str in TRAIN_PACKAGES
+
+
+def get_base_dir() -> Path:
+    """Return the filesystem path to the ray python directory."""
+    import ray
+
+    package_dir = Path(os.path.dirname(ray.__file__)).parent
+    return package_dir
+
+
+def get_base_train_dir() -> Path:
+    """Return the filesystem path to the ray train directory."""
+    return get_base_dir() / "ray/train"
 
 
 def does_overlap(main_module: str, module: str) -> bool:
@@ -130,7 +146,7 @@ class ImportCollector(ast.NodeVisitor):
         for alias in node.names:
             if alias.name:
                 self.imports.add(
-                    Import(module=alias.name, is_package=is_package(alias.name))
+                    Import(module=alias.name, is_package=is_train_package(alias.name))
                 )
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -140,7 +156,9 @@ class ImportCollector(ast.NodeVisitor):
 
         names = [alias.name for alias in node.names]
         self.imports.add(
-            Import(module=import_str, is_package=is_package(import_str), names=names)
+            Import(
+                module=import_str, is_package=is_train_package(import_str), names=names
+            )
         )
         if "TYPE_CHECKING" in names and import_str == "typing":
             self.type_checking_imported = True
@@ -169,19 +187,6 @@ def collect_imports(
     collector = ImportCollector(module_name, is_package)
     collector.visit(tree)
     return collector.imports
-
-
-def get_base_dir() -> Path:
-    """Return the filesystem path to the ray python directory."""
-    import ray
-
-    package_dir = Path(os.path.dirname(ray.__file__)).parent
-    return package_dir
-
-
-def get_base_train_dir() -> Path:
-    """Return the filesystem path to the ray train directory."""
-    return get_base_dir() / "ray/train"
 
 
 def to_module_name_and_is_package(py_file: Path) -> Tuple[str, bool]:
@@ -312,7 +317,7 @@ def check_violations(
     # Expand the imports to include reexports
     expand_to_include_reexports(base_train_patching_imports)
 
-    # Process each patch train init module
+    # Process each patch train init module for violations
     for base_train_init_module, imports in base_train_patching_imports.items():
 
         # Get the imports from the patch train files
@@ -329,7 +334,7 @@ def check_violations(
             # Skip if the patch train module init file imports the base train init module
             patch_init_module = (
                 ".".join(patch_module.split(".")[:-1])
-                if not is_package(patch_module)
+                if not is_train_package(patch_module)
                 else patch_module
             )
             patch_init_imports = patch_train_init_imports.get(patch_init_module, [])
@@ -358,27 +363,28 @@ def main():
     )
     args = parser.parse_args()
 
-    # Compute relevant paths
+    # Get train directory paths
     base_dir = get_base_dir()
     base_train_dir = get_base_train_dir()
     patch_train_dir = base_dir / Path(args.patch_dir)
 
-    # Initialize train packages
+    # Find and save all train packages in global TRAIN_PACKAGES for reference
     initialize_train_packages(base_train_dir, patch_train_dir)
 
-    # Enumerate all the base train init files, excluding the patch train init files
+    # Collect all base train init files
     base_train_init_files = [
         f
         for f in base_train_dir.rglob("__init__.py")
         if not f.is_relative_to(patch_train_dir)
     ]
 
-    # Get the patch train imports of all the base train init files
+    # Get the patching imports in the base train init files
     dotted_module_prefix = str(patch_train_dir.relative_to(base_dir)).replace("/", ".")
     patching_imports = get_file_module_imports(
         base_train_init_files, module_match_string=dotted_module_prefix
     )
 
+    # Collect all violations based off the patching imports
     violations = check_violations(patching_imports, patch_train_dir)
     if violations:
         print("\n".join(violations))
