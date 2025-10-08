@@ -99,9 +99,29 @@ class Workspace:
         if self.dir is None:
             raise RuntimeError("BUILD_WORKSPACE_DIRECTORY is not set")
 
+    def load_configs(self, config_path: str = None) -> Config:
+        merged_configs = self.merge_configs(self.get_all_configs(config_path))
+        return merged_configs
+
+    def get_all_configs(self, config_path: str = None) -> List[Config]:
+        return [self.load_config(path) for path in self.get_configs_dir(config_path)]
+
+    def get_configs_dir(self, configs_path: str) -> List[str]:
+        configs_dir = os.path.dirname(os.path.join(self.dir, configs_path))
+        return [
+            os.path.join(self.dir, configs_dir, path)
+            for path in os.listdir(os.path.join(self.dir, configs_dir))
+            if path.endswith(".depsets.yaml")
+        ]
+
     def load_config(self, config_path: str) -> Config:
         with open(os.path.join(self.dir, config_path), "r") as f:
             data = yaml.safe_load(f)
             config_name = os.path.basename(config_path)
             config = Config.from_dict(data, config_name)
         return config
+
+    def merge_configs(self, configs: List[Config]) -> Config:
+        return Config(
+            depsets=[depset for config in configs for depset in config.depsets]
+        )
