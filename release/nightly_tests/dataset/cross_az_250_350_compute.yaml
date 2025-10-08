@@ -1,20 +1,19 @@
 
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
-head_node:
+head_node_type:
+  name: head
   instance_type: m5.2xlarge
   resources:
     CPU: 0
     GPU: 0
-  flags: {}
-worker_nodes:
-  - instance_type: m5.2xlarge
-    flags: {}
-    min_nodes: 250
-    max_nodes: 350
-    market_type: ON_DEMAND
-enable_cross_zone_scaling: true
-auto_select_worker_config: false
-flags:
-  enable_multi_az_serve: true
-  allow-cross-zone-autoscaling: true
+worker_node_types:
+  - name: worker
+    instance_type: m5.2xlarge
+    min_workers: 250
+    max_workers: 350
+aws_advanced_configurations_json:
+  TagSpecifications:
+  - ResourceType: instance
+    Tags:
+    - Key: as-feature-enable-multi-az-serve
+      Value: "true"
