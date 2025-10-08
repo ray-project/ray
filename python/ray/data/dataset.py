@@ -6013,11 +6013,11 @@ class Dataset:
             ... ])
             >>> summary = ds.summary()
             >>> summary.to_pandas()  # doctest: +SKIP
-               column   dtype  count          mean    min    max          std  missing_pct   zero_pct
-            0     age   int64      3     18.333333      0     30    13.123346     0.000000  33.333333
-            1  salary   int64      3  55000.000000  50000  60000  5000.000000    33.333333   0.000000
-            2    name  string      3           NaN   None   None          NaN    33.333333        NaN
-            3    city  string      3           NaN   None   None          NaN    33.333333        NaN
+               column  count          mean      min      max          std  missing_pct   zero_pct
+            0     age      3     18.333333      0.0     30.0    13.123346     0.000000  33.333333
+            1  salary      3  55000.000000  50000.0  60000.0  5000.000000    33.333333   0.000000
+            2    name      3           NaN      NaN      NaN          NaN    33.333333        NaN
+            3    city      3           NaN      NaN      NaN          NaN    33.333333        NaN
         Args:
             columns: Optional list of column names to include in the summary.
                 If None, all columns will be included.
