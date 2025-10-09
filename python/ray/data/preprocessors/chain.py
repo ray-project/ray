@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
@@ -74,9 +74,25 @@ class Chain(Preprocessor):
         self.preprocessors[-1].fit(ds)
         return self
 
-    def fit_transform(self, ds: "Dataset") -> "Dataset":
+    def fit_transform(
+        self,
+        ds: "Dataset",
+        *,
+        transform_num_cpus: Optional[float] = None,
+        transform_memory: Optional[float] = None,
+        transform_batch_size: Optional[int] = None,
+        transform_concurrency: Optional[int] = None,
+        transform_resources: Optional[Dict[str, float]] = None,
+    ) -> "Dataset":
         for preprocessor in self.preprocessors:
-            ds = preprocessor.fit_transform(ds)
+            ds = preprocessor.fit_transform(
+                ds,
+                transform_num_cpus=transform_num_cpus,
+                transform_memory=transform_memory,
+                transform_batch_size=transform_batch_size,
+                transform_concurrency=transform_concurrency,
+                transform_resources=transform_resources,
+            )
         return ds
 
     def _transform(
@@ -86,6 +102,7 @@ class Chain(Preprocessor):
         num_cpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
     ) -> "Dataset":
         for preprocessor in self.preprocessors:
             ds = preprocessor.transform(
@@ -94,6 +111,7 @@ class Chain(Preprocessor):
                 num_cpus=num_cpus,
                 memory=memory,
                 concurrency=concurrency,
+                resources=resources,
             )
         return ds
 
