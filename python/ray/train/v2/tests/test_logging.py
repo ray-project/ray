@@ -6,10 +6,7 @@ import pytest
 
 import ray
 from ray.runtime_context import get_runtime_context
-from ray.train.v2._internal.logging.logging import (
-    configure_controller_logger,
-    configure_worker_logger,
-)
+from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2.tests.util import create_dummy_run_context, create_dummy_train_context
 
@@ -77,7 +74,7 @@ def test_controller_sys_logged_to_file(controller_logging):
     """
     Test that system messages are logged to the correct file on Controller process.
     """
-    configure_controller_logger(create_dummy_run_context())
+    LoggingManager.configure_controller_logger(create_dummy_run_context())
     worker_id = get_runtime_context().get_worker_id()
     train_logger = logging.getLogger("ray.train.spam")
     train_logger.info("ham")
@@ -102,7 +99,7 @@ def test_worker_sys_logged_to_file(worker_logging):
     """
     Test that system messages are logged to the correct file on Worker process.
     """
-    configure_worker_logger(create_dummy_train_context())
+    LoggingManager.configure_worker_logger(create_dummy_train_context())
     worker_id = get_runtime_context().get_worker_id()
     train_logger = logging.getLogger("ray.train.spam")
     train_logger.info("ham")
@@ -128,7 +125,7 @@ def test_worker_app_logged_to_file(worker_logging):
     Test that worker messages are logged to the correct file.
     Only root logger on worker processes is configured with the train context.
     """
-    configure_worker_logger(create_dummy_train_context())
+    LoggingManager.configure_worker_logger(create_dummy_train_context())
     worker_id = get_runtime_context().get_worker_id()
     root_logger = logging.getLogger()
     # print(root_logger.handlers)
@@ -140,7 +137,7 @@ def test_worker_app_logged_to_file(worker_logging):
 
 def test_worker_app_print_redirect(worker_logging):
     """Test the print statement can be captured on the worker processes."""
-    configure_worker_logger(create_dummy_train_context())
+    LoggingManager.configure_worker_logger(create_dummy_train_context())
     patch_print_function()
     worker_id = get_runtime_context().get_worker_id()
     print("ham")

@@ -1,4 +1,5 @@
 from typing import Optional
+
 from ray._private.accelerators import TPUAcceleratorManager
 from ray.util.annotations import PublicAPI
 
@@ -29,7 +30,7 @@ def get_current_pod_worker_count() -> Optional[int]:
     return TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
 
 
-@PublicAPI(stablity="alpha")
+@PublicAPI(stability="alpha")
 def get_num_tpu_chips_on_node() -> int:
     """
     Return the number of TPU chips on the node.

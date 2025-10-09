@@ -59,7 +59,7 @@ If ``grid_search`` is provided as an argument, the *same* grid will be repeated 
     tuner.fit()
 
     # 3 different configs.
-    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=1), param_space={"x": grid_search([1, 2, 3])})
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=1), param_space={"x": tune.grid_search([1, 2, 3])})
     tuner.fit()
 
     # 6 different configs.
@@ -110,7 +110,7 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
 
     tuner = tune.Tuner(
         my_trainable,
-        run_config=RunConfig(name="my_trainable"),
+        run_config=tune.RunConfig(name="my_trainable"),
         # num_samples will repeat the entire config 10 times.
         tune_config=tune.TuneConfig(num_samples=10),
         param_space={
@@ -133,9 +133,6 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
     Use :func:`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in or load them inside your trainable
     from disk (making sure that all nodes have access to the files) or cloud storage.
     See :ref:`tune-bottlenecks` for more information.
-
-Note that when using Ray Train with Ray Tune, certain config objects can also be included
-as part of the search space, thereby allowing you to tune things like number of workers for a trainer.
 
 .. _tune_custom-search:
 

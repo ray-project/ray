@@ -16,7 +16,7 @@ public class NodeLabelSchedulingTest {
       List<NodeInfo> nodeInfos = Ray.getRuntimeContext().getAllNodeInfo();
       Assert.assertTrue(nodeInfos.size() == 1);
       Map<String, String> labels = new HashMap<>();
-      labels.put("ray.io/node_id", nodeInfos.get(0).nodeId.toString());
+      labels.put("ray.io/node-id", nodeInfos.get(0).nodeId.toString());
       Assert.assertEquals(nodeInfos.get(0).labels, labels);
     } finally {
       Ray.shutdown();
@@ -30,7 +30,7 @@ public class NodeLabelSchedulingTest {
       List<NodeInfo> nodeInfos = Ray.getRuntimeContext().getAllNodeInfo();
       Assert.assertTrue(nodeInfos.size() == 1);
       Map<String, String> labels = new HashMap<>();
-      labels.put("ray.io/node_id", nodeInfos.get(0).nodeId.toString());
+      labels.put("ray.io/node-id", nodeInfos.get(0).nodeId.toString());
       labels.put("gpu_type", "A100");
       labels.put("azone", "azone-1");
       Assert.assertEquals(nodeInfos.get(0).labels, labels);

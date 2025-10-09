@@ -1,11 +1,13 @@
+import time
 from collections import OrderedDict
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
+from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
@@ -38,7 +40,7 @@ from ray.train.v2._internal.state.state_actor import (
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
-from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 from ray.train.v2.tests.util import (
     create_dummy_run_context,
     create_mock_train_run,
@@ -365,6 +367,37 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
     }
 
 
+@patch("ray.train.v2._internal.state.util.get_actor", autospec=True)
+def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
+    mock_get_actor,
+):
+    mock_get_actor.side_effect = ray.util.state.exception.ServerUnavailable
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        reconciliation_interval_s=0,
+    )
+    actor.create_or_update_train_run(
+        create_mock_train_run(
+            status=RunStatus.RUNNING,
+            controller_actor_id="controller_actor_id",
+            id="run_id",
+        )
+    )
+
+    # Still RUNNING after ServerUnavailable
+    while mock_get_actor.call_count == 0:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.RUNNING
+
+    # ABORTED after detecting dead controller
+    mock_get_actor.side_effect = lambda actor_id, timeout: create_mock_actor_state(
+        state="DEAD"
+    )
+    while actor.get_train_runs()["run_id"].status != RunStatus.ABORTED:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.ABORTED
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
@@ -485,9 +518,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         ),
         RunningState(),
         RestartingState(
-            training_failed_error=TrainingFailedError(
-                error_message="", worker_failures={}
-            )
+            training_failed_error=WorkerGroupError(error_message="", worker_failures={})
         ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
@@ -499,7 +530,9 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
         ),
-        ReschedulingState(),
+        ReschedulingState(
+            training_failed_error=ControllerError(WorkerGroupStartupTimeoutError(0))
+        ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
@@ -532,7 +565,9 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
 
 def test_callback_error_state_transition(ray_start_regular, callback):
     error_msg = "Test error"
-    error_state = ErroredState(Exception(error_msg))
+    error_state = ErroredState(
+        training_failed_error=ControllerError(Exception(error_msg))
+    )
     callback.after_controller_state_update(RunningState(), error_state)
 
     state_actor = get_state_actor()

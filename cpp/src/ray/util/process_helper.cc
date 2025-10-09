@@ -19,8 +19,8 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/util/cmd_line_utils.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -91,7 +91,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
                  ConfigInternal::Instance().head_args);
   }
 
-  std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(bootstrap_port);
+  std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
   std::string node_ip = ConfigInternal::Instance().node_ip_address;
   if (node_ip.empty()) {
     if (!bootstrap_ip.empty()) {
@@ -149,7 +149,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
-  options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;

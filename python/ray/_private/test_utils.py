@@ -17,7 +17,7 @@ import traceback
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -25,11 +25,12 @@ import requests
 import yaml
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
 import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
+from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
@@ -38,7 +39,7 @@ from ray._private import (
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
-from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
+from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
     gcs_service_pb2,
@@ -46,6 +47,7 @@ from ray.core.generated import (
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -58,9 +60,10 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
+    from prometheus_client.core import Metric
     from prometheus_client.parser import Sample, text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
-
+    Metric = None
     Sample = None
 
     def text_string_to_metric_families(*args, **kwargs):
@@ -394,6 +397,19 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def wait_for_dashboard_agent_available(cluster):
+    gcs_client = GcsClient(address=cluster.address)
+
+    def get_dashboard_agent_address():
+        return gcs_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+
+    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
+
+
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -546,11 +562,10 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     while time.time() - start_time < timeout:
         if (
             len(
-                [
-                    _
-                    for _ in ray._private.state.actors().values()
-                    if state is None or _["State"] == state
-                ]
+                list_actors(
+                    filters=[("state", "=", state)] if state else None,
+                    limit=num_actors,
+                )
             )
             >= num_actors
         ):
@@ -561,14 +576,14 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
+    current_num_restarts = get_actor(id=actor_id).num_restarts
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray._private.state.actors(actor_id)
+        actor_state = get_actor(id=actor_id)
         if (
-            actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-            or actor_status["NumRestarts"] > current_num_restarts
+            actor_state.state == "DEAD"
+            or actor_state.num_restarts > current_num_restarts
         ):
             return
         time.sleep(retry_interval_ms / 1000.0)
@@ -657,7 +672,7 @@ def get_metric_check_condition(
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
     addr = node_info["NodeManagerAddress"]
-    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+    prom_addr = export_addr or build_address(addr, metrics_export_port)
 
     def f():
         for metric_pattern in metrics_to_check:
@@ -770,9 +785,8 @@ def put_object(obj, use_ray_put):
 
 
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
-    ip_port = address.split(":")
-    ip = ip_port[0]
-    port = int(ip_port[1])
+    ip, port_str = parse_address(address)
+    port = int(port_str)
     time_elapsed = 0
     start = time.time()
     while time_elapsed <= timeout_ms:
@@ -978,6 +992,45 @@ def fetch_prometheus(prom_addresses):
     return components_dict, metric_descriptors, metric_samples
 
 
+@dataclass
+class PrometheusTimeseries:
+    """A collection of timeseries from multiple addresses. Each timeseries is a
+    collection of samples with the same metric name and labels. Concretely:
+    - components_dict: a dictionary of addresses to the Component labels
+    - metric_descriptors: a dictionary of metric names to the Metric object
+    - metric_samples: the latest value of each label
+    """
+
+    components_dict: Dict[str, Set[str]] = field(default_factory=defaultdict)
+    metric_descriptors: Dict[str, Metric] = field(default_factory=defaultdict)
+    metric_samples: Dict[frozenset, Sample] = field(default_factory=defaultdict)
+
+    def flush(self):
+        self.components_dict.clear()
+        self.metric_descriptors.clear()
+        self.metric_samples.clear()
+
+
+def fetch_prometheus_timeseries(
+    prom_addreses: List[str],
+    result: PrometheusTimeseries,
+) -> PrometheusTimeseries:
+    components_dict, metric_descriptors, metric_samples = fetch_prometheus(
+        prom_addreses
+    )
+    for address, components in components_dict.items():
+        if address not in result.components_dict:
+            result.components_dict[address] = set()
+        result.components_dict[address].update(components)
+    result.metric_descriptors.update(metric_descriptors)
+    for sample in metric_samples:
+        # udpate sample to the latest value
+        result.metric_samples[
+            frozenset(list(sample.labels.items()) + [("_metric_name_", sample.name)])
+        ] = sample
+    return result
+
+
 def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
     """Return prometheus metrics from the given addresses.
 
@@ -988,6 +1041,18 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
         Dict mapping from metric name to list of samples for the metric.
     """
     _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
+def fetch_prometheus_metric_timeseries(
+    prom_addresses: List[str], result: PrometheusTimeseries
+) -> Dict[str, List[Any]]:
+    samples = fetch_prometheus_timeseries(
+        prom_addresses, result
+    ).metric_samples.values()
     samples_by_name = defaultdict(list)
     for sample in samples:
         samples_by_name[sample.name].append(sample)
@@ -1006,6 +1071,15 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metrics([metrics_page])
+
+
+def raw_metric_timeseries(
+    info: RayContext, result: PrometheusTimeseries
+) -> Dict[str, List[Any]]:
+    """Return prometheus timeseries from a RayContext"""
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
 def get_test_config_path(config_file_name):
@@ -1293,7 +1367,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         kill_delay_s: float = 0,
-        max_to_kill: int = 2,
+        max_to_kill: Optional[int] = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
@@ -1332,7 +1406,7 @@ class ResourceKillerActor:
 
             for to_kill in to_kills:
                 self._kill_resource(*to_kill)
-            if len(self.killed) >= self.max_to_kill:
+            if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
@@ -1421,7 +1495,7 @@ class RayletKiller(NodeKillerBase):
 
         from ray.core.generated import node_manager_pb2_grpc
 
-        raylet_address = f"{ip}:{port}"
+        raylet_address = build_address(ip, port)
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
@@ -1464,7 +1538,11 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         def _kill_node_with_grace_period(node_id, node_to_kill_ip):
             self._drain_node(node_id)
             time.sleep(self._grace_period_s)
-            _terminate_ec2_instance(node_to_kill_ip)
+            # Anyscale extends the drain deadline if you shut down the instance
+            # directly. To work around this, we force-stop Ray on the node. Anyscale
+            # should then terminate it shortly after without updating the drain
+            # deadline.
+            _execute_command_on_node("ray stop --force", node_to_kill_ip)
 
         logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
         thread = threading.Thread(
@@ -1770,7 +1848,9 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = ray._private.utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
@@ -1822,7 +1902,9 @@ def kill_raylet(raylet, graceful=False):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:
@@ -1974,19 +2056,29 @@ def reset_autoscaler_v2_enabled_cache():
     u.cached_is_autoscaler_v2 = None
 
 
-def _terminate_ec2_instance(ip):
-    logging.info(f"Terminating instance, {ip=}")
+def _terminate_ec2_instance(node_ip: str) -> None:
+    logging.info(f"Terminating instance {node_ip}")
     # This command uses IMDSv2 to get the host instance id and region.
     # After that it terminates itself using aws cli.
-    multi_line_command = (
-        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+    command = (
         'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
         'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
         "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
     )
+    _execute_command_on_node(command, node_ip)
+
+
+def _execute_command_on_node(command: str, node_ip: str):
+    logging.debug(f"Executing command on node {node_ip}: {command}")
+
+    multi_line_command = (
+        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+        f"{command}"
+    )
+
     # This is a feature on Anyscale platform that enables
     # easy ssh access to worker nodes.
-    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{node_ip} '{multi_line_command}'"  # noqa: E501
 
     try:
         subprocess.run(

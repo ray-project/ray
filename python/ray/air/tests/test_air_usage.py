@@ -11,7 +11,7 @@ from packaging.version import Version
 
 import ray
 from ray import train, tune
-from ray._private.usage.usage_lib import TagKey
+from ray._common.usage.usage_lib import TagKey
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.integrations import comet, mlflow, wandb
@@ -210,10 +210,10 @@ def test_tag_air_entrypoint(ray_start_4_cpus, mock_record, entrypoint, tuner, tr
 )
 def test_tag_train_entrypoint(mock_record):
     """Test that Train v2 entrypoints are recorded correctly."""
-    from ray.train.v2.torch.torch_trainer import TorchTrainer
-    from ray.train.v2.tensorflow.tensorflow_trainer import TensorflowTrainer
-    from ray.train.v2.xgboost.xgboost_trainer import XGBoostTrainer
     from ray.train.v2.lightgbm.lightgbm_trainer import LightGBMTrainer
+    from ray.train.v2.tensorflow.tensorflow_trainer import TensorflowTrainer
+    from ray.train.v2.torch.torch_trainer import TorchTrainer
+    from ray.train.v2.xgboost.xgboost_trainer import XGBoostTrainer
 
     trainer_classes = [
         TorchTrainer,

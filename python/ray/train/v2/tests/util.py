@@ -1,8 +1,12 @@
+import os
 import time
 import uuid
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional
 from unittest.mock import MagicMock
 
+from ray.train import Checkpoint
+from ray.train._internal.session import _TrainingResult
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -17,6 +21,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
     ScalingPolicy,
 )
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
@@ -34,6 +39,7 @@ from ray.train.v2._internal.state.schema import (
     TrainWorker,
 )
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 class DummyWorkerGroup(WorkerGroup):
@@ -74,6 +80,9 @@ class DummyWorkerGroup(WorkerGroup):
 
     def shutdown(self):
         self._worker_group_state = None
+
+    def abort(self):
+        pass
 
     # === Test methods ===
     def error_worker(self, worker_index):
@@ -125,7 +134,7 @@ class MockFailurePolicy(FailurePolicy):
         super().__init__(failure_config)
 
     def make_decision(
-        self, worker_group_status: WorkerGroupPollStatus
+        self, training_failed_error: TrainingFailedError
     ) -> FailureDecision:
         if self._decision_queue:
             return self._decision_queue.pop(0)
@@ -258,3 +267,27 @@ def create_dummy_train_context() -> TrainContext:
         TrainContext: A standardized TrainContext instance for testing.
     """
     return DummyTrainContext()
+
+
+def create_dummy_training_results(
+    num_results: int,
+    storage_context: StorageContext,
+    include_metrics: bool = True,
+) -> List[_TrainingResult]:
+    training_results = []
+    for i in range(num_results):
+        metrics = {"score": i} if include_metrics else {}
+        checkpoint_path = os.path.join(
+            storage_context.experiment_fs_path, f"checkpoint_{i}"
+        )
+        os.makedirs(checkpoint_path, exist_ok=True)
+        training_results.append(
+            _TrainingResult(
+                checkpoint=Checkpoint(
+                    path=Path(checkpoint_path).as_posix(),
+                    filesystem=storage_context.storage_filesystem,
+                ),
+                metrics=metrics,
+            )
+        )
+    return training_results

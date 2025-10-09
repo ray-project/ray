@@ -15,13 +15,14 @@
 #pragma once
 
 #include <boost/range/adaptor/map.hpp>
-#include <iostream>
+#include <optional>
 #include <sstream>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "ray/common/id.h"
+#include "absl/time/time.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_instance_set.h"
@@ -292,7 +293,7 @@ class TaskResourceInstances {
       }
       has_added_resource = true;
     }
-    // TODO (chenk008): add custom_resources_
+    // TODO(chenk008): add custom_resources_
     buffer << "}";
     return buffer.str();
   }
@@ -306,7 +307,7 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const NodeResourceSet &resources)
+  explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
   NodeResourceSet available;
@@ -374,13 +375,13 @@ class NodeResourceInstances {
   const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
   const NodeResourceInstanceSet &GetTotalResourceInstances() const;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResourceInstances &other);
+  bool operator==(const NodeResourceInstances &other) const;
   /// Returns human-readable string for these resources.
   [[nodiscard]] std::string DebugString() const;
 };
 
 struct Node {
-  Node(const NodeResources &resources) : local_view_(resources) {}
+  explicit Node(const NodeResources &resources) : local_view_(resources) {}
 
   NodeResources *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();

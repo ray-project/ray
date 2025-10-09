@@ -17,7 +17,8 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
+
+#include "ray/util/process.h"
 
 namespace ray {
 namespace core {

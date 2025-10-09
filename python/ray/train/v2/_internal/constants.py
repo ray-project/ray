@@ -1,6 +1,7 @@
 import os
 from typing import Dict
 
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._private.ray_constants import env_bool, env_set_by_user
 
 # Unsupported configs can use this value to detect if the user has set it.
@@ -12,6 +13,13 @@ VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 # The name of the file that is used to store the checkpoint manager snapshot.
 CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
 
+AWS_RETRYABLE_TOKENS = (
+    "AWS Error SLOW_DOWN",
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error SERVICE_UNAVAILABLE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error UNKNOWN",
+)
 
 # -----------------------------------------------------------------------
 # Environment variables used in the controller, workers, and state actor.
@@ -46,7 +54,7 @@ DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S: float = 60
 
 # Environment variable to enable the print function patching.
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
-DEFAULT_ENABLE_PRINT_PATCH = "1"
+DEFAULT_ENABLE_PRINT_PATCH = True
 
 # V2 feature flag.
 V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"
@@ -56,8 +64,8 @@ ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR = (
     "RAY_TRAIN_ENABLE_CONTROLLER_STRUCTURED_LOGGING"
 )
 ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR = "RAY_TRAIN_ENABLE_WORKER_STRUCTURED_LOGGING"
-DEFAULT_ENABLE_CONTROLLER_LOGGING = "1"
-DEFAULT_ENABLE_WORKER_LOGGING = "1"
+DEFAULT_ENABLE_CONTROLLER_LOGGING = True
+DEFAULT_ENABLE_WORKER_LOGGING = True
 
 # Environment variables to configure reconciliation interval for Train state actor.
 # This determines how many seconds the state actor will wait between
@@ -65,7 +73,7 @@ DEFAULT_ENABLE_WORKER_LOGGING = "1"
 ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR = (
     "RAY_TRAIN_ENABLE_STATE_ACTOR_RECONCILIATION"
 )
-DEFAULT_ENABLE_STATE_ACTOR_RECONCILIATION = "1"
+DEFAULT_ENABLE_STATE_ACTOR_RECONCILIATION = True
 STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR = (
     "RAY_TRAIN_STATE_ACTOR_RECONCILIATION_INTERVAL_S"
 )
@@ -76,8 +84,12 @@ GET_ACTOR_TIMEOUT_S: int = 2
 # GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
 # way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR.
 CONTROLLERS_TO_POLL_PER_ITERATION: int = 5
+
 # Environment variable for Train execution callbacks
 RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
+
+# Ray Train does not warn by default when using blocking ray.get inside async actor.
+DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
@@ -93,6 +105,7 @@ ENV_VARS_TO_PROPAGATE = {
     ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
+    RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
 }
 
 
@@ -102,10 +115,6 @@ ENV_VARS_TO_PROPAGATE = {
 
 # The environment variable to enable the Ray Train Metrics.
 METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
-
-# Whether or not to run the controller as an actor.
-RUN_CONTROLLER_AS_ACTOR_ENV_VAR = "RAY_TRAIN_RUN_CONTROLLER_AS_ACTOR"
-DEFAULT_RUN_CONTROLLER_AS_ACTOR = "1"
 
 
 def is_v2_enabled() -> bool:

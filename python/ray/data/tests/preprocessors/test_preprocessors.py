@@ -182,7 +182,10 @@ def test_transform_all_configs():
             assert (
                 ray.get_runtime_context().get_assigned_resources()["memory"] == memory
             )
-            assert len(data["value"]) == batch_size
+            # Read(10 rows) → Limit(5) → Transform(batch_size=2)
+            assert (
+                len(data["value"]) <= batch_size
+            )  # The last batch is size 1, and limit pushdown resulted in the transform occurring for fewer rows.
             return data
 
         def _transform_pandas(self, data):

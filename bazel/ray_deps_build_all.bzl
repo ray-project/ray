@@ -1,5 +1,5 @@
 load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
-load("@com_github_ray_project_ray//java:dependencies.bzl", "gen_java_deps")
+load("@io_ray//java:dependencies.bzl", "gen_java_deps")
 load("@com_github_nelhage_rules_boost//:boost/boost.bzl", "boost_deps")
 load("@com_github_jupp0r_prometheus_cpp//bazel:repositories.bzl", "prometheus_cpp_repositories")
 load("@com_github_grpc_grpc//third_party/py:python_configure.bzl", "python_configure")

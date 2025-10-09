@@ -17,6 +17,7 @@ import React, { useContext, useEffect, useState } from "react";
 import { BiRefresh, BiTime } from "react-icons/bi";
 import { RiExternalLinkLine } from "react-icons/ri";
 
+import { useLocalStorage } from "usehooks-ts";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { ClassNameProps } from "../../common/props";
@@ -201,6 +202,14 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Node Memory by Component",
         pathParams: "theme=light&panelId=34",
       },
+      {
+        title: "Node GPU by Component",
+        pathParams: "orgId=1&theme=light&panelId=45",
+      },
+      {
+        title: "Node GPU Memory by Component",
+        pathParams: "orgId=1&theme=light&panelId=46",
+      },
     ],
   },
 ];
@@ -212,10 +221,6 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
       {
         title: "Bytes Spilled",
         pathParams: "theme=light&panelId=1",
-      },
-      {
-        title: "Bytes Allocated",
-        pathParams: "theme=light&panelId=2",
       },
       {
         title: "Bytes Freed",
@@ -321,20 +326,8 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "theme=light&panelId=37",
       },
       {
-        title: "(p50) Task Completion Time",
-        pathParams: "theme=light&panelId=40",
-      },
-      {
-        title: "(p75) Task Completion Time",
-        pathParams: "theme=light&panelId=41",
-      },
-      {
-        title: "(p99) Task Completion Time",
-        pathParams: "theme=light&panelId=44",
-      },
-      {
-        title: "(p100) Task Completion Time",
-        pathParams: "theme=light&panelId=45",
+        title: "Task Completion Time",
+        pathParams: "theme=light&panelId=38",
       },
     ],
   },
@@ -399,6 +392,7 @@ export const Metrics = () => {
   const {
     grafanaHost,
     grafanaOrgId,
+    grafanaClusterFilter,
     prometheusHealth,
     dashboardUids,
     dashboardDatasource,
@@ -409,13 +403,30 @@ export const Metrics = () => {
 
   const grafanaOrgIdParam = grafanaOrgId ?? "1";
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
+  const grafanaClusterFilterParam = grafanaClusterFilter
+    ? `&var-Cluster=${grafanaClusterFilter}`
+    : "";
+
+  const [cachedRefreshOptionStr, setCachedRefreshOptionStr] = useLocalStorage<
+    string | null
+  >(`Metrics-refreshOption`, null);
+  const cachedRefreshOption = cachedRefreshOptionStr
+    ? (cachedRefreshOptionStr as RefreshOptions)
+    : undefined;
+
+  const [cachedTimeRangeOptionStr, setCachedTimeRangeOptionStr] =
+    useLocalStorage<string | null>(`Metrics-timeRangeOption`, null);
+
+  const cachedTimeRangeOption = cachedTimeRangeOptionStr
+    ? (cachedTimeRangeOptionStr as TimeRangeOptions)
+    : undefined;
 
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
-    RefreshOptions.FIVE_SECONDS,
+    cachedRefreshOption ?? RefreshOptions.FIVE_SECONDS,
   );
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.FIVE_MINS,
+    cachedTimeRangeOption ?? TimeRangeOptions.FIVE_MINS,
   );
 
   const [refresh, setRefresh] = useState<string | null>(null);
@@ -491,7 +502,7 @@ export const Metrics = () => {
               >
                 <MenuItem
                   component="a"
-                  href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}`}
+                  href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -501,7 +512,7 @@ export const Metrics = () => {
                   <Tooltip title="The Ray Data dashboard has a dropdown to filter the data metrics by Dataset ID">
                     <MenuItem
                       component="a"
-                      href={`${grafanaHost}/d/${dashboardUids["data"]}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}`}
+                      href={`${grafanaHost}/d/${dashboardUids["data"]}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -518,6 +529,7 @@ export const Metrics = () => {
               value={refreshOption}
               onChange={({ target: { value } }) => {
                 setRefreshOption(value as RefreshOptions);
+                setCachedRefreshOptionStr(value);
               }}
               variant="standard"
               InputProps={{
@@ -542,6 +554,7 @@ export const Metrics = () => {
               value={timeRangeOption}
               onChange={({ target: { value } }) => {
                 setTimeRangeOption(value as TimeRangeOptions);
+                setCachedTimeRangeOptionStr(value);
               }}
               variant="standard"
               InputProps={{
@@ -575,6 +588,7 @@ export const Metrics = () => {
                 grafanaOrgId={grafanaOrgIdParam}
                 dashboardUid={grafanaDefaultDashboardUid}
                 dashboardDatasource={grafanaDefaultDatasource}
+                grafanaClusterFilterParam={grafanaClusterFilterParam}
               />
             ))}
             {dashboardUids?.["data"] &&
@@ -587,6 +601,7 @@ export const Metrics = () => {
                   grafanaOrgId={grafanaOrgIdParam}
                   dashboardUid={dashboardUids["data"]}
                   dashboardDatasource={grafanaDefaultDatasource}
+                  grafanaClusterFilterParam={grafanaClusterFilterParam}
                 />
               ))}
           </Box>
@@ -601,6 +616,7 @@ type MetricsSectionProps = {
   refreshParams: string;
   timeRangeParams: string;
   grafanaOrgId: string;
+  grafanaClusterFilterParam: string;
   dashboardUid: string;
   dashboardDatasource: string;
 };
@@ -610,11 +626,13 @@ const MetricsSection = ({
   refreshParams,
   timeRangeParams,
   grafanaOrgId,
+  grafanaClusterFilterParam,
   dashboardUid,
   dashboardDatasource,
 }: MetricsSectionProps) => {
   const { grafanaHost, sessionName, currentTimeZone } =
     useContext(GlobalContext);
+
   return (
     <CollapsibleSection
       key={title}
@@ -635,7 +653,7 @@ const MetricsSection = ({
         {contents.map(({ title, pathParams }) => {
           const path =
             `/d-solo/${dashboardUid}?${pathParams}&orgId=${grafanaOrgId}` +
-            `&${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
+            `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}${grafanaClusterFilterParam}`;
           return (
             <Paper
               key={pathParams}

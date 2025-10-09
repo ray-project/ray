@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/stats/metric.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 namespace stats {
 const TagKeyType ComponentKey = TagKeyType::Register("Component");
-
-const TagKeyType JobNameKey = TagKeyType::Register("JobName");
 
 const TagKeyType NodeAddressKey = TagKeyType::Register("NodeAddress");
 
@@ -26,24 +24,13 @@ const TagKeyType VersionKey = TagKeyType::Register("Version");
 
 const TagKeyType LanguageKey = TagKeyType::Register("Language");
 
-const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
-
-const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
-
-const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
-
-// Keep in sync with the WORKER_ID_TAG_KEY in python/ray/_private/metrics_agent.py
+// Keep in sync with the WORKER_ID_TAG_KEY in
+// python/ray/_private/telemetry/metric_cardinality.py
 const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
-
-const TagKeyType JobIdKey = TagKeyType::Register("JobId");
 
 const TagKeyType SessionNameKey = TagKeyType::Register("SessionName");
 
 const TagKeyType NameKey = TagKeyType::Register("Name");
-
-const TagKeyType LocationKey = TagKeyType::Register("Location");
-
-const TagKeyType ObjectStateKey = TagKeyType::Register("ObjectState");
 
 const TagKeyType SourceKey = TagKeyType::Register("Source");
 }  // namespace stats

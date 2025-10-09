@@ -6,13 +6,12 @@ import gymnasium as gym
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.utils.torch_utils import _dynamo_is_available
 
-_, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
 
 """

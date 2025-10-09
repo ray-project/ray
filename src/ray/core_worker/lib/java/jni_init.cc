@@ -118,7 +118,7 @@ jfieldID java_actor_creation_options_serialized_runtime_env;
 jfieldID java_actor_creation_options_namespace;
 jfieldID java_actor_creation_options_max_pending_calls;
 jfieldID java_actor_creation_options_is_async;
-jfieldID java_actor_creation_options_execute_out_of_order;
+jfieldID java_actor_creation_options_allow_out_of_order_execution;
 
 jclass java_actor_lifetime_class;
 int DETACHED_LIFETIME_ORDINAL_VALUE;
@@ -377,8 +377,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
   java_actor_creation_options_is_async =
       env->GetFieldID(java_actor_creation_options_class, "isAsync", "Z");
-  java_actor_creation_options_execute_out_of_order =
-      env->GetFieldID(java_actor_creation_options_class, "executeOutOfOrder", "Z");
+  java_actor_creation_options_allow_out_of_order_execution =
+      env->GetFieldID(java_actor_creation_options_class, "allowOutOfOrderExecution", "Z");
 
   java_actor_lifetime_class = LoadClass(env, "io/ray/api/options/ActorLifetime");
   java_actor_lifetime_ordinal =

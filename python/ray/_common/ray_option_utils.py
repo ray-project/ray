@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 import ray
 from ray._private import ray_constants
 from ray._private.label_utils import (
+    validate_fallback_strategy,
     validate_label_selector,
 )
 from ray._private.utils import get_ray_doc_version
@@ -127,6 +128,9 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
 
 _common_options = {
     "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
+    "fallback_strategy": Option(
+        (list, type(None)), lambda x: validate_fallback_strategy(x)
+    ),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
@@ -222,6 +226,7 @@ _task_only_options = {
 
 _actor_only_options = {
     "concurrency_groups": Option((list, dict, type(None))),
+    "enable_tensor_transport": Option((bool, type(None)), default_value=None),
     "lifetime": Option(
         (str, type(None)),
         lambda x: None
@@ -235,6 +240,7 @@ _actor_only_options = {
     "max_pending_calls": _counting_option("max_pending_calls", default_value=-1),
     "namespace": Option((str, type(None))),
     "get_if_exists": Option(bool, default_value=False),
+    "allow_out_of_order_execution": Option((bool, type(None))),
 }
 
 # Priority is important here because during dictionary update, same key with higher

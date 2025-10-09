@@ -1,20 +1,36 @@
-import sys
+import os
 from unittest.mock import patch
 
-import daft
-import numpy as np
-import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
 
-import ray
-
 
 @pytest.fixture(scope="module")
 def ray_start(request):
+    """Initialize Ray with proper serialization format."""
+    # TODO: Remove this once Daft issue is fixed to default to Cloudpickle
+    # serialization format.
+    # Force the serialization format to JSON for this test.
+    # Refer Daft issue https://github.com/Eventual-Inc/Daft/issues/4828
+    # and Ray issue https://github.com/ray-project/ray/issues/54837
+    # for more details.
+
+    # Set environment variable before importing ray
+    os.environ["RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT"] = "1"
+
+    import ray
+    import ray.air.util.tensor_extensions.arrow as arrow_module
+    from ray.air.util.tensor_extensions.arrow import _SerializationFormat
+
+    # Force the serialization format to JSON after import
+    arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat.JSON
+
     try:
-        yield ray.init(num_cpus=16)
+        # Set environment variable for Ray workers
+        yield ray.init(
+            num_cpus=16,
+        )
     finally:
         ray.shutdown()
 
@@ -26,6 +42,10 @@ def test_from_daft_raises_error_on_pyarrow_14(ray_start):
     with patch(
         "ray.data.read_api.get_pyarrow_version", return_value=parse_version("14.0.0")
     ):
+        import daft
+
+        import ray
+
         with pytest.raises(RuntimeError):
             ray.data.from_daft(daft.from_pydict({"col": [0]}))
 
@@ -35,6 +55,12 @@ def test_from_daft_raises_error_on_pyarrow_14(ray_start):
     reason="https://github.com/ray-project/ray/issues/53278",
 )
 def test_daft_round_trip(ray_start):
+    import daft
+    import numpy as np
+    import pandas as pd
+
+    import ray
+
     data = {
         "int_col": list(range(128)),
         "str_col": [str(i) for i in range(128)],

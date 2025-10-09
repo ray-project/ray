@@ -15,7 +15,7 @@ worker_node_types:
       max_workers: 6
       use_spot: false
     - name: worker_node_gpu
-      instance_type: g3.4xlarge  # 1 GPU and 16 CPU
+      instance_type: g4dn.4xlarge  # 1 GPU and 16 CPU
       min_workers: 2
       max_workers: 2
       use_spot: false

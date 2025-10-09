@@ -113,44 +113,29 @@ void Metric::Record(double value, TagsType tags) {
     return;
   }
 
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    // Register the metric if it hasn't been registered yet; otherwise, this is a no-op.
-    // We defer metric registration until the first time it's recorded, rather than during
-    // construction, to avoid issues with static initialization order. Specifically, our
-    // internal Metric objects (see metric_defs.h) are declared as static, and
-    // constructing another static object within their constructor can lead to crashes at
-    // program exit due to unpredictable destruction order.
-    //
-    // Once these internal Metric objects are migrated to use DEFINE_stats, we can
-    // safely move the registration logic to the constructor. See
-    // https://github.com/ray-project/ray/issues/54538 for the backlog of Ray metric infra
-    // improvements.
-    //
-    // This function is thread-safe.
-    RegisterOpenTelemetryMetric();
-    if (OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
-      // Collect tags from both the metric-specific tags and the global tags.
-      absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
-      std::unordered_set<std::string> tag_keys_set;
-      for (const auto &tag_key : tag_keys_) {
-        tag_keys_set.insert(tag_key.name());
-      }
-      // Insert metric-specific tags that match the expected keys.
-      for (const auto &tag : tags) {
-        const std::string &key = tag.first.name();
-        if (tag_keys_set.count(key)) {
-          open_telemetry_tags[key] = tag.second;
-        }
-      }
-      // Add global tags, overwriting any existing tag keys.
-      for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
-        open_telemetry_tags[tag.first.name()] = tag.second;
-      }
-      OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
-          name_, std::move(open_telemetry_tags), value);
-
-      return;
+  if (::RayConfig::instance().enable_open_telemetry()) {
+    // Collect tags from both the metric-specific tags and the global tags.
+    absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
+    // Add default values for missing tag keys.
+    for (const auto &tag_key : tag_keys_) {
+      open_telemetry_tags[tag_key.name()] = "";
     }
+    // Insert metric-specific tags that match the expected keys.
+    for (const auto &tag : tags) {
+      const std::string &key = tag.first.name();
+      auto it = open_telemetry_tags.find(key);
+      if (it != open_telemetry_tags.end()) {
+        it->second = tag.second;
+      }
+    }
+    // Add global tags, overwriting any existing tag keys.
+    for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
+      open_telemetry_tags[tag.first.name()] = tag.second;
+    }
+    OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
+        name_, std::move(open_telemetry_tags), value);
+
+    return;
   }
 
   absl::MutexLock lock(&registration_mutex_);
@@ -177,23 +162,22 @@ void Metric::Record(double value, TagsType tags) {
 }
 
 void Metric::Record(double value,
-                    std::unordered_map<std::string_view, std::string> tags) {
+                    std::vector<std::pair<std::string_view, std::string>> tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
-  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
-    return tags_pair_vec.emplace_back(TagKeyType::Register(tag.first),
-                                      std::move(tag.second));
-  });
+  for (auto &tag : tags) {
+    tags_pair_vec.emplace_back(TagKeyType::Register(tag.first), std::move(tag.second));
+  }
   Record(value, std::move(tags_pair_vec));
 }
 
-void Metric::Record(double value, std::unordered_map<std::string, std::string> tags) {
+void Metric::RecordForCython(double value,
+                             std::vector<std::pair<std::string, std::string>> tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
-  std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
-    return tags_pair_vec.emplace_back(TagKeyType::Register(tag.first),
-                                      std::move(tag.second));
-  });
+  for (auto &tag : tags) {
+    tags_pair_vec.emplace_back(TagKeyType::Register(tag.first), std::move(tag.second));
+  }
   Record(value, std::move(tags_pair_vec));
 }
 
@@ -215,8 +199,8 @@ void Gauge::RegisterView() {
 }
 
 void Histogram::RegisterOpenTelemetryMetric() {
-  // Histogram is not supported in OpenTelemetry.
-  return;
+  OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+      name_, description_, boundaries_);
 }
 
 void Histogram::RegisterView() {

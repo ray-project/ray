@@ -14,23 +14,22 @@
 
 #pragma once
 
-#include <cstddef>
-#include <regex>
+#include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "absl/synchronization/mutex.h"
-#include "ray/common/function_descriptor.h"
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/common/task/task_common.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
-/// Arguments are the raylet ID to spill back to, the raylet's
+/// Arguments are the node ID to spill back to, the raylet's
 /// address and the raylet's port.
-typedef std::function<void()> SpillbackBundleCallback;
+using SpillbackBundleCallback = std::function<void()>;
 
 const std::string kGroupKeyword = "_group_";
 const size_t kGroupKeywordSize = kGroupKeyword.size();
@@ -93,13 +92,6 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   absl::flat_hash_map<std::string, double> bundle_resource_labels_;
 };
 
-struct PgFormattedResourceData {
-  std::string original_resource;
-  /// -1 if it is a wildcard resource.
-  int64_t bundle_index;
-  std::string group_id;
-};
-
 /// Format a placement group resource with provided parameters.
 ///
 /// \param original_resource_name The original resource name of the pg resource.
@@ -125,23 +117,6 @@ std::string GetOriginalResourceName(const std::string &resource);
 // if the resource is the wildcard resource (resource without a bundle id).
 // Returns "" if the resource is not a wildcard resource.
 std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource);
-
-/// Return whether the resource specified by the resource_id is a CPU resource
-/// or CPU resource inside a placement group.
-bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id);
-
-/// Parse the given resource and get the pg related information.
-///
-/// \param resource name of the resource.
-/// \param for_wildcard_resource if true, it parses wildcard pg resources.
-/// E.g., [resource]_group_[pg_id]
-/// \param for_indexed_resource if true, it parses indexed pg resources.
-/// E.g., [resource]_group_[index]_[pg_id]
-/// \return nullopt if it is not a pg resource. Otherwise, it returns the
-/// struct with pg information parsed from the resource.
-/// If a returned bundle index is -1, it means the resource is the wildcard resource.
-std::optional<PgFormattedResourceData> ParsePgFormattedResource(
-    const std::string &resource, bool for_wildcard_resource, bool for_indexed_resource);
 
 /// Generate debug information of given bundles.
 std::string GetDebugStringForBundles(

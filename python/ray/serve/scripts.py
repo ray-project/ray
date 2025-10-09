@@ -629,23 +629,25 @@ def config(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
+    applications = serve_details.applications
 
     # Fetch app configs for all live applications on the cluster
     if name is None:
-        print(
-            "\n---\n\n".join(
-                yaml.safe_dump(
-                    app.deployed_app_config.dict(exclude_unset=True),
-                    sort_keys=False,
-                )
-                for app in serve_details.applications.values()
-                if app.deployed_app_config is not None
-            ),
-            end="",
-        )
+        configs = [
+            yaml.safe_dump(
+                app.deployed_app_config.dict(exclude_unset=True),
+                sort_keys=False,
+            )
+            for app in applications.values()
+            if app.deployed_app_config is not None
+        ]
+        if configs:
+            print("\n---\n\n".join(configs), end="")
+        else:
+            print("No configuration was found.")
     # Fetch a specific app config by name.
     else:
-        app = serve_details.applications.get(name)
+        app = applications.get(name)
         if app is None or app.deployed_app_config is None:
             print(f'No config has been deployed for application "{name}".')
         else:
@@ -866,6 +868,8 @@ def build(
         Dumper=ServeDeploySchemaDumper,
         default_flow_style=False,
         sort_keys=False,
+        width=80,  # Set width to avoid folding long lines
+        indent=2,  # Use 2-space indentation for more compact configuration
     )
     cli_logger.info(
         "The auto-generated application names default to `app1`, `app2`, ... etc. "
@@ -882,35 +886,31 @@ def build(
 class ServeDeploySchemaDumper(yaml.SafeDumper):
     """YAML dumper object with custom formatting for ServeDeploySchema.
 
-    Reformat config to follow this spacing:
-    ---------------------------------------
+    Reformat config to follow this spacing with appropriate line breaks:
+    ---------------------------------------------------------------
+    proxy_location: EveryNode
 
-    host: 0.0.0.0
+    http_options:
+      host: 0.0.0.0
+      port: 8000
 
-    port: 8000
+    grpc_options:
+      port: 9000
+      grpc_servicer_functions: []
+
+    logging_config:
+      # ...
 
     applications:
-
-    - name: app1
-
-      import_path: app1.path
-
-      runtime_env: {}
-
-      deployments:
-
-      - name: deployment1
-        ...
-
-      - name: deployment2
-        ...
+      - name: app1
+        import_path: app1.path
+        # ...
     """
 
     def write_line_break(self, data=None):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
-        # Indents must be at most 4 to ensure that only the top 4 levels of
-        # the config file have line breaks between them.
-        if len(self.indents) <= 4:
+        # Only add extra line breaks between top-level keys
+        if len(self.indents) == 1:
             super().write_line_break()

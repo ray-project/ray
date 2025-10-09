@@ -35,7 +35,6 @@ from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
 )
-from ray.data.context import DataContext
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -212,9 +211,8 @@ class FuseOperators(Rule):
             return False
 
         if not self._can_merge_target_max_block_size(
-            up_op.target_max_block_size,
-            down_op.target_max_block_size,
-            up_op.data_context,
+            up_op.target_max_block_size_override,
+            down_op.target_max_block_size_override,
         ):
             return False
 
@@ -250,35 +248,27 @@ class FuseOperators(Rule):
         self,
         up_target_max_block_size: Optional[int],
         down_target_max_block_size: Optional[int],
-        data_context: DataContext,
-    ):
-        # If the upstream op overrode the target max block size, only fuse if
-        # they are equal.
-        if up_target_max_block_size is not None:
-            if down_target_max_block_size is None:
-                down_target_max_block_size = data_context.target_max_block_size
-            if up_target_max_block_size != down_target_max_block_size:
-                return False
+    ) -> bool:
+        if (
+            up_target_max_block_size is not None
+            and down_target_max_block_size is not None
+        ):
+            # NOTE: In case of both ops overriding `target_max_block_size` only
+            #       merge them if settings are equal
+            return down_target_max_block_size == up_target_max_block_size
+
         return True
 
     def _get_merged_target_max_block_size(
         self,
         up_target_max_block_size: Optional[int],
         down_target_max_block_size: Optional[int],
-    ):
-        if up_target_max_block_size is not None:
-            # If the upstream op overrode the target max block size, we can
-            # only merge if the downstream op matches or uses the default.
-            assert (
-                down_target_max_block_size is None
-                or down_target_max_block_size == up_target_max_block_size
-            )
-            return up_target_max_block_size
-        else:
-            # Upstream op inherits the downstream op's target max block size,
-            # because the downstream op is the one that outputs the final
-            # blocks.
-            return down_target_max_block_size
+    ) -> Optional[int]:
+        assert self._can_merge_target_max_block_size(
+            up_target_max_block_size, down_target_max_block_size
+        )
+
+        return up_target_max_block_size or down_target_max_block_size
 
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
@@ -302,7 +292,7 @@ class FuseOperators(Rule):
         )
 
         target_max_block_size = self._get_merged_target_max_block_size(
-            up_op.target_max_block_size, down_op.target_max_block_size
+            up_op.target_max_block_size_override, down_op.target_max_block_size_override
         )
 
         compute = self._fuse_compute_strategy(
@@ -328,7 +318,7 @@ class FuseOperators(Rule):
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
             up_op.data_context,
-            target_max_block_size=target_max_block_size,
+            target_max_block_size_override=target_max_block_size,
             name=name,
             compute_strategy=compute,
             min_rows_per_bundle=min_rows_per_bundled_input,
@@ -436,7 +426,7 @@ class FuseOperators(Rule):
         input_op = input_deps[0]
 
         target_max_block_size = self._get_merged_target_max_block_size(
-            up_op.target_max_block_size, down_op.target_max_block_size
+            up_op.target_max_block_size_override, down_op.target_max_block_size_override
         )
 
         assert up_op.data_context is down_op.data_context
@@ -444,7 +434,7 @@ class FuseOperators(Rule):
             fused_all_to_all_transform_fn,
             input_op,
             up_op.data_context,
-            target_max_block_size=target_max_block_size,
+            target_max_block_size_override=target_max_block_size,
             num_outputs=down_op._num_outputs,
             # Transfer over the existing sub-progress bars from
             # the AllToAllOperator (if any) into the fused operator.

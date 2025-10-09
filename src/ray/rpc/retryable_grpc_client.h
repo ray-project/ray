@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -26,23 +27,40 @@
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "ray/common/grpc_util.h"
-#include "ray/rpc/client_call.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray::rpc {
 
+// This macro wraps the logic to call a specific RPC method of a service with the
+// retryable grpc client, to make it easier to implement a new RPC client.
+#define INVOKE_RETRYABLE_RPC_CALL(retryable_rpc_client,                       \
+                                  SERVICE,                                    \
+                                  METHOD,                                     \
+                                  request,                                    \
+                                  callback,                                   \
+                                  rpc_client,                                 \
+                                  method_timeout_ms)                          \
+  (retryable_rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>( \
+      &SERVICE::Stub::PrepareAsync##METHOD,                                   \
+      rpc_client,                                                             \
+      #SERVICE ".grpc_client." #METHOD,                                       \
+      std::move(request),                                                     \
+      callback,                                                               \
+      method_timeout_ms))
+
 // Define a void retryable RPC client method.
-#define VOID_RETRYABLE_RPC_CLIENT_METHOD(                                        \
-    retryable_rpc_client, SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS) \
-  void METHOD(const METHOD##Request &request,                                    \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {             \
-    retryable_rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>(   \
-        &SERVICE::Stub::PrepareAsync##METHOD,                                    \
-        rpc_client,                                                              \
-        #SERVICE ".grpc_client." #METHOD,                                        \
-        request,                                                                 \
-        callback,                                                                \
-        method_timeout_ms);                                                      \
+#define VOID_RETRYABLE_RPC_CLIENT_METHOD(                                               \
+    retryable_rpc_client, SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)        \
+  void METHOD(METHOD##Request &&request, const ClientCallback<METHOD##Reply> &callback) \
+      SPECS {                                                                           \
+    INVOKE_RETRYABLE_RPC_CALL(retryable_rpc_client,                                     \
+                              SERVICE,                                                  \
+                              METHOD,                                                   \
+                              request,                                                  \
+                              callback,                                                 \
+                              rpc_client,                                               \
+                              method_timeout_ms);                                       \
   }
 
 /**
@@ -145,8 +163,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
   void Retry(std::shared_ptr<RetryableGrpcRequest> request);
 
-  // Return the number of pending requests waiting for retry.
-  size_t NumPendingRequests() const { return pending_requests_.size(); }
+  // Return the number of active (pending or inflight) requests.
+  size_t NumActiveRequests() const { return num_active_requests_; }
 
   ~RetryableGrpcClient();
 
@@ -205,6 +223,9 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       pending_requests_;
   // Total number of bytes of pending requests.
   size_t pending_requests_bytes_ = 0;
+  // TODO(57156): this is messy to leave in the retryable grpc client, refactor this
+  // Total number of inflight requests.
+  std::atomic<size_t> num_active_requests_ = 0;
 };
 
 template <typename Service, typename Request, typename Reply>
@@ -215,6 +236,7 @@ void RetryableGrpcClient::CallMethod(
     Request request,
     ClientCallback<Reply> callback,
     int64_t timeout_ms) {
+  num_active_requests_++;
   RetryableGrpcRequest::Create(weak_from_this(),
                                std::move(prepare_async_function),
                                std::move(grpc_client),
@@ -255,17 +277,24 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
           auto retryable_grpc_client = weak_retryable_grpc_client.lock();
           if (status.ok() || !IsGrpcRetryableStatus(status) || !retryable_grpc_client) {
             callback(status, std::move(reply));
+            if (retryable_grpc_client) {
+              retryable_grpc_client->num_active_requests_--;
+            }
             return;
           }
-
           retryable_grpc_client->Retry(retryable_grpc_request);
         },
         call_name,
         retryable_grpc_request->GetTimeoutMs());
   };
 
-  auto failure_callback = [callback](const ray::Status &status) {
+  auto failure_callback = [weak_retryable_grpc_client,
+                           callback](const ray::Status &status) {
     callback(status, Reply{});
+    auto retryable_grpc_client = weak_retryable_grpc_client.lock();
+    if (retryable_grpc_client) {
+      retryable_grpc_client->num_active_requests_--;
+    }
   };
 
   return std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>(

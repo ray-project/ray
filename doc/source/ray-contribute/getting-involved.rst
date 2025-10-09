@@ -25,7 +25,7 @@ researchers, and folks that love machine learning.
   community is extremely active in helping people succeed in building their
   Ray applications.
 
-You can join (and Star!) us on `on GitHub`_.
+You can join (and Star!) us `on GitHub`_.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 
@@ -47,7 +47,7 @@ What can I work on?
 -------------------
 
 We use Github to track issues, feature requests, and bugs. Take a look at the
-ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ for a place to start.
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22>`__ for a place to start.
 
 Setting up your development environment
 ---------------------------------------

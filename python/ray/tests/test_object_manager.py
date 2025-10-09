@@ -539,6 +539,10 @@ def test_object_directory_failure(ray_start_cluster):
         "health_check_period_ms": 500,
         "health_check_failure_threshold": 10,
         "object_timeout_milliseconds": 200,
+        # Required for reducing the retry time of RequestWorkerLease
+        "raylet_rpc_server_reconnect_timeout_s": 0,
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_LOCATIONS sooner
+        "core_worker_rpc_server_reconnect_timeout_s": 0,
     }
 
     # Add a head node.

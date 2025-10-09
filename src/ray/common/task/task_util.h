@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
@@ -24,17 +30,17 @@ namespace ray {
 /// Stores the task failure reason.
 struct TaskFailureEntry {
   /// The task failure details.
-  rpc::RayErrorInfo ray_error_info;
+  rpc::RayErrorInfo ray_error_info_;
 
   /// The creation time of this entry.
-  std::chrono::steady_clock::time_point creation_time;
+  std::chrono::steady_clock::time_point creation_time_;
 
   /// Whether this task should be retried.
-  bool should_retry;
+  bool should_retry_;
   TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
-      : ray_error_info(ray_error_info),
-        creation_time(std::chrono::steady_clock::now()),
-        should_retry(should_retry) {}
+      : ray_error_info_(ray_error_info),
+        creation_time_(std::chrono::steady_clock::now()),
+        should_retry_(should_retry) {}
 };
 
 /// Argument of a task.
@@ -50,16 +56,22 @@ class TaskArgByReference : public TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  TaskArgByReference(const ObjectID &object_id,
-                     const rpc::Address &owner_address,
-                     const std::string &call_site)
-      : id_(object_id), owner_address_(owner_address), call_site_(call_site) {}
+  TaskArgByReference(
+      const ObjectID &object_id,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE)
+      : id_(object_id),
+        owner_address_(owner_address),
+        call_site_(call_site),
+        tensor_transport_(tensor_transport) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
     ref->set_call_site(call_site_);
+    ref->set_tensor_transport(tensor_transport_);
   }
 
  private:
@@ -67,6 +79,7 @@ class TaskArgByReference : public TaskArg {
   const ObjectID id_;
   const rpc::Address owner_address_;
   const std::string call_site_;
+  const rpc::TensorTransport tensor_transport_;
 };
 
 class TaskArgByValue : public TaskArg {
@@ -246,7 +259,7 @@ class TaskSpecBuilder {
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      bool execute_out_of_order = false,
+      bool allow_out_of_order_execution = false,
       ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
@@ -265,15 +278,15 @@ class TaskSpecBuilder {
     actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle);
     for (const auto &concurrency_group : concurrency_groups) {
       rpc::ConcurrencyGroup *group = actor_creation_spec->add_concurrency_groups();
-      group->set_name(concurrency_group.name);
-      group->set_max_concurrency(concurrency_group.max_concurrency);
+      group->set_name(concurrency_group.name_);
+      group->set_max_concurrency(concurrency_group.max_concurrency_);
       // Fill into function descriptor.
-      for (auto &item : concurrency_group.function_descriptors) {
+      for (auto &item : concurrency_group.function_descriptors_) {
         rpc::FunctionDescriptor *fd = group->add_function_descriptors();
         *fd = item->GetMessage();
       }
     }
-    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
+    actor_creation_spec->set_allow_out_of_order_execution(allow_out_of_order_execution);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());

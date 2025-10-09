@@ -8,7 +8,11 @@ import numpy as np
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import LoraConfig
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    LoraConfig,
+    ModelLoadingConfig,
+)
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
@@ -37,11 +41,13 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     mock_llm_config.experimental_configs = {
         "stream_batching_interval_ms": stream_batching_interval_ms,
     }
+    # Set minimal lora_config to enable multiplexing but avoid telemetry S3 calls
     mock_llm_config.lora_config = LoraConfig(
-        dynamic_lora_loading_path="s3://my/s3/path_here",
+        dynamic_lora_loading_path=None,  # No S3 path = no telemetry S3 calls
         download_timeout_s=60,
         max_download_tries=3,
     )
+
     app = serve.deployment(LLMServer).bind(
         mock_llm_config,
         engine_cls=MockVLLMEngine,
@@ -151,7 +157,35 @@ class TestLLMServer:
         LLMResponseValidator.validate_embedding_response(chunks[0], dimensions)
 
     @pytest.mark.asyncio
-    async def test_check_health(self, create_server, mock_llm_config):
+    async def test_score_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_score_request,
+    ):
+        """Test score API from LLMServer perspective."""
+
+        # Create score request
+        request = mock_score_request
+
+        print("\n\n_____ SCORE SERVER _____\n\n")
+
+        # Get the response
+        batched_chunks = serve_handle.score.remote(request)
+
+        # Collect responses (should be just one)
+        chunks = []
+        async for batch in batched_chunks:
+            chunks.append(batch)
+
+        # Check that we got one response
+        assert len(chunks) == 1
+
+        # Validate score response
+        LLMResponseValidator.validate_score_response(chunks[0])
+
+    @pytest.mark.asyncio
+    async def test_check_health(self, mock_llm_config):
         """Test health check functionality."""
 
         # Mock the engine's check_health method
@@ -164,7 +198,8 @@ class TestLLMServer:
                 self.check_health_called = True
 
         # Create a server with a mocked engine
-        server = await create_server(mock_llm_config, engine_cls=LocalMockEngine)
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
 
         # Perform the health check, no exceptions should be raised
         await server.check_health()
@@ -173,9 +208,79 @@ class TestLLMServer:
         assert server.engine.check_health_called
 
     @pytest.mark.asyncio
-    async def test_llm_config_property(self, create_server, mock_llm_config):
+    async def test_reset_prefix_cache(self, mock_llm_config):
+        """Test reset prefix cache functionality."""
+
+        # Mock the engine's reset_prefix_cache method
+        class LocalMockEngine(MockVLLMEngine):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.reset_prefix_cache_called = False
+
+            async def reset_prefix_cache(self):
+                self.reset_prefix_cache_called = True
+
+        # Create a server with a mocked engine
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
+
+        # Reset prefix cache, no exceptions should be raised
+        await server.reset_prefix_cache()
+
+        # Check that the reset prefix cache method was called
+        assert server.engine.reset_prefix_cache_called
+
+    @pytest.mark.asyncio
+    async def test_start_profile(self, mock_llm_config):
+        """Test start profile functionality."""
+
+        # Mock the engine's start_profile method
+        class LocalMockEngine(MockVLLMEngine):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.start_profile_called = False
+
+            async def start_profile(self):
+                self.start_profile_called = True
+
+        # Create a server with a mocked engine
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
+
+        # Start profile, no exceptions should be raised
+        await server.start_profile()
+
+        # Check that the start profile method was called
+        assert server.engine.start_profile_called
+
+    @pytest.mark.asyncio
+    async def test_stop_profile(self, mock_llm_config):
+        """Test stop profile functionality."""
+
+        # Mock the engine's stop_profile method
+        class LocalMockEngine(MockVLLMEngine):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.stop_profile_called = False
+
+            async def stop_profile(self):
+                self.stop_profile_called = True
+
+        # Create a server with a mocked engine
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
+
+        # Stop profile, no exceptions should be raised
+        await server.stop_profile()
+
+        # Check that the stop profile method was called
+        assert server.engine.stop_profile_called
+
+    @pytest.mark.asyncio
+    async def test_llm_config_property(self, mock_llm_config):
         """Test the llm_config property."""
-        server = await create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
+        await server.start()
         llm_config = await server.llm_config()
         assert isinstance(llm_config, type(mock_llm_config))
 
@@ -269,12 +374,13 @@ class TestLLMServer:
             )
 
     @pytest.mark.asyncio
-    async def test_push_telemetry(self, create_server, mock_llm_config):
+    async def test_push_telemetry(self, mock_llm_config):
         """Test that the telemetry push is called properly."""
         with patch(
             "ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models"
         ) as mock_push_telemetry:
-            await create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+            server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
+            await server.start()
             mock_push_telemetry.assert_called_once()
 
     @pytest.mark.parametrize("api_type", ["chat", "completions"])
@@ -341,6 +447,114 @@ class TestLLMServer:
         assert np.isclose(
             std_var_llm_server, std_var_engine, atol=1.0
         ), f"{std_var_llm_server=}, {std_var_engine=}"
+
+
+class TestGetDeploymentOptions:
+    def test_placement_group_config(self):
+        """Test that placement_group_config is correctly parsed."""
+
+        # Test the default resource bundle
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
+            {"GPU": 1} for _ in range(5)
+        ]
+
+        # Test the custom placement group config
+        # Note: The first bundle gets merged with replica actor resources (CPU: 1, GPU: 0)
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+            placement_group_config={
+                "bundles": [{"CPU": 1, "XPU": 1}] + [{"XPU": 1}] * 5,
+                "strategy": "PACK",
+            },
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+        # First bundle has replica actor resources merged in (CPU: 1 from config + 1 from replica = 2)
+        # All bundles get GPU: 1.0 added as accelerator hint (and CPU: 0.0 for workers)
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 2.0, "GPU": 1.0, "XPU": 1}
+        ] + [{"CPU": 0.0, "GPU": 1.0, "XPU": 1} for _ in range(5)]
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+    def test_get_serve_options_with_accelerator_type(self):
+        """Test that get_serve_options returns the correct options when accelerator_type is set."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="A100-40G",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        )
+
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
+        }
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
+        ]
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
+
+    def test_get_serve_options_without_accelerator_type(self):
+        """Test that get_serve_options returns the correct options when accelerator_type is not set."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
+        }
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
 
 
 if __name__ == "__main__":

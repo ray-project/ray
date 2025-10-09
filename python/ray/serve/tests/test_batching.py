@@ -3,6 +3,7 @@ import math
 from collections.abc import Callable
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
+from threading import Thread
 from typing import List, Optional
 
 import httpx
@@ -11,7 +12,12 @@ from starlette.responses import StreamingResponse
 
 from ray import serve
 from ray._common.test_utils import SignalActor, async_wait_for_condition
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.batching import _RuntimeSummaryStatistics
+from ray.serve.context import (
+    _get_serve_batch_request_context,
+    _get_serve_request_context,
+)
 
 
 def test_batching(serve_instance):
@@ -135,7 +141,7 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
     serve.run(Textgen.bind())
 
     prompt_prefix = "hola"
-    url = f"http://localhost:8000/?prompt={prompt_prefix}"
+    url = f"{get_application_url()}/?prompt={prompt_prefix}"
     with ThreadPoolExecutor() as pool:
         futs = [pool.submit(partial(httpx.get, url + str(idx))) for idx in range(4)]
         responses = [fut.result() for fut in futs]
@@ -163,7 +169,7 @@ def test_batching_client_dropped_unary(serve_instance):
 
     serve.run(ModelUnary.bind())
 
-    url = "http://localhost:8000/"
+    url = f"{get_application_url()}/"
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
@@ -213,7 +219,7 @@ def test_batching_client_dropped_streaming(serve_instance):
 @pytest.mark.parametrize("max_batch_size", [1, 10])
 @pytest.mark.parametrize("n_requests", [1, 10])
 async def test_observability_helpers(
-    n_requests: int, max_batch_size: int, max_concurrent_batches: int
+    serve_instance, n_requests: int, max_batch_size: int, max_concurrent_batches: int
 ) -> None:
     """Checks observability helper methods that are used for batching.
 
@@ -261,7 +267,9 @@ async def test_observability_helpers(
         math.ceil(n_requests / max_batch_size), max_concurrent_batches
     )
 
-    await send_k_requests(signal_actor, n_requests, min_num_batches)
+    await send_k_requests(
+        signal_actor, n_requests, min_num_batches, app_name="app_name"
+    )
     prev_iter_times = await handle._get_curr_iteration_start_times.remote()
     await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
 
@@ -269,7 +277,9 @@ async def test_observability_helpers(
     assert len(await handle._get_handling_task_stack.remote()) is not None
     assert await handle._is_batching_task_alive.remote()
 
-    await send_k_requests(signal_actor, n_requests, min_num_batches)
+    await send_k_requests(
+        signal_actor, n_requests, min_num_batches, app_name="app_name"
+    )
     new_iter_times = await handle._get_curr_iteration_start_times.remote()
     await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
 
@@ -281,13 +291,15 @@ async def test_observability_helpers(
 
 
 async def send_k_requests(
-    signal_actor: SignalActor, k: int, min_num_batches: float
+    signal_actor: SignalActor, k: int, min_num_batches: float, app_name: str
 ) -> None:
     """Send k requests and wait until at least min_num_batches are waiting."""
     await signal_actor.send.remote(True)  # type: ignore[attr-defined]
     async with httpx.AsyncClient() as client:
         for _ in range(k):
-            asyncio.create_task(client.get("http://localhost:8000/"))
+            asyncio.create_task(
+                client.get(f"{get_application_url(app_name=app_name)}/")
+            )
         await wait_for_n_waiters(
             signal_actor, lambda num_waiters: num_waiters >= min_num_batches
         )
@@ -301,6 +313,93 @@ async def wait_for_n_waiters(
         return condition(num_waiters)
 
     return await async_wait_for_condition(poll)
+
+
+def test_batching_request_context(serve_instance):
+    """Test that _get_serve_batch_request_context() works correctly with batching.
+
+    With 6 requests and max_batch_size=3, Serve should create 2 batches processed in parallel.
+    Each batch should have access to the request contexts of all requests in that batch,
+    and context should be properly unset after processing.
+    """
+
+    @serve.deployment(max_ongoing_requests=10)
+    class BatchContextTester:
+        def __init__(self):
+            self.batch_results = []
+
+        @serve.batch(
+            max_batch_size=3, batch_wait_timeout_s=1.0, max_concurrent_batches=2
+        )
+        async def handle_batch(self, batch):
+            # Store results for verification
+            batch_result = {
+                "batch_size": len(batch),
+                "batch_request_contexts": _get_serve_batch_request_context(),
+                "current_request_context": _get_serve_request_context(),
+            }
+            self.batch_results.append(batch_result)
+
+            return ["ok" for _ in range(len(batch))]
+
+        async def __call__(self, request):
+            return await self.handle_batch(1)
+
+        async def get_results(self):
+            return self.batch_results
+
+    handle = serve.run(BatchContextTester.bind())
+
+    def do_request():
+        """Make a request with a specific request ID."""
+        url = get_application_url()
+        r = httpx.post(f"{url}/")
+        r.raise_for_status()
+
+    # Launch 6 requests. Expect 2 batches of 3 requests each.
+    threads = [Thread(target=do_request) for _ in range(6)]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Get results from the deployment
+    batch_results = handle.get_results.remote().result()
+
+    # Verify each batch has correct size and context
+    total_requests_processed = 0
+    request_ids_in_batch_context = set()
+
+    for result in batch_results:
+        # Batch context should contain all 3 request contexts
+        assert (
+            len(result["batch_request_contexts"]) == 3
+        ), f"Expected 3 contexts in batch, got {result['batch_request_contexts']}"
+        req_ids_in_batch_context = [
+            ctx.request_id for ctx in result["batch_request_contexts"]
+        ]
+        assert (
+            len(req_ids_in_batch_context) == 3
+        ), f"Expected 3 batch request IDs, got {len(req_ids_in_batch_context)}"
+        request_ids_in_batch_context.update(req_ids_in_batch_context)
+
+        # Current request context read within the batcher should be a default empty context.
+        current_request_context = result["current_request_context"]
+        assert current_request_context.request_id == ""
+        assert current_request_context.route == ""
+        assert current_request_context.app_name == ""
+        assert current_request_context.multiplexed_model_id == ""
+
+        total_requests_processed += result["batch_size"]
+
+    # Verify all 6 requests were processed
+    assert (
+        total_requests_processed == 6
+    ), f"Expected 6 total requests processed, got {total_requests_processed}"
+    assert (
+        len(request_ids_in_batch_context) == 6
+    ), f"Expected 6 unique request IDs, got {len(request_ids_in_batch_context)}"
 
 
 if __name__ == "__main__":

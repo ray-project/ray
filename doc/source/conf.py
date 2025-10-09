@@ -228,6 +228,8 @@ exclude_patterns = [
     "data/api/ray.data.*.rst",
     "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
     "train/examples/**/README.md",
+    "serve/tutorials/deployment-serve-llm/README.*",
+    "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -318,7 +320,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
+    "announcement": """Join us at Ray Summit 2025 — <a target="_blank" href="https://www.anyscale.com/ray-summit/2025?utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Register early and save.</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -327,6 +329,7 @@ html_theme_options = {
         "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
+        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
@@ -734,3 +737,5 @@ assert (
 ), "If ray is already imported, we will not render documentation correctly!"
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+os.environ["RAY_DOC_BUILD"] = "1"

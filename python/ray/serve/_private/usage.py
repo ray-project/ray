@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Dict, Optional
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 
 
 class ServeUsageTag(Enum):
@@ -37,6 +37,7 @@ class ServeUsageTag(Enum):
     NUM_NODE_COMPACTIONS = TagKey.SERVE_NUM_NODE_COMPACTIONS
     AUTO_NUM_REPLICAS_USED = TagKey.SERVE_AUTO_NUM_REPLICAS_USED
     CUSTOM_REQUEST_ROUTER_USED = TagKey.SERVE_CUSTOM_REQUEST_ROUTER_USED
+    NUM_REPLICAS_VIA_API_CALL_UPDATED = TagKey.SERVE_NUM_REPLICAS_VIA_API_CALL_UPDATED
 
     def record(self, value: str):
         """Record telemetry value."""

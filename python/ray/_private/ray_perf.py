@@ -83,7 +83,7 @@ def check_optimized_build():
         msg = (
             "WARNING: Unoptimized build! "
             "To benchmark an optimized build, try:\n"
-            "\tbazel build -c opt //:ray_pkg\n"
+            "\tbazel run -c opt //:gen_ray_pkg\n"
             "You can also make this permanent by adding\n"
             "\tbuild --compilation_mode=opt\n"
             "to your user-wide ~/.bazelrc file. "

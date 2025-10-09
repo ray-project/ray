@@ -7,7 +7,7 @@ from typing import List, Optional
 
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, Union
 

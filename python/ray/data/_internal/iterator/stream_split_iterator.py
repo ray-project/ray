@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
 from ray.data.context import DataContext
@@ -19,7 +18,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data import Dataset
+    from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,6 @@ class StreamSplitDataIterator(DataIterator):
     def create(
         base_dataset: "Dataset",
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDataIterator"]:
         """Create a split iterator from the given base Dataset and options.
@@ -54,7 +52,7 @@ class StreamSplitDataIterator(DataIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(_DatasetWrapper(base_dataset), n, equal, locality_hints)
+        ).remote(_DatasetWrapper(base_dataset), n, locality_hints)
 
         return [
             StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
@@ -138,19 +136,21 @@ class SplitCoordinator:
         self,
         dataset_wrapper: _DatasetWrapper,
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
         dataset = dataset_wrapper._dataset
+
         # Set current DataContext.
-        self._data_context = dataset.context
+        # This needs to be a deep copy so that updates to the base dataset's
+        # context does not affect this process's global DataContext.
+        self._data_context = dataset.context.copy()
         ray.data.DataContext._set_current(self._data_context)
+
         if self._data_context.execution_options.locality_with_output is True:
             self._data_context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
         self._base_dataset = dataset
         self._n = n
-        self._equal = equal
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
         self._executor = None
@@ -166,20 +166,8 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 self._executor = self._base_dataset._plan.create_executor()
-
-                def add_split_op(dag):
-                    return OutputSplitter(
-                        dag,
-                        n,
-                        equal,
-                        self._data_context,
-                        locality_hints,
-                    )
-
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor,
-                    dataset._plan,
-                    dag_rewrite=add_split_op,
+                    self._executor, dataset._plan
                 )
                 yield output_iterator
 

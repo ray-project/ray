@@ -1,12 +1,11 @@
 import argparse
 import os
-import uuid
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
 from starlette.requests import Request
-from transformers.dynamic_module_utils import init_hf_modules
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
@@ -18,7 +17,10 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
+    ErrorInfo,
     ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -26,7 +28,6 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    FrontendArgs,
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
     from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
     from vllm.entrypoints.openai.serving_models import OpenAIServingModels
+    from vllm.entrypoints.openai.serving_score import ServingScores
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -53,10 +55,27 @@ def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
+
+    # Resolve to local cache path if model was downloaded from S3/GCS mirror
+    # Only do this if mirror_config was specified (intentional S3/GCS download)
+    if engine_config.mirror_config:
+        from ray.llm._internal.common.utils.download_utils import (
+            get_model_location_on_disk,
+        )
+
+        local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
+        if local_path and local_path != engine_config.actual_hf_model_id:
+            engine_config.hf_model_id = local_path
+            logger.info(f"Resolved model from mirror to local path: {local_path}")
+
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
-    vllm_engine_config = async_engine_args.create_engine_config()
+    from vllm.usage.usage_lib import UsageContext
+
+    vllm_engine_config = async_engine_args.create_engine_config(
+        usage_context=UsageContext.OPENAI_API_SERVER
+    )
     return async_engine_args, vllm_engine_config
 
 
@@ -104,51 +123,21 @@ class VLLMEngine(LLMEngine):
         """
         super().__init__(llm_config)
 
-        # Ensure transformers_modules is initialized early in worker processes.
-        # This is critical for models with trust_remote_code=True to avoid pickle errors.
-        init_hf_modules()
-
         self.llm_config = llm_config
 
         if vllm is None:
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs, utils as vllm_utils
+        from vllm import envs as vllm_envs
 
+        # TODO (Kourosh): Remove this after a few releases.
         if not vllm_envs.VLLM_USE_V1:
-            logger.warning(
-                "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
+            logger.error(
+                "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
             )
 
-        # TODO (Kourosh): This validation logic belongs to the PDProxy module.
-        # Pick a random port in P/D case.
-        kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
-        if kv_transfer_config is not None:
-            connector_type = getattr(kv_transfer_config, "kv_connector", "")
-            if connector_type != "NixlConnector":
-                raise ValueError("Only NixlConnector is supported for kv transfer.")
-            if (
-                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm_envs.environment_variables
-                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm_envs.environment_variables
-            ):
-                raise ValueError(
-                    "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
-                    "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
-                    "that you are using an older version of vLLM."
-                )
-
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                port: int = vllm_utils.get_open_port()
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
-
-            # We need to overwrite the engine_id to make it unique across replicas.
-            engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
-            host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-            port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-            kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
+        self.llm_config.setup_engine_backend()
 
         self._running = False
 
@@ -158,6 +147,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_chat: Optional["OpenAIServingChat"] = None
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
         self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
+        self._oai_serving_scores: Optional["ServingScores"] = None
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -213,6 +203,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_chat = state.openai_serving_chat
         self._oai_serving_completion = state.openai_serving_completion
         self._oai_serving_embedding = state.openai_serving_embedding
+        self._oai_serving_scores = state.openai_serving_scores
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
@@ -245,6 +236,11 @@ class VLLMEngine(LLMEngine):
             self._oai_serving_embedding, "create_embedding"
         ), "oai_serving_embedding must have a create_embedding attribute"
 
+    def _validate_openai_serving_scores(self):
+        assert hasattr(
+            self._oai_serving_scores, "create_score"
+        ), "oai_serving_scores must have a create_score attribute"
+
     def _validate_engine_client(self):
         assert hasattr(
             self._engine_client, "check_health"
@@ -273,7 +269,7 @@ class VLLMEngine(LLMEngine):
             ref = (
                 ray.remote(
                     num_cpus=0,
-                    num_gpus=1,
+                    num_gpus=0.001,
                     accelerator_type=self.llm_config.accelerator_type,
                 )(_get_vllm_engine_config)
                 .options(
@@ -293,28 +289,6 @@ class VLLMEngine(LLMEngine):
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
-    def _start_async_llm_engine_v0(
-        self,
-        engine_args: "AsyncEngineArgs",
-        vllm_config: "VllmConfig",
-        placement_group: PlacementGroup,
-    ) -> "EngineClient":
-
-        from vllm.engine.async_llm_engine import AsyncLLMEngine
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
-
-        vllm_config.parallel_config.placement_group = placement_group
-
-        _clear_current_platform_cache()
-
-        engine_client = AsyncLLMEngine(
-            vllm_config=vllm_config,
-            executor_class=RayDistributedExecutor,
-            log_stats=not engine_args.disable_log_stats,
-        )
-
-        return engine_client
-
     def _start_async_llm_engine(
         self,
         vllm_engine_args: "AsyncEngineArgs",
@@ -322,13 +296,6 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        from vllm import envs as vllm_envs
-
-        # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
-        if not vllm_envs.VLLM_USE_V1:
-            return self._start_async_llm_engine_v0(
-                vllm_engine_args, vllm_engine_config, placement_group
-            )
 
         from vllm.v1.engine.async_llm import AsyncLLM
         from vllm.v1.executor.abstract import Executor
@@ -339,12 +306,11 @@ class VLLMEngine(LLMEngine):
 
         custom_stat_loggers = None
         if self.llm_config.log_engine_metrics:
-            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
-                RayPrometheusStatLogger,
-            )
+            from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
 
-            # V1 AsyncLLM does not yet support add_logger
-            # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
+            # V1 AsyncLLM does not yet support add_logger: https://github.com/vllm-project/vllm/issues/17702
+            # Use `disable_log_stats: False` and `log_engine_metrics: False` as
+            # a workaround to enable PrometheusStatLogger instead.
             custom_stat_loggers = [RayPrometheusStatLogger]
 
         executor_class = Executor.get_class(vllm_engine_config)
@@ -361,19 +327,9 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        # TODO (Kourosh): We should uncomment this logic when
-        # https://github.com/vllm-project/vllm/pull/20636 is
-        # included in our vLLM release.
-        # if disk_lora_model.model_id in self._oai_models.lora_requests:
-        #     # Lora is already loaded, return
-        #     return
-
         self._validate_openai_serving_models()
 
-        if any(
-            lora_request.lora_name == disk_lora_model.model_id
-            for lora_request in self._oai_models.lora_requests  # type: ignore[attr-defined]
-        ):
+        if disk_lora_model.model_id in self._oai_models.lora_requests:
             # Lora is already loaded, return
             return
 
@@ -385,11 +341,13 @@ class VLLMEngine(LLMEngine):
         )
 
         if isinstance(lora_request, VLLMErrorResponse):
-            raise ValueError(f"Failed to load lora model: {lora_request.message}")
+            raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
     def _create_raw_request(
         self,
-        request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        request: Union[
+            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+        ],
         path: str,
     ) -> Request:
         scope = {
@@ -425,7 +383,7 @@ class VLLMEngine(LLMEngine):
                 yield response
         else:
             if isinstance(chat_response, VLLMErrorResponse):
-                yield ErrorResponse(**chat_response.model_dump())
+                yield ErrorResponse(error=ErrorInfo(**chat_response.error.model_dump()))
             else:
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
@@ -454,7 +412,9 @@ class VLLMEngine(LLMEngine):
                 yield response
         else:
             if isinstance(completion_response, VLLMErrorResponse):
-                yield ErrorResponse(**completion_response.model_dump())
+                yield ErrorResponse(
+                    error=ErrorInfo(**completion_response.error.model_dump())
+                )
             else:
                 yield CompletionResponse(**completion_response.model_dump())
 
@@ -473,9 +433,27 @@ class VLLMEngine(LLMEngine):
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
-            yield ErrorResponse(**embedding_response.model_dump())
+            yield ErrorResponse(
+                error=ErrorInfo(**embedding_response.error.model_dump())
+            )
         else:
             yield EmbeddingResponse(**embedding_response.model_dump())
+
+    async def score(
+        self, request: ScoreRequest
+    ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
+        self._validate_openai_serving_scores()
+
+        raw_request = self._create_raw_request(request, "/score")
+
+        score_response = await self._oai_serving_scores.create_score(
+            request, raw_request=raw_request
+        )
+
+        if isinstance(score_response, VLLMErrorResponse):
+            yield ErrorResponse(**score_response.model_dump())
+        else:
+            yield ScoreResponse(**score_response.model_dump())
 
     async def check_health(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
@@ -485,3 +463,15 @@ class VLLMEngine(LLMEngine):
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
+
+    async def reset_prefix_cache(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.reset_prefix_cache()
+
+    async def start_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.start_profile()
+
+    async def stop_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.stop_profile()

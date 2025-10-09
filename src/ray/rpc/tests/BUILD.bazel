@@ -1,0 +1,42 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "rpc_chaos_test",
+    size = "small",
+    srcs = [
+        "rpc_chaos_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/rpc:rpc_chaos",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "grpc_server_client_test",
+    size = "small",
+    srcs = [
+        "grpc_server_client_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/protobuf:test_service_cc_grpc",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc:grpc_server",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "metrics_agent_client_test",
+    size = "small",
+    srcs = [
+        "metrics_agent_client_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/rpc:metrics_agent_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

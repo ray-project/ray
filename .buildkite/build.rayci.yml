@@ -1,5 +1,37 @@
 group: build
 steps:
+  - name: ray-core-build
+    label: "wanda: core binary parts py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-core.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    tags: release_wheels
+    depends_on: manylinux
+
+  - name: ray-dashboard-build
+    label: "wanda: dashboard"
+    wanda: ci/docker/ray-dashboard.wanda.yaml
+    tags: release_wheels
+    depends_on: manylinux
+
+  - name: ray-java-build
+    label: "wanda: java build (x86_64)"
+    wanda: ci/docker/ray-java.wanda.yaml
+    tags:
+      - release_wheels
+      - java
+      - oss
+    env:
+      ARCH_SUFFIX: ""
+    depends_on: manylinux
+
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
     tags:
@@ -15,17 +47,6 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
-    depends_on:
-      - manylinux
-      - forge
-
-  - label: ":tapioca: build: debug wheel"
-    tags:
-      - linux_wheels
-      - oss
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
     depends_on:
       - manylinux
       - forge
@@ -67,13 +88,40 @@ steps:
         --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
-        --platform cu12.8.1-cudnn --platform cpu
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
         --image-type ray --upload
     depends_on:
       - manylinux
       - forge
       - raycudabase
       - raycpubase
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+
+  - label: ":tapioca: build: ray-extra py{{matrix}} docker (x86_64)"
+    key: ray_extra_images
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
+        --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
+        --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
+        --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
+        --image-type ray-extra --upload
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubaseextra
+      - raycudabaseextra
     matrix:
       - "3.9"
       - "3.10"
@@ -96,7 +144,7 @@ steps:
     matrix:
       - "3.11"
 
-  - label: ":tapioca: build: ray-ml py{{matrix}} docker (x86_64)"
+  - label: ":tapioca: build: ray-llm-extra py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
       - docker
@@ -104,16 +152,12 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu12.1.1-cudnn8 --platform cpu --image-type ray-ml
-        --upload
+        --platform cu12.8.1-cudnn --image-type ray-llm-extra --upload
     depends_on:
       - manylinux
       - forge
-      - ray-mlcudabase
-      - ray-mlcpubase
+      - ray-llmbaseextra
     matrix:
-      - "3.9"
-      - "3.10"
       - "3.11"
 
   - label: ":tapioca: smoke test build-docker.sh"

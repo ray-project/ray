@@ -34,7 +34,7 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -69,13 +69,9 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
 
         backend_config = RLlibTorchConfig()
 
-    elif learner_class.framework == "tf2":
-        from ray.train.tensorflow import TensorflowConfig
-
-        backend_config = TensorflowConfig()
     else:
         raise ValueError(
-            "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
+            "`learner_class.framework` must be 'torch' (but is "
             f"{learner_class.framework}!"
         )
 

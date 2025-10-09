@@ -11,6 +11,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 
 import logging
 from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
+from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -25,7 +26,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
@@ -205,7 +206,7 @@ class PPOConfig(AlgorithmConfig):
         # Deprecated.
         vf_share_layers=DEPRECATED_VALUE,
         **kwargs,
-    ) -> "PPOConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -362,7 +363,7 @@ class PPOConfig(AlgorithmConfig):
 class PPO(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> PPOConfig:
         return PPOConfig()
 
     @classmethod
@@ -444,7 +445,7 @@ class PPO(Algorithm):
             # But we also return a total_loss key at the same level as the ModuleID
             # keys. So we need to subtract that to get the correct set of ModuleIDs to
             # update.
-            # TODO (sven): We should also not be using `learner_results` as a messenger
+            # TODO (sven): We should not be using `learner_results` as a messenger
             #  to infer which modules to update. `policies_to_train` might also NOT work
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.

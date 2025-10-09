@@ -79,7 +79,7 @@ class Raylet {
 
  private:
   /// Register GCS client.
-  ray::Status RegisterGcs();
+  void RegisterGcs();
 
   /// Accept a client connection.
   void DoAccept();

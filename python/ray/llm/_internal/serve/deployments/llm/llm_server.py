@@ -1,6 +1,6 @@
 import asyncio
+import copy
 import os
-from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,14 +13,11 @@ from typing import (
     Union,
 )
 
+import ray
 from ray import serve
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_HEALTH_CHECK_PERIOD_S,
-    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_MAX_REPLICAS,
-    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
@@ -30,10 +27,8 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
 from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
@@ -41,6 +36,9 @@ from ray.llm._internal.serve.deployments.utils.server_utils import (
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
+)
+from ray.llm._internal.serve.utils.lora_serve_utils import (
+    LoraModelLoader,
 )
 
 if TYPE_CHECKING:
@@ -52,58 +50,51 @@ if TYPE_CHECKING:
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        ScoreRequest,
+        ScoreResponse,
     )
 
 logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class _LLMServerBase(ABC):
+def _merge_replica_actor_and_child_actor_bundles(
+    child_actor_bundles: List[Dict[str, float]],
+    replica_actor_bundle: Dict[str, float],
+) -> List[Dict[str, float]]:
+    """Sum up the bundles from replica actor bundles with the first bundle from child actor bundles.
+
+    This is because the replica actor will use the first bundle in the list, and we want to collocate the replica actor with the child actor.
+    So we need to group them together.
+
+    So for example:
+    child_actor_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1, "CPU": 1}]
+    replica_actor_bundle = {"GPU": 0, "CPU": 1, "memory": 100}
+    return [{"GPU": 1, "CPU": 2, "memory": 100}, {"GPU": 1, "CPU": 1}]
     """
-    This is the common interface between all the llm deployment. All llm deployments
-    need to implement an async constructor, an async predict, and check_health method.
-    """
 
-    # TODO (Kourosh): I don't know why this is an async init. Need to fix.
-    async def __init__(self):
-        """
-        Constructor takes in an LLMConfig object and start the underlying engine.
-        """
+    if not child_actor_bundles:
+        return [copy.copy(replica_actor_bundle)]
 
-    @abstractmethod
-    async def chat(
-        self, request: "ChatCompletionRequest"
-    ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
-        """
-        Inferencing to the engine for chat, and return the response.
-        """
-        ...
+    if not replica_actor_bundle:
+        return [copy.copy(bundle) for bundle in child_actor_bundles]
 
-    @abstractmethod
-    async def completions(
-        self, request: "CompletionRequest"
-    ) -> AsyncGenerator[
-        Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
-    ]:
-        """
-        Inferencing to the engine for completion api, and return the response.
-        """
-        ...
+    original_first_bundle = child_actor_bundles[0]
+    bundle_key_set = set(original_first_bundle.keys()) | set(
+        replica_actor_bundle.keys()
+    )
 
-    @abstractmethod
-    async def check_health(self) -> None:
-        """
-        Check the health of the replica. Does not return anything.
-        Raise error when the engine is dead and needs to be restarted.
-        """
-        ...
+    merged_first_bundle = {
+        key: original_first_bundle.get(key, 0) + replica_actor_bundle.get(key, 0)
+        for key in bundle_key_set
+    }
 
-    # TODO (Kourosh): This does not belong here.
-    async def llm_config(self) -> Optional[LLMConfig]:
-        return None
+    return [merged_first_bundle] + [
+        copy.copy(bundle) for bundle in child_actor_bundles[1:]
+    ]
 
 
-class LLMServer(_LLMServerBase):
+class LLMServer(LLMServerProtocol):
     """This is a shim layer to decouple the LLM engine from the ingress
     deployment.
 
@@ -114,6 +105,19 @@ class LLMServer(_LLMServerBase):
     2. Request id handing from serve context.
     3. Batching in case of streaming (only for chat and completions).
     4. Telemetry reporting.
+
+    Usage Patterns:
+
+    1. Basic pattern (for testing):
+        server = LLMServer.sync_init(llm_config)  # Sync constructor, unstarted
+        await server.start()  # Must explicitly start
+
+    2. Async context (default, used by Ray Serve):
+        server = await LLMServer(llm_config)  # Async constructor, fully started
+
+    3. Ray Serve deployment:
+        # Ray Serve calls the async constructor directly
+        deployment = serve.deployment(LLMServer).bind(llm_config)
     """
 
     _default_engine_cls = VLLMEngine
@@ -125,10 +129,9 @@ class LLMServer(_LLMServerBase):
         engine_cls: Optional[Type[LLMEngine]] = None,
         model_downloader: Optional[Type[LoraModelLoader]] = None,
     ):
-        """Constructor of LLMServer.
+        """Asynchronous constructor that returns a fully started instance.
 
-        Only the llm_config is public api, the other arguments are private
-        and used for testing.
+        This is the default constructor used by Ray Serve deployments.
 
         Args:
             llm_config: LLMConfig for the model.
@@ -137,16 +140,55 @@ class LLMServer(_LLMServerBase):
             model_downloader: Dependency injection for the model downloader.
                 Defaults to `LoraModelLoader`.
         """
-        await super().__init__()
-        self._llm_config = llm_config
+        super().__init__()
+        self._init_shared(llm_config, engine_cls, model_downloader)
+        await self.start()
 
+    def _init_shared(
+        self,
+        llm_config: LLMConfig,
+        engine_cls: Optional[Type[LLMEngine]] = None,
+        model_downloader: Optional[Type[LoraModelLoader]] = None,
+    ):
+        """Shared initialization logic between constructors."""
+        self._llm_config = llm_config
         self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
+        self._init_multiplex_loader(model_downloader)
+
+    @classmethod
+    def sync_init(
+        cls,
+        llm_config: LLMConfig,
+        *,
+        engine_cls: Optional[Type[LLMEngine]] = None,
+        model_downloader: Optional[Type[LoraModelLoader]] = None,
+    ) -> "LLMServer":
+        """Synchronous constructor that returns an unstarted instance.
+
+        This is used for testing the new pattern where initialization
+        and starting are explicitly separated.
+
+        Args:
+            llm_config: LLMConfig for the model.
+            engine_cls: Dependency injection for the vllm engine class.
+                Defaults to `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader.
+                Defaults to `LoraModelLoader`.
+
+        Returns:
+            An unstarted LLMServer instance. Caller must call await start().
+        """
+        instance = cls.__new__(cls)
+        LLMServerProtocol.__init__(instance)
+        instance._init_shared(llm_config, engine_cls, model_downloader)
+        return instance
+
+    async def start(self):
+        """Start the underlying engine. This handles async initialization."""
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
-
-        self._init_multiplex_loader(model_downloader)
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
@@ -163,7 +205,7 @@ class LLMServer(_LLMServerBase):
             )
 
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
-                return await model_downloader.load_model(
+                return await model_downloader.load_model_from_config(
                     lora_model_id=lora_model_id,
                     llm_config=self._llm_config,
                 )
@@ -237,7 +279,10 @@ class LLMServer(_LLMServerBase):
     async def _run_request(
         self,
         request: Union[
-            "ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"
+            "ChatCompletionRequest",
+            "CompletionRequest",
+            "EmbeddingRequest",
+            "ScoreRequest",
         ],
         *,
         engine_method: str,
@@ -253,6 +298,7 @@ class LLMServer(_LLMServerBase):
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
         """
+
         await self._maybe_add_request_id_to_request(request)
         await self._maybe_resolve_lora_from_multiplex()
 
@@ -322,6 +368,24 @@ class LLMServer(_LLMServerBase):
             request, engine_method="embeddings", batch_output_stream=False
         )
 
+    async def score(
+        self, request: "ScoreRequest"
+    ) -> AsyncGenerator[Union["ScoreResponse", "ErrorResponse"], None]:
+        """Runs a score request to the engine and returns the response.
+
+        Returns an AsyncGenerator over the ScoreResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings, and score.
+
+        Args:
+            request: A ScoreRequest object.
+
+        Returns:
+            An AsyncGenerator over the ScoreResponse object.
+        """
+        # NOTE: Score does not need batching, similar to embeddings.
+        return await self._run_request(
+            request, engine_method="score", batch_output_stream=False
+        )
+
     async def check_health(self) -> None:
         """
         Check the health of the replica. Does not return anything. Raise error when
@@ -335,39 +399,96 @@ class LLMServer(_LLMServerBase):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.reset_prefix_cache()
+        except Exception as e:
+            logger.error(
+                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                e,
+            )
+            raise e
+
+    async def start_profile(self) -> None:
+        """Start profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.start_profile()
+        except Exception as e:
+            logger.error(
+                "Engine start profile failed in LLMServer.start_profile: %s", e
+            )
+            raise e
+
+    async def stop_profile(self) -> None:
+        """Stop profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.stop_profile()
+        except Exception as e:
+            logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
+            raise e
+
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
     @classmethod
-    def as_deployment(
-        cls, deployment_options: Optional[Dict[str, Any]] = None
-    ) -> serve.Deployment:
-        """Convert the LLMServer to a Ray Serve deployment.
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        engine_config = llm_config.get_engine_config()
+        deployment_options = copy.deepcopy(llm_config.deployment_config)
 
-        Args:
-            deployment_options: A dictionary of deployment options.
+        # Handle the ray_actor_options that could be passed in to
+        # deployment_options
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
 
-        Returns:
-            A Ray Serve deployment.
-        """
-        deployment_options = deployment_options or {}
-        return LLMDeployment.options(**deployment_options)
+        replica_actor_resources = {
+            "CPU": ray_actor_options.get("num_cpus", 1),
+            "GPU": ray_actor_options.get("num_gpus", 0),
+            **ray_actor_options.get("resources", {}),
+        }
+        if "memory" in ray_actor_options:
+            replica_actor_resources["memory"] = ray_actor_options["memory"]
 
+        if (
+            "placement_group_bundles" in llm_config.deployment_config
+            or "placement_group_strategy" in llm_config.deployment_config
+        ):
+            raise ValueError(
+                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
+            )
 
-@serve.deployment(
-    autoscaling_config={
-        "min_replicas": 1,
-        "initial_replicas": 1,
-        "max_replicas": DEFAULT_MAX_REPLICAS,
-        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-    },
-    max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
-    health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
-    health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-)
-class LLMDeployment(LLMServer):
-    # Note (genesu): We are separating the LLMServer and LLMDeployment just
-    # to give developers an ability to test the implementation outside the Ray Serve.
-    # But in practice we should always test the LLMDeployment class as a Serve
-    # deployment to ensure all functionalities can be run remotely asynchronously.
-    ...
+        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
+        # more generic place.
+        pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+            engine_config.placement_bundles, replica_actor_resources
+        )
+
+        deployment_options.update(
+            {
+                "placement_group_bundles": pg_bundles,
+                "placement_group_strategy": engine_config.placement_strategy,
+            }
+        )
+
+        # Handle env vars from runtime_env
+        default_runtime_env = ray.get_runtime_context().runtime_env
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            default_runtime_env[
+                "worker_process_setup_hook"
+            ] = "ray.llm._internal.serve._worker_process_setup_hook"
+
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
+        ray_actor_options["runtime_env"] = {
+            **default_runtime_env,
+            # Existing runtime_env should take precedence over the default.
+            **ray_actor_options.get("runtime_env", {}),
+            **(llm_config.runtime_env if llm_config.runtime_env else {}),
+        }
+        deployment_options["ray_actor_options"] = ray_actor_options
+
+        return deployment_options

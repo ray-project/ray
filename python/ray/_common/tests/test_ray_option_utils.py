@@ -1,20 +1,21 @@
-import pytest
 import re
 import sys
 from unittest.mock import patch
 
-from ray.util.placement_group import PlacementGroup
+import pytest
+
 from ray._common.ray_option_utils import (
     Option,
-    _counting_option,
-    _validate_resource_quantity,
-    _resource_option,
-    _validate_resources,
-    validate_task_options,
-    validate_actor_options,
-    update_options,
     _check_deprecate_placement_group,
+    _counting_option,
+    _resource_option,
+    _validate_resource_quantity,
+    _validate_resources,
+    update_options,
+    validate_actor_options,
+    validate_task_options,
 )
+from ray.util.placement_group import PlacementGroup
 
 
 class TestOptionValidation:

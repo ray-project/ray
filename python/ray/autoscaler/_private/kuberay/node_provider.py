@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
 from ray.autoscaler.batching_node_provider import (
@@ -51,7 +52,7 @@ KUBERNETES_SERVICE_HOST = os.getenv(
     "KUBERNETES_SERVICE_HOST", "https://kubernetes.default"
 )
 KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
-KUBERNETES_HOST = f"{KUBERNETES_SERVICE_HOST}:{KUBERNETES_SERVICE_PORT}"
+KUBERNETES_HOST = build_address(KUBERNETES_SERVICE_HOST, KUBERNETES_SERVICE_PORT)
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
 
@@ -333,6 +334,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             url,
             json.dumps(payload),
             headers={**headers, "Content-type": "application/json-patch+json"},
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
         )
         if not result.status_code == 200:

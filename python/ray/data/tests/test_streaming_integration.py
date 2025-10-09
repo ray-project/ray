@@ -18,7 +18,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
-    create_map_transformer_from_block_fn,
+    BlockMapTransformFn,
+    MapTransformer,
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -33,7 +34,7 @@ def make_map_transformer(block_fn):
         for block in block_iter:
             yield pd.DataFrame({"id": block_fn(block["id"])})
 
-    return create_map_transformer_from_block_fn(map_fn)
+    return MapTransformer([BlockMapTransformFn(map_fn)])
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
@@ -399,7 +400,9 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().execution_options.resource_limits = ExecutionResources()
     run()
 
-    DataContext.get_current().execution_options.resource_limits.cpu = 1
+    DataContext.get_current().execution_options.resource_limits = (
+        DataContext.get_current().execution_options.resource_limits.copy(cpu=1)
+    )
     with pytest.raises(ValueError):
         run()
 
@@ -488,7 +491,9 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
 
     ctx = DataContext.get_current()
     ctx.target_max_block_size = block_size
-    ctx.execution_options.resource_limits.object_store_memory = block_size
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=block_size
+    )
 
     # Only take the first item from the iterator.
     ds = ray.data.range(100, override_num_blocks=100).map_batches(func, batch_size=None)
@@ -518,7 +523,9 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
 
     # Tests that autoscaling works even when resource constrained via actor killing.
     # To pass this, we need to autoscale down to free up slots for task execution.
-    DataContext.get_current().execution_options.resource_limits.cpu = 2
+    DataContext.get_current().execution_options.resource_limits = (
+        DataContext.get_current().execution_options.resource_limits.copy(cpu=2)
+    )
     ray.data.range(5, override_num_blocks=5).map_batches(
         UDFClass,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
@@ -567,7 +574,9 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
-    ctx.execution_options.resource_limits.object_store_memory = 1
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=1
+    )
     ds = ray.data.range(10000, override_num_blocks=100).map(lambda x: x, num_cpus=2)
     # This will hang forever if the liveness logic is wrong, since the output
     # backpressure will prevent any operators from running at all.
