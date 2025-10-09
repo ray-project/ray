@@ -13,6 +13,8 @@ from typing import (
     Union,
 )
 
+from fastapi import Request
+
 import ray
 from ray import serve
 from ray._common.utils import import_attr
