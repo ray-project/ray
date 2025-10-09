@@ -870,7 +870,35 @@ def test_random_sample_fixed_seed_0002(
     assert set(ds.to_pandas()["item"].to_list()) == set(expected.tolist())
 
 
+def test_warn_large_udfs(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    driver = """
+import ray
+import numpy as np
+from ray.data._internal.execution.operators.map_operator import MapOperator
+
+large_object = np.zeros(MapOperator.MAP_UDF_WARN_SIZE_THRESHOLD + 1, dtype=np.int8)
+
+class LargeUDF:
+    def __init__(self):
+        self.data = large_object
+
+    def __call__(self, batch):
+        return batch
+
+ds = ray.data.range(1)
+ds = ds.map_batches(LargeUDF, concurrency=1)
+assert ds.take_all() == [{"id": 0}]
+    """
+    output = run_string_as_driver(driver)
+    assert "The UDF of operator MapBatches(LargeUDF) is too large" in output
+
+
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
 def test_actor_udf_cleanup(
+    shutdown_only,
     tmp_path,
     restore_data_context,
     target_max_block_size_infinite_or_default,
@@ -904,33 +932,6 @@ def test_actor_udf_cleanup(
     wait_for_condition(lambda: not os.path.exists(test_file))
 
 
-def test_warn_large_udfs(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    driver = """
-import ray
-import numpy as np
-from ray.data._internal.execution.operators.map_operator import MapOperator
-
-large_object = np.zeros(MapOperator.MAP_UDF_WARN_SIZE_THRESHOLD + 1, dtype=np.int8)
-
-class LargeUDF:
-    def __init__(self):
-        self.data = large_object
-
-    def __call__(self, batch):
-        return batch
-
-ds = ray.data.range(1)
-ds = ds.map_batches(LargeUDF, concurrency=1)
-assert ds.take_all() == [{"id": 0}]
-    """
-    output = run_string_as_driver(driver)
-    assert "The UDF of operator MapBatches(LargeUDF) is too large" in output
-
-
-# NOTE: All tests above share a Ray cluster, while the tests below do not. These
-# tests should only be carefully reordered to retain this invariant!
 def test_actor_pool_strategy_default_num_actors(
     shutdown_only, target_max_block_size_infinite_or_default
 ):
