@@ -325,9 +325,8 @@ You can also asynchronously validate checkpoints that you :func:`~ray.train.repo
 
 * Define your own ``validate_fn`` that takes a :class:`~ray.train.Checkpoint` to validate
   and an optional ``validate_config`` dictionary, which contain arguments needed for validation
-  such as the validation dataset, and returns a dictionary of metrics from the validation.
-  We recommend performing the validation with an eval-only :ref:`Trainer <train-overview-trainers>` or with
-  :func:`~ray.data.Dataset.map_batches` - see :ref:`train-validate-fn` for more details.
+  such as the validation dataset, and returns a dictionary of metrics from that validation. See
+  :ref:`train-validate-fn` for more details on how to do this.
 * Call :func:`~ray.train.report` with your ``validate_fn`` and a ``validate_config`` dict.
   Ray Train runs your ``validate_fn`` with the ``validation_config`` and ``checkpoint``
   in a new Ray task. When that task completes, Ray Train associates the metrics returned by
@@ -345,20 +344,28 @@ in the training loop include:
 Writing your own validation function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here is an example ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
+``validate_fn`` can be any function that validates the ``checkpoint`` using information from
+``validation_config``. Here is a simple example:
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __validate_fn_simple_start__
+    :end-before: __validate_fn_simple_end__
+
+The ``validate_fn`` above runs in a single Ray task, but you can improve its performance by spawning
+even more Ray tasks and/or actors. For example, here is a ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
 to calculate average cross entropy loss on a validation set. Note that this ``report``\s
 a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics. Also note that while
-the ``TorchTrainer`` is typically used for training, it can also be used for isolated
-validation, and if you are using Anyscale, all these validation-only train runs will
-show up on the `Train dashboard <https://docs.anyscale.com/monitoring/workload-debugging/train-dashboard>`.
+the ``TorchTrainer`` is typically used for training, it can also be used for validation.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
     :start-after: __validate_fn_torch_trainer_start__
     :end-before: __validate_fn_torch_trainer_end__
 
-Here is an example ``validate_fn`` that uses :func:`~ray.data.Dataset.map_batches` to
-calculate average cross entropy loss on a validation set. To learn more about how to use
+Here is another example ``validate_fn`` that distributes validation across multiple Ray tasks/actors.
+This time, it uses :func:`~ray.data.Dataset.map_batches` to
+calculate average accuracy on a validation set. To learn more about how to use
 ``map_batches`` for batch inference, check out :ref:`batch_inference_home`.
 
 .. literalinclude:: ../doc_code/checkpoints.py

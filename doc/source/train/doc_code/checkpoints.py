@@ -502,6 +502,28 @@ def train_fn(config):
 
 # __checkpoint_upload_mode_no_upload_end__
 
+# __validate_fn_simple_start__
+
+def validate_fn(checkpoint, config):
+    # Load the checkpoint
+    model = ...
+    with checkpoint.as_directory() as checkpoint_dir:
+        model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
+        model.load_state_dict(model_state_dict)
+    model.cuda().eval()
+
+    # Perform validation on the data
+    total_accuracy = 0
+    dataset = config["dataset"]
+    with torch.no_grad():
+        for batch in dataset.iter_torch_batches(batch_size=128):
+            images, labels = batch["image"], batch["label"]
+            outputs = model(images)
+            total_accuracy += (outputs.argmax(1) == labels).sum().item()
+    return {"score": total_accuracy / len(dataset)}
+
+# __validate_fn_simple_end__
+
 # __validate_fn_torch_trainer_start__
 import os
 import tempfile
@@ -535,12 +557,13 @@ def eval_only_train_fn(config_dict):
             outputs = model(images)
             loss = criterion(outputs, labels)
             mean_valid_loss(loss)
-    with tempfile.TemporaryDirectory() as temp_dir:
-        ray.train.report(
-            metrics={"score": mean_valid_loss.compute().item()},
-            checkpoint=ray.train.Checkpoint.from_directory(temp_dir),
-            checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD,
-        )
+    ray.train.report(
+        metrics={"score": mean_valid_loss.compute().item()},
+        checkpoint=ray.train.Checkpoint(
+            ray.train.get_context().get_storage().build_checkpoint_path_from_name("placeholder")
+        ),
+        checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD,
+    )
 
 
 def validate_fn(checkpoint, config):
