@@ -29,25 +29,27 @@ To learn more about configuring TPUs with KubeRay, see {ref}`kuberay-tpu`.
 
 JaxTrainer API
 --------------
-The `JaxTrainer`` is the core component for orchestrating distributed JAX training in Ray Train with TPUs.
+The `JaxTrainer` is the core component for orchestrating distributed JAX training in Ray Train with TPUs.
 It follows the Single-Program, Multi-Data (SPMD) paradigm, where your training code is executed simultaneously
 across multiple workers, each running on a separate TPU virtual machine within a TPU slice. Ray automatically
 handles atomically reserving a TPU multi-host slice.
 
-The JaxTrainer is initialized with your training logic, defined in a `train_loop_per_worker` function, and a
-`ScalingConfig`` that specifies the distributed hardware layout.
+The `JaxTrainer` is initialized with your training logic, defined in a `train_loop_per_worker` function, and a
+`ScalingConfig` that specifies the distributed hardware layout. The `JaxTrainer` currently only supports TPU
+accelerator types.
 
-For TPU training, the `ScalingConfig`` is where you define the specifics of your hardware slice. Key fields include:
+For TPU training, the `ScalingConfig` is where you define the specifics of your hardware slice. Key fields include:
 - `use_tpu`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. This boolean flag explicitly tells
              Ray Train to initialize the JAX backend for TPU execution.
 - `topology`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. Topology is a string defining the
               physical arrangement of the TPU chips (e.g., "4x4"). This is required for multi-host training and ensures
-              Ray places workers correctly across the slice.
+              Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
+              see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology).
 - `num_workers`: Set to the number of VMs in your TPU slice. For a v4-32 slice with a 2x2x4 topology,
                  this would be 4.
 - `resources_per_worker`: A dictionary specifying the resources each worker needs. For TPUs, you typically request
                           the number of chips per VM (Ex: {"TPU": 4}).
-- `accelerator_type`: For TPUs, `accelerator_type`` specifies the TPU generation you are using (e.g., "TPU-V6E"),
+- `accelerator_type`: For TPUs, `accelerator_type` specifies the TPU generation you are using (e.g., "TPU-V6E"),
                       ensuring your workload is scheduled on the desired TPU slice.
                       
 Together, these configurations provide a declarative API for defining your entire distributed JAX
@@ -88,7 +90,7 @@ Compare a JAX training script with and without Ray Train.
             import optax
 
             from ray.train.v2 import JaxTrainer
-            from ray.train.v2 import ScalingConfig
+            from ray.train import ScalingConfig
 
             def train_func():
                 """This function is run on each distributed worker."""
@@ -122,7 +124,7 @@ Compare a JAX training script with and without Ray Train.
                 for epoch in range(epochs):
                     params, opt_state, loss = train_step(params, opt_state, X, y)
                     # Report metrics back to Ray Train.
-                    report({"loss": float(loss), "epoch": epoch})
+                    ray.train.report({"loss": float(loss), "epoch": epoch})
 
             # Define the hardware configuration for your distributed job.
             scaling_config = ScalingConfig(
@@ -207,7 +209,7 @@ This function is the entry point that Ray will execute on each remote worker.
 .. code-block:: diff
 
     +from ray.train.v2 import JaxTrainer
-    +from ray.train.v2 import ScalingConfig, report
+    +from ray.train import ScalingConfig, report
 
     -def main_logic()
     +def train_func():
