@@ -1,5 +1,6 @@
 import io
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from PIL import Image
@@ -203,6 +204,51 @@ class TestDownloadExpressionFunctionality:
             # Original columns should be preserved
             assert result["file_id"] == f"id_{i}"
             assert result["file_uri"] == f"local://{file_paths[i]}"
+
+    def test_download_expression_with_pandas_blocks(self, tmp_path):
+        """Test download with pandas blocks to ensure arrow conversion works.
+
+        This tests the code path in PartitionActor.__call__ where non-arrow
+        blocks are converted to arrow format before processing.
+        """
+        ctx = ray.data.context.DataContext.get_current()
+        old_enable_pandas_block = ctx.enable_pandas_block
+        ctx.enable_pandas_block = True
+        try:
+            # Create test files
+            sample_data = [
+                b"Pandas block test content 1",
+                b"Pandas block test content 2",
+            ]
+
+            file_paths = []
+            for i, data in enumerate(sample_data):
+                file_path = tmp_path / f"pandas_test_{i}.txt"
+                file_path.write_bytes(data)
+                file_paths.append(str(file_path))
+
+            # Create dataset with pandas blocks (not arrow)
+            df = pd.DataFrame(
+                {
+                    "file_uri": [f"local://{path}" for path in file_paths],
+                    "file_id": [f"id_{i}" for i in range(len(file_paths))],
+                }
+            )
+            ds = ray.data.from_pandas(df)
+
+            # Apply download - this should trigger arrow conversion in PartitionActor
+            ds_with_downloads = ds.with_column("content", download("file_uri"))
+
+            # Verify results
+            results = ds_with_downloads.take_all()
+            assert len(results) == len(sample_data)
+
+            for i, result in enumerate(results):
+                assert result["content"] == sample_data[i]
+                assert result["file_id"] == f"id_{i}"
+                assert result["file_uri"] == f"local://{file_paths[i]}"
+        finally:
+            ctx.enable_pandas_block = old_enable_pandas_block
 
 
 class TestDownloadExpressionErrors:

@@ -2,6 +2,8 @@ group: core tests
 depends_on:
   - forge
   - oss-ci-base_build
+  - ray-core-build
+  - ray-dashboard-build
 steps:
   # builds
   - name: corebuild
@@ -60,7 +62,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,dask
+        --except-tags custom_setup
         --install-mask all-ray-libraries
 
   - label: ":ray: core: python {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -74,7 +76,7 @@ steps:
         --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,dask
+        --except-tags custom_setup
     depends_on: corebuild-multipy
     matrix:
       setup:
@@ -103,7 +105,7 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,dask
+        --except-tags custom_setup
 
   - label: ":ray: core: memory pressure tests"
     tags:
@@ -169,6 +171,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/util/dask/... core
         --install-mask all-ray-libraries
+        --python-version 3.12
         --build-name databuild-py3.12
     depends_on:
       - databuild-multipy
@@ -253,6 +256,7 @@ steps:
       # core tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
@@ -260,6 +264,7 @@ steps:
         --except-tags basic_test,manual
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
@@ -269,6 +274,7 @@ steps:
       # core redis tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=TEST_EXTERNAL_REDIS=1
@@ -279,6 +285,7 @@ steps:
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve
         --parallelism-per-worker 3
+        --python-version {{matrix}}
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --only-tags minimal
@@ -390,10 +397,23 @@ steps:
       - if [[ "$${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
           echo "build --remote_upload_local_results=false" >> ~/.bazelrc;
         fi
-      - ci/ci.sh build
+      # cpp worker tests has one that tests cross-language with Java.
+      - RAY_INSTALL_JAVA=1 ci/ci.sh build
       - ci/ci.sh test_cpp
     depends_on: oss-ci-base_build
     job_env: oss-ci-base_build
+
+  - label: ":ray: core: java worker tests"
+    tags:
+      - java
+      - python
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --build-type java
+        --only-tags needs_java
+    depends_on: corebuild
 
   - label: ":ray: core: HA integration tests"
     tags:
@@ -433,15 +453,15 @@ steps:
   - label: ":core: core: spark-on-ray tests"
     tags:
       - spark_on_ray
+      - java
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --build-type debug
         --test-env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
         --test-env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
-        --parallelism-per-worker 3
         --only-tags spark_on_ray
-        --except-tags kubernetes
     depends_on:
       - corebuild
 
