@@ -8,9 +8,9 @@ from typing import Dict, List, Optional, Set, Tuple
 TRAIN_PACKAGES = set()
 
 
-def initialize_train_packages(base_train_dir: Path, patch_train_dir: Path) -> None:
+def find_train_packages(base_train_dir: Path, patch_train_dir: Path) -> None:
     """
-    Initialize the global TRAIN_PACKAGES with all train package names from base_train_dir
+    Find and initialize the global TRAIN_PACKAGES with all train package names from base_train_dir
     and patch_train_dir combined.
     """
     global TRAIN_PACKAGES
@@ -369,7 +369,7 @@ def main():
     patch_train_dir = base_dir / Path(args.patch_dir)
 
     # Find and save all train packages in global TRAIN_PACKAGES for reference
-    initialize_train_packages(base_train_dir, patch_train_dir)
+    find_train_packages(base_train_dir, patch_train_dir)
 
     # Collect all base train init files
     base_train_init_files = [
