@@ -61,6 +61,17 @@ def build_anyscale_custom_byod_image(
         env=env,
     )
     _validate_and_push(image)
+    if os.environ.get("BUILDKITE"):
+        subprocess.run(
+            [
+                "buildkite-agent",
+                "annotate",
+                "--style=info",
+                "--context=custom-images",
+                "--append",
+                f"{image}<br/>",
+            ],
+        )
     tag_without_registry = image.split("/")[-1]
     azure_tag = f"{AZURE_REGISTRY_NAME}.azurecr.io/{tag_without_registry}"
     _tag_and_push(source=image, target=azure_tag)
