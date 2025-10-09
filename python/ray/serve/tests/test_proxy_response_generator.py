@@ -324,7 +324,7 @@ class TestStreaming:
         done, _ = await asyncio.wait([gen_next], timeout=0.1)
         assert len(done) == 0
 
-        # Set the disconnect event, causing the disconnect task to finish
+        # Set the disconnect event, causing the disconnect task to finish.
         disconnect_event.set()
         with pytest.raises(asyncio.CancelledError):
             await gen_next
