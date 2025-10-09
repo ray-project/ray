@@ -209,7 +209,7 @@ export const Metrics = () => {
                 href={currentGrafanaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                endIcon={<RiExternalLinkLine />}
+                startIcon={<RiExternalLinkLine />}
               >
                 View tab in Grafana
               </Button>
