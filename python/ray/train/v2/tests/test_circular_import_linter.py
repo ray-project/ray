@@ -81,7 +81,7 @@ def test_get_file_module_imports_filters_by_prefix(
     file_b.write_text("from ray.train import something")
 
     monkeypatch.setattr(cci, "get_base_dir", lambda: base_dir)
-    cci.initialize_train_packages(base_dir, target_dir)
+    cci.find_train_packages(base_dir, target_dir)
 
     result = cci.get_file_module_imports(
         [file_a, file_b], module_match_string="ray.train"
@@ -124,7 +124,7 @@ def test_check_standard_violations_reports_and_suppresses(
     (v2_dir / "__init__.py").write_text("# empty init\n")
 
     monkeypatch.setattr(cci, "get_base_dir", lambda: base_dir)
-    cci.initialize_train_packages(base_dir, patch_dir)
+    cci.find_train_packages(base_dir, patch_dir)
 
     # Build mapping: base v1 init module -> imports of v2 it references
     base_v1_init = train_dir / "tensorflow" / "__init__.py"
@@ -156,7 +156,7 @@ def test_check_no_violation_on_overlapping_import_path(
     )
 
     monkeypatch.setattr(cci, "get_base_dir", lambda: base_dir)
-    cci.initialize_train_packages(base_dir, patch_dir)
+    cci.find_train_packages(base_dir, patch_dir)
 
     # Build mapping: base v1 init module -> imports of v2 it references
     base_v1_init = train_dir / "__init__.py"
@@ -185,7 +185,7 @@ def test_expand_to_exclude_reexports(tmp_path: Path, monkeypatch: pytest.MonkeyP
     (v2_dir / "tensorflow_trainer.py").write_text("from ray.train import something\n")
 
     monkeypatch.setattr(cci, "get_base_dir", lambda: base_dir)
-    cci.initialize_train_packages(base_dir, patch_dir)
+    cci.find_train_packages(base_dir, patch_dir)
 
     # Build mapping: base v1 init module -> imports of v2 it references
     base_v1_init = train_dir / "__init__.py"
