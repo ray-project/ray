@@ -8,6 +8,38 @@ In this tutorial, you will:
 1. Learn how to integrate PyTorch Profiler with Ray Train for distributed training workload profiling.
 2. Explore advanced profiling techniques including memory profiling, performance analysis, and dashboard integration for comprehensive monitoring. 
 
+<div id="anyscale-note" class="alert alert-block alert-warning">
+
+  <strong>Anyscale Specific Configuration</strong>
+
+  <p><strong>Note:</strong> This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you would need to manually:</p>
+
+  <ul>
+    <li><strong>Configure your Ray Cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li>
+    <li><strong>Manage Dependencies</strong>: Manually install and manage dependencies on each node.</li>
+    <li><strong>Set Up Storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
+  </ul>
+</div>
+
+<style>
+  div#anyscale-note > p,
+  div#anyscale-note > ul,
+  div#anyscale-note > ul li {
+    color: black;
+  }
+
+  div#anyscale-note {
+    background-color: rgb(255, 243, 205);
+  }
+
+  div#anyscale-note {
+    border: 1px solid #ccc; 
+    border-radius: 8px;
+    padding: 15px;
+  }
+
+</style>
+
 
 ```bash
 %%bash
@@ -25,32 +57,36 @@ First, set some environment variables and import Ray Train modules.
 
 
 ```python
-# Enable Ray Train V2 for the latest train APIs
+# Enable Ray Train V2 for the latest train API
+# V2 will be the default in an upcoming release.
 import os
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
+# Ray Train imports
 import ray.train
 import ray.train.torch
 from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
+# PyTorch imports
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchvision import transforms
 from torchvision.datasets import FashionMNIST
 from torchvision.models import resnet18
 from torch.optim import Adam
 from torch.nn import CrossEntropyLoss
 from torchvision.transforms import Compose, ToTensor, Normalize
 
+# Utility imports
 import tempfile
 import uuid
-
 ```
 
-Next, modify the training function for distributed training with Ray Train. Every difference from the previous script is highlighted and explained with a numbered comment; for example, "[1]."
+ Next, create a distributed training function to be launched by Ray Train. Each numbered comment in the below training function indicate the steps necessary for distributed training and profiling with Ray Train and Pytorch Profiler.
 
+
+ This demo uses cluster storage to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In those cases, you should use object storage instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage). The output of the script will be available in the `Files` tab in Anyscale workspace. For those who don't use Anyscale platform, you can view the logs and profiling output from the configuration location specified in RunConfig and Profiler.
 
 
 ```python
@@ -90,6 +126,7 @@ def train_func_distributed():
     # [3] Configure enhanced profiling for distributed training.
     # This includes TensorBoard integration and memory timeline export
     # for comprehensive performance analysis across workers.
+    # See more details in https://docs.pytorch.org/docs/stable/profiler.html
     # =============================================================
     activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
 
@@ -193,6 +230,8 @@ In this section, you'll explore advanced profiling techniques including custom p
 
 PyTorch Profiler offers flexible scheduling options to capture different phases of training. You can customize when profiling occurs to focus on specific operations or phases of your training loop.
 
+In this following code section, we adapt the previous training function with `torch.profile.record_function` to record some specific operations.
+
 
 
 ```python
@@ -225,7 +264,8 @@ def train_func_advanced_profiling():
     activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
     
     # Custom schedule: wait=1, warmup=1, active=3, repeat=1
-    # This means: skip 1 step, warmup for 1 step, profile for 3 steps, then repeat
+    # This means the profiler will skip 1 step, then warmup for 1 step, then do the active profiling for 3 steps, then repeat
+    # See more details in https://docs.pytorch.org/docs/stable/profiler.html#torch.profiler.schedule
     schedule = torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1)
     
     with torch.profiler.profile(
@@ -235,7 +275,9 @@ def train_func_advanced_profiling():
         record_shapes=True,
         profile_memory=True,
         with_stack=True,
-        # [2] Enable experimental features for enhanced analysis. 
+        # [2] Enable experimental Kineto library features for enhanced analysis.
+        # Kineto is a library that provides performance observability and diagnostic to deprecate TensorBoard.
+        # See more details in https://github.com/pytorch/kineto.
         # ======================================================
         experimental_config=torch.profiler._ExperimentalConfig(verbose=True),
     ) as prof:
@@ -349,7 +391,7 @@ print(f"Check '/mnt/cluster_storage/{advanced_experiment_name}/' for comprehensi
 
 After running the profiling examples, you'll have access to several types of profiling data:
 
-1. **TensorBoard traces**: Located in `/mnt/cluster_storage/logs/` - Use these to visualize GPU/CPU utilization, kernel execution times, and memory allocation patterns.
+1. **TensorBoard traces**: Located in `/mnt/cluster_storage/logs/` (Or the persistent storage configured by user.) - Use these to visualize GPU/CPU utilization, kernel execution times, and memory allocation patterns.
 
 2. **Memory timeline HTML files**: Worker-specific memory profiles showing memory usage over time, helping identify memory leaks and optimization opportunities.
 
@@ -360,7 +402,7 @@ After running the profiling examples, you'll have access to several types of pro
 
 - **GPU utilization**: Ensure GPUs are being used efficiently (high utilization percentage)
 - **Memory usage patterns**: Look for memory spikes, leaks, or inefficient allocation patterns
-- **Communication overhead**: In distributed training, monitor time spent on gradient synchronization
+- **Communication overhead**: Monitor time spent on gradient synchronization
 - **Data loading bottlenecks**: Identify if data loading is limiting training throughput
 - **Kernel efficiency**: Analyze which operations are taking the most time and optimize accordingly
 
