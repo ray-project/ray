@@ -72,8 +72,11 @@ class DeploymentInfo:
             end_time_ms=self.end_time_ms,
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
-            external_scaler_enabled=external_scaler_enabled
-            or self.external_scaler_enabled,
+            external_scaler_enabled=(
+                external_scaler_enabled
+                if external_scaler_enabled is not None
+                else self.external_scaler_enabled
+            ),
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )

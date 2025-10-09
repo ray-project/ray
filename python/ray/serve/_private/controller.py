@@ -950,6 +950,9 @@ class ServeController:
 
         # Check if external scaler is enabled for this application
         app_name = deployment_id.app_name
+        if not self.application_state_manager.does_app_exist(app_name):
+            raise ValueError(f"Application '{app_name}' not found")
+
         if not self.application_state_manager.is_external_scaler_enabled(app_name):
             raise ExternalScalerNotEnabledError(
                 f"Cannot update replicas for deployment '{deployment_id.name}' in "

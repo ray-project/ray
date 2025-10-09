@@ -229,16 +229,6 @@ class ApplicationState:
         logging_config: LoggingConfig,
         external_scaler_enabled: bool = False,
     ):
-        """
-        Args:
-            name: Application name.
-            deployment_state_manager: State manager for all deployments
-                in the cluster.
-            endpoint_state: State manager for endpoints in the system.
-            logging_config: Logging configuration for the application.
-            external_scaler_enabled: Whether external autoscaling is enabled for
-                this application.
-        """
 
         self._name = name
         self._status_msg = ""
@@ -270,7 +260,7 @@ class ApplicationState:
         return self._route_prefix
 
     @property
-    def get_external_scaler_enabled(self) -> bool:
+    def external_scaler_enabled(self) -> bool:
         return self._target_state.external_scaler_enabled
 
     @property
@@ -396,7 +386,7 @@ class ApplicationState:
             code_version=None,
             target_config=None,
             deleting=True,
-            external_scaler_enabled=self.get_external_scaler_enabled,
+            external_scaler_enabled=self.external_scaler_enabled,
         )
 
     def _clear_target_state_and_store_config(
@@ -520,7 +510,7 @@ class ApplicationState:
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
-            external_scaler_enabled=self.get_external_scaler_enabled,
+            external_scaler_enabled=external_scaler_enabled,
         )
 
     def apply_app_config(
@@ -1091,6 +1081,9 @@ class ApplicationStateManager:
 
         return self._application_states[name].status
 
+    def does_app_exist(self, name: str) -> bool:
+        return name in self._application_states
+
     def get_app_status_info(self, name: str) -> ApplicationStatusInfo:
         if name not in self._application_states:
             return ApplicationStatusInfo(
@@ -1127,7 +1120,7 @@ class ApplicationStateManager:
         if app_name not in self._application_states:
             return False
 
-        return self._application_states[app_name].get_external_scaler_enabled
+        return self._application_states[app_name].external_scaler_enabled
 
     def list_app_statuses(
         self, source: Optional[APIType] = None
