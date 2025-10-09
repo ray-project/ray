@@ -37,7 +37,7 @@ PodGrouper schedules all 5 pods (1 head + 4 workers) together or none at all.
 - Over-Quota Weight: Controls how surplus resources are shared among queues within the same priority level. Queues with higher weights receive a larger share of the extra resources.
 - Limit: Defines the maximum resources that the queue can consume.
 
-Queues can be arranged hierarchically for organizations with multiple teams (e.g. departments with multiple teams).
+You can arrange queues hierarchically for organizations with multiple teams, for example, departments with multiple teams.
 
 ## [Prerequisites](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#prerequisites)
 
