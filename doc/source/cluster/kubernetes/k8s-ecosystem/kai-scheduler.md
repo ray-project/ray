@@ -64,7 +64,7 @@ Follow the official KubeRay operator [installation documentation](https://docs.r
 
 ## Step 3: Create KAI Scheduler Queues
 
-Create a basic queue structure for department-1 and its child team-a (for demo reasons, we did not enforce any quota, overQuotaWeight and limit. Users can setup these parameters depending on their needs): 
+Create a basic queue structure for department-1 and its child team-a. For demo reasons, this example doesn't enforce any quota, overQuotaWeight, or limit. You can configure these parameters depending on your needs: 
 
 ```yaml
 apiVersion: scheduling.run.ai/v2
