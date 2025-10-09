@@ -2081,7 +2081,10 @@ def test_op_metrics_logging():
     logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
     with patch.object(logger, "debug") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).take_all()
-        logs = [canonicalize(call.args[0], canonicalize_histogram_values=True) for call in mock_logger.call_args_list]
+        logs = [
+            canonicalize(call.args[0], canonicalize_histogram_values=True)
+            for call in mock_logger.call_args_list
+        ]
 
         def replace(s: str):
             return s.replace(
@@ -2097,7 +2100,8 @@ def test_op_metrics_logging():
         # InputDataBuffer has no inqueue, manually set to 0
         map_str = replace(
             "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n" + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES
+            "Operator Metrics:\n"
+            + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES
         )
         # Check that these strings are logged exactly once.
         assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
