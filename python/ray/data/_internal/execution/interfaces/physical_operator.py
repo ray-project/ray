@@ -764,20 +764,28 @@ def estimate_total_num_of_blocks(
             )
 
         # tasks that are yielding multiple blocks
-        ongoing_tasks = metrics.num_tasks_have_outputs - metrics.num_tasks_finished
+        if (
+            metrics.average_rows_outputs_per_task is None
+            or metrics.num_task_outputs_generated is None
+        ):
+            estimated_num_output_bundles = (
+                estimated_num_tasks * metrics.num_task_outputs_generated
+            )
+            estimated_output_num_rows = (
+                estimated_num_tasks * metrics.rows_task_outputs_generated
+            )
+        else:
+            estimated_num_output_bundles = round(
+                estimated_num_tasks
+                * metrics.num_outputs_of_finished_tasks
+                / metrics.num_tasks_finished
+            )
+            estimated_output_num_rows = round(
+                estimated_num_tasks
+                * metrics.rows_outputs_of_finished_tasks
+                / metrics.num_tasks_finished
+            )
 
-        estimated_num_output_bundles = round(
-            estimated_num_tasks
-            * metrics.num_outputs_of_finished_tasks
-            / metrics.num_tasks_finished
-            + metrics.average_num_outputs_per_task * ongoing_tasks
-        )
-        estimated_output_num_rows = round(
-            estimated_num_tasks
-            * metrics.rows_outputs_of_finished_tasks
-            / metrics.num_tasks_finished
-            + metrics.average_rows_outputs_per_task * ongoing_tasks
-        )
         return (
             estimated_num_tasks,
             estimated_num_output_bundles,
