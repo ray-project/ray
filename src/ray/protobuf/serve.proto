@@ -85,6 +85,9 @@ message AutoscalingConfig {
 
   // How long to wait before scaling down replicas from 1 to 0
   optional double downscale_to_zero_delay_s = 16;
+
+  // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
+  string aggregation_function = 17;
 }
 
 //[Begin] LOGGING CONFIG
