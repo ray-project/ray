@@ -38,11 +38,14 @@ def build_anyscale_custom_byod_image(
         "--progress=plain",
         "--build-arg",
         f"BASE_IMAGE={base_image}",
-        "--build-arg",
-        f"POST_BUILD_SCRIPT={post_build_script}",
     ]
+    if post_build_script:
+        docker_build_cmd.extend(
+            ["--build-arg", f"POST_BUILD_SCRIPT={post_build_script}"]
+        )
     if python_depset:
         docker_build_cmd.extend(["--build-arg", f"PYTHON_DEPSET={python_depset}"])
+
     docker_build_cmd.extend(
         [
             "-t",
