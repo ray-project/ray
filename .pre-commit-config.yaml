@@ -231,7 +231,7 @@ repos:
   - repo: local
     hooks:
     - id: check-train-circular-imports
-      name: Check ray train circular imports
+      name: Check Ray Train circular imports
       entry: python python/ray/train/lint/check_circular_imports.py
       language: system
       types: [python]
