@@ -16,6 +16,8 @@ from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
+    import xgboost
+
     from ray.train.xgboost import XGBoostConfig
 
 logger = logging.getLogger(__name__)
@@ -437,7 +439,8 @@ class XGBoostTrainer(DataParallelTrainer):
             **kwargs,
         )
 
-    def setup_gpu_external_memory(self) -> bool:
+    @staticmethod
+    def setup_gpu_external_memory() -> bool:
         """Setup GPU external memory training with RMM optimization.
 
         This method configures RAPIDS Memory Manager (RMM) for optimal GPU external
@@ -451,8 +454,8 @@ class XGBoostTrainer(DataParallelTrainer):
             .. testcode::
 
                 # Setup GPU external memory before training
-                if trainer.external_memory_device == "cuda":
-                    trainer.setup_gpu_external_memory()
+                if XGBoostTrainer.setup_gpu_external_memory():
+                    print("GPU external memory setup successful")
 
         Note:
             This method requires XGBoost, RMM, and CuPy to be installed for GPU training.
@@ -461,6 +464,23 @@ class XGBoostTrainer(DataParallelTrainer):
         from ray.train.xgboost._external_memory_utils import setup_gpu_external_memory
 
         return setup_gpu_external_memory()
+
+    @staticmethod
+    def get_external_memory_recommendations() -> Dict[str, Any]:
+        """Get recommendations for external memory training configuration.
+
+        Returns:
+            Dictionary containing recommended configuration settings and best practices.
+
+        Examples:
+            .. testcode::
+
+                recommendations = XGBoostTrainer.get_external_memory_recommendations()
+                print(f"Recommended parameters: {recommendations['parameters']}")
+        """
+        from ray.train.xgboost._external_memory_utils import get_external_memory_recommendations
+
+        return get_external_memory_recommendations()
 
     def get_external_memory_config(self) -> Dict[str, Any]:
         """Get external memory configuration.

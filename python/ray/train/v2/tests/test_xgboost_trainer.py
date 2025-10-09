@@ -268,12 +268,24 @@ def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset):
         eval_ds_iter = ray.train.get_dataset_shard("valid")
 
         if use_external_memory:
-            # Use external memory DMatrix
-            dtrain = trainer.create_external_memory_dmatrix(
-                train_ds_iter, label_column="target"
+            # Use external memory DMatrix via utility function
+            from ray.train.xgboost._external_memory_utils import (
+                create_external_memory_dmatrix,
             )
-            deval = trainer.create_external_memory_dmatrix(
-                eval_ds_iter, label_column="target"
+
+            dtrain = create_external_memory_dmatrix(
+                dataset_shard=train_ds_iter,
+                label_column="target",
+                batch_size=external_memory_batch_size,
+                cache_dir=external_memory_cache_dir,
+                device=external_memory_device,
+            )
+            deval = create_external_memory_dmatrix(
+                dataset_shard=eval_ds_iter,
+                label_column="target",
+                batch_size=external_memory_batch_size,
+                cache_dir=external_memory_cache_dir,
+                device=external_memory_device,
             )
         else:
             # Use standard DMatrix
@@ -343,12 +355,43 @@ def test_xgboost_trainer_external_memory_auto_selection(ray_start_4_cpus, small_
 
     def train_fn_per_worker(config: dict):
         """Training function using automatic external memory selection."""
+        # Check if external memory is enabled via config
+        use_external_memory = config.get("use_external_memory", False)
+        external_memory_cache_dir = config.get("external_memory_cache_dir")
+        external_memory_device = config.get("external_memory_device", "cpu")
+        external_memory_batch_size = config.get("external_memory_batch_size")
+
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
         eval_ds_iter = ray.train.get_dataset_shard("valid")
 
-        # Use the trainer's smart DMatrix creation
-        dtrain = trainer.create_dmatrix(train_ds_iter, label_column="target")
-        deval = trainer.create_dmatrix(eval_ds_iter, label_column="target")
+        if use_external_memory:
+            # Use external memory DMatrix via utility function
+            from ray.train.xgboost._external_memory_utils import (
+                create_external_memory_dmatrix,
+            )
+
+            dtrain = create_external_memory_dmatrix(
+                dataset_shard=train_ds_iter,
+                label_column="target",
+                batch_size=external_memory_batch_size,
+                cache_dir=external_memory_cache_dir,
+                device=external_memory_device,
+            )
+            deval = create_external_memory_dmatrix(
+                dataset_shard=eval_ds_iter,
+                label_column="target",
+                batch_size=external_memory_batch_size,
+                cache_dir=external_memory_cache_dir,
+                device=external_memory_device,
+            )
+        else:
+            # Use standard DMatrix
+            train_df = train_ds_iter.materialize().to_pandas()
+            eval_df = eval_ds_iter.materialize().to_pandas()
+            train_X, train_y = train_df.drop("target", axis=1), train_df["target"]
+            eval_X, eval_y = eval_df.drop("target", axis=1), eval_df["target"]
+            dtrain = xgboost.DMatrix(train_X, label=train_y)
+            deval = xgboost.DMatrix(eval_X, label=eval_y)
 
         # Train model
         bst = xgboost.train(
@@ -402,12 +445,43 @@ def test_xgboost_trainer_external_memory_gpu(ray_start_2_cpus_1_gpu, small_datas
 
     def train_fn_per_worker(config: dict):
         """Training function using GPU external memory."""
+        # Check if external memory is enabled via config
+        use_external_memory = config.get("use_external_memory", False)
+        external_memory_cache_dir = config.get("external_memory_cache_dir")
+        external_memory_device = config.get("external_memory_device", "cpu")
+        external_memory_batch_size = config.get("external_memory_batch_size")
+
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
         eval_ds_iter = ray.train.get_dataset_shard("valid")
 
-        # Use the trainer's smart DMatrix creation
-        dtrain = trainer.create_dmatrix(train_ds_iter, label_column="target")
-        deval = trainer.create_dmatrix(eval_ds_iter, label_column="target")
+        if use_external_memory:
+            # Use external memory DMatrix via utility function
+            from ray.train.xgboost._external_memory_utils import (
+                create_external_memory_dmatrix,
+            )
+
+            dtrain = create_external_memory_dmatrix(
+                dataset_shard=train_ds_iter,
+                label_column="target",
+                batch_size=external_memory_batch_size,
+                cache_dir=external_memory_cache_dir,
+                device=external_memory_device,
+            )
+            deval = create_external_memory_dmatrix(
+                dataset_shard=eval_ds_iter,
+                label_column="target",
+                batch_size=external_memory_batch_size,
+                cache_dir=external_memory_cache_dir,
+                device=external_memory_device,
+            )
+        else:
+            # Use standard DMatrix
+            train_df = train_ds_iter.materialize().to_pandas()
+            eval_df = eval_ds_iter.materialize().to_pandas()
+            train_X, train_y = train_df.drop("target", axis=1), train_df["target"]
+            eval_X, eval_y = eval_df.drop("target", axis=1), eval_df["target"]
+            dtrain = xgboost.DMatrix(train_X, label=train_y)
+            deval = xgboost.DMatrix(eval_X, label=eval_y)
 
         # Train model
         bst = xgboost.train(
@@ -483,18 +557,39 @@ def test_xgboost_trainer_external_memory_fallback_behavior(ray_start_4_cpus, sma
 
     def train_fn_per_worker(config: dict):
         """Training function that handles external memory failures gracefully."""
+        # Check if external memory is enabled via config
+        use_external_memory = config.get("use_external_memory", False)
+        external_memory_cache_dir = config.get("external_memory_cache_dir")
+        external_memory_device = config.get("external_memory_device", "cpu")
+        external_memory_batch_size = config.get("external_memory_batch_size")
+
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
         eval_ds_iter = ray.train.get_dataset_shard("valid")
 
         try:
-            # Try external memory first
-            dtrain = trainer.create_external_memory_dmatrix(
-                train_ds_iter, label_column="target"
-            )
-            deval = trainer.create_external_memory_dmatrix(
-                eval_ds_iter, label_column="target"
-            )
-        except Exception as e:
+            if use_external_memory:
+                # Try external memory first
+                from ray.train.xgboost._external_memory_utils import (
+                    create_external_memory_dmatrix,
+                )
+
+                dtrain = create_external_memory_dmatrix(
+                    dataset_shard=train_ds_iter,
+                    label_column="target",
+                    batch_size=external_memory_batch_size,
+                    cache_dir=external_memory_cache_dir,
+                    device=external_memory_device,
+                )
+                deval = create_external_memory_dmatrix(
+                    dataset_shard=eval_ds_iter,
+                    label_column="target",
+                    batch_size=external_memory_batch_size,
+                    cache_dir=external_memory_cache_dir,
+                    device=external_memory_device,
+                )
+            else:
+                raise ValueError("External memory not enabled")
+        except Exception:
             # Fall back to standard DMatrix
             train_df = train_ds_iter.materialize().to_pandas()
             eval_df = eval_ds_iter.materialize().to_pandas()
