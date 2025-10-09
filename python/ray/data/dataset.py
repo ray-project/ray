@@ -6037,7 +6037,7 @@ class Dataset:
             >>> from ray.data.aggregate import Sum, Count
             >>> # Override aggregations for int64 columns
             >>> custom_mapping = {
-            ...     DataType.int64(): [Count(on="<column>"), Sum(on="<column>")]
+            ...     DataType.int64(): [Count(), Sum()]
             ... }
             >>> summary = ds.summary(override_dtype_agg_mapping=custom_mapping)
 
