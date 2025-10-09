@@ -235,6 +235,10 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
+    # Prometheus metrics which will be collected at each replica, which will be available in the custom AutoscalingPolicy function
+    # List of metric_names
+    prometheus_metrics: Optional[List[str]] = None
+
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
