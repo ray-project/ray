@@ -16,7 +16,7 @@ This guide demonstrates how to use KAI Scheduler for setting up hierarchical que
 and many more.
 For more details and key features, see [the documentation](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#key-features).
 
-### Core Components
+### Core components
 
 1. **PodGroups**: PodGroups are atomic units for scheduling and represent one or more interdependent pods that must be executed as a single unit, also known as gang scheduling. They are vital for distributed workloads. KAI Scheduler includes a **PodGrouper** that handles gang scheduling automatically.
 
