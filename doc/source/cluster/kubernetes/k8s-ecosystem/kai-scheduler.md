@@ -163,7 +163,7 @@ kubectl apply -f ray-cluster.kai-scheduler.yaml
 kubectl get pods -w
 ```
 
-## Setting Priorities for Workloads
+## Set priorities for workloads
 
 In Kubernetes, assigning different priorities to workloads ensures efficient resource management, minimizes service disruption, and supports better scaling. By prioritizing workloads, KAI Scheduler schedules jobs according to their assigned priority. When sufficient resources aren't available for a workload, the scheduler can preempt lower-priority workloads to free up resources for higher-priority ones. This approach ensures that mission-critical services are always prioritized in resource allocation.
 
