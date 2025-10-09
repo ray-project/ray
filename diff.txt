@@ -1,0 +1,916 @@
+2c2
+< #    uv pip compile --generate-hashes --strip-extras --unsafe-package setuptools --index-url https://pypi.org/simple --index-strategy unsafe-best-match --no-strip-markers --emit-index-url --emit-find-links --python-version=3.11 --unsafe-package ray --python-platform=linux --extra-index-url https://download.pytorch.org/whl/cu128 python/deplocks/llm/rayllm_py311_cu128.lock -o python/deplocks/llm/deployment_serve_rayllm_example_depset_py311_cu128.lock
+---
+> #    uv pip compile --generate-hashes --strip-extras --unsafe-package setuptools --index-url https://pypi.org/simple --index-strategy unsafe-best-match --no-strip-markers --emit-index-url --emit-find-links --python-version=3.11 --unsafe-package ray --python-platform=linux --extra-index-url https://download.pytorch.org/whl/cu128 -c python/deplocks/llm/rayllm_test_py311_cu128.lock python/requirements.txt python/requirements/llm/llm-requirements.txt -o python/deplocks/llm/rayllm_py311_cu128.lock
+10c10
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+95c95,96
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+101c102,104
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+105c108,110
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+110c115
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+116c121
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+122c127
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+128c133
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+137c142
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+143c148
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+151c156
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+240c245
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+246c251
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+295c300
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+300c305,307
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+305c312
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+363c370
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+458c465
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+464c471,472
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+476c484
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+482c490
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+488c496
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+494c502
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+500c508,510
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+505c515
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+546c556
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+562c572,573
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+568c579
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+574c585
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+580c591
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+586c597
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+592c603
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+641c652,654
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+646c659
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+652c665
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+658c671
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+664c677
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+670c683,684
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+676c690
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+755c769
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+761c775,776
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+809c824
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+890c905
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+897c912,913
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+904c920
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+910c926
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+916c932
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+922c938
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+976c992,994
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+980c998,1000
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+985c1005
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1014c1034,1036
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+1025c1047
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1031c1053
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1078c1100
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1084c1106
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1091c1113
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1098c1120
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1108c1130
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1114c1136
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1120c1142
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1126c1148
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1209c1231
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1214c1236,1238
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+1219c1243,1245
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+>     #   -r python/requirements.txt
+1226c1252
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1232c1258
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1238c1264
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1244c1270
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1256c1282
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1281c1307
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1287c1313
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1326c1352,1354
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1331c1359
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1360c1388
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1366c1394
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1404c1432,1434
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1408c1438,1440
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+1413c1445
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1418c1450
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1478c1510,1511
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1518c1551
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1612c1645
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1618c1651
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1640c1673,1674
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+1652c1686,1688
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+1676c1712
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1716c1752,1753
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1740c1777
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1747c1784
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1752c1789
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1755d1791
+<     --hash=sha256:52bf7bbee900262ffefe5e9d5a2a69a30d97e2bc5bb6cc866688caa976966e3d \
+1758c1794
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1761,1763c1797
+<     --hash=sha256:949452be657fa16687d0930933f032835951ef0892b37d2d53824d1a84dc97a8 \
+<     --hash=sha256:c6288de7d63e6cf62988f0923f96dc339cea362decb1bf5b3141883392a7d65e \
+<     --hash=sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8
+---
+>     --hash=sha256:949452be657fa16687d0930933f032835951ef0892b37d2d53824d1a84dc97a8
+1765c1799
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1768,1769c1802
+<     --hash=sha256:4d2dd21ec0b88cf61b62e6b43564355e5222e4a3fb394cac0db101f2dd0d4f74 \
+<     --hash=sha256:848ef7224d6305cdb2a4df928759dca7b1201874787083b6e7550dd6765ce69a
+---
+>     --hash=sha256:4d2dd21ec0b88cf61b62e6b43564355e5222e4a3fb394cac0db101f2dd0d4f74
+1771c1804
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1774,1775c1807
+<     --hash=sha256:1d069003be650e131b21c932ec3d8969c1715379251f8d23a1860554b1cb24fc \
+<     --hash=sha256:4beb6d4cce47c1a0f1013d72e02b0994730359e17801d395bdcbf20cfb3bb00a
+---
+>     --hash=sha256:1d069003be650e131b21c932ec3d8969c1715379251f8d23a1860554b1cb24fc
+1777c1809
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1782c1814
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1787c1819
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1790,1791c1822
+<     --hash=sha256:1ec05d76bbbd8b61b06a80e1eaf8cf4959c3d4ce8e711b65ebd0443bb0ebb13b \
+<     --hash=sha256:9b6c161cb130be1a07a27ea6923df8141f3c295852f4b260c65f18f3e0a091dc
+---
+>     --hash=sha256:1ec05d76bbbd8b61b06a80e1eaf8cf4959c3d4ce8e711b65ebd0443bb0ebb13b
+1793c1824
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1797,1802c1828
+<     --hash=sha256:8878dce784d0fac90131b6817b607e803c36e629ba34dc5b433471382196b6a5 \
+<     --hash=sha256:8878dce784d0fac90131b6817b607e803c36e629ba34dc5b433471382196b6a5 \
+<     --hash=sha256:f1bb701d6b930d5a7cea44c19ceb973311500847f81b634d802b7b539dc55623 \
+<     --hash=sha256:f1bb701d6b930d5a7cea44c19ceb973311500847f81b634d802b7b539dc55623 \
+<     --hash=sha256:f67fbb5831940ec829c9117b7f33807db9f9678dc2a617fbe781cac17b4e1075 \
+<     --hash=sha256:f67fbb5831940ec829c9117b7f33807db9f9678dc2a617fbe781cac17b4e1075
+---
+>     --hash=sha256:f1bb701d6b930d5a7cea44c19ceb973311500847f81b634d802b7b539dc55623
+1804c1830
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1807,1809d1832
+<     --hash=sha256:9ddf1a245abc36c550870f26d537a9b6087fb2e2e3d6e0ef03374c6fd19d984f \
+<     --hash=sha256:9ddf1a245abc36c550870f26d537a9b6087fb2e2e3d6e0ef03374c6fd19d984f \
+<     --hash=sha256:adf27ccf4238253e0b826bce3ff5fa532d65fc42322c8bfdfaf28024c0fbe039 \
+1812c1835
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1815,1816c1838
+<     --hash=sha256:81ff63371a7ebd6e6451970684f916be2eab07321b73c9d244dc2b4da7f73b88 \
+<     --hash=sha256:adccd7161ace7261e01bb91e44e88da350895c270d23f744f0820c818b7229e7
+---
+>     --hash=sha256:81ff63371a7ebd6e6451970684f916be2eab07321b73c9d244dc2b4da7f73b88
+1818c1840
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1824,1826c1846
+<     --hash=sha256:5b17e2001cc0d751a5bc2c6ec6d26ad95913324a4adb86788c944f8ce9ba441f \
+<     --hash=sha256:619c8304aedc69f02ea82dd244541a83c3d9d40993381b3b590f1adaed3db41e \
+<     --hash=sha256:d7ad891da111ebafbf7e015d34879f7112832fc239ff0d7d776b6cb685274615
+---
+>     --hash=sha256:5b17e2001cc0d751a5bc2c6ec6d26ad95913324a4adb86788c944f8ce9ba441f
+1828c1848
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1834c1854
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1852c1872
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1857c1877,1879
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1862c1884
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1873c1895
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1880c1902,1903
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1887c1910,1912
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1891c1916,1918
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1896c1923,1924
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1902c1930
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1947c1975
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+1953c1981,1982
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1990c2019,2021
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+1995c2026
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2068c2099
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2078c2109
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2084c2115,2116
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2092c2124
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2098c2130
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2200c2232
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2207c2239
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2222c2254,2255
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2248c2281
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2254c2287
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2265c2298,2300
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2309c2344,2346
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2314c2351
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2321c2358
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2468c2505
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2473c2510,2512
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+2478c2517
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2484c2523
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2490c2529,2530
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2601c2641
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2607c2647
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2613c2653
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2618c2658,2660
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2623c2665
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2630c2672
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2636c2678
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2642c2684
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2648c2690
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2703c2745,2746
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2801c2844
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2807c2850
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2906c2949
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+2914c2957,2958
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+2926c2970,2971
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3034c3079
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3041c3086
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3060c3105
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3084c3129,3131
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3112c3159,3160
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3170c3218
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3273c3321
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3279c3327
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3285c3333
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3291c3339,3341
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3296c3346
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3309c3359
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3334c3384
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3340c3390,3391
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3347c3398
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3352c3403,3405
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3357c3410
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3392c3445
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3412c3465
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3416,3427c3469
+<     --hash=sha256:039b9dcdd6bdbaa10a8a5cd6be22c4cb3e3589a341e5f904cbb571ca28f55bed \
+<     --hash=sha256:0ad925202387f4e7314302a1b4f8860fa824357f9b1466d7992bf276370ebcff \
+<     --hash=sha256:0c96999d15cf1f13dd7c913e0b21a9a355538e6cfc10861a17158320292f5954 \
+<     --hash=sha256:34c55443aafd31046a7963b63d30bc3b628ee4a704f826796c865fdfd05bb596 \
+<     --hash=sha256:3a852369a38dec343d45ecd0bc3660f79b88a23e0c878d18707f7c13bf49538f \
+<     --hash=sha256:4295a22d69408e93d25f51e8d5d579345b6b802383e9414b0f3853ed433d53ae \
+<     --hash=sha256:4354fc05bb79b208d6995a04ca1ceef6a9547b1c4334435574353d381c55087c \
+<     --hash=sha256:43938e9a174c90e5eb9e906532b2f1e21532bbfa5a61b65193b4f54714d34f9e \
+<     --hash=sha256:970b4f4661fa7b44f6a7e6df65de7fc4a6fff2af610dc415c1d695ca5f1f37d2 \
+<     --hash=sha256:9e20646802b7fc295c1f8b45fefcfc9fb2e4ec9cbe8593443cd2b9cc307c8405 \
+<     --hash=sha256:b9357a87595a3d7b2a565ba602b97392a37c56f0b85698f0ccf0a2c58fbef5ec \
+<     --hash=sha256:fca71fd04bf524a54370386b85e2e89840c2bbc86dc2a8df2aadedd3bba5645f
+---
+>     --hash=sha256:039b9dcdd6bdbaa10a8a5cd6be22c4cb3e3589a341e5f904cbb571ca28f55bed
+3429c3471
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3451c3493
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3467c3509
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3473c3515
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3483c3525
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3490c3532
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3497c3539,3541
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+>     #   -r python/requirements.txt
+3502c3546
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3525c3569
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3531c3575
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3537c3581
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3543c3587,3588
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3585c3630
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3591c3636
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3598c3643,3645
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3601d3647
+<     --hash=sha256:b011a55544c0e7a8b6d247da1585b1d073bbb8dc4981d576559784ea2d3fafa1 \
+3603c3649,3651
+<     # via -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     # via
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements/llm/llm-requirements.txt
+3628c3676,3677
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+>     #   -r python/requirements.txt
+3635c3684
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3708c3757
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3713c3762
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3741c3790
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3827c3876
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+3829a3879
+>     --hash=sha256:bf1dcf6450f873a13e952a29504887c89e6de7506209e5b1bcc3460135d4de19 \
+3832c3882
+<     #   -r python/deplocks/llm/rayllm_py311_cu128.lock
+---
+>     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock

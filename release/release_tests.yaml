@@ -4048,7 +4048,7 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
-      python_depset: deployment_serve_llm_py311_cu128.lock
+      python_depset: deployment_serve_rayllm_example_depset_py311_cu128.lock
       post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

@@ -5,4 +5,4 @@ FROM anyscale/ray:2.49.0-slim-py312-cu128
 RUN sudo apt-get update && \
     sudo apt-get install -y --no-install-recommends build-essential
 
-RUN pip install vllm==0.10.1
+RUN pip install vllm==0.10.2

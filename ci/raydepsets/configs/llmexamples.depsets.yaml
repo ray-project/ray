@@ -1,0 +1,26 @@
+# This file is used to generate depsets for the ray LLM dependencies
+
+build_arg_sets:
+  cu128:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cu128
+
+
+.common_settings: &common_settings
+  append_flags:
+    - --python-version=3.11
+    - --unsafe-package ray
+    - --python-platform=linux
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  build_arg_sets:
+    - cu128
+
+depsets:
+  - name: deployment_serve_rayllm_example_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: compile
+    <<: *common_settings
+    requirements:
+      - python/deplocks/llm/rayllm_py311_cu128.lock
+    output: release/ray_release/byod/deployment_serve_rayllm_example_depset_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
