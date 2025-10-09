@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Timeout for getting metadata from Ray object references (in seconds)
+METADATA_GET_TIMEOUT_S = 1.0
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -137,22 +139,28 @@ class DataOpTask(OpTask):
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             if self._pending_block_ref.is_nil():
-                assert self._pending_meta_ref.is_nil()
+                assert self._pending_meta_ref.is_nil(), (
+                    "This method expects streaming generators to yield blocks then "
+                    "metadata. So, if we have a reference to metadata but not the "
+                    "block, it means there's an error in the implementation."
+                )
 
                 try:
-                    self._pending_block_ref = self._streaming_gen._next_sync(0)
+                    self._pending_block_ref = self._streaming_gen._next_sync(
+                        timeout_s=0
+                    )
                 except StopIteration:
                     self._task_done_callback(None)
                     break
 
-            if self._pending_block_ref.is_nil():
-                # The generator currently doesn't have new output.
-                # And it's not stopped yet.
-                break
+                if self._pending_block_ref.is_nil():
+                    # The generator currently doesn't have new output.
+                    # And it's not stopped yet.
+                    break
 
             if self._pending_meta_ref.is_nil():
                 try:
-                    self._pending_meta_ref = self._streaming_gen._next_sync(0)
+                    self._pending_meta_ref = self._streaming_gen._next_sync(timeout_s=0)
                 except StopIteration:
                     # The generator should always yield 2 values (block and metadata)
                     # each time. If we get a StopIteration here, it means an error
@@ -167,20 +175,21 @@ class DataOpTask(OpTask):
                         self._task_done_callback(ex)
                         raise ex from None
 
-            if self._pending_meta_ref.is_nil():
-                # We have a reference to the block but the metadata isn't ready yet.
-                break
+                if self._pending_meta_ref.is_nil():
+                    # We have a reference to the block but the metadata isn't ready
+                    # yet.
+                    break
 
             try:
                 meta_with_schema: "BlockMetadataWithSchema" = ray.get(
-                    self._pending_meta_ref, timeout=0
+                    self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
             except ray.exceptions.GetTimeoutError:
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
                 logger.warning(
                     f"Metadata object not ready for "
-                    f"block_ref={self._pending_block_ref.block_ref.hex()[:8]}... "
+                    f"ref={self._pending_meta_ref.hex()} "
                     f"(operator={self.__class__.__name__}). "
                     f"Metadata may still be computing or worker may have failed and "
                     f"object is being reconstructed. Will retry in next iteration."
