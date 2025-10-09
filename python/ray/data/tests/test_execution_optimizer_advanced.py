@@ -488,7 +488,7 @@ def test_configure_map_task_memory_rule(
 
     new_plan = rule.apply(plan)
 
-    remote_args = new_plan.dag._get_runtime_ray_remote_args()
+    remote_args = new_plan.dag._get_dynamic_ray_remote_args()
     assert remote_args.get("memory") == expected_memory
 
 
