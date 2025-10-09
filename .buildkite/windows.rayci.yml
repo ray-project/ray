@@ -64,7 +64,6 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: tests"
-    key: windows_serve_tests
     tags: serve
     job_env: WINDOWS
     instance_type: windows
