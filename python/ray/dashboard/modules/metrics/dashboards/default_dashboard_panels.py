@@ -569,6 +569,9 @@ ids = []
 for row in DEFAULT_GRAFANA_ROWS:
     ids.append(row.id)
     ids.extend(panel.id for panel in row.panels)
+
+ids.sort()
+
 assert len(ids) == len(
     set(ids)
 ), f"Duplicated id found. Use unique id for each panel. {ids}"

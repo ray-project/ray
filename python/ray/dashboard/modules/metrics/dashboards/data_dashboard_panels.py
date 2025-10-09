@@ -495,7 +495,7 @@ TASK_COMPLETION_TIME_PANEL = Panel(
 )
 
 BLOCK_COMPLETION_TIME_PANEL = Panel(
-    id=59,
+    id=61,
     title="Block Completion Time Histogram (s)",
     description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Larger bars means more blocks finished within that duration range.",
     targets=[
@@ -512,7 +512,7 @@ BLOCK_COMPLETION_TIME_PANEL = Panel(
 )
 
 BLOCK_SIZE_BYTES_PANEL = Panel(
-    id=60,
+    id=62,
     title="Block Size (Bytes) Histogram",
     description="Size (in bytes) per block. Larger bars means more blocks are within that size range.",
     targets=[
@@ -529,7 +529,7 @@ BLOCK_SIZE_BYTES_PANEL = Panel(
 )
 
 BLOCK_SIZE_ROWS_PANEL = Panel(
-    id=61,
+    id=63,
     title="Block Size (Rows) Histogram",
     description="Number of rows per block. Larger bars means more blocks are within that number of rows range.",
     targets=[
@@ -1205,6 +1205,8 @@ all_panel_ids = []
 for row in DATA_GRAFANA_ROWS:
     all_panel_ids.append(row.id)
     all_panel_ids.extend(panel.id for panel in row.panels)
+
+all_panel_ids.sort()
 
 assert len(all_panel_ids) == len(
     set(all_panel_ids)
