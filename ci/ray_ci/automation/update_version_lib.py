@@ -58,7 +58,7 @@ def update_file_version(
         "src/ray/common/constants.h",
     ]
     non_java_files.sort()
-    java_files = list_java_files()
+    java_files = list_java_files(root_dir)
     assert len(java_files) > 0
 
     def replace_version_in_file(file_path: str, old_version: str):
