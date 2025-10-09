@@ -10,7 +10,7 @@ import {
   Tabs,
   Theme,
 } from "@mui/material";
-import React, { useContext, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
 import { useLocalStorage } from "usehooks-ts";
@@ -97,9 +97,6 @@ export const Metrics = () => {
 
   const grafanaOrgIdParam = grafanaOrgId ?? "1";
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
-  const grafanaClusterFilterParam = grafanaClusterFilter
-    ? `&var-Cluster=${grafanaClusterFilter}`
-    : "";
 
   const [cachedSelectedTab, setCachedSelectedTab] = useLocalStorage<
     DashboardTab | null
@@ -110,19 +107,50 @@ export const Metrics = () => {
   );
 
   // Build the dashboard URL based on selected tab
-  const buildDashboardUrl = (tab: DashboardTab, kiosk = true): string => {
-    const dashboardUid =
-      tab === "data" ? grafanaDataDashboardUid : grafanaDefaultDashboardUid;
-    const kioskParam = kiosk ? "&kiosk=1" : "";
-    const baseParams = `orgId=${grafanaOrgIdParam}&theme=light${kioskParam}`;
-    const variableParams = `&var-SessionName=${sessionName}&var-datasource=${grafanaDefaultDatasource}${grafanaClusterFilterParam}`;
-    const timezoneParam = `&timezone=${currentTimeZone}`;
-    // Use default time range (last 5 minutes) and refresh (5 seconds)
-    const timeRangeParams = `&from=now-5m&to=now`;
-    const refreshParams = `&refresh=5s`;
+  const buildDashboardUrl = useMemo(
+    () => (tab: DashboardTab, kiosk = true): string => {
+      const dashboardUid =
+        tab === "data" ? grafanaDataDashboardUid : grafanaDefaultDashboardUid;
 
-    return `${grafanaHost}/d/${dashboardUid}/?${baseParams}${refreshParams}${timeRangeParams}${timezoneParam}${variableParams}`;
-  };
+      const params = new URLSearchParams();
+      params.set("orgId", grafanaOrgIdParam);
+      params.set("theme", "light");
+
+      if (kiosk) {
+        params.set("kiosk", "1");
+      }
+
+      params.set("refresh", "5s");
+      params.set("from", "now-5m");
+      params.set("to", "now");
+
+      if (currentTimeZone !== undefined) {
+        params.set("timezone", currentTimeZone);
+      }
+
+      if (sessionName !== undefined) {
+        params.set("var-SessionName", sessionName);
+      }
+
+      params.set("var-datasource", grafanaDefaultDatasource);
+
+      if (grafanaClusterFilter) {
+        params.set("var-Cluster", grafanaClusterFilter);
+      }
+
+      return `${grafanaHost}/d/${dashboardUid}/?${params.toString()}`;
+    },
+    [
+      grafanaDataDashboardUid,
+      grafanaDefaultDashboardUid,
+      grafanaOrgIdParam,
+      currentTimeZone,
+      sessionName,
+      grafanaDefaultDatasource,
+      grafanaClusterFilter,
+      grafanaHost,
+    ],
+  );
 
   const currentDashboardUrl = buildDashboardUrl(selectedTab);
   const currentGrafanaUrl = buildDashboardUrl(selectedTab, false);
