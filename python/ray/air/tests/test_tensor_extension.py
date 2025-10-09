@@ -850,7 +850,7 @@ def test_tensor_type_equality_checks():
     vs_tensor_type = ArrowVariableShapedTensorType(pa.int64(), 2)
 
     # Test that different types are not equal
-    assert vs_tensor_type != ArrowVariableShapedTensorType(pa.int64(), 3)
+    assert vs_tensor_type == ArrowVariableShapedTensorType(pa.int64(), 3)
     assert vs_tensor_type != ArrowVariableShapedTensorType(pa.float64(), 2)
     assert vs_tensor_type != fs_tensor_type_v1
     assert vs_tensor_type != fs_tensor_type_v2
@@ -922,33 +922,96 @@ def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     when concatenating Arrow arrays with variable shaped tensors."""
     from ray.data.extensions.tensor_extension import (
         ArrowVariableShapedTensorArray,
-        ArrowVariableShapedTensorType,
     )
 
-    # Create ArrowVariableShapedTensorType
-    var_tensor_type = ArrowVariableShapedTensorType(pa.int64(), 2)
+    #
+    # Case 1: Tensors are variable-shaped but same ``ndim``
+    #
 
-    # Create arrays with variable-shaped tensors
-    tensors1 = [np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10]])]
-    tensors2 = [np.array([[11, 12, 13, 14]]), np.array([[15], [16], [17]])]
+    # Create arrays with variable-shaped tensors (but same ndim)
+    first_tensors = [
+        # (2, 2)
+        np.array([[1, 2], [3, 4]]),
+        # (2, 3)
+        np.array([[5, 6, 7], [8, 9, 10]]),
+    ]
+    second_tensors = [
+        # (1, 4)
+        np.array([[11, 12, 13, 14]]),
+        # (3, 1)
+        np.array([[15], [16], [17]]),
+    ]
 
-    arr1 = ArrowVariableShapedTensorArray.from_numpy(tensors1)
-    arr2 = ArrowVariableShapedTensorArray.from_numpy(tensors2)
+    first_arr = ArrowVariableShapedTensorArray.from_numpy(first_tensors)
+    second_arr = ArrowVariableShapedTensorArray.from_numpy(second_tensors)
 
-    assert arr1.type == arr2.type
     # Assert commutation
-    assert var_tensor_type == arr1.type
-    assert arr1.type == var_tensor_type
+    assert first_arr.type == second_arr.type
+    assert second_arr.type == first_arr.type
+    # Assert hashing is correct
+    assert hash(first_arr.type) == hash(second_arr.type)
+
+    assert first_arr.type.ndim == 2
+    assert second_arr.type.ndim == 2
 
     # Test concatenation works appropriately
-    concatenated = pa.concat_arrays([arr1, arr2])
+    concatenated = pa.concat_arrays([first_arr, second_arr])
     assert len(concatenated) == 4
-    assert concatenated.type == var_tensor_type
+    assert concatenated.type == first_arr.type
 
-    result = concatenated.to_numpy()
-    expected_shapes = [(2, 2), (2, 3), (1, 4), (3, 1)]
-    for i, expected_shape in enumerate(expected_shapes):
-        assert result[i].shape == expected_shape
+    result_ndarray = concatenated.to_numpy()
+
+    for i, expected_ndarray in enumerate(
+        itertools.chain.from_iterable([first_tensors, second_tensors])
+    ):
+        assert result_ndarray[i].shape == expected_ndarray.shape
+
+        np.testing.assert_array_equal(result_ndarray[i], expected_ndarray)
+
+    #
+    # Case 2: Tensors are variable-shaped, with diverging ``ndim``s
+    #
+
+    # Create arrays with variable-shaped tensors (but different ndim)
+    first_tensors = [
+        # (1, 2, 1)
+        np.array([[[1], [2]], [[3], [4]]]),
+        # (2, 3, 1)
+        np.array([[[5], [6], [7]], [[8], [9], [10]]]),
+    ]
+    second_tensors = [
+        # (1, 4)
+        np.array([[11, 12, 13, 14]]),
+        # (3, 1)
+        np.array([[15], [16], [17]]),
+    ]
+
+    first_arr = ArrowVariableShapedTensorArray.from_numpy(first_tensors)
+    second_arr = ArrowVariableShapedTensorArray.from_numpy(second_tensors)
+
+    # Assert commutation
+    assert first_arr.type == second_arr.type
+    assert second_arr.type == first_arr.type
+    # Assert hashing is correct
+    assert hash(first_arr.type) == hash(second_arr.type)
+
+    assert first_arr.type.ndim == 3
+    assert second_arr.type.ndim == 2
+
+    # Test concatenation works appropriately
+    concatenated = pa.concat_arrays([first_arr, second_arr])
+
+    assert len(concatenated) == 4
+    assert concatenated.type == first_arr.type
+
+    result_ndarray = concatenated.to_numpy()
+
+    for i, expected_ndarray in enumerate(
+        itertools.chain.from_iterable([first_tensors, second_tensors])
+    ):
+        assert result_ndarray[i].shape == expected_ndarray.shape
+
+        np.testing.assert_array_equal(result_ndarray[i], expected_ndarray)
 
 
 def test_reverse_order():
