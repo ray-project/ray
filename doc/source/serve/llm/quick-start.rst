@@ -449,12 +449,7 @@ Models supporting this use case are listed at
                 ),
                 engine_kwargs=dict(
                     task="embed",
-                ),
-                runtime_env=dict(
-                    env_vars={
-                        "VLLM_USE_V1": "1",
-                    }
-                ),
+                )
             )
 
             app = build_openai_app({"llm_configs": [llm_config]})
@@ -497,40 +492,34 @@ Models supporting this use case are listed at
 
 
 Transcriptions
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
 
-You can generate audio transcriptions for STT models trained specifically for Automatic Speech Recognition(ASR) tasks.
+You can generate audio transcriptions for Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks.
 Models supporting this use case are listed at
-`vLLM transcription models <https://docs.vllm.ai/en/v0.9.2/models/supported_models.html#transcription>`_.
+`vLLM transcription models <https://docs.vllm.ai/en/stable/models/supported_models.html#transcription>`_.
 
 
 .. tab-set::
 
-    .. tab-item:: Server
-        :sync: server
+    .. tab-item:: Python
+        :sync: python
 
-        .. code-block:: python
+        .. literalinclude:: ../../llm/doc_code/serve/transcription/transcription_example.py
+            :language: python
+            :start-after: __transcription_example_start__
+            :end-before: __transcription_example_end__
 
-            from ray import serve
-            from ray.serve.llm import LLMConfig, build_openai_app
+    .. tab-item:: YAML
+        :sync: yaml
 
-            llm_config = LLMConfig(
-                model_loading_config=dict(
-                    model_id="whisper-large",
-                    model_source="openai/whisper-large-v3",
-                ),
-                runtime_env=dict(
-                    env_vars={
-                        "VLLM_USE_V1": "1",
-                    }
-                ),
-            )
+        .. literalinclude:: ../../llm/doc_code/serve/transcription/transcription_config_example.yaml
+            :language: yaml
 
-            app = build_openai_app({"llm_configs": [llm_config]})
-            serve.run(app, blocking=True)
+You can query the deployed transcription models using either cURL or the OpenAI Python client:
 
+.. tab-set::
 
-    .. tab-item:: Python Client
+    .. tab-item:: OpenAI Client
         :sync: client
 
         .. code-block:: python

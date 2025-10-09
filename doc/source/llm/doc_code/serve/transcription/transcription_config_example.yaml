@@ -1,0 +1,29 @@
+# config.yaml
+applications:
+- args:
+    llm_configs:
+    - model_loading_config:
+        model_id: whisper-large
+        model_source: openai/whisper-large-v3
+      accelerator_type: A10G
+      deployment_config:
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 2
+      log_engine_metrics: true
+    - model_loading_config:
+        model_id: voxtral-mini
+        model_source: mistralai/Voxtral-Mini-3B-2507
+      accelerator_type: A10G
+      engine_kwargs:
+        tokenizer_mode: mistral
+        config_format: mistral
+        load_format: mistral
+      deployment_config:
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 2
+      log_engine_metrics: true
+  import_path: ray.serve.llm:build_openai_app
+  name: llm_app
+  route_prefix: "/"
