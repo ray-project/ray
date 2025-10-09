@@ -128,12 +128,8 @@ def main():
         print("Usage: export OPENAI_API_KEY='your-key' && python langgraph_demo.py")
         sys.exit(1)
 
-    # Initialize Ray (disable dashboard to avoid frontend build errors)
-    ray.init(
-        ignore_reinit_error=True,
-        logging_level="ERROR",
-        include_dashboard=False,
-    )
+    # Initialize Ray
+    ray.init(ignore_reinit_error=True, include_dashboard=False)
 
     # Create LangGraph agent
     adapter = LangGraphAdapter(
@@ -142,36 +138,23 @@ def main():
     )
     session = AgentSession.remote(session_id="demo", adapter=adapter)
 
-    print("\n=== LangGraph + Ray Agentic Demo ===\n")
-
     # Interaction 1
-    print("User: Analyze Q4 for North America")
-    print()
-
     result1 = ray.get(
         session.run.remote(
             "Get Q4 sales data for North America, customer feedback (positive), and SaaS market trends.",
             tools=[analyze_sales_data, process_customer_feedback, fetch_market_trends],
         )
     )
-
     print(f"Agent: {result1['content']}\n")
 
     # Interaction 2
-    print("User: Forecast Q1-Q2 2025")
-    print()
-
     result2 = ray.get(
         session.run.remote(
             "Generate a 2-quarter revenue forecast.",
             tools=[generate_forecast],
         )
     )
-
     print(f"Agent: {result2['content']}\n")
-
-    history = ray.get(session.get_history.remote())
-    print(f"=== Conversation: {len(history)} messages ===\n")
 
     ray.shutdown()
 

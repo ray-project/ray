@@ -117,8 +117,7 @@ class AgentSession:
             self.messages.append({"role": "assistant", "content": response["content"]})
 
             logger.debug(
-                f"Session {self.session_id}: Response generated "
-                f"({len(response['content'])} chars)"
+                f"Session {self.session_id}: Response generated ({len(response['content'])} chars)"
             )
 
             return response

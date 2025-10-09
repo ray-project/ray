@@ -125,12 +125,6 @@ class LangGraphAdapter(AgentAdapter):
         ... )
 
     **DeveloperAPI:** This API may change across minor Ray releases.
-
-    Note:
-        This is a simplified reference implementation. It demonstrates the
-        integration pattern but doesn't use LangGraph's full StateGraph.
-        Production use would leverage LangGraph's complete ReAct agent with
-        proper state management, checkpointing, and streaming.
     """
 
     def __init__(
@@ -200,11 +194,7 @@ class LangGraphAdapter(AgentAdapter):
         )
 
         try:
-            # Convert Ray remote functions to LangGraph tools
             langgraph_tools = self._wrap_ray_tools_for_langgraph(tools)
-
-            # For MVP: simplified execution without full StateGraph
-            # Production would use: create_react_agent(llm, langgraph_tools)
             response_text = await self._simple_execute(message, langgraph_tools)
 
             return {
@@ -239,29 +229,21 @@ class LangGraphAdapter(AgentAdapter):
                 )
                 continue
 
-            # Create wrapper that executes via Ray
-            # We need to preserve the exact function signature for LangChain
             def make_wrapper(tool):
-                """Closure to capture tool reference."""
+                """Create wrapper that preserves signature for LangChain."""
                 import functools
 
-                # Get original function from Ray remote wrapper
-                if hasattr(tool, "_function"):
-                    original_func = tool._function
-                else:
-                    original_func = tool
+                original_func = tool._function if hasattr(tool, "_function") else tool
 
-                # Create wrapper with signature matching original
-                # functools.wraps copies __name__, __doc__, __annotations__, __wrapped__
                 @functools.wraps(original_func)
                 def wrapper(*args, **kwargs):
-                    """Execute tool via Ray (distributed)."""
-                    logger.info(
-                        f"🚀 Executing Ray tool: {original_func.__name__} with args={args}, kwargs={kwargs}"
+                    """Execute tool via Ray."""
+                    logger.debug(
+                        f"Executing {original_func.__name__}: "
+                        f"args={args}, kwargs={kwargs}"
                     )
-                    # This runs distributed on cluster!
                     result = ray.get(tool.remote(*args, **kwargs))
-                    logger.info(f"✅ Tool {original_func.__name__} completed: {result}")
+                    logger.debug(f"Completed {original_func.__name__}: {result}")
                     return result
 
                 return wrapper
@@ -306,15 +288,11 @@ class LangGraphAdapter(AgentAdapter):
                     "Install with: pip install langgraph"
                 ) from e
 
-            # Convert wrapped tools to LangChain Tool objects
-            # Use StructuredTool to properly extract arg schemas from type hints
             from langchain_core.tools import StructuredTool
 
             lc_tools = []
             for wrapped_tool in tools:
                 try:
-                    # StructuredTool.from_function properly handles type annotations
-                    # The wrapper already has __annotations__ copied from original function
                     decorated = StructuredTool.from_function(
                         func=wrapped_tool,
                         name=wrapped_tool.__name__,
