@@ -796,3 +796,9 @@ def test_map_batches_async_generator_fast_yield(
     # Because all tasks are submitted almost simultaneously,
     # the output order may be different compared to the original input.
     assert len(output) == len(expected_output), (len(output), len(expected_output))
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
