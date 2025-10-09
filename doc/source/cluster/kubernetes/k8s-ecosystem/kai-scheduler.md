@@ -115,7 +115,6 @@ Verify queues are created
 ```bash
 kubectl get queues
 ```
-```
 
 ## Step 4: Gang-Scheduling with KAI Scheduler
 
