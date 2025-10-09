@@ -1598,7 +1598,7 @@ class Dataset:
         self,
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
-        mode: Literal["approximate", "exact"] = "approximate",
+        enforce_target_num_rows_per_block: bool = False,
         *,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
@@ -1649,7 +1649,7 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
-            mode: The mode for streaming repartition. "approximate" is the default mode. "exact" is the mode that guarantees exact row counts per block.
+            enforce_target_num_rows_per_block: Whether to enforce the target number of rows per block. Default to False.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1708,7 +1708,7 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
-                mode=mode,
+                enforce_target_num_rows_per_block=enforce_target_num_rows_per_block,
             )
         else:
             op = Repartition(
