@@ -44,7 +44,6 @@ Ray Tune integrates with many popular machine learning frameworks. Here you find
   * - :doc:`Tuning XGBoost parameters with Tune <tune-xgboost>`
   * - :doc:`Tuning LightGBM parameters with Tune <lightgbm_example>`
   * - :doc:`Tuning Hugging Face Transformers with Tune <pbt_transformers>`
-  * - :doc:`End-to-end example for tuning a TensorFlow model <../../train/examples/tf/tune_tensorflow_mnist_example>`
   * - :doc:`End-to-end example for tuning a PyTorch model with PBT <../../train/examples/pytorch/tune_cifar_torch_pbt_example>`  
 
 .. _experiment-tracking-tools:
