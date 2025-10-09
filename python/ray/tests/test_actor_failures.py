@@ -1183,18 +1183,14 @@ def test_exit_actor_queued(shutdown_only):
     a = RegressionAsync.remote()
     a.f.remote()
     refs = [a.ping.remote() for _ in range(10000)]
-    with pytest.raises(
-        (ray.exceptions.RayActorError, ray.exceptions.TaskCancelledError)
-    ) as exc_info:
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(refs)
     assert " Worker unexpectedly exits" not in str(exc_info.value)
 
     # Test a sync case.
     a = RegressionSync.remote()
     a.f.remote()
-    with pytest.raises(
-        (ray.exceptions.RayActorError, ray.exceptions.TaskCancelledError)
-    ) as exc_info:
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get([a.ping.remote() for _ in range(10000)])
     assert " Worker unexpectedly exits" not in str(exc_info.value)
 
