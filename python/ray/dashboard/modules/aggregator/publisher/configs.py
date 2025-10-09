@@ -6,7 +6,7 @@ from ray._private import ray_constants
 env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER"
 # Timeout for the publisher to publish events to the destination
 PUBLISHER_TIMEOUT_SECONDS = ray_constants.env_integer(
-    f"{env_var_prefix}_TIMEOUT_SECONDS", 3
+    f"{env_var_prefix}_TIMEOUT_SECONDS", 60
 )
 # Maximum number of retries for publishing events to the destination, if less than 0, will retry indefinitely
 PUBLISHER_MAX_RETRIES = ray_constants.env_integer(f"{env_var_prefix}_MAX_RETRIES", -1)
