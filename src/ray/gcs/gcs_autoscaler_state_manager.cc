@@ -495,8 +495,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   auto node = std::move(maybe_node.value());
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       node_id, node->node_manager_address(), node->node_manager_port());
-  const auto raylet_client =
-      raylet_client_pool_.GetOrConnectByAddress(std::move(raylet_address));
+  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
@@ -624,14 +623,11 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
     const auto &infeasible_shapes = node_infeasible_request_pair.second;
     auto node = gcs_node_manager_.GetAliveNode(node_id);
     if (!node.has_value()) {
-      RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id
-                       << ". Raylet client to the node is not available.";
       continue;
     }
     auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node.value()->node_manager_address(), node.value()->node_manager_port());
-    const auto raylet_client =
-        raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
+    const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
 
     std::string resource_shapes_str =
         ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);

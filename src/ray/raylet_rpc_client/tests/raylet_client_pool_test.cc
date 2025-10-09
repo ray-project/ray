@@ -104,8 +104,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
 bool CheckRayletClientPoolHasClient(RayletClientPool &raylet_client_pool,
                                     const NodeID &node_id) {
   absl::MutexLock lock(&raylet_client_pool.mu_);
-  return raylet_client_pool.client_map_.find(node_id) !=
-         raylet_client_pool.client_map_.end();
+  return raylet_client_pool.client_map_.contains(node_id);
 }
 
 TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {

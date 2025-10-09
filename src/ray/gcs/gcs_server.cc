@@ -100,13 +100,13 @@ GcsServer::GcsServer(
                 this->worker_client_pool_.Disconnect(worker_id);
                 return;
               }
-              auto node_info = alive_node.value();
+              auto &node_info = alive_node.value();
               auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
                   node_id,
                   node_info->node_manager_address(),
                   node_info->node_manager_port());
-              auto raylet_client = this->raylet_client_pool_.GetOrConnectByAddress(
-                  std::move(remote_address));
+              auto raylet_client =
+                  this->raylet_client_pool_.GetOrConnectByAddress(remote_address);
               // Worker could still be dead even if node is alive.
               raylet_client->IsLocalWorkerDead(
                   worker_id,
@@ -365,8 +365,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
           rpc::RayletClientPool::GenerateRayletAddress(item.first,
                                                        item.second.node_manager_address(),
                                                        item.second.node_manager_port());
-      auto raylet_client =
-          raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
+      auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
       gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
     }
   }
@@ -395,8 +394,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
               alive_node.first,
               alive_node.second->node_manager_address(),
               alive_node.second->node_manager_port());
-          auto raylet_client =
-              raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
+          auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
 
           // GetResourceLoad will also get usage. Historically it didn't.
           raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
@@ -411,7 +409,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
               // per-node reporting, remove this if it is not needed anymore.
               gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
               gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
-                  std::move(load_and_usage.resources()));
+                  std::move(*load_and_usage.mutable_resources()));
             } else {
               RAY_LOG_EVERY_N(WARNING, 10)
                   << "Failed to get the resource load: " << status.ToString();

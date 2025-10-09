@@ -143,10 +143,10 @@ void NormalTaskSubmitter::OnWorkerIdle(
     const std::string &error_detail,
     bool worker_exiting,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
-  auto &lease_entry = worker_to_lease_entry_[addr];
-  if (lease_entry.addr.node_id().empty()) {
+  if (!worker_to_lease_entry_.contains(addr)) {
     return;
   }
+  auto &lease_entry = worker_to_lease_entry_[addr];
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &current_queue = scheduling_key_entry.task_queue;
