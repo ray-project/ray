@@ -67,6 +67,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             "label": step_name,
             "key": step_key,
             "instance_type": "release-medium",
+            "mount_buildkite_agent": True,
             "commands": [
                 f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
                 "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
