@@ -453,14 +453,14 @@ class ApplicationState:
         deployment_to_target_num_replicas: Dict[DeploymentID, int] = {}
         for deployment_name in target_deployments:
             deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
-            deployment_details = self._deployment_state_manager.get_deployment_details(
-                deployment_id
+            target_num_replicas = (
+                self._deployment_state_manager.get_deployment_target_num_replicas(
+                    deployment_id
+                )
             )
-            if deployment_details is None:
+            if target_num_replicas is None:
                 continue
-            deployment_to_target_num_replicas[
-                deployment_id
-            ] = deployment_details.target_num_replicas
+            deployment_to_target_num_replicas[deployment_id] = target_num_replicas
 
         if len(deployment_to_target_num_replicas) == 0:
             return False

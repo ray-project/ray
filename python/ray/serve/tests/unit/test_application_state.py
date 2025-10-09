@@ -1,6 +1,6 @@
 import sys
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
@@ -41,7 +41,6 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.schema import (
     APIType,
     ApplicationStatus,
-    DeploymentDetails,
     DeploymentSchema,
     LoggingConfig,
     ServeApplicationSchema,
@@ -169,12 +168,8 @@ class MockDeploymentStateManager:
     def delete_deployment(self, id: DeploymentID):
         self.deleting[id] = True
 
-    def get_deployment_details(self, id: DeploymentID):
-        details = Mock(spec=DeploymentDetails)
-        details.target_num_replicas = self.deployment_infos[
-            id
-        ].deployment_config.num_replicas
-        return details
+    def get_deployment_target_num_replicas(self, id: DeploymentID) -> Optional[int]:
+        return self.deployment_infos[id].deployment_config.num_replicas
 
     def save_checkpoint(self):
         """Mock save checkpoint method."""
@@ -1509,8 +1504,10 @@ class TestAutoscale:
             app_state_manager, deployment_state_manager, autoscaling_config
         )
 
-        # Mock get_deployment_details to return None
-        deployment_state_manager.get_deployment_details = Mock(return_value=None)
+        # Mock get_deployment_target_num_replicas to return None
+        deployment_state_manager.get_deployment_target_num_replicas = Mock(
+            return_value=None
+        )
 
         app_state = app_state_manager._application_states["test_app"]
 
@@ -1933,15 +1930,19 @@ class TestAutoscale:
             )
             asm.record_request_metrics_for_replica(replica_report)
 
-        # Mock get_deployment_details to return None for d2 only
-        original_get_details = deployment_state_manager.get_deployment_details
+        # Mock get_deployment_target_num_replicas to return None for d2 only
+        original_get_details = (
+            deployment_state_manager.get_deployment_target_num_replicas
+        )
 
-        def selective_get_details(dep_id):
+        def selective_get_details(dep_id) -> Optional[int]:
             if dep_id == d2_id:
                 return None
             return original_get_details(dep_id)
 
-        deployment_state_manager.get_deployment_details = selective_get_details
+        deployment_state_manager.get_deployment_target_num_replicas = (
+            selective_get_details
+        )
 
         app_state = app_state_manager._application_states["test_app"]
 
