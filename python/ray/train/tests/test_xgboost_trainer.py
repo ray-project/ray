@@ -106,7 +106,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     assert xgb_model.num_boosted_rounds() == 10
 
 
-def test_external_memory_basic(ray_start_4_cpus):
+def test_external_memory_basic(ray_start_4_cpus, tmpdir):
     """Test V1 XGBoost Trainer with external memory enabled."""
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
@@ -118,6 +118,9 @@ def test_external_memory_basic(ray_start_4_cpus):
         "eval_metric": ["logloss", "error"],
     }
     
+    # Create temporary cache directory
+    cache_dir = tmpdir.mkdir("xgboost_cache")
+    
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
@@ -125,7 +128,7 @@ def test_external_memory_basic(ray_start_4_cpus):
         num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         use_external_memory=True,
-        external_memory_cache_dir="/tmp/xgboost_v1_test_cache",
+        external_memory_cache_dir=str(cache_dir),
         external_memory_device="cpu",
         external_memory_batch_size=1000,
     )
@@ -141,7 +144,7 @@ def test_external_memory_basic(ray_start_4_cpus):
     assert trainer.is_external_memory_enabled()
     config = trainer.get_external_memory_config()
     assert config["use_external_memory"] is True
-    assert config["cache_dir"] == "/tmp/xgboost_v1_test_cache"
+    assert config["cache_dir"] == str(cache_dir)
     assert config["device"] == "cpu"
     assert config["batch_size"] == 1000
 
@@ -222,7 +225,7 @@ def test_external_memory_utilities(ray_start_4_cpus):
     assert isinstance(gpu_setup_result, bool)
 
 
-def test_external_memory_with_large_dataset(ray_start_8_cpus):
+def test_external_memory_with_large_dataset(ray_start_8_cpus, tmpdir):
     """Test V1 XGBoost Trainer with a larger dataset to verify external memory benefits."""
     # Create a larger dataset
     large_train_df = pd.concat([train_df] * 10, ignore_index=True)
@@ -240,6 +243,9 @@ def test_external_memory_with_large_dataset(ray_start_8_cpus):
         "eta": 0.1,
     }
     
+    # Create temporary cache directory
+    cache_dir = tmpdir.mkdir("xgboost_large_cache")
+    
     trainer = XGBoostTrainer(
         scaling_config=ScalingConfig(num_workers=4),
         label_column="target",
@@ -247,7 +253,7 @@ def test_external_memory_with_large_dataset(ray_start_8_cpus):
         num_boost_round=5,  # Fewer rounds for faster testing
         datasets={TRAIN_DATASET_KEY: large_train_dataset, "valid": large_valid_dataset},
         use_external_memory=True,
-        external_memory_cache_dir="/tmp/xgboost_large_test_cache",
+        external_memory_cache_dir=str(cache_dir),
         external_memory_batch_size=2000,
     )
     

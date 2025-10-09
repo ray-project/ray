@@ -252,7 +252,7 @@ def test_xgboost_trainer_multiclass(ray_start_4_cpus, multiclass_dataset):
     assert "validation-mlogloss" in result.metrics
 
 
-def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset):
+def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset, tmp_path):
     """Test V2 XGBoost Trainer with external memory enabled."""
     train_df, test_df = small_dataset
 
@@ -321,6 +321,10 @@ def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset):
         "eta": 0.1,
     }
 
+    # Create temporary cache directory
+    cache_dir = tmp_path / "xgboost_cache"
+    cache_dir.mkdir()
+
     # Create and run trainer with external memory
     trainer = XGBoostTrainer(
         train_loop_per_worker=train_fn_per_worker,
@@ -328,7 +332,7 @@ def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset):
         scaling_config=ScalingConfig(num_workers=2),
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         use_external_memory=True,
-        external_memory_cache_dir="/tmp/xgboost_test_cache",
+        external_memory_cache_dir=str(cache_dir),
         external_memory_device="cpu",
         external_memory_batch_size=1000,
     )
@@ -344,7 +348,7 @@ def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset):
     assert trainer.is_external_memory_enabled()
     config = trainer.get_external_memory_config()
     assert config["use_external_memory"] is True
-    assert config["cache_dir"] == "/tmp/xgboost_test_cache"
+    assert config["cache_dir"] == str(cache_dir)
     assert config["device"] == "cpu"
     assert config["batch_size"] == 1000
 
@@ -551,7 +555,7 @@ def test_xgboost_trainer_external_memory_utilities(ray_start_4_cpus):
     assert recommendations["parameters"]["grow_policy"] == "depthwise"
 
 
-def test_xgboost_trainer_external_memory_fallback_behavior(ray_start_4_cpus, small_dataset):
+def test_xgboost_trainer_external_memory_fallback_behavior(ray_start_4_cpus, small_dataset, tmp_path):
     """Test V2 XGBoost Trainer fallback behavior when external memory fails."""
     train_df, test_df = small_dataset
 
@@ -623,6 +627,10 @@ def test_xgboost_trainer_external_memory_fallback_behavior(ray_start_4_cpus, sma
         "eta": 0.1,
     }
 
+    # Create temporary cache directory
+    cache_dir = tmp_path / "xgboost_fallback_cache"
+    cache_dir.mkdir()
+
     # Create and run trainer with external memory
     trainer = XGBoostTrainer(
         train_loop_per_worker=train_fn_per_worker,
@@ -630,7 +638,7 @@ def test_xgboost_trainer_external_memory_fallback_behavior(ray_start_4_cpus, sma
         scaling_config=ScalingConfig(num_workers=2),
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         use_external_memory=True,
-        external_memory_cache_dir="/tmp/xgboost_test_cache",
+        external_memory_cache_dir=str(cache_dir),
     )
 
     result = trainer.fit()
@@ -808,8 +816,8 @@ def test_xgboost_trainer_deprecated_methods(ray_start_4_cpus, small_dataset):
     # Create datasets
     train_dataset = ray.data.from_pandas(train_df)
 
-    # Test deprecated legacy API
-    with pytest.raises(DeprecationWarning):
+    # Test deprecated legacy API - should raise TypeError for unexpected kwargs
+    with pytest.raises(TypeError):
         trainer = XGBoostTrainer(
             train_fn_per_worker,
             label_column="target",

@@ -274,13 +274,12 @@ def _xgboost_train_fn_per_worker(
 
     try:
         bst = xgb.train(
-            config,
+            xgboost_train_kwargs,
             dtrain=dtrain,
             evals=evals,
             num_boost_round=remaining_iters,
             xgb_model=starting_model,
             callbacks=[RayTrainReportCallback()],
-            **xgboost_train_kwargs,
         )
 
         if bst is None:
