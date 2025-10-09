@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+from enum import Enum
 from contextlib import asynccontextmanager
 from typing import (
     Any,
@@ -86,6 +87,10 @@ T = TypeVar("T")
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
 }
+class CallMethod(Enum):
+    CHAT = "chat"
+    COMPLETIONS = "completions"
+    TRANSCRIPTIONS = "transcriptions"
 
 
 def _sanitize_chat_completion_request(
@@ -507,14 +512,14 @@ class OpenAiIngress(DeploymentProtocol):
     async def _process_llm_request(
         self,
         body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest],
-        call_method: str,
+        call_method: CallMethod,
     ) -> Response:
 
-        if call_method == "chat":
+        if call_method == CallMethod.CHAT:
             NoneStreamingResponseType = ChatCompletionResponse
-        elif call_method == "completions":
+        elif call_method == CallMethod.COMPLETIONS:
             NoneStreamingResponseType = CompletionResponse
-        elif call_method == "transcriptions":
+        elif call_method == CallMethod.TRANSCRIPTIONS:
             NoneStreamingResponseType = TranscriptionResponse
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
@@ -594,7 +599,6 @@ class OpenAiIngress(DeploymentProtocol):
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
 
-    @fastapi_router_app.post("/v1/audio/transcriptions")
     async def transcriptions(self, body: TranscriptionRequest) -> Response:
         """Create transcription for the provided audio input.
 

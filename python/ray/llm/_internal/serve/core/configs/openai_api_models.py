@@ -110,7 +110,7 @@ class TranscriptionRequest(vLLMTranscriptionRequest):
             "through out the inference process and return in response."
         ),
     )
-    
+
 
 class TranscriptionResponse(vLLMTranscriptionResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
