@@ -55,9 +55,11 @@ HTTP_PROXY_TIMEOUT = 60
 #: If no replicas at target version is running by the time we're at
 #: max constructor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
+#: This constant is deprecated and will be removed in the future.
+#: Please use 'max_constructor_retry_count' instead in configurations.
 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
     "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
-    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", 20),
+    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None),
 )
 
 # Max retry on deployment constructor is
@@ -149,6 +151,7 @@ DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
+DEFAULT_CONSTRUCTOR_RETRY_COUNT = 20
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(

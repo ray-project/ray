@@ -135,6 +135,7 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
+    ~train.CheckpointUploadMode
     ~train.v2.api.context.TrainContext
 
 **Functions**

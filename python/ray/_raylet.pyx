@@ -679,29 +679,63 @@ def compute_task_id(ObjectRef object_ref):
 
 
 cdef increase_recursion_limit():
-    """Double the recusion limit if current depth is close to the limit"""
+    """
+    Ray does some weird things with asio fibers and asyncio to run asyncio actors.
+    This results in the Python interpreter thinking there's a lot of recursion depth,
+    so we need to increase the limit when we start getting close.
+
+    0x30C0000 is Python 3.12
+        On 3.12, when recursion depth increases, c_recursion_remaining will decrease,
+        and that's what's actually compared to raise a RecursionError. So increasing
+        it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
+        https://github.com/python/cpython/blob/bfb9e2f4a4e690099ec2ec53c08b90f4d64fde36/Python/pystate.c#L1353
+    0x30B00A4 is Python 3.11
+        On 3.11, the recursion depth can be calculated with recursion_limit - recursion_remaining.
+        We can get the current limit with Py_GetRecursionLimit and set it with Py_SetRecursionLimit.
+        We'll double the limit when there's less than 500 remaining.
+    On older versions
+        There's simply a recursion_depth variable and we'll increase the max the same
+        way we do for 3.11.
+    """
     cdef:
-        CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
-        int current_limit = Py_GetRecursionLimit()
-        int new_limit = current_limit * 2
         cdef extern from *:
             """
 #if PY_VERSION_HEX >= 0x30C0000
-    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        if (x->c_recursion_remaining < 1000) {
+            x->c_recursion_remaining += 1000;
+            return true;
+        }
+        return false;
+    }
 #elif PY_VERSION_HEX >= 0x30B00A4
-    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        int current_limit = Py_GetRecursionLimit();
+        int current_depth = x->recursion_limit - x->recursion_remaining;
+        if (current_limit - current_depth < 500) {
+            Py_SetRecursionLimit(current_limit * 2);
+            return true;
+        }
+        return false;
+    }
 #else
-    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        int current_limit = Py_GetRecursionLimit();
+        if (current_limit - x->recursion_depth < 500) {
+            Py_SetRecursionLimit(current_limit * 2);
+            return true;
+        }
+        return false;
+    }
 #endif
             """
-            int CURRENT_DEPTH(CPyThreadState *x)
+            c_bool IncreaseRecursionLimitIfNeeded(CPyThreadState *x)
 
-        int current_depth = CURRENT_DEPTH(s)
-    if current_limit - current_depth < 500:
-        Py_SetRecursionLimit(new_limit)
-        logger.debug("Increasing Python recursion limit to {} "
-                     "current recursion depth is {}.".format(
-                         new_limit, current_depth))
+        CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
+        c_bool increased_recursion_limit = IncreaseRecursionLimitIfNeeded(s)
+
+    if increased_recursion_limit:
+        logger.debug("Increased Python recursion limit")
 
 
 cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
@@ -2331,7 +2365,7 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.free_object_primary_copy(object_id)
+        gpu_object_manager.free_object_primary_copy(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2462,6 +2496,10 @@ cdef CRayStatus task_execution_handler(
                 if hasattr(e, "unexpected_error_traceback"):
                     msg += (f" {e.unexpected_error_traceback}")
                 return CRayStatus.UnexpectedSystemExit(msg)
+        except Exception as e:
+            msg = "Unexpected exception raised in task execution handler: {}".format(e)
+            logger.error(msg)
+            return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
@@ -4218,6 +4256,8 @@ cdef class CoreWorker:
                            shared_ptr[CRayObject] *return_ptr):
         """Store a task return value in plasma or as an inlined object."""
         with nogil:
+            # For objects that can't be inlined, return_ptr will only be set if
+            # the object doesn't already exist in plasma.
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                     return_id, data_size, metadata, contained_id, caller_address,
@@ -4242,6 +4282,8 @@ cdef class CoreWorker:
             return True
         else:
             with nogil:
+                # Pins the object, succeeds if the object exists in plasma and is
+                # sealed.
                 success = (
                     CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
                         return_id, return_ptr, generator_id, caller_address))
@@ -4357,7 +4399,16 @@ cdef class CoreWorker:
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
-            if not self.store_task_output(
+            # It's possible for store_task_output to fail when the object already
+            # exists, but we fail to pin it. We can fail to pin the object if
+            # 1. it exists but isn't sealed yet because it's being written to by
+            #    another worker. We'll keep looping until it's sealed.
+            # 2. it existed during the allocation attempt but was evicted before
+            #    the pin attempt. We'll allocate and write the second time.
+            base_backoff_s = 1
+            attempt = 1
+            max_attempts = 6 # 6 attempts =~ 60 seconds of total backoff time
+            while not self.store_task_output(
                     serialized_object,
                     return_id,
                     c_ref_generator_id,
@@ -4367,19 +4418,15 @@ cdef class CoreWorker:
                     caller_address,
                     &task_output_inlined_bytes,
                     return_ptr):
-                # If the object already exists, but we fail to pin the copy, it
-                # means the existing copy might've gotten evicted. Try to
-                # create another copy.
-                self.store_task_output(
-                        serialized_object,
-                        return_id,
-                        c_ref_generator_id,
-                        data_size,
-                        metadata,
-                        contained_id,
-                        caller_address,
-                        &task_output_inlined_bytes,
-                        return_ptr)
+                if (attempt > max_attempts):
+                    raise RaySystemError(
+                        "Failed to store task output with object id {} after {} attempts.".format(
+                            return_id.Hex().decode("ascii"),
+                            max_attempts))
+                time.sleep(base_backoff_s * (2 ** (attempt-1)))
+                attempt += 1
+                continue
+
             num_outputs_stored += 1
 
         i += 1
