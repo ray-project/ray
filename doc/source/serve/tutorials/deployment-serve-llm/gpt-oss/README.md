@@ -1,3 +1,13 @@
+---
+orphan: true
+---
+
+<!--
+Do not modify this README. This file is a copy of the notebook and is not used to display the content.
+Modify notebook.ipynb instead, then regenerate this file with:
+jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+-->
+
 # Deploy gpt-oss
 
 <div align="left">
