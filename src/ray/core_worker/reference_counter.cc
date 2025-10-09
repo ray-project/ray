@@ -771,11 +771,10 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_objects_owned_by_us_--;
     }
   }
-  if (it->second.object_ref_deleted_callbacks.size() > 0) {
-    for (const auto &callback : it->second.object_ref_deleted_callbacks) {
-      callback(it->first);
-    }
+  for (const auto &callback : it->second.object_ref_deleted_callbacks) {
+    callback(it->first);
   }
+
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
 }
