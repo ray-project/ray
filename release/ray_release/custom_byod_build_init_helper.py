@@ -59,7 +59,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         logger.info(
             f"Building custom BYOD image: {image}, base image: {base_image}, post build script: {post_build_script}"
         )
-        if not post_build_script:
+        if not post_build_script and not python_depset:
             continue
         step_key = generate_custom_build_step_key(image)
         step_name = _get_step_name(image, step_key, custom_image_test_names_map[image])
@@ -74,7 +74,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 "bash release/azure_docker_login.sh",
                 f"az acr login --name {AZURE_REGISTRY_NAME}",
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
-                f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script} {f'--python-depset {python_depset}' if python_depset else ''}",
+                f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} {f'--post-build-script {post_build_script}' if post_build_script else ''} {f'--python-depset {python_depset}' if python_depset else ''}",
             ],
         }
         step["depends_on"] = get_prerequisite_step(image)
