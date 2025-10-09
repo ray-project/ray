@@ -454,7 +454,7 @@ Custom policies let you implement scaling logic based on any metrics or rules yo
 
 ### Custom policy for deployment
 
-A custom autoscaling policy is a user-provided Python function that takes an [`AutoscalingContext`](../api/doc/ray.serve._private.autoscaling_state.AutoscalingContext.rst) and returns a tuple `(target_replicas, policy_state)` for a single Deployment.
+A custom autoscaling policy is a user-provided Python function that takes an [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst) and returns a tuple `(target_replicas, policy_state)` for a single Deployment.
 
 * **Current state:** Current replica count and deployment metadata.
 * **Built-in metrics:** Total requests, queued requests, per-replica counts.
@@ -482,7 +482,7 @@ Keep policy functions **fast and lightweight**. Slow logic can block the Serve c
 
 ### Custom metrics
 
-You can make richer decisions by emitting your own metrics from the deployment. Implement `record_autoscaling_stats()` to return a `dict[str, float]`. Ray Serve will surface these values in the [`AutoscalingContext`](../api/doc/ray.serve._private.autoscaling_state.AutoscalingContext.rst).
+You can make richer decisions by emitting your own metrics from the deployment. Implement `record_autoscaling_stats()` to return a `dict[str, float]`. Ray Serve will surface these values in the [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst).
 
 ```python
 @serve.deployment(autoscaling_config={...})
@@ -510,7 +510,7 @@ The `record_autoscaling_stats()` method can be either synchronous or asynchronou
 In your policy, access custom metrics via:
 
 * **`ctx.raw_metrics[metric_name]`** — A mapping of replica IDs to lists of raw metric values.
-  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst#ray.serve.config.AutoscalingConfig.look_back_period_s) (the sliding window size) and `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S` (the metric recording interval).
+  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S` (the metric recording interval).
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 > Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.

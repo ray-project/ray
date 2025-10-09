@@ -1,6 +1,7 @@
 import json
 import logging
 import warnings
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -16,6 +17,9 @@ from ray._common.pydantic_compat import (
     validator,
 )
 from ray._common.utils import import_attr
+
+# Import types needed for AutoscalingContext
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -32,6 +36,71 @@ from ray.serve._private.utils import validate_ssl_config
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class AutoscalingContext:
+    """Rich context provided to custom autoscaling policies.
+
+    This class provides comprehensive information about a deployment's current state,
+    metrics, and configuration that can be used by custom autoscaling policies to
+    make intelligent scaling decisions.
+
+    Attributes:
+        deployment_id: Unique identifier for the deployment.
+        deployment_name: Name of the deployment.
+        app_name: Name of the application containing this deployment.
+        current_num_replicas: Current number of running replicas.
+        target_num_replicas: Target number of replicas set by the autoscaler.
+        running_replicas: List of currently running replica IDs.
+        total_num_requests: Total number of requests across all replicas.
+        queued_requests: Number of requests currently queued.
+        requests_per_replica: Mapping of replica ID to number of requests.
+        aggregated_metrics: Time-weighted averages of custom metrics per replica.
+        raw_metrics: Raw custom metric values per replica.
+        capacity_adjusted_min_replicas: Minimum replicas adjusted for cluster capacity.
+        capacity_adjusted_max_replicas: Maximum replicas adjusted for cluster capacity.
+        policy_state: Persistent state dictionary for the autoscaling policy.
+        last_scale_up_time: Timestamp of last scale-up action.
+        last_scale_down_time: Timestamp of last scale-down action.
+        current_time: Current timestamp.
+        config: Autoscaling configuration for this deployment.
+    """
+
+    # Deployment information
+    deployment_id: DeploymentID
+    deployment_name: str
+    app_name: Optional[str]
+
+    # Current state
+    current_num_replicas: int
+    target_num_replicas: int
+    running_replicas: List[ReplicaID]
+
+    # Built-in metrics
+    total_num_requests: float
+    queued_requests: Optional[float]
+    requests_per_replica: Dict[ReplicaID, float]
+
+    # Custom metrics
+    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
+    raw_metrics: Dict[str, Dict[ReplicaID, List[float]]]
+
+    # Capacity and bounds
+    capacity_adjusted_min_replicas: int
+    capacity_adjusted_max_replicas: int
+
+    # Policy state
+    policy_state: Dict[str, Any]
+
+    # Timing
+    last_scale_up_time: Optional[float]
+    last_scale_down_time: Optional[float]
+    current_time: Optional[float]
+
+    # Config
+    config: Optional[Any]
 
 
 @PublicAPI(stability="alpha")

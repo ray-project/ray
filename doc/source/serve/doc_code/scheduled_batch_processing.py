@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 from ray import serve
-from ray.serve._private.autoscaling_state import AutoscalingContext
+from ray.serve.config import AutoscalingContext
 from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
 
 

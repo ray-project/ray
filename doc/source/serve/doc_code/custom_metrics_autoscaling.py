@@ -3,7 +3,7 @@ import time
 from typing import Dict, Any
 
 from ray import serve
-from ray.serve._private.autoscaling_state import AutoscalingContext
+from ray.serve.config import AutoscalingContext
 
 
 def custom_metrics_autoscaling_policy(
