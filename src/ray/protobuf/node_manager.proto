@@ -417,8 +417,7 @@ service NodeManagerService {
   rpc CancelLeasesWithResourceShapes(CancelLeasesWithResourceShapesRequest)
       returns (CancelLeasesWithResourceShapesReply);
   // Request a worker from the raylet.
-  // Failure: Does retry if request to remote raylet fails. Just logs warning if request
-  // to local raylet fails.
+  // Failure: Retries, it's idempotent.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Request to prestart workers.
   // Failure: Shouldn't fail because always sends to local raylet. Has a log on failure to
@@ -472,10 +471,10 @@ service NodeManagerService {
       returns (ResizeLocalResourceInstancesReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
-  // Failure: TODO: This needs to handle network failure
+  // Failure: Retries, it's idempotent.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Pin the provided object IDs.
-  // Failure: Always to local raylet should never fail.
+  // Failure: Retries, it's idempotent.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.
   // Failure: For observability, periodically called so failure is ok.
