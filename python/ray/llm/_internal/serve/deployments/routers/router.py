@@ -524,7 +524,7 @@ class OpenAiIngress(DeploymentProtocol):
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
-            gen = self._get_response(body=body, call_method=call_method.value)
+            gen = self._get_response(body=body, call_method=call_method)
 
             # In streaming with batching enabled, this first response can be a list of chunks.
             initial_response, gen = await _peek_at_generator(gen)
