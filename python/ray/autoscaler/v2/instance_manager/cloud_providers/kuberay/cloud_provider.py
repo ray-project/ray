@@ -240,7 +240,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                 * num_of_hosts
             )
 
-            # The `replicas` field in worker group specs can be updated by users at anytime.
+            # The `replicas` field in worker group specs can be updated by users at any time.
             # However, users should only increase the field (manually upscaling the worker group), not decrease it,
             # because downscaling the worker group requires specifying which workers to delete explicitly in the `workersToDelete` field.
             # Since we don't have a way to enforce this, we need to fix unexpected decreases on the `replicas` field by using actual observations.
@@ -309,12 +309,12 @@ class KubeRayProvider(ICloudInstanceProvider):
         raycluster = self.ray_cluster
 
         # Collect patches for replica counts.
-        for node_type, target_replicas in scale_request.desired_num_workers.items():
+        for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
             group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
-            # the target_replicas from the scale request is multiplied by numOfHosts, so we need to divide it back.
-            target_replicas = target_replicas // group_num_of_hosts
+            # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
+            target_replicas = num_workers // group_num_of_hosts
             # Cap the replica count to maxReplicas.
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
