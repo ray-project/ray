@@ -174,7 +174,7 @@ KAI scheduler deployment comes with several predefined priority classes:
 - build (100) - use for build/interactive workloads (non-preemptible)
 - inference (125) - use for inference workloads (non-preemptible)
 
-You can submit the same workload above with a specific priority. Here is an example how to turn the above example into a build class workload
+You can submit the same workload above with a specific priority. This example modifies the above example into a build class workload:
 
 ```yaml
 apiVersion: ray.io/v1
