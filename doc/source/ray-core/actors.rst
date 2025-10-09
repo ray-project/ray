@@ -414,7 +414,7 @@ Ray supports Python type hints for both remote functions and actors, enabling be
     obj_ref: ray.ObjectRef[int] = counter.increment.remote()
     print(ray.get(obj_ref))
 
-For more details and advanced patterns, see :doc:`Type hints in Ray <core-type-hint>`.
+For more details and advanced patterns, see :ref:`Type hints in Ray <core-type-hint>`.
 
 
 Generators
