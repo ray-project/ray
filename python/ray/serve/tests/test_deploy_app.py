@@ -6,7 +6,6 @@ import httpx
 import pytest
 
 import ray
-import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID, DeploymentStatus
