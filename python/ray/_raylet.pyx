@@ -860,16 +860,22 @@ cdef int prepare_fallback_strategy(
         list fallback_strategy,
         c_vector[unordered_map[c_string, c_string]] *fallback_strategy_vector) except -1:
 
+    cdef dict label_selector
+    cdef unordered_map[c_string, c_string] c_label_selector_map
+
     if fallback_strategy is None:
         return 0
 
-    cdef unordered_map[c_string, c_string] c_label_selector_map
-
-    for label_selector in fallback_strategy:
-        if not isinstance(label_selector, dict):
+    for strategy_dict in fallback_strategy:
+        if not isinstance(strategy_dict, dict):
             raise ValueError(
                 "Fallback strategy must be a list of dicts, "
-                f"but got list containing {type(label_selector)}")
+                f"but got list containing {type(strategy_dict)}")
+
+        label_selector = strategy_dict.get("label_selector")
+
+        if label_selector is not None and not isinstance(label_selector, dict):
+            raise ValueError("Invalid fallback strategy element: invalid 'label_selector'.")
 
         c_label_selector_map.clear()
         prepare_label_selector(label_selector, &c_label_selector_map)

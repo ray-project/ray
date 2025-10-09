@@ -105,8 +105,8 @@ def test_fallback_strategy(cluster_with_labeled_nodes):
 
     # Create a fallback strategy with multiple accelerator options.
     accelerator_fallbacks = [
-        {"ray.io/accelerator-type": "A100"},
-        {"ray.io/accelerator-type": "TPU"},
+        {"label_selector": {"ray.io/accelerator-type": "A100"}},
+        {"label_selector": {"ray.io/accelerator-type": "TPU"}},
     ]
 
     # Attempt to schedule the actor. The scheduler should fail to find a node with the
@@ -123,8 +123,8 @@ def test_infeasible_fallback_strategy(cluster_with_labeled_nodes):
     # Define an unsatisfiable label selector and fallback strategy.
     label_selector = {"ray.io/accelerator-type": "does-not-exist"}
     fallback_strategy = [
-        {"ray.io/accelerator-type": "does-not-exist-either"},
-        {"ray.io/accelerator-type": "also-nonexistant"},
+        {"label_selector": {"ray.io/accelerator-type": "does-not-exist-either"}},
+        {"label_selector": {"ray.io/accelerator-type": "also-nonexistant"}},
     ]
 
     # Attempt to schedule the actor, but it should timeout since none of
