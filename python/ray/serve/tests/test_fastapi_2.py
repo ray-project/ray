@@ -50,3 +50,9 @@ def test_root_path(ray_shutdown, app_root_path, serve_root_path):
     resp = httpx.get(url)
     scope_root_path = app_root_path or serve_root_path
     assert resp.json() == {"hello": scope_root_path}
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
