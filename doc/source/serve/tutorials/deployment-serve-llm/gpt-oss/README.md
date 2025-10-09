@@ -1,5 +1,10 @@
 # Deploy gpt-oss
 
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fgpt-oss"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/gpt-oss" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 *gpt-oss* is a family of open-source models designed for general-purpose language understanding and generation. The 20B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency. This makes it well-suited for local or specialized use cases. The larger 120B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
 
 For more information, see the [gpt-oss collection](https://huggingface.co/collections/openai/gpt-oss-68911959590a1634ba11c7a4).
@@ -88,7 +93,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ### Dependencies
 
-gpt-oss integration is available starting from `ray>=2.49.0` and `vllm==0.10.1`.
+gpt-oss integration is available starting from `ray>=2.49.0` and `vllm==0.10.2`.
 
 ```bash
 pip install "ray[serve,llm]==2.49.2"
@@ -204,7 +209,7 @@ Create your Anyscale service configuration in a new `service.yaml` file and refe
 ```yaml
 # service.yaml
 name: deploy-gpt-oss
-containerfile: ./Dockerfile # Build Ray Serve LLM with vllm==0.10.2
+containerfile: ./Dockerfile # Build Ray Serve LLM with vllm==0.10.1
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
@@ -362,7 +367,7 @@ response = client.chat.completions.create(
 openai_harmony.HarmonyError: error downloading or loading vocab file: failed to download or load vocab
 ```
 
-The `openai_harmony` library needs the *tiktoken* encoding files and tries to fetch them from OpenAI's public host. Common causes includes:
+The `openai_harmony` library needs the *tiktoken* encoding files and tries to fetch them from OpenAI's public host. Common causes include:
 - Corporate firewall or proxy blocks `openaipublic.blob.core.windows.net`. You may need to whitelist this domain.
 - Intermittent network issues.
 - Race conditions when multiple processes try to download to the same cache. This can happen when [deploying multiple models at the same time](https://github.com/openai/harmony/pull/41).
@@ -379,9 +384,9 @@ export TIKTOKEN_ENCODINGS_BASE=${PWD}/tiktoken_encodings
 ```console
 Value error, The checkpoint you are trying to load has model type `gpt_oss` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.
 ```
-Older vLLM and Transformers versions don't register `gpt_oss`, raising an error when vLLM hands off to Transformers. Upgrade **vLLM ≥ 0.10.2** and let your package resolver such as `pip` handle the other dependencies.
+Older vLLM and Transformers versions don't register `gpt_oss`, raising an error when vLLM hands off to Transformers. Upgrade **vLLM ≥ 0.10.1** and let your package resolver such as `pip` handle the other dependencies.
 ```bash
-pip install -U "vllm>=0.10.2"
+pip install -U "vllm>=0.10.1"
 ```
 
 ---
