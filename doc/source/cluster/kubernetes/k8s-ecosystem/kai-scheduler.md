@@ -169,7 +169,7 @@ In Kubernetes, assigning different priorities to workloads ensures efficient res
 
 KAI scheduler deployment comes with several predefined priority classes:
 
-- train (50) - can be used for preemptible training workloads
+- train (50) - use for preemptible training workloads
 - build-preemptible (75) - can be used for preemptible build/interactive workloads
 - build (100) - can be used for build/interactive workloads (non-preemptible)
 - inference (125) - can be used for inference workloads (non-preemptible)
