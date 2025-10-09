@@ -22,6 +22,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
+from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
 from ray.llm._internal.serve.callbacks.custom_initialization import (
     Callback,
@@ -289,6 +290,11 @@ class LLMConfig(BaseModelExtended):
         if self._callback_instance is not None:
             return self._callback_instance
 
+        engine_config = self.get_engine_config()
+        assert engine_config is not None
+        pg = engine_config.get_or_create_pg()
+        runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
         # Create new instance
         if isinstance(self.callback_config.callback_class, str):
             callback_class = load_class(self.callback_config.callback_class)
@@ -297,6 +303,12 @@ class LLMConfig(BaseModelExtended):
 
         self._callback_instance = callback_class(
             raise_error_on_callback=self.callback_config.raise_error_on_callback,
+            llm_config=self,
+            ctx_kwargs={
+                "worker_node_download_model": NodeModelDownloadable.MODEL_AND_TOKENIZER,
+                "placement_group": pg,
+                "runtime_env": runtime_env,
+            },
             **self.callback_config.callback_kwargs,
         )
 

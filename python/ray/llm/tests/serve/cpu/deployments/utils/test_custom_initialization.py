@@ -6,7 +6,6 @@ import pytest
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.callbacks.custom_initialization import (
     Callback,
-    CallbackCtx,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
@@ -15,28 +14,29 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
 
 
 class TestingCallback(Callback):
-    def __init__(self, raise_error_on_callback: bool = True, **kwargs):
-        super().__init__(raise_error_on_callback, **kwargs)
+    def __init__(self, llm_config, raise_error_on_callback: bool = True, **kwargs):
+        super().__init__(llm_config, raise_error_on_callback, **kwargs)
         self.before_init_called = False
         self.after_init_called = False
         self.before_init_ctx = None
         self.after_init_ctx = None
         assert kwargs["kwargs_test_key"] == "kwargs_test_value"
 
-    async def on_before_node_init(self, ctx: CallbackCtx) -> None:
+    async def on_before_node_init(self) -> None:
         assert (
-            ctx.worker_node_download_model == NodeModelDownloadable.MODEL_AND_TOKENIZER
+            self.ctx.worker_node_download_model
+            == NodeModelDownloadable.MODEL_AND_TOKENIZER
         )
-        ctx.worker_node_download_model = NodeModelDownloadable.NONE
+        self.ctx.worker_node_download_model = NodeModelDownloadable.NONE
 
-        ctx.custom_data["ctx_test_key"] = "ctx_test_value"
+        self.ctx.custom_data["ctx_test_key"] = "ctx_test_value"
         self.before_init_called = True
 
-    async def on_after_node_init(self, ctx: CallbackCtx) -> None:
-        assert ctx.worker_node_download_model == NodeModelDownloadable.NONE
+    async def on_after_node_init(self) -> None:
+        assert self.ctx.worker_node_download_model == NodeModelDownloadable.NONE
 
         self.after_init_called = True
-        assert ctx.custom_data["ctx_test_key"] == "ctx_test_value"
+        assert self.ctx.custom_data["ctx_test_key"] == "ctx_test_value"
 
 
 class TestCustomInitialization:
@@ -100,10 +100,10 @@ class TestCustomInitialization:
             def __init__(self, **kwargs):
                 pass
 
-            async def on_before_node_init(self, ctx):
+            async def on_before_node_init(self):
                 pass
 
-            async def on_after_node_init(self, ctx):
+            async def on_after_node_init(self):
                 pass
 
         # Should raise an error when trying to create callback

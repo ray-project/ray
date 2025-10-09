@@ -17,7 +17,6 @@ class CallbackCtx:
     Callbacks can read and modify fields as needed.
     """
 
-    llm_config: "LLMConfig"
     """The LLM configuration object containing model settings and parameters."""
     worker_node_download_model: Optional["NodeModelDownloadable"] = None
     """Model download configuration for worker nodes. Used to specify how
@@ -44,28 +43,36 @@ class Callback:
     for LLMEngine to be called in node_initialization.
     """
 
-    def __init__(self, raise_error_on_callback: bool = True, **kwargs):
+    def __init__(
+        self,
+        llm_config: "LLMConfig",
+        raise_error_on_callback: bool = True,
+        ctx_kwargs: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ):
         self.raise_error_on_callback = raise_error_on_callback
         self.kwargs = kwargs
+        self.llm_config = llm_config
 
-    async def on_before_node_init(self, ctx: CallbackCtx) -> Awaitable[None]:
+        # Create and store CallbackCtx internally using ctx_kwargs
+        ctx_kwargs = ctx_kwargs or {}
+        self.ctx = CallbackCtx(**ctx_kwargs)
+
+    async def on_before_node_init(self) -> Awaitable[None]:
         """Called before node initialization begins."""
         pass
 
-    async def on_after_node_init(self, ctx: CallbackCtx) -> Awaitable[None]:
+    async def on_after_node_init(self) -> Awaitable[None]:
         """Called after node initialization completes."""
         pass
 
     @staticmethod
-    async def run_callback(
-        method_name: str, callback: "Callback", ctx: CallbackCtx
-    ) -> Awaitable[None]:
+    async def run_callback(method_name: str, callback: "Callback") -> Awaitable[None]:
         """Run a callback method either synchronously or asynchronously.
 
         Args:
             method_name: The name of the method to call on the callback
             callback: The callback instance to call the method on
-            ctx: The callback context to pass to the method
 
         Raises:
             AttributeError: If the method doesn't exist on the callback
@@ -84,10 +91,10 @@ class Callback:
         try:
             # Check if the method is a coroutine function
             if inspect.iscoroutinefunction(method):
-                await method(ctx)
+                await method()
             else:
                 # For sync methods, run them in the event loop
-                method(ctx)
+                method()
         except Exception as e:
             if callback.raise_error_on_callback:
                 raise Exception(
@@ -113,10 +120,11 @@ class CallbackConfig:
 
 class TestingCallback(Callback):
     def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         print("TestingCallback __init__ kwargs: ", kwargs)
 
-    def on_before_node_init(self, ctx: CallbackCtx):
+    def on_before_node_init(self):
         print("TestingCallback on_before_node_init")
 
-    def on_after_node_init(self, ctx: CallbackCtx):
+    def on_after_node_init(self):
         print("TestingCallback on_after_node_init")
