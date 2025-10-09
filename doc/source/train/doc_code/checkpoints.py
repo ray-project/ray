@@ -504,6 +504,7 @@ def train_fn(config):
 
 # __validate_fn_simple_start__
 
+
 def validate_fn(checkpoint, config):
     # Load the checkpoint
     model = ...
@@ -521,6 +522,7 @@ def validate_fn(checkpoint, config):
             outputs = model(images)
             total_accuracy += (outputs.argmax(1) == labels).sum().item()
     return {"score": total_accuracy / len(dataset)}
+
 
 # __validate_fn_simple_end__
 
@@ -560,7 +562,9 @@ def eval_only_train_fn(config_dict):
     ray.train.report(
         metrics={"score": mean_valid_loss.compute().item()},
         checkpoint=ray.train.Checkpoint(
-            ray.train.get_context().get_storage().build_checkpoint_path_from_name("placeholder")
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name("placeholder")
         ),
         checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD,
     )
@@ -570,7 +574,10 @@ def validate_fn(checkpoint, config):
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_fn,
         train_loop_config={"checkpoint": checkpoint},
-        scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
+        scaling_config=ray.train.ScalingConfig(
+            num_workers=2, use_gpu=True, accelerator_type="A10G"
+        ),
+        # User weaker GPUs for validation
         datasets={"validation": config["dataset"]},
     )
     result = trainer.fit()
@@ -663,6 +670,12 @@ def run_trainer():
     trainer = ray.train.torch.TorchTrainer(
         train_func,
         train_loop_config={"validation_dataset": validation_dataset},
+        scaling_config=ray.train.ScalingConfig(
+            num_workers=2,
+            use_gpu=True,
+            # Use powerful GPUs for training
+            accelerator_type="A100",
+        ),
         datasets={"train": train_dataset},
     )
     return trainer.fit()

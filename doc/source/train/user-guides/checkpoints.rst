@@ -395,6 +395,28 @@ which can contain information such as the validation dataset.
     :start-after: __validate_fn_report_start__
     :end-before: __validate_fn_report_end__
 
+Because training generally has a higher GPU memory requirement than inference, you can set different
+resource requirements for training and validation e.g. A100 for training and A10G for validation as
+shown above.
+
+
+Checkpoint Metrics Lifecycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is what happens when you ``report`` a checkpoint with metrics and a ``validate_fn``:
+
+1. Report a checkpoint with some initial metrics, such as training loss.
+2. Ray Train asynchronously runs ``validate_fn`` with that checkpoint in a new Ray task.
+3. When that validation task completes, Ray Train associates the metrics returned by ``validate_fn``
+   with that checkpoint.
+4. After training is done, you can access checkpoints and their associated metrics via the
+   :class:`~ray.train.Result` object. See :ref:`train-inspect-results` for more details.
+
+.. figure:: ../images/checkpoint_metrics_lifecycle.png
+
+    How checkpoint metrics get populated during training and accessed after training.
+
+
 Using checkpoints after training
 --------------------------------
 
