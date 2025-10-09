@@ -159,6 +159,7 @@
 
 # Ray Train distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_gpu_4x4
+  python: "3.10"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -205,6 +206,7 @@
   alert: default
 
 - name: air_benchmark_tune_torch_mnist
+  python: "3.10"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -235,6 +237,7 @@
 
 # Ray Train distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_gpu_4x4
+  python: "3.10"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -287,6 +290,7 @@
 
 # Test additional CPU nodes for preprocessing.
 - name: air_example_dreambooth_finetuning
+  python: "3.10"
   group: AIR examples
   working_dir: air_examples/dreambooth
 
@@ -308,6 +312,7 @@
   # variations: A10G not available on GCE, yet.
 
 - name: air_example_dreambooth_finetuning_lora
+  python: "3.10"
   group: AIR examples
   working_dir: air_examples/dreambooth
 
@@ -327,6 +332,7 @@
     artifact_path: /tmp/artifacts/example_out.jpg
 
 - name: air_example_gptj_deepspeed_fine_tuning
+  python: "3.10"
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
   frequency: weekly
@@ -342,6 +348,7 @@
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
+  python: "3.10"
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
   frequency: weekly
@@ -359,6 +366,7 @@
   # variations: TODO(jungong): add GCP variation.
 
 - name: air_example_vicuna_13b_lightning_deepspeed_finetuning
+  python: "3.10"
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
   frequency: weekly
@@ -1600,6 +1608,7 @@
 ########################
 
 - name: training_ingest_benchmark-task=image_classification
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1736,6 +1745,7 @@
         cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
 
 - name: training_ingest_benchmark-task=recsys
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1771,6 +1781,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
 - name: train_multinode_persistence
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/multinode_persistence
 
@@ -1810,6 +1821,7 @@
   alert: default
 
 - name: train_colocate_trainer
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
@@ -1830,7 +1842,24 @@
   alert: default
 
 
+- name: torch_local_mode
+  group: Train tests
+  working_dir: train_tests/local_mode
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_gpu_2x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python torch_local_mode_launcher.py
+
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
@@ -2209,6 +2238,7 @@
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 - name: microbenchmark
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2236,6 +2266,7 @@
       python: "3.12"
 
 - name: compiled_graphs
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2310,6 +2341,7 @@
     script: python experimental/gpu_object_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2395,6 +2427,7 @@
         num_nodes: 5
 
 - name: stress_test_state_api_scale
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2442,6 +2475,7 @@
 
 
 - name: shuffle_20gb_with_state_api
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2468,6 +2502,7 @@
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
 - name: stress_test_many_tasks
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2508,6 +2543,7 @@
         frequency: manual
 
 - name: stress_test_dead_actors
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2551,6 +2587,7 @@
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
 - name: threaded_actors_stress_test
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2610,6 +2647,7 @@
 #         timeout: 600
 
 - name: stress_test_many_runtime_envs
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2730,6 +2768,7 @@
 #
 
 - name: pg_autoscaling_regression_test
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2752,6 +2791,7 @@
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 

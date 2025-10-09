@@ -415,6 +415,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Byte size of blocks in the external inqueue",
         metrics_group=MetricsGroup.OUTPUTS,
     )
+    num_external_outqueue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in the external outqueue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    num_external_outqueue_bytes: int = metric_field(
+        default=0,
+        description="Byte size of blocks in the external outqueue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
 
     # === Tasks-related metrics ===
     num_tasks_submitted: int = metric_field(
@@ -983,6 +993,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 bucket_index = find_bucket_index(histogram_buckets_s, block_time_delta)
                 # Add the total number of blocks to the bucket
                 self.block_completion_time[bucket_index] += task_info.num_outputs
+
+        # NOTE: This is used for Issue Detection
+        self._op_task_duration_stats.add_duration(task_time_delta)
 
         self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
         inputs = self._running_tasks[task_index].inputs

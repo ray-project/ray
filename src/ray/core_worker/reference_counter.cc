@@ -597,6 +597,24 @@ bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
+StatusSet<StatusT::NotFound> ReferenceCounter::HasOwner(
+    const std::vector<ObjectID> &object_ids) const {
+  absl::MutexLock lock(&mutex_);
+  std::ostringstream objects_missing_owners;
+  bool missing_owner = false;
+  for (const auto &object_id : object_ids) {
+    if (object_id_refs_.find(object_id) == object_id_refs_.end()) {
+      objects_missing_owners << object_id << ", ";
+      missing_owner = true;
+    }
+  }
+  if (missing_owner) {
+    return StatusT::NotFound(absl::StrFormat("Owners not found for objects [%s].",
+                                             objects_missing_owners.str()));
+  }
+  return StatusT::OK();
+}
+
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address) const {
   absl::MutexLock lock(&mutex_);
@@ -942,7 +960,7 @@ ReferenceCounter::GetAllReferenceCounts() const {
 
 void ReferenceCounter::PopAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
-    ReferenceCounter::ReferenceTableProto *proto,
+    ReferenceTableProto *proto,
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   ReferenceProtoTable borrowed_refs;
@@ -1159,8 +1177,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
     // Unsubscribe the object once the message is published.
-    RAY_CHECK(object_info_subscriber_->Unsubscribe(
-        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr, object_id.Binary()));
+    object_info_subscriber_->Unsubscribe(
+        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr, object_id.Binary());
   };
 
   // If the borrower is failed, this callback will be called.

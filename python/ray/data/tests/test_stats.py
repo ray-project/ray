@@ -133,6 +133,8 @@ def gen_expected_metrics(
             "'rows_outputs_of_finished_tasks': N",
             "'num_external_inqueue_blocks': Z",
             "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -211,6 +213,8 @@ def gen_expected_metrics(
             "'rows_outputs_of_finished_tasks': Z",
             "'num_external_inqueue_blocks': Z",
             "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -792,6 +796,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      rows_outputs_of_finished_tasks: N,\n"
         "      num_external_inqueue_blocks: Z,\n"
         "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -927,6 +933,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      rows_outputs_of_finished_tasks: N,\n"
         "      num_external_inqueue_blocks: Z,\n"
         "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -1017,6 +1025,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            rows_outputs_of_finished_tasks: N,\n"
         "            num_external_inqueue_blocks: Z,\n"
         "            num_external_inqueue_bytes: Z,\n"
+        "            num_external_outqueue_blocks: Z,\n"
+        "            num_external_outqueue_bytes: Z,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
@@ -2070,26 +2080,25 @@ for epoch in range({num_epochs}):
 def test_op_metrics_logging():
     logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
     with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [
-            canonicalize(call.args[0], canonicalize_histogram_values=True)
-            for call in mock_logger.call_args_list
-        ]
-        input_str = (
-            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False, canonicalize_histogram_values=True)
-        )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
-        # InputDataBuffer has no inqueue, manually set to 0
-        map_str = (
-            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES
+        ray.data.range(100).map_batches(lambda x: x).take_all()
+        logs = [canonicalize(call.args[0], canonicalize_histogram_values=True) for call in mock_logger.call_args_list]
 
-        # Check these logs are correct. Although we don't necessarily care exactly which line they are logged,
-        # we add this assert to make these tests much easier to debug in the future.
-        # pytest will print out the difference between the expected and actual logs,
-        assert input_str == logs[5]
-        assert map_str == logs[6]
+        def replace(s: str):
+            return s.replace(
+                "'num_external_outqueue_blocks': Z", "'num_external_outqueue_blocks': N"
+            ).replace(
+                "'num_external_outqueue_bytes': Z", "'num_external_outqueue_bytes': N"
+            )
+
+        input_str = replace(
+            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
+            + gen_expected_metrics(is_map=False)
+        )
+        # InputDataBuffer has no inqueue, manually set to 0
+        map_str = replace(
+            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator Metrics:\n" + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES
+        )
         # Check that these strings are logged exactly once.
         assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
         assert sum([log == map_str for log in logs]) == 1, (logs, map_str)

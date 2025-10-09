@@ -14,7 +14,6 @@
 
 #include "ray/gcs/gcs_server.h"
 
-#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -291,10 +290,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       "GCSServer.deadline_timer.metrics_report");
 
   periodical_runner_->RunFnPeriodically(
-      [this] {
-        RAY_LOG(INFO) << GetDebugState();
-        PrintAsioStats();
-      },
+      [this] { PrintDebugState(); },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
 
@@ -302,12 +298,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
 
   periodical_runner_->RunFnPeriodically(
-      [this] {
-        DumpDebugStateToFile();
-        TryGlobalGC();
-      },
-      /*ms*/ RayConfig::instance().debug_dump_period_milliseconds(),
-      "GCSServer.deadline_timer.debug_state_dump");
+      [this] { TryGlobalGC(); },
+      /*ms*/ RayConfig::instance().gcs_global_gc_interval_milliseconds(),
+      "GCSServer.deadline_timer.gcs_global_gc");
 
   is_started_ = true;
 }
@@ -882,38 +875,17 @@ void GcsServer::RecordMetrics() const {
   gcs_job_manager_->RecordMetrics();
 }
 
-void GcsServer::DumpDebugStateToFile() const {
-  std::fstream fs;
-  fs.open(config_.log_dir + "/debug_state_gcs.txt",
-          std::fstream::out | std::fstream::trunc);
-  fs << GetDebugState() << "\n\n";
-  fs << io_context_provider_.GetDefaultIOContext().stats().StatsString();
-  fs.close();
-}
+void GcsServer::PrintDebugState() const {
+  RAY_LOG(INFO) << "Gcs Debug state:\n\n"
+                << gcs_node_manager_->DebugString() << "\n\n"
+                << gcs_actor_manager_->DebugString() << "\n\n"
+                << gcs_resource_manager_->DebugString() << "\n\n"
+                << gcs_placement_group_manager_->DebugString() << "\n\n"
+                << gcs_publisher_->DebugString() << "\n\n"
+                << runtime_env_manager_->DebugString() << "\n\n"
+                << gcs_task_manager_->DebugString() << "\n\n"
+                << gcs_autoscaler_state_manager_->DebugString() << "\n\n";
 
-std::string GcsServer::GetDebugState() const {
-  std::ostringstream stream;
-  stream << "Gcs Debug state:\n\n"
-         << gcs_node_manager_->DebugString() << "\n\n"
-         << gcs_actor_manager_->DebugString() << "\n\n"
-         << gcs_resource_manager_->DebugString() << "\n\n"
-         << gcs_placement_group_manager_->DebugString() << "\n\n"
-         << gcs_publisher_->DebugString() << "\n\n"
-         << runtime_env_manager_->DebugString() << "\n\n"
-         << gcs_task_manager_->DebugString() << "\n\n"
-         << gcs_autoscaler_state_manager_->DebugString() << "\n\n";
-  return stream.str();
-}
-
-RedisClientOptions GcsServer::GetRedisClientOptions() {
-  return RedisClientOptions{config_.redis_address,
-                            config_.redis_port,
-                            config_.redis_username,
-                            config_.redis_password,
-                            config_.enable_redis_ssl};
-}
-
-void GcsServer::PrintAsioStats() {
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -926,6 +898,14 @@ void GcsServer::PrintAsioStats() {
                     << io_context->GetIoService().stats().StatsString() << "\n\n";
     }
   }
+}
+
+RedisClientOptions GcsServer::GetRedisClientOptions() {
+  return RedisClientOptions{config_.redis_address,
+                            config_.redis_port,
+                            config_.redis_username,
+                            config_.redis_password,
+                            config_.enable_redis_ssl};
 }
 
 void GcsServer::TryGlobalGC() {

@@ -1,7 +1,10 @@
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import ANY, call, patch
+
+import pytest
 
 from ray.llm._internal.common.utils.upload_utils import upload_model_files
 
@@ -92,3 +95,7 @@ def test_upload_custom_model(mock_copy_files):
             source_filesystem=ANY,
             destination_filesystem=ANY,
         )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
