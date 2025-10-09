@@ -202,10 +202,6 @@ class DataOpTask(OpTask):
 
         return bytes_read
 
-    @property
-    def pending_block_pair(self):
-        return self._pending_block_pair
-
 
 class MetadataOpTask(OpTask):
     """Represents an OpTask that only handles metadata, instead of Block data."""
