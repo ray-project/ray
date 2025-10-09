@@ -246,6 +246,23 @@ class RunConfig:
                 "https://github.com/ray-project/ray/issues/49454"
             )
 
+        # TODO: Create a separate V2 CheckpointConfig class.
+        if not isinstance(self.checkpoint_config, CheckpointConfig):
+            raise ValueError(
+                f"Invalid `CheckpointConfig` type: {self.checkpoint_config.__class__}. "
+                "Use `ray.train.CheckpointConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        if not isinstance(self.failure_config, FailureConfig):
+            raise ValueError(
+                f"Invalid `FailureConfig` type: {self.failure_config.__class__}. "
+                "Use `ray.train.FailureConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
     @cached_property
     def storage_context(self) -> StorageContext:
         return StorageContext(
