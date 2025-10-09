@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from ci.raydepsets.tests.utils import copy_data_to_tmpdir
-from ci.raydepsets.workspace import Workspace, _substitute_build_args, BuildArgSet
+from ci.raydepsets.tests.utils import copy_data_to_tmpdir, get_depset_by_name
+from ci.raydepsets.workspace import BuildArgSet, Workspace, _substitute_build_args
 
 
 def test_workspace_init():
@@ -66,6 +66,15 @@ depsets:
         with pytest.raises(KeyError):
             workspace = Workspace(dir=tmpdir)
             workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+
+
+def test_parse_pre_hooks():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+        pre_hook_depset = get_depset_by_name(config.depsets, "pre_hook_test_depset")
+        assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh"]
 
 
 if __name__ == "__main__":

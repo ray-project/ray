@@ -1,21 +1,38 @@
 import asyncio
 import bisect
+import heapq
 import logging
+import statistics
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Callable, DefaultDict, Dict, Hashable, List, Optional
+from dataclasses import dataclass
+from itertools import chain
+from typing import (
+    Awaitable,
+    Callable,
+    DefaultDict,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
+from ray.serve._private.common import TimeStampedValue
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+
+QUEUED_REQUESTS_KEY = "queued"
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass
 class _MetricsTask:
-    task_func: Callable
+    task_func: Union[Callable, Callable[[], Awaitable]]
     interval_s: float
 
 
@@ -49,6 +66,7 @@ class MetricsPusher:
         """Periodically runs `task_func` every `interval_s` until `stop_event` is set.
 
         If `task_func` raises an error, an exception will be logged.
+        Supports both sync and async task functions.
         """
 
         wait_for_stop_event = asyncio.create_task(self.stop_event.wait())
@@ -57,7 +75,12 @@ class MetricsPusher:
                 return
 
             try:
-                self._tasks[name].task_func()
+                task_func = self._tasks[name].task_func
+                # Check if the function is a coroutine function
+                if asyncio.iscoroutinefunction(task_func):
+                    await task_func()
+                else:
+                    task_func()
             except Exception as e:
                 logger.exception(f"Failed to run metrics task '{name}': {e}")
 
@@ -75,13 +98,18 @@ class MetricsPusher:
     def register_or_update_task(
         self,
         name: str,
-        task_func: Callable,
+        task_func: Union[Callable, Callable[[], Awaitable]],
         interval_s: int,
     ) -> None:
-        """Register a task under the provided name, or update it.
+        """Register a sync or async task under the provided name, or update it.
 
         This method is idempotent - if a task is already registered with
         the specified name, it will update it with the most recent info.
+
+        Args:
+            name: Unique name for the task.
+            task_func: Either a sync function or async function (coroutine function).
+            interval_s: Interval in seconds between task executions.
         """
 
         self._tasks[name] = _MetricsTask(task_func, interval_s)
@@ -110,12 +138,6 @@ class MetricsPusher:
         self._async_tasks.clear()
 
 
-@dataclass(order=True)
-class TimeStampedValue:
-    timestamp: float
-    value: float = field(compare=False)
-
-
 class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
@@ -132,6 +154,7 @@ class InMemoryMetricsStore:
             timestamp: the unix epoch timestamp the metrics are
               collected at.
         """
+
         for name, value in data_points.items():
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
@@ -152,7 +175,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[float]:
+    ) -> List[TimeStampedValue]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -165,52 +188,311 @@ class InMemoryMetricsStore:
         )
         return datapoints[idx:]
 
-    def window_average(
-        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
+    def _aggregate_reduce(
+        self,
+        keys: Iterable[Hashable],
+        aggregate_fn: Callable[[Iterable[float]], float],
+    ) -> Tuple[Optional[float], int]:
+        """Reduce the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+            aggregate_fn: Function to apply across all float values, e.g., sum, max.
+
+        Returns:
+            A tuple of (float, int) where the first element is the aggregated value
+            and the second element is the number of valid keys used.
+            Returns (None, 0) if no valid keys have data.
+
+        Example:
+        Suppose the store contains:
+        >>> store = InMemoryMetricsStore()
+        >>> store.data.update({
+        ...     "a": [TimeStampedValue(0, 1.0), TimeStampedValue(1, 2.0)],
+        ...     "b": [],
+        ...     "c": [TimeStampedValue(0, 10.0)],
+        ... })
+
+        Using sum across keys:
+
+        >>> store._aggregate_reduce(keys=["a", "b", "c"], aggregate_fn=sum)
+        (13.0, 2)
+
+        Here:
+        - The aggregated value is 1.0 + 2.0 + 10.0 = 13.0
+        - Only keys "a" and "c" contribute values, so report_count = 2
+        """
+        valid_key_count = 0
+
+        def _values_generator():
+            """Generator that yields values from valid keys without storing them all in memory."""
+            nonlocal valid_key_count
+            for key in keys:
+                series = self.data.get(key, [])
+                if not series:
+                    continue
+
+                valid_key_count += 1
+                for timestamp_value in series:
+                    yield timestamp_value.value
+
+        # Create the generator and check if it has any values
+        values_gen = _values_generator()
+        try:
+            first_value = next(values_gen)
+        except StopIteration:
+            # No valid data found
+            return None, 0
+
+        # Apply aggregation to the generator (memory efficient)
+        aggregated_result = aggregate_fn(chain([first_value], values_gen))
+        return aggregated_result, valid_key_count
+
+    def get_latest(
+        self,
+        key: Hashable,
     ) -> Optional[float]:
-        """Perform a window average operation for metric `key`
+        """Get the latest value for a given key."""
+        if not self.data.get(key, None):
+            return None
+        return self.data[key][-1].value
+
+    def aggregate_min(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Find the min value across all timeseries values at the specified keys.
 
         Args:
-            key: the metric name.
-            window_start_timestamp_s: the unix epoch timestamp for the
-              start of the window. The computed average will use all datapoints
-              from this timestamp until now.
-            do_compact: whether or not to delete the datapoints that's
-              before `window_start_timestamp_s` to save memory. Default is
-              true.
+            keys: Iterable of keys to aggregate across.
         Returns:
-            The average of all the datapoints for the key on and after time
-            window_start_timestamp_s, or None if there are no such points.
+            A tuple of (float, int) where the first element is the min across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the min.
+            Returns (None, 0) if no valid keys have data.
         """
-        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
+        return self._aggregate_reduce(keys, min)
 
-        if do_compact:
-            self.data[key] = points_after_idx
-
-        if len(points_after_idx) == 0:
-            return
-        return sum(point.value for point in points_after_idx) / len(points_after_idx)
-
-    def max(
-        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
-    ):
-        """Perform a max operation for metric `key`.
+    def aggregate_max(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Find the max value across all timeseries values at the specified keys.
 
         Args:
-            key: the metric name.
-            window_start_timestamp_s: the unix epoch timestamp for the
-              start of the window. The computed average will use all datapoints
-              from this timestamp until now.
-            do_compact: whether or not to delete the datapoints that's
-              before `window_start_timestamp_s` to save memory. Default is
-              true.
+            keys: Iterable of keys to aggregate across.
         Returns:
-            Max value of the data points for the key on and after time
-            window_start_timestamp_s, or None if there are no such points.
+            A tuple of (float, int) where the first element is the max across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the max.
+            Returns (None, 0) if no valid keys have data.
         """
-        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
+        return self._aggregate_reduce(keys, max)
 
-        if do_compact:
-            self.data[key] = points_after_idx
+    def aggregate_sum(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Sum the entire set of timeseries values across the specified keys.
 
-        return max((point.value for point in points_after_idx), default=None)
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the sum across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the sum.
+            Returns (None, 0) if no valid keys have data.
+        """
+        return self._aggregate_reduce(keys, sum)
+
+    def aggregate_avg(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Average the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the mean across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the mean.
+            Returns (None, 0) if no valid keys have data.
+        """
+        return self._aggregate_reduce(keys, statistics.mean)
+
+    def timeseries_count(
+        self,
+        key: Hashable,
+    ) -> int:
+        """Count the number of values across all timeseries values at the specified keys."""
+        series = self.data.get(key, [])
+        if not series:
+            return 0
+        return len(series)
+
+
+def time_weighted_average(
+    step_series: List[TimeStampedValue],
+    window_start: Optional[float] = None,
+    window_end: Optional[float] = None,
+    last_window_s: float = 1.0,
+) -> Optional[float]:
+    """
+    Compute time-weighted average of a step function over a time interval.
+
+    Args:
+        step_series: Step function as list of (timestamp, value) points, sorted by time.
+            Values are right-continuous (constant until next change).
+        window_start: Start of averaging window (inclusive). If None, uses the start of the series.
+        window_end: End of averaging window (exclusive). If None, uses the end of the series.
+        last_window_s: when window_end is None, uses the last_window_s to compute the end of the window.
+    Returns:
+        Time-weighted average over the interval, or None if no data overlaps.
+    """
+    if not step_series:
+        return None
+
+    # Handle None values by using full timeseries bounds
+    if window_start is None:
+        window_start = step_series[0].timestamp
+    if window_end is None:
+        # Use timestamp after the last point to include the final segment
+        window_end = step_series[-1].timestamp + last_window_s
+
+    if window_end <= window_start:
+        return None
+
+    total_weighted_value = 0.0
+    total_duration = 0.0
+    current_value = 0.0  # Default if no data before window_start
+    current_time = window_start
+
+    # Process each segment that overlaps with the window
+    for point in step_series:
+        if point.timestamp <= window_start:
+            # Find the value at window_start (LOCF)
+            current_value = point.value
+            continue
+        if point.timestamp >= window_end:
+            break  # Beyond our window
+
+        # Add contribution of current segment
+        segment_end = min(point.timestamp, window_end)
+        duration = segment_end - current_time
+        if duration > 0:
+            total_weighted_value += current_value * duration
+            total_duration += duration
+
+        current_value = point.value
+        current_time = segment_end
+
+    # Add final segment if it extends to window_end
+    if current_time < window_end:
+        duration = window_end - current_time
+        total_weighted_value += current_value * duration
+        total_duration += duration
+
+    return total_weighted_value / total_duration if total_duration > 0 else None
+
+
+def merge_instantaneous_total(
+    replicas_timeseries: List[List[TimeStampedValue]],
+) -> List[TimeStampedValue]:
+    """
+    Merge multiple gauge time series (right-continuous, LOCF) into an
+    instantaneous total time series as a step function.
+
+    This approach treats each replica's gauge as right-continuous, last-observation-
+    carried-forward (LOCF), which matches gauge semantics. It produces an exact
+    instantaneous total across replicas without bias from arbitrary windowing.
+
+    Uses a k-way merge algorithm for O(n log k) complexity where k is the number
+    of timeseries and n is the total number of events.
+
+    Timestamps are rounded to 10ms precision (2 decimal places) and datapoints
+    with the same rounded timestamp are combined, keeping the most recent value.
+
+    Args:
+        replicas_timeseries: List of time series, one per replica. Each time series
+            is a list of TimeStampedValue objects sorted by timestamp.
+
+    Returns:
+        A list of TimeStampedValue representing the instantaneous total at event times.
+        Between events, the total remains constant (step function). Timestamps are
+        rounded to 10ms precision and duplicate timestamps are combined.
+    """
+    # Filter out empty timeseries
+    active_series = [series for series in replicas_timeseries if series]
+    if not active_series:
+        return []
+
+    # True k-way merge: heap maintains exactly k elements (one per series)
+    # Each element is (timestamp, replica_id, iterator)
+    merge_heap = []
+    current_values = [0.0] * len(active_series)  # Current value for each replica (LOCF)
+
+    # Initialize heap with first element from each series
+    for replica_idx, series in enumerate(active_series):
+        if series:  # Non-empty series
+            iterator = iter(series)
+            try:
+                first_point = next(iterator)
+                heapq.heappush(
+                    merge_heap,
+                    (first_point.timestamp, replica_idx, first_point.value, iterator),
+                )
+            except StopIteration:
+                pass
+
+    merged: List[TimeStampedValue] = []
+    running_total = 0.0
+
+    while merge_heap:
+        # Pop the earliest event (heap size stays ≤ k)
+        timestamp, replica_idx, value, iterator = heapq.heappop(merge_heap)
+
+        old_value = current_values[replica_idx]
+        current_values[replica_idx] = value
+        running_total += value - old_value
+
+        # Try to get the next point from this replica's series and push it back
+        try:
+            next_point: TimeStampedValue = next(iterator)
+            heapq.heappush(
+                merge_heap,
+                (next_point.timestamp, replica_idx, next_point.value, iterator),
+            )
+        except StopIteration:
+            pass  # This series is exhausted
+
+        # Only add a point if the total actually changed
+        if value != old_value:  # Equivalent to new_total != old_total
+            # Round timestamp to 10ms precision (2 decimal places)
+            rounded_timestamp = round(timestamp, 2)
+
+            # Check if we already have a point with this rounded timestamp
+            # If so, update its value; otherwise, add a new point
+            if merged and merged[-1].timestamp == rounded_timestamp:
+                # Update the last point's value since timestamps match
+                merged[-1] = TimeStampedValue(rounded_timestamp, running_total)
+            else:
+                # Add new point with rounded timestamp
+                merged.append(TimeStampedValue(rounded_timestamp, running_total))
+
+    return merged
+
+
+def merge_timeseries_dicts(
+    *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
+) -> DefaultDict[Hashable, List[TimeStampedValue]]:
+    """
+    Merge multiple time-series dictionaries using instantaneous merge approach.
+    """
+    merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+
+    for ts_dict in timeseries_dicts:
+        for key, ts in ts_dict.items():
+            merged[key].append(ts)
+
+    return {key: merge_instantaneous_total(ts_list) for key, ts_list in merged.items()}

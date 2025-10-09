@@ -35,11 +35,21 @@ steps:
     commands:
       - ./ci/lint/lint.sh pre_commit_pydoclint
 
-  - label: ":lint-roller: lint: {{matrix}}"
+  - label: ":lint-roller: python API: {{matrix}}"
     tags:
       - oss
-      - lint
-      - always
+      - python
+      - dashboard
+      - ray_client
+      - data
+      - serve
+      - ml
+      - tune
+      - train
+      - llm
+      - rllib
+      - rllib_gpu
+      - doc
     key: lint-medium
     instance_type: medium
     depends_on: docbuild

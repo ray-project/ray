@@ -223,7 +223,13 @@ class AutoscalingConfig(BaseModel):
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
     downscale_delay_s: NonNegativeFloat = Field(
-        default=600.0, description="How long to wait before scaling down replicas."
+        default=600.0,
+        description="How long to wait before scaling down replicas to a value greater than 0.",
+    )
+    # Optionally set for 1->0 transition
+    downscale_to_zero_delay_s: Optional[NonNegativeFloat] = Field(
+        default=None,
+        description="How long to wait before scaling down replicas from 1 to 0. If not set, the value of `downscale_delay_s` will be used.",
     )
     upscale_delay_s: NonNegativeFloat = Field(
         default=30.0, description="How long to wait before scaling up replicas."
@@ -233,11 +239,10 @@ class AutoscalingConfig(BaseModel):
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
-    _policy: AutoscalingPolicy = Field(default_factory=AutoscalingPolicy)
-
-    # This is to make `_policy` a normal field until its GA ready.
-    class Config:
-        underscore_attrs_are_private = True
+    policy: AutoscalingPolicy = Field(
+        default_factory=AutoscalingPolicy,
+        description="The autoscaling policy for the deployment. This option is experimental.",
+    )
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -285,23 +290,16 @@ class AutoscalingConfig(BaseModel):
         Import the policy if it's passed in as a string import path. Then cloudpickle
         the policy and set `serialized_policy_def` if it's empty.
         """
-        values = self.dict()
-        policy = values.get("_policy")
-
-        policy_name = None
-        if isinstance(policy, dict):
-            policy_name = policy.get("name")
+        policy = self.policy
+        policy_name = policy.name
 
         if isinstance(policy_name, Callable):
             policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
 
-        if not policy_name:
-            policy_name = DEFAULT_AUTOSCALING_POLICY_NAME
-
         if not self._serialized_policy_def:
             self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
 
-        self._policy = AutoscalingPolicy(name=policy_name)
+        self.policy = AutoscalingPolicy(name=policy_name)
 
     @classmethod
     def default(cls):

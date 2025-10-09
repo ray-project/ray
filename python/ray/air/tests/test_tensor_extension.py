@@ -14,6 +14,11 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    _are_contiguous_1d_views,
+    _concat_ndarrays,
+    _extension_array_concat_supported,
+    concat_tensor_arrays,
+    unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -715,7 +720,7 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
 
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
-    ta = ArrowTensorArray._concat_same_type([ta1, ta2])
+    ta = concat_tensor_arrays([ta1, ta2])
     assert len(ta) == a1.shape[0] + a2.shape[0]
     if a1.shape[1:] == a2.shape[1:]:
         if tensor_format == "v1":
@@ -753,8 +758,8 @@ def test_variable_shaped_tensor_array_chunked_concat(
     a2 = np.arange(np.prod(shape2)).reshape(shape2)
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
-    chunked_ta = ArrowTensorArray._chunk_tensor_arrays([ta1, ta2])
-    ta = ArrowTensorArray._concat_same_type(chunked_ta.chunks)
+    unified_arrs = unify_tensor_arrays([ta1, ta2])
+    ta = concat_tensor_arrays(unified_arrs)
     assert len(ta) == shape1[0] + shape2[0]
     assert isinstance(ta.type, ArrowVariableShapedTensorType)
     assert pa.types.is_struct(ta.type.storage_type)
@@ -798,6 +803,384 @@ def test_large_arrow_tensor_array(restore_data_context, tensor_format):
         assert len(ta) == 4000
         for arr in ta:
             assert np.asarray(arr).shape == (1000, 550)
+
+
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+def test_tensor_array_string_tensors_simple(restore_data_context, tensor_format):
+    """Simple test for fixed-shape string tensor arrays with pandas/arrow roundtrip."""
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+
+    # Create fixed-shape string tensor
+    string_tensors = np.array(
+        [["hello", "world"], ["arrow", "pandas"], ["tensor", "string"]]
+    )
+
+    # Create pandas DataFrame with TensorArray
+    df_pandas = pd.DataFrame({"id": [1, 2, 3], "strings": TensorArray(string_tensors)})
+    # Convert to Arrow table
+    arrow_table = pa.Table.from_pandas(df_pandas)
+
+    # Convert back to pandas. Beginning v19+ pyarrow will handle
+    # extension types correctly
+    ignore_metadata = get_pyarrow_version() < parse_version("19.0.0")
+    df_roundtrip = arrow_table.to_pandas(ignore_metadata=ignore_metadata)
+
+    # Verify the roundtrip preserves the data
+    original_strings = df_pandas["strings"].to_numpy()
+    roundtrip_strings = df_roundtrip["strings"].to_numpy()
+
+    np.testing.assert_array_equal(original_strings, roundtrip_strings)
+    np.testing.assert_array_equal(roundtrip_strings, string_tensors)
+
+
+def test_tensor_type_equality_checks():
+    # Test that different types are not equal
+    fs_tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
+    fs_tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
+
+    assert fs_tensor_type_v1 != fs_tensor_type_v2
+
+    # Test different shapes/dtypes aren't equal
+    assert fs_tensor_type_v1 != ArrowTensorType((3, 3), pa.int64())
+    assert fs_tensor_type_v1 != ArrowTensorType((2, 3), pa.float64())
+    assert fs_tensor_type_v2 != ArrowTensorTypeV2((3, 3), pa.int64())
+    assert fs_tensor_type_v2 != ArrowTensorTypeV2((2, 3), pa.float64())
+
+    # Test var-shaped tensor type
+    vs_tensor_type = ArrowVariableShapedTensorType(pa.int64(), 2)
+
+    # Test that different types are not equal
+    assert vs_tensor_type == ArrowVariableShapedTensorType(pa.int64(), 3)
+    assert vs_tensor_type != ArrowVariableShapedTensorType(pa.float64(), 2)
+    assert vs_tensor_type != fs_tensor_type_v1
+    assert vs_tensor_type != fs_tensor_type_v2
+
+
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
+)
+def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
+    """Test that ArrowTensorType and ArrowTensorTypeV2 __eq__ methods work correctly
+    when concatenating Arrow arrays with the same tensor type."""
+    from ray.data.context import DataContext
+    from ray.data.extensions.tensor_extension import (
+        ArrowTensorArray,
+        ArrowTensorType,
+        ArrowTensorTypeV2,
+    )
+
+    # Test ArrowTensorType V1
+    tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
+
+    DataContext.get_current().use_arrow_tensor_v2 = False
+    first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
+    second = ArrowTensorArray.from_numpy(np.zeros((3, 2, 3), dtype=np.int64))
+
+    assert first.type == second.type
+    # Assert commutation
+    assert tensor_type_v1 == first.type
+    assert first.type == tensor_type_v1
+
+    # Test concatenation works appropriately
+    concatenated = pa.concat_arrays([first, second])
+    assert len(concatenated) == 5
+    assert concatenated.type == tensor_type_v1
+
+    expected = np.vstack([first.to_numpy(), second.to_numpy()])
+    np.testing.assert_array_equal(concatenated.to_numpy(), expected)
+
+    # Test ArrowTensorTypeV2
+    tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
+
+    DataContext.get_current().use_arrow_tensor_v2 = True
+
+    first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
+    second = ArrowTensorArray.from_numpy(np.ones((3, 2, 3), dtype=np.int64))
+
+    assert first.type == second.type
+    # Assert commutation
+    assert tensor_type_v2 == first.type
+    assert first.type == tensor_type_v2
+
+    # Test concatenation works appropriately
+    concatenated_v2 = pa.concat_arrays([first, second])
+    assert len(concatenated_v2) == 5
+    assert concatenated_v2.type == tensor_type_v2
+
+    # Assert on the full concatenated array
+    expected = np.vstack([first.to_numpy(), second.to_numpy()])
+    np.testing.assert_array_equal(concatenated_v2.to_numpy(), expected)
+
+
+@pytest.mark.skipif(
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
+)
+def test_arrow_variable_shaped_tensor_type_eq_with_concat():
+    """Test that ArrowVariableShapedTensorType __eq__ method works correctly
+    when concatenating Arrow arrays with variable shaped tensors."""
+    from ray.data.extensions.tensor_extension import (
+        ArrowVariableShapedTensorArray,
+    )
+
+    #
+    # Case 1: Tensors are variable-shaped but same ``ndim``
+    #
+
+    # Create arrays with variable-shaped tensors (but same ndim)
+    first_tensors = [
+        # (2, 2)
+        np.array([[1, 2], [3, 4]]),
+        # (2, 3)
+        np.array([[5, 6, 7], [8, 9, 10]]),
+    ]
+    second_tensors = [
+        # (1, 4)
+        np.array([[11, 12, 13, 14]]),
+        # (3, 1)
+        np.array([[15], [16], [17]]),
+    ]
+
+    first_arr = ArrowVariableShapedTensorArray.from_numpy(first_tensors)
+    second_arr = ArrowVariableShapedTensorArray.from_numpy(second_tensors)
+
+    # Assert commutation
+    assert first_arr.type == second_arr.type
+    assert second_arr.type == first_arr.type
+    # Assert hashing is correct
+    assert hash(first_arr.type) == hash(second_arr.type)
+
+    assert first_arr.type.ndim == 2
+    assert second_arr.type.ndim == 2
+
+    # Test concatenation works appropriately
+    concatenated = pa.concat_arrays([first_arr, second_arr])
+    assert len(concatenated) == 4
+    assert concatenated.type == first_arr.type
+
+    result_ndarray = concatenated.to_numpy()
+
+    for i, expected_ndarray in enumerate(
+        itertools.chain.from_iterable([first_tensors, second_tensors])
+    ):
+        assert result_ndarray[i].shape == expected_ndarray.shape
+
+        np.testing.assert_array_equal(result_ndarray[i], expected_ndarray)
+
+    #
+    # Case 2: Tensors are variable-shaped, with diverging ``ndim``s
+    #
+
+    # Create arrays with variable-shaped tensors (but different ndim)
+    first_tensors = [
+        # (1, 2, 1)
+        np.array([[[1], [2]], [[3], [4]]]),
+        # (2, 3, 1)
+        np.array([[[5], [6], [7]], [[8], [9], [10]]]),
+    ]
+    second_tensors = [
+        # (1, 4)
+        np.array([[11, 12, 13, 14]]),
+        # (3, 1)
+        np.array([[15], [16], [17]]),
+    ]
+
+    first_arr = ArrowVariableShapedTensorArray.from_numpy(first_tensors)
+    second_arr = ArrowVariableShapedTensorArray.from_numpy(second_tensors)
+
+    # Assert commutation
+    assert first_arr.type == second_arr.type
+    assert second_arr.type == first_arr.type
+    # Assert hashing is correct
+    assert hash(first_arr.type) == hash(second_arr.type)
+
+    assert first_arr.type.ndim == 3
+    assert second_arr.type.ndim == 2
+
+    # Test concatenation works appropriately
+    concatenated = pa.concat_arrays([first_arr, second_arr])
+
+    assert len(concatenated) == 4
+    assert concatenated.type == first_arr.type
+
+    result_ndarray = concatenated.to_numpy()
+
+    for i, expected_ndarray in enumerate(
+        itertools.chain.from_iterable([first_tensors, second_tensors])
+    ):
+        assert result_ndarray[i].shape == expected_ndarray.shape
+
+        np.testing.assert_array_equal(result_ndarray[i], expected_ndarray)
+
+
+def test_reverse_order():
+    """Test views in reverse order."""
+    base = np.arange(100, dtype=np.float64)
+
+    raveled = np.empty(3, dtype=np.object_)
+    raveled[0] = base[50:60].ravel()
+    raveled[1] = base[30:50].ravel()
+    raveled[2] = base[0:30].ravel()
+
+    # Reverse order views should NOT be contiguous
+    assert not _are_contiguous_1d_views(raveled)
+
+
+def test_concat_ndarrays_zero_copy():
+    """Test that _concat_ndarrays performs zero-copy concatenation when possible."""
+    # Case 1: Create a base array and contiguous views
+    base = np.arange(100, dtype=np.int64)
+
+    arrs = [base[0:20], base[20:50], base[50:100]]
+
+    result = _concat_ndarrays(arrs)
+
+    np.testing.assert_array_equal(result, base)
+    # Verify it's a zero-copy view (shares memory with base)
+    assert np.shares_memory(result, base)
+
+    # Case 2: Verify empty views are skipped
+    arrs = [base[0:10], base[10:10], base[10:20]]  # Empty array
+
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate([base[0:10], base[10:20]])
+
+    np.testing.assert_array_equal(result, expected)
+    # Verify it's a zero-copy view (shares memory with base)
+    assert np.shares_memory(result, base)
+
+    # Case 3: Singleton ndarray is returned as is
+    result = _concat_ndarrays([base])
+
+    # Should return the same array or equivalent
+    assert result is base
+
+
+def test_concat_ndarrays_non_contiguous_fallback():
+    """Test that _concat_ndarrays falls back to np.concatenate when arrays aren't contiguous."""
+
+    # Case 1: Non-contiguous arrays
+    arr1 = np.arange(10, dtype=np.float32)
+    _ = np.arange(1000)  # Create gap to prevent contiguity
+    arr2 = np.arange(10, 20, dtype=np.float32)
+    _ = np.arange(1000)  # Create gap to prevent contiguity
+    arr3 = np.arange(20, 30, dtype=np.float32)
+
+    arrs = [arr1, arr2, arr3]
+
+    result = _concat_ndarrays(arrs)
+
+    expected = np.concatenate(arrs)
+    np.testing.assert_array_equal(result, expected)
+
+    assert all(not np.shares_memory(result, a) for a in arrs)
+
+    # Case 2: Non-contiguous arrays (take 2)
+    base = np.arange(100, dtype=np.float64)
+
+    arrs = [base[0:10], base[20:30], base[30:40]]  # Gap from 10-20
+
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate(arrs)
+
+    np.testing.assert_array_equal(result, expected)
+    # Should have created a copy since there's a gap
+    assert not np.shares_memory(result, base)
+
+
+def test_concat_ndarrays_diff_dtypes_fallback():
+    """Different dtypes"""
+
+    base_int16 = np.arange(50, dtype=np.int16)
+    base_int32 = np.arange(50, dtype=np.int32)
+
+    # Different dtypes should use fallback
+    arrs = [base_int16, base_int32]
+
+    # This should use np.concatenate with type promotion
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate(arrs)
+
+    np.testing.assert_array_equal(result, expected)
+    assert result.dtype == expected.dtype
+
+
+def test_are_contiguous_1d_views_non_raveled():
+    """Test that _are_contiguous_1d_views rejects non-1D arrays."""
+    base = np.arange(100, dtype=np.int64).reshape(10, 10)
+
+    arrs = [
+        base[0:2].ravel(),  # 1D view
+        base[2:4],  # 2D array
+    ]
+
+    # Should reject because second array is not 1D
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_are_contiguous_1d_views_non_c_contiguous():
+    """Test _are_contiguous_1d_views with non-C-contiguous arrays."""
+    base = np.arange(100, dtype=np.int64).reshape(10, 10)
+
+    # Column slices are not C-contiguous
+    arrs = [base[:, 0], base[:, 1]]
+
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_are_contiguous_1d_views_different_bases():
+    """Test _are_contiguous_1d_views with views from different base arrays."""
+    base1 = np.arange(50, dtype=np.int64)
+    _ = np.arange(1000, dtype=np.int64)  # Create gap to prevent contiguity
+    base2 = np.arange(50, 100, dtype=np.int64)
+
+    arrs = [base1, base2]
+
+    # Different base arrays
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_are_contiguous_1d_views_overlapping():
+    """Test _are_contiguous_1d_views with overlapping views."""
+    base = np.arange(100, dtype=np.float64)
+
+    arrs = [base[0:20], base[10:30]]  # Overlaps with first
+
+    # Overlapping views are not contiguous
+    assert not _are_contiguous_1d_views(arrs)
+
+
+def test_concat_ndarrays_complex_views():
+    """Test _concat_ndarrays with complex view scenarios."""
+    # Create a 2D array and take contiguous row views
+    base_2d = np.arange(100, dtype=np.int64).reshape(10, 10)
+    base = base_2d.ravel()  # Get 1D view
+
+    # Take contiguous slices of the 1D view
+    arrs = [base[0:30], base[30:60], base[60:100]]
+
+    result = _concat_ndarrays(arrs)
+    np.testing.assert_array_equal(result, base)
+    assert np.shares_memory(
+        result, base_2d
+    )  # Should share memory with original 2D array
+
+
+def test_concat_ndarrays_strided_views():
+    """Test _concat_ndarrays with strided (non-contiguous) views."""
+    base = np.arange(100, dtype=np.float64)
+
+    # Every other element - these are strided views
+    arrs = [base[::2], base[1::2]]  # Even indices  # Odd indices
+
+    # Strided views are not C-contiguous
+    result = _concat_ndarrays(arrs)
+    expected = np.concatenate(arrs)
+
+    np.testing.assert_array_equal(result, expected)
+    # Should have created a copy
+    assert not np.shares_memory(result, base)
 
 
 if __name__ == "__main__":

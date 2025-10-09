@@ -9,8 +9,8 @@ import pytest
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-from ray.data import Dataset
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
+from ray.data.dataset import Dataset
 from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
@@ -487,36 +487,6 @@ def test_read_tfrecords_ray_remote_args(
     args, kwargs = mock_ray_data_read_tfrecords.call_args
     assert kwargs["paths"] == [path]
     assert kwargs["ray_remote_args"] == ray_remote_args
-
-
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_read_tfrecords_ignore_missing_paths(
-    ray_start_regular_shared, tmp_path, ignore_missing_paths
-):
-    import tensorflow as tf
-
-    example = tf_records_empty()[0]
-
-    path = os.path.join(tmp_path, "data.tfrecords")
-    with tf.io.TFRecordWriter(path=path) as writer:
-        writer.write(example.SerializeToString())
-
-    paths = [
-        path,
-        "missing.tfrecords",
-    ]
-
-    if ignore_missing_paths:
-        ds = read_tfrecords_with_tfx_read_override(
-            path, ignore_missing_paths=ignore_missing_paths
-        )
-        assert ds.input_files() == [path]
-    else:
-        with pytest.raises(FileNotFoundError):
-            ds = read_tfrecords_with_tfx_read_override(
-                paths, ignore_missing_paths=ignore_missing_paths
-            )
-            ds.materialize()
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))

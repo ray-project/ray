@@ -2,8 +2,8 @@ import dataclasses
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
 from queue import Queue
+from typing import List
 
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
@@ -11,9 +11,9 @@ from ray.autoscaler.v2.instance_manager.instance_manager import (
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.core.generated.instance_manager_pb2 import (
-    NodeKind,
     Instance,
     InstanceUpdateEvent,
+    NodeKind,
 )
 
 logger = logging.getLogger(__name__)

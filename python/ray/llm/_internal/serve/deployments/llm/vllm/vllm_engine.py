@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
 from starlette.requests import Request
-from transformers.dynamic_module_utils import init_hf_modules
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
@@ -18,6 +17,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
+    ErrorInfo,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
@@ -55,6 +55,19 @@ def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
+
+    # Resolve to local cache path if model was downloaded from S3/GCS mirror
+    # Only do this if mirror_config was specified (intentional S3/GCS download)
+    if engine_config.mirror_config:
+        from ray.llm._internal.common.utils.download_utils import (
+            get_model_location_on_disk,
+        )
+
+        local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
+        if local_path and local_path != engine_config.actual_hf_model_id:
+            engine_config.hf_model_id = local_path
+            logger.info(f"Resolved model from mirror to local path: {local_path}")
+
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
@@ -110,10 +123,6 @@ class VLLMEngine(LLMEngine):
         """
         super().__init__(llm_config)
 
-        # Ensure transformers_modules is initialized early in worker processes.
-        # This is critical for models with trust_remote_code=True to avoid pickle errors.
-        init_hf_modules()
-
         self.llm_config = llm_config
 
         if vllm is None:
@@ -122,9 +131,10 @@ class VLLMEngine(LLMEngine):
             )
         from vllm import envs as vllm_envs
 
+        # TODO (Kourosh): Remove this after a few releases.
         if not vllm_envs.VLLM_USE_V1:
-            logger.warning(
-                "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
+            logger.error(
+                "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
             )
 
         self.llm_config.setup_engine_backend()
@@ -279,28 +289,6 @@ class VLLMEngine(LLMEngine):
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
-    def _start_async_llm_engine_v0(
-        self,
-        engine_args: "AsyncEngineArgs",
-        vllm_config: "VllmConfig",
-        placement_group: PlacementGroup,
-    ) -> "EngineClient":
-
-        from vllm.engine.async_llm_engine import AsyncLLMEngine
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
-
-        vllm_config.parallel_config.placement_group = placement_group
-
-        _clear_current_platform_cache()
-
-        engine_client = AsyncLLMEngine(
-            vllm_config=vllm_config,
-            executor_class=RayDistributedExecutor,
-            log_stats=not engine_args.disable_log_stats,
-        )
-
-        return engine_client
-
     def _start_async_llm_engine(
         self,
         vllm_engine_args: "AsyncEngineArgs",
@@ -308,13 +296,6 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        from vllm import envs as vllm_envs
-
-        # NOTE: This is a temporary solution until vLLM v1 supports embeddings.
-        if not vllm_envs.VLLM_USE_V1:
-            return self._start_async_llm_engine_v0(
-                vllm_engine_args, vllm_engine_config, placement_group
-            )
 
         from vllm.v1.engine.async_llm import AsyncLLM
         from vllm.v1.executor.abstract import Executor
@@ -360,7 +341,7 @@ class VLLMEngine(LLMEngine):
         )
 
         if isinstance(lora_request, VLLMErrorResponse):
-            raise ValueError(f"Failed to load lora model: {lora_request.message}")
+            raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
     def _create_raw_request(
         self,
@@ -402,7 +383,7 @@ class VLLMEngine(LLMEngine):
                 yield response
         else:
             if isinstance(chat_response, VLLMErrorResponse):
-                yield ErrorResponse(**chat_response.model_dump())
+                yield ErrorResponse(error=ErrorInfo(**chat_response.error.model_dump()))
             else:
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
@@ -431,7 +412,9 @@ class VLLMEngine(LLMEngine):
                 yield response
         else:
             if isinstance(completion_response, VLLMErrorResponse):
-                yield ErrorResponse(**completion_response.model_dump())
+                yield ErrorResponse(
+                    error=ErrorInfo(**completion_response.error.model_dump())
+                )
             else:
                 yield CompletionResponse(**completion_response.model_dump())
 
@@ -450,7 +433,9 @@ class VLLMEngine(LLMEngine):
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
-            yield ErrorResponse(**embedding_response.model_dump())
+            yield ErrorResponse(
+                error=ErrorInfo(**embedding_response.error.model_dump())
+            )
         else:
             yield EmbeddingResponse(**embedding_response.model_dump())
 

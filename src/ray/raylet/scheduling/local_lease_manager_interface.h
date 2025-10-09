@@ -19,10 +19,11 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/lease/lease.h"
 #include "ray/raylet/scheduling/internal.h"
 
 namespace ray {
+class RayLease;
+
 namespace raylet {
 
 // Forward declaration

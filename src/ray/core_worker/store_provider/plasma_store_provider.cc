@@ -23,7 +23,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -64,20 +64,17 @@ BufferTracker::UsedObjects() const {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-    ReferenceCounter &reference_counter,
+    ReferenceCounterInterface &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
+    std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+    int64_t fetch_batch_size,
     std::function<std::string()> get_current_call_site)
     : raylet_ipc_client_(raylet_ipc_client),
-      // We can turn on exit_on_connection_failure on for the core worker plasma
-      // client to early exit core worker after the raylet's death because on the
-      // raylet side, we never proactively close the plasma store connection even
-      // during shutdown. So any error from the raylet side should be a sign of raylet
-      // death.
-      store_client_(
-          std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true)),
+      store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
-      check_signals_(std::move(check_signals)) {
+      check_signals_(std::move(check_signals)),
+      fetch_batch_size_(fetch_batch_size) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -85,7 +82,10 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_CHECK_OK(store_client_->Connect(store_socket));
+  if (!store_socket.empty()) {
+    RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
+    RAY_CHECK_OK(store_client_->Connect(store_socket));
+  }
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
   }
@@ -224,9 +224,7 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     const std::vector<ObjectID> &object_ids,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_->Get(object_ids,
-                                       /*timeout_ms=*/0,
-                                       &plasma_results));
+  RAY_RETURN_NOT_OK(store_client_->Get(object_ids, /*timeout_ms=*/0, &plasma_results));
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
@@ -263,7 +261,7 @@ Status UnblockIfNeeded(
     // NOTE: for direct call actors, we still need to issue an unblock IPC to release
     // get subscriptions, even if the worker isn't blocked.
     if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return raylet_client->NotifyDirectCallTaskUnblocked();
+      return raylet_client->NotifyWorkerUnblocked();
     } else {
       return Status::OK();  // We don't need to release resources.
     }
@@ -278,17 +276,16 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
   // Send initial requests to pull all objects in parallel.
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   int64_t total_size = static_cast<int64_t>(object_ids.size());
-  for (int64_t start = 0; start < total_size; start += batch_size) {
+  for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
     batch_ids.clear();
-    for (int64_t i = start; i < batch_size && i < total_size; i++) {
-      batch_ids.push_back(id_vector[start + i]);
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
+      batch_ids.push_back(id_vector[i]);
     }
     RAY_RETURN_NOT_OK(
         PullObjectsAndGetFromPlasmaStore(remaining,
@@ -315,7 +312,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
-      if (static_cast<int64_t>(batch_ids.size()) == batch_size) {
+      if (static_cast<int64_t>(batch_ids.size()) == fetch_batch_size_) {
         break;
       }
       batch_ids.push_back(id);
@@ -406,7 +403,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     ready->insert(entry);
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
   return Status::OK();
 }

@@ -22,6 +22,8 @@
 #include <deque>
 #include <utility>
 
+#include "ray/common/ray_config.h"
+
 namespace ray {
 namespace raylet {
 
@@ -78,7 +80,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       }
 
       const auto &scheduling_class_descriptor =
-          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
+          SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
       if ((scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
            rpc::SchedulingStrategy::SchedulingStrategyCase::
                kNodeAffinitySchedulingStrategy) &&
@@ -184,7 +186,7 @@ void SchedulerResourceReporter::FillPendingActorCountByShape(
     for (const auto &shape_entry : pending_count_by_shape) {
       auto by_shape_entry = resource_load_by_shape->Add();
       for (const auto &resource_entry :
-           TaskSpecification::GetSchedulingClassDescriptor(shape_entry.first)
+           SchedulingClassToIds::GetSchedulingClassDescriptor(shape_entry.first)
                .resource_set.GetResourceMap()) {
         (*by_shape_entry->mutable_shape())[resource_entry.first] = resource_entry.second;
       }

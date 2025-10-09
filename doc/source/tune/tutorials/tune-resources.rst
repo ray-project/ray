@@ -65,9 +65,6 @@ Tune will allocate the specified GPU and CPU as specified by ``tune.with_resourc
 Even if the trial cannot be scheduled right now, Ray Tune will still try to start the respective placement group. If not enough resources are available, this will trigger
 :ref:`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
 
-.. warning::
-    ``tune.with_resources`` cannot be used with :ref:`Ray Train Trainers <train-docs>`. If you are passing a Trainer to a Tuner, specify the resource requirements in the Trainer instance using :class:`~ray.train.ScalingConfig`. The general principles outlined below still apply.
-
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
 If your trainable function starts more remote workers, you will need to pass so-called placement group

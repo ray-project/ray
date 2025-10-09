@@ -12,8 +12,9 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID, NodeID
-from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._common.network_utils import build_address
+from ray._common.usage.usage_constants import CLUSTER_METADATA_KEY
+from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
@@ -23,7 +24,6 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_DASHBOARD,
     env_integer,
 )
-from ray._common.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc

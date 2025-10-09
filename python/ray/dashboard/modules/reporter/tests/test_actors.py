@@ -3,15 +3,16 @@ import os
 import sys
 import time
 
-import psutil
 import pytest
 import requests
 
 import ray
-from ray._private.test_utils import format_web_url, wait_until_server_available
-from ray.dashboard.tests.conftest import *  # noqa
 from ray._common.test_utils import wait_for_condition
 from ray._private.state_api_test_utils import _is_actor_task_running
+from ray._private.test_utils import format_web_url, wait_until_server_available
+from ray.dashboard.tests.conftest import *  # noqa
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

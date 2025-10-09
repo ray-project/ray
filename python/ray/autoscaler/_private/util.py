@@ -13,8 +13,8 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 import ray._private.services as services
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
     PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN,
@@ -756,7 +756,7 @@ def get_constraint_report(request_demand: List[DictCount]):
     if len(constraint_lines) > 0:
         constraints_report = "\n".join(constraint_lines)
     else:
-        constraints_report = " (no request_resources() constraints)"
+        constraints_report = " (none)"
     return constraints_report
 
 
@@ -948,9 +948,9 @@ Resources
 {separator}
 Total Usage:
 {usage_report}
-Total Constraints:
+From request_resources:
 {constraints_report}
-Total Demands:
+Pending Demands:
 {demand_report}"""
 
     if verbose:
@@ -1027,7 +1027,7 @@ def generate_rsa_key_pair():
 
 def generate_ssh_key_paths(key_name):
     public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
-    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+    private_key_path = os.path.expanduser("~/.ssh/{}".format(key_name))
     return public_key_path, private_key_path
 
 

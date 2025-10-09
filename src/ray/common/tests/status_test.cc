@@ -20,9 +20,8 @@
 #include "ray/common/grpc_util.h"
 
 namespace ray {
-class StatusTest : public ::testing::Test {};
 
-TEST_F(StatusTest, CopyAndMoveForOkStatus) {
+TEST(StatusTest, CopyAndMoveForOkStatus) {
   // OK status.
   Status ok_status = Status::OK();
 
@@ -52,7 +51,7 @@ TEST_F(StatusTest, CopyAndMoveForOkStatus) {
   }
 }
 
-TEST_F(StatusTest, CopyAndMoveErrorStatus) {
+TEST(StatusTest, CopyAndMoveErrorStatus) {
   // Invalid status.
   Status invalid_status = Status::Invalid("invalid");
 
@@ -82,7 +81,7 @@ TEST_F(StatusTest, CopyAndMoveErrorStatus) {
   }
 }
 
-TEST_F(StatusTest, StringToCode) {
+TEST(StatusTest, StringToCode) {
   auto ok = Status::OK();
   StatusCode status = Status::StringToCode(ok.CodeAsString());
   ASSERT_EQ(status, StatusCode::OK);
@@ -98,7 +97,7 @@ TEST_F(StatusTest, StringToCode) {
   ASSERT_EQ(Status::StringToCode("foobar"), StatusCode::IOError);
 }
 
-TEST_F(StatusTest, GrpcStatusToRayStatus) {
+TEST(StatusTest, GrpcStatusToRayStatus) {
   const Status ok = Status::OK();
   auto grpc_status = RayStatusToGrpcStatus(ok);
   ASSERT_TRUE(GrpcStatusToRayStatus(grpc_status).ok());
@@ -122,6 +121,59 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
   grpc_status = grpc::Status(grpc::StatusCode::ABORTED, "foo", "bar");
   ray_status = GrpcStatusToRayStatus(grpc_status);
   ASSERT_TRUE(ray_status.IsIOError());
+}
+
+TEST(StatusSetTest, TestStatusSetAPI) {
+  auto return_status_oom = []() -> StatusSet<StatusT::IOError, StatusT::OutOfMemory> {
+    return StatusT::OutOfMemory("ooming because Ray Data is making too many objects");
+  };
+  auto error_status = return_status_oom();
+  ASSERT_FALSE(error_status.ok());
+  ASSERT_TRUE(error_status.has_error());
+  bool hit_correct_visitor = false;
+  std::visit(overloaded{[](const StatusT::IOError &) {},
+                        [&](const StatusT::OutOfMemory &oom_status) {
+                          ASSERT_EQ(oom_status.message(),
+                                    "ooming because Ray Data is making too many objects");
+                          hit_correct_visitor = true;
+                        }},
+             error_status.error());
+  ASSERT_TRUE(hit_correct_visitor);
+
+  auto return_status_ok = []() -> StatusSet<StatusT::IOError, StatusT::OutOfMemory> {
+    return StatusT::OK();
+  };
+  auto status_ok = return_status_ok();
+  ASSERT_TRUE(status_ok.ok());
+  ASSERT_FALSE(status_ok.has_error());
+}
+
+TEST(StatusSetOrTest, TestStatusSetOrAPI) {
+  auto return_status_oom =
+      []() -> StatusSetOr<int64_t, StatusT::IOError, StatusT::OutOfMemory> {
+    return StatusT::OutOfMemory("ooming because Ray Data is making too many objects");
+  };
+  auto error_result = return_status_oom();
+  ASSERT_FALSE(error_result.has_value());
+  ASSERT_TRUE(error_result.has_error());
+  bool hit_correct_visitor = false;
+  std::visit(overloaded{[](const StatusT::IOError &) {},
+                        [&](const StatusT::OutOfMemory &oom_status) {
+                          ASSERT_EQ(oom_status.message(),
+                                    "ooming because Ray Data is making too many objects");
+                          hit_correct_visitor = true;
+                        }},
+             error_result.error());
+  ASSERT_TRUE(hit_correct_visitor);
+
+  auto return_value =
+      []() -> StatusSetOr<int64_t, StatusT::IOError, StatusT::OutOfMemory> {
+    return 100;
+  };
+  auto result = return_value();
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.has_error());
+  ASSERT_TRUE(result.value() == 100);
 }
 
 }  // namespace ray

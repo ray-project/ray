@@ -24,7 +24,6 @@ from ray.rllib.connectors.env_to_module.write_observations_to_episodes import (
     WriteObservationsToEpisodes,
 )
 
-
 __all__ = [
     "AddObservationsFromEpisodesToBatch",
     "AddStatesFromEpisodesToBatch",

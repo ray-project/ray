@@ -102,7 +102,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
                        std::function<absl::Time()> get_time,
-                       bool enable_resource_isolation)
+                       AddProcessToCgroupHook add_to_cgroup_hook)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -124,7 +124,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       get_time_(std::move(get_time)),
-      enable_resource_isolation_(enable_resource_isolation) {
+      add_to_cgroup_hook_(std::move(add_to_cgroup_hook)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -443,12 +443,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   serialized_preload_python_modules);
   }
 
-  // Pass resource isolation flag to python worker.
-  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER) {
-    worker_command_args.emplace_back(absl::StrFormat(
-        "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
-  }
-
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -461,6 +455,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Support forking in gRPC.
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
     env.insert({"GRPC_POLL_STRATEGY", "poll"});
+    env.insert({"RAY_start_python_gc_manager_thread", "0"});
   }
 
   return {std::move(worker_command_args), std::move(env)};
@@ -673,7 +668,17 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
+  // Workers should be placed into their own process groups (if enabled) to enable
+  // per-worker cleanup via killpg on worker death.
+  const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
+  Process child(argv.data(),
+                io_service_,
+                ec,
+                /*decouple=*/false,
+                env,
+                /*pipe_to_stdin=*/false,
+                add_to_cgroup_hook_,
+                new_process_group);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
@@ -798,6 +803,20 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
+#if !defined(_WIN32)
+  // Save the worker's actual PGID at registration for safe cleanup later.
+  // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
+  // parent's PGID. We save whatever the OS reports and will validate again at cleanup.
+  pid_t pgid = -1;
+  errno = 0;
+  pgid = getpgid(pid);
+  if (pgid != -1) {
+    worker->SetSavedProcessGroupId(pgid);
+  } else {
+    RAY_LOG(WARNING) << "getpgid(" << pid
+                     << ") failed at registration: " << strerror(errno);
+  }
+#endif
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
   // should bind on a random port.

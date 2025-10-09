@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "ray/common/ray_config.h"
@@ -27,7 +28,7 @@
 namespace ray {
 namespace raylet {
 
-void AgentManager::StartAgent() {
+void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
   std::vector<const char *> argv;
   argv.reserve(options_.agent_commands.size());
   for (const std::string &arg : options_.agent_commands) {
@@ -67,7 +68,8 @@ void AgentManager::StartAgent() {
               false,
               env,
               /*pipe_to_stdin*/
-              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check());
+              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check(),
+              std::move(add_to_cgroup));
   if (!process_.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent " << options_.agent_name

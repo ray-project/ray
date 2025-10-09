@@ -1,4 +1,4 @@
-name: "ray-slim.py$PYTHON_VERSION.cu$CUDA_VERSION.base$ARCH_SUFFIX"
+name: "ray-slim-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"
 froms: ["nvidia/cuda:$CUDA_VERSION-runtime-ubuntu22.04"]
 dockerfile: docker/base-slim/Dockerfile
 srcs:
@@ -7,4 +7,4 @@ build_args:
   - PYTHON_VERSION
   - BASE_IMAGE=nvidia/cuda:$CUDA_VERSION-runtime-ubuntu22.04
 tags:
-  - cr.ray.io/rayproject/ray-slim.py$PYTHON_VERSION.cu$CUDA_VERSION.base$ARCH_SUFFIX
+  - cr.ray.io/rayproject/ray-slim-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX
