@@ -41,7 +41,7 @@ class MinimalClusterManager(ClusterManager):
         )
 
         self.cluster_env_id = create_cluster_env_from_image(
-            image=self.test.get_anyscale_byod_image(),
+            image="rayreleasetest.azurecr.io/anyscale/ray:f784e85b-py39-cpu",
             test_name=self.cluster_env_name,
             runtime_env=self.test.get_byod_runtime_env(),
             sdk=self.sdk,

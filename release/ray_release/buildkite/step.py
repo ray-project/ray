@@ -12,10 +12,6 @@ from ray_release.config import (
     get_test_project_id,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
-from ray_release.custom_byod_build_init_helper import (
-    generate_custom_build_step_key,
-    get_prerequisite_step,
-)
 from ray_release.template import get_test_env_var
 from ray_release.util import DeferredEnvVar
 
@@ -209,11 +205,11 @@ def get_step(
 
     step["label"] = full_label
 
-    image = test.get_anyscale_byod_image()
+    # image = test.get_anyscale_byod_image()
     if test.require_custom_byod_image():
-        step["depends_on"] = generate_custom_build_step_key(image)
+        step["depends_on"] = None
     else:
-        step["depends_on"] = get_prerequisite_step(image)
+        step["depends_on"] = None
 
     if block_step_key:
         if not step["depends_on"]:
