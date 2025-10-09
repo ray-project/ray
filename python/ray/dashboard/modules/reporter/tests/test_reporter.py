@@ -1184,5 +1184,25 @@ def test_get_cluster_metadata(ray_start_with_dashboard):
     assert resp_data["rayInitCluster"] == meta["ray_init_cluster"]
 
 
+def test_reporter_raylet_agent(ray_start_with_dashboard):
+    @ray.remote
+    class MyActor:
+        def ping(self):
+            return "pong"
+
+    a = MyActor.remote()
+    assert ray.get(a.ping.remote()) == "pong"
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.ip = "127.0.0.1"
+    dashboard_agent.node_manager_port = (
+        ray._private.worker.global_worker.node.node_manager_port
+    )
+    agent = ReporterAgent(dashboard_agent)
+    pids = agent._get_worker_pids_from_raylet()
+    assert len(pids) == 2
+    assert "ray::MyActor" in [psutil.Process(pid).cmdline()[0] for pid in pids]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
