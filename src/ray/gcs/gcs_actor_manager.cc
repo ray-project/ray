@@ -926,16 +926,16 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
                    << ", job id = " << actor_id.JobId();
-    auto client = worker_client_pool_.GetOrConnect(actor->GetOwnerAddress());
-    it = workers.emplace(owner_id, Owner(std::move(client))).first;
+    it = workers.emplace(owner_id, Owner(actor->GetOwnerAddress())).first;
   }
   it->second.children_actor_ids_.insert(actor_id);
 
   rpc::WaitForActorRefDeletedRequest wait_request;
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
-  it->second.client_->WaitForActorRefDeleted(
-      wait_request,
+  auto client = worker_client_pool_.GetOrConnect(it->second.address_);
+  client->WaitForActorRefDeleted(
+      std::move(wait_request),
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorRefDeletedReply &reply) {
         if (!status.ok()) {

@@ -1329,7 +1329,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   RemoveFinishedTaskReferences(spec,
                                /*release_lineage=*/true,
                                rpc::Address(),
-                               ReferenceCounter::ReferenceTableProto());
+                               ReferenceCounterInterface::ReferenceTableProto());
 
   MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
 
@@ -1399,7 +1399,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     TaskSpecification &spec,
     bool release_lineage,
     const rpc::Address &borrower_addr,
-    const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
+    const ReferenceCounterInterface::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies = ExtractPlasmaDependencies(spec);
 
   std::vector<ObjectID> return_ids;

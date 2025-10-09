@@ -257,6 +257,18 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           timeout_error_info_(std::move(timeout_error_info)) {}
   };
 
+  /// Handle a task that was cancelled before it could execute.
+  /// This method determines whether the cancellation was due to:
+  /// 1. Actor shutdown (worker exiting): If so, raise RayActorError.
+  /// 2. Explicit user cancellation: If so, raise TaskCancelledError.
+  ///
+  /// \param status The RPC status from PushTask.
+  /// \param reply The PushTaskReply message containing cancellation details.
+  /// \param task_spec The specification of the task that was cancelled.
+  void HandleTaskCancelledBeforeExecution(const Status &status,
+                                          const rpc::PushTaskReply &reply,
+                                          const TaskSpecification &task_spec);
+
   struct ClientQueue {
     ClientQueue(bool allow_out_of_order_execution,
                 int32_t max_pending_calls,

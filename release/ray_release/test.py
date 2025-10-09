@@ -432,7 +432,7 @@ class Test(dict):
         """
         Returns the post-build script for the BYOD cluster.
         """
-        return self["cluster"]["byod"].get("post_build_script")
+        return self["cluster"]["byod"].get("post_build_script", None)
 
     def get_byod_python_depset(self) -> Optional[str]:
         """
@@ -624,7 +624,10 @@ class Test(dict):
         """
         Returns whether this test requires a custom byod image.
         """
-        return self.get_byod_post_build_script() is not None
+        return (
+            self.get_byod_post_build_script() is not None
+            or self.get_byod_python_depset() is not None
+        )
 
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
         """
