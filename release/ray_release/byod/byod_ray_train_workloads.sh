@@ -19,10 +19,7 @@ pip3 install --no-cache-dir \
     "statsmodels==0.14.5" \
     "pycocotools==2.0.10" \
     "transformers==4.56.2" \
-    "accelerate==1.10.1" \
-    "sentencepiece==0.2.1" \
-    "tokenizers==0.23.0" \
-    "safetensors==0.6.2"
+    "accelerate==1.10.1"
 
 # Env vars
 export RAY_TRAIN_V2_ENABLED=1
