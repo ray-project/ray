@@ -1,6 +1,5 @@
 import argparse
 import ast
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -33,9 +32,8 @@ def is_train_package(module_str: str) -> bool:
 
 def get_base_dir() -> Path:
     """Return the filesystem path to the ray python directory."""
-    import ray
-
-    package_dir = Path(os.path.dirname(ray.__file__)).parent
+    current_file_path = Path(__file__).resolve()
+    package_dir = current_file_path.parents[3]
     return package_dir
 
 
